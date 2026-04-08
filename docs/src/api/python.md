@@ -29,6 +29,26 @@ print(profiles[0].supported_tasks)
 print(doctor.issues)
 ```
 
+## Observability
+
+```python
+import logging
+
+from worldforge import WorldForge
+from worldforge.observability import JsonLoggerSink, ProviderMetricsSink, compose_event_handlers
+
+metrics = ProviderMetricsSink()
+forge = WorldForge(
+    event_handler=compose_event_handlers(
+        JsonLoggerSink(logger=logging.getLogger("demo.worldforge")),
+        metrics,
+    )
+)
+
+forge.generate("orbiting cube", "mock", duration_seconds=1.0)
+print(metrics.get("mock", "generate").to_dict())
+```
+
 ## `World`
 
 Stateful runtime object responsible for:

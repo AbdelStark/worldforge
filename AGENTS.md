@@ -8,6 +8,7 @@ WorldForge is a Python library for building, persisting, evaluating, and routing
 
 - `src/worldforge/models.py`: domain models, serialization helpers, and framework-level validation errors.
 - `src/worldforge/framework.py`: `WorldForge`, `World`, persistence, planning, prediction, comparison, and diagnostics.
+- `src/worldforge/observability.py`: composable `ProviderEvent` sinks for JSON logging, in-memory recording, and lightweight metrics aggregation.
 - `src/worldforge/providers/`: provider primitives plus the in-repo `mock`, `cosmos`, `runway`, `jepa`, and `genie` adapters.
 - `src/worldforge/evaluation/`: built-in evaluation suites and report rendering.
 - `src/worldforge/testing/`: reusable provider contract assertions for adapter packages.
@@ -60,13 +61,35 @@ uv run pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
 - Provider health checks may perform live network requests when the relevant provider is configured.
 - Remote provider profiles now expose a typed `ProviderRequestPolicy`; read operations retry, mutation operations do not by default.
 - `WorldForge(event_handler=...)` propagates to builtin providers and to providers later added with `register_provider()`.
+- `worldforge.observability.compose_event_handlers(...)` is the supported way to attach multiple sinks without writing a custom dispatcher.
 - Remote adapters emit `ProviderEvent` records for retry, success, and failure. Mock-backed paths emit success events only.
+- `ProviderMetricsSink.request_count` counts emitted request attempts, so retries increment both `request_count` and `retry_count`.
+
+## Observability Example
+
+```python
+import logging
+
+from worldforge import WorldForge
+from worldforge.observability import JsonLoggerSink, ProviderMetricsSink, compose_event_handlers
+
+metrics = ProviderMetricsSink()
+forge = WorldForge(
+    event_handler=compose_event_handlers(
+        JsonLoggerSink(logger=logging.getLogger("demo.worldforge")),
+        metrics,
+    )
+)
+
+forge.generate("orbiting cube", "mock", duration_seconds=1.0)
+print(metrics.get("mock", "generate").to_dict())
+```
 
 ## Current State
 
 As of 2026-04-08, the project is alpha.
 
-- Stable path: local `mock` provider, persistence, CLI, contract tests, and built-in evaluation flow.
+- Stable path: local `mock` provider, persistence, CLI, contract tests, built-in evaluation flow, and provider telemetry sinks.
 - Beta path: `cosmos` and `runway` HTTP adapters.
 - Scaffold path: `jepa` and `genie`.
-- Known gaps: heuristic planner, limited evaluation suite coverage, no benchmark/load-test harness yet, and no built-in metrics/logging sink for provider events yet.
+- Known gaps: heuristic planner, limited evaluation suite coverage, no benchmark/load-test harness yet, and no built-in exporter integration for OpenTelemetry or Prometheus yet.

@@ -64,15 +64,31 @@ print(doctor.healthy_provider_count, doctor.provider_count)
 Provider observability:
 
 ```python
-from worldforge import ProviderEvent, WorldForge
+import logging
 
+from worldforge import WorldForge
+from worldforge.observability import (
+    InMemoryRecorderSink,
+    JsonLoggerSink,
+    ProviderMetricsSink,
+    compose_event_handlers,
+)
 
-def handle_provider_event(event: ProviderEvent) -> None:
-    print(event.to_dict())
+logger = logging.getLogger("demo.worldforge")
+metrics = ProviderMetricsSink()
+recorder = InMemoryRecorderSink()
 
-
-forge = WorldForge(event_handler=handle_provider_event)
+forge = WorldForge(
+    event_handler=compose_event_handlers(
+        JsonLoggerSink(logger=logger, extra_fields={"service": "demo"}),
+        metrics,
+        recorder,
+    )
+)
 forge.generate("orbiting cube", "mock", duration_seconds=1.0)
+
+print(metrics.get("mock", "generate").to_dict())
+print(recorder.snapshot()[0].to_dict())
 ```
 
 ## Core Workflows
@@ -106,6 +122,7 @@ worldforge/
 │   ├── cli.py
 │   ├── framework.py
 │   ├── models.py
+│   ├── observability.py
 │   ├── evaluation/
 │   ├── providers/
 │   └── testing/
@@ -123,6 +140,7 @@ Module responsibilities:
 | --- | --- |
 | `src/worldforge/models.py` | Typed domain models, serialization helpers, and framework-level validation errors |
 | `src/worldforge/framework.py` | `WorldForge`, `World`, persistence, planning, prediction, comparison, and diagnostics |
+| `src/worldforge/observability.py` | Composable `ProviderEvent` sinks for JSON logging, in-memory recording, and metrics aggregation |
 | `src/worldforge/providers/` | Provider primitives plus `mock`, `cosmos`, `runway`, `jepa`, and `genie` adapters |
 | `src/worldforge/evaluation/` | Built-in evaluation suites and report rendering |
 | `src/worldforge/testing/` | Reusable provider contract assertions for adapter packages |
@@ -135,9 +153,10 @@ Operational invariants:
 - provider adapters must report only capabilities they actually implement
 - missing local assets for remote providers fail before the outbound request
 - remote adapters expose a typed `ProviderRequestPolicy` for health, request, polling, and download operations
-- `WorldForge(event_handler=...)` propagates a single provider event callback to builtin and manually registered providers
+- `WorldForge(event_handler=...)` propagates a single provider event callback, including composed observability sinks, to builtin and manually registered providers
 - retryable read operations are retried with backoff; mutation requests stay single-attempt by default
 - remote HTTP adapters emit structured `ProviderEvent` records for `retry`, `success`, and `failure`
+- `ProviderMetricsSink.request_count` tracks emitted request attempts, so retry events increment both `request_count` and `retry_count`
 - local `mock` and scaffold adapters emit structured success events for provider operations
 - the deterministic mock path remains available for local tests and examples
 

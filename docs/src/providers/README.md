@@ -25,16 +25,33 @@ Every provider exposes a profile describing:
 Programmatically:
 
 ```python
-from worldforge import ProviderEvent, WorldForge
+import logging
 
+from worldforge import WorldForge
+from worldforge.observability import (
+    InMemoryRecorderSink,
+    JsonLoggerSink,
+    ProviderMetricsSink,
+    compose_event_handlers,
+)
 
-def handle_provider_event(event: ProviderEvent) -> None:
-    print(event.phase, event.operation, event.provider)
+logger = logging.getLogger("demo.worldforge")
+metrics = ProviderMetricsSink()
+recorder = InMemoryRecorderSink()
 
-
-forge = WorldForge(event_handler=handle_provider_event)
+forge = WorldForge(
+    event_handler=compose_event_handlers(
+        JsonLoggerSink(logger=logger),
+        metrics,
+        recorder,
+    )
+)
 profile = forge.provider_profile("mock")
+forge.generate("orbiting cube", "mock", duration_seconds=1.0)
+
 print(profile.supported_tasks, profile.deterministic)
+print(metrics.get("mock", "generate").to_dict())
+print(recorder.snapshot()[0].phase)
 ```
 
 From the CLI:
@@ -63,5 +80,7 @@ Providers can declare support for:
 - `cosmos` and `runway` expose a typed `ProviderRequestPolicy` through `provider_profile()` and CLI JSON output.
 - Health checks, polling, and downloads retry with backoff by default. Create-style POST requests remain single-attempt unless a caller passes a custom policy.
 - `WorldForge(event_handler=...)` and provider constructor `event_handler=` arguments accept a `ProviderEvent` callback for host-side logging and metrics.
+- `worldforge.observability.compose_event_handlers(...)` lets host apps attach multiple sinks without writing a custom dispatcher.
+- `ProviderMetricsSink.request_count` counts emitted request attempts, so retry events increment both `request_count` and `retry_count`.
 - `cosmos` and `runway` emit `retry`, `success`, and `failure` events for HTTP operations. `mock`, `jepa`, and `genie` emit success events for local provider operations.
 - `cosmos` and `runway` are the only in-repo adapters that currently perform real HTTP requests.
