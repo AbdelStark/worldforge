@@ -18,7 +18,7 @@ WorldForge is for Python developers building world-model tooling, provider adapt
 
 ## Status
 
-As of 2026-04-08, WorldForge is **alpha**. It is suitable for local development, contract testing, provider adapter prototyping, and deterministic evaluation flows. It is not yet suitable for claiming real-world physics fidelity, running unattended production workloads against third-party providers without extra operational safeguards, or presenting scaffold adapters as fully implemented integrations. Known limitations are listed in [Current limitations](#current-limitations).
+As of 2026-04-16, WorldForge is **alpha**. It is suitable for local development, contract testing, provider adapter prototyping, deterministic evaluation flows, and single-writer JSON persistence. It is not yet suitable for claiming real-world physics fidelity, running unattended production workloads against third-party providers without host-level operational safeguards, or presenting scaffold adapters as fully implemented integrations. Known limitations are listed in [Current limitations](#current-limitations). User-visible changes are tracked in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Installation
 
@@ -145,6 +145,8 @@ worldforge/
 ├── examples/
 ├── docs/
 ├── scripts/
+├── AGENTS.md
+├── CHANGELOG.md
 ├── pyproject.toml
 └── uv.lock
 ```
@@ -178,7 +180,7 @@ Operational invariants:
 - local `mock` and scaffold adapters emit structured success events for provider operations
 - the deterministic mock path remains available for local tests and examples
 
-More detail lives in [docs/src/architecture.md](./docs/src/architecture.md) and [docs/src/providers/README.md](./docs/src/providers/README.md).
+More detail lives in [docs/src/architecture.md](./docs/src/architecture.md), [docs/src/providers/README.md](./docs/src/providers/README.md), and [docs/src/operations.md](./docs/src/operations.md).
 
 ## Provider Matrix
 
@@ -214,6 +216,7 @@ Contribution guidance:
 - update docs, changelog, and agent context when the public contract changes
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for contributor workflow details.
+See [AGENTS.md](./AGENTS.md) for repository context used by AI-assisted and first-time contributors.
 
 ## Current Limitations
 
@@ -221,20 +224,22 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for contributor workflow details.
 - Evaluation remains a deterministic harness; the built-in suites now cover generation, transfer, physics, planning, and reasoning baselines.
 - `jepa` and `genie` are scaffold adapters and should not be treated as production integrations.
 - Remote provider health checks depend on live credentials and network reachability even though they now use typed timeout and retry policy.
-- Provider observability is a typed callback contract, not a built-in logging or metrics backend.
+- Provider observability includes local JSON logging and in-memory metrics sinks, but host applications still own production logging, metrics export, trace IDs, dashboards, and alerts.
 - World persistence is local JSON state, not a concurrent multi-writer store or service.
 - Benchmarks focus on operation latency, retries, and throughput; they are not a distributed load-test or content-fidelity system.
 
 ## Roadmap
 
 1. Provider hardening.
-Exit criteria: remote adapters validate more upstream response schemas, expose richer operator-facing error context, and ship broader non-happy-path coverage beyond transport retries.
+Exit criteria: remote adapters validate upstream success and failure schemas, expose richer operator-facing error context, document provider-specific limits, and ship fixture-driven non-happy-path coverage for malformed payloads, partial outputs, expired artifacts, bad content types, and transport retries.
 
 2. Planner and evaluator maturity.
-Exit criteria: structured planning grows beyond the current `object_at` / `object_near` / `spawn_object` / `swap_objects` goal set, evaluation scoring gets less heuristic, and benchmark fixtures expand beyond the synthetic seed clip.
+Exit criteria: structured planning grows beyond the current `object_at` / `object_near` / `spawn_object` / `swap_objects` goal set, evaluation scoring gets less heuristic, benchmark fixtures expand beyond the synthetic seed clip, and every scoring assumption is documented.
 
 3. Release discipline.
-Exit criteria: docs stay in lockstep with tags, and the first release-candidate criteria are documented.
+Exit criteria: docs stay in lockstep with tags, the changelog is maintained for every user-visible change, and the first release-candidate criteria are documented with explicit production blockers.
+
+Current release-candidate criteria and persistence decisions are documented in [docs/src/operations.md](./docs/src/operations.md).
 
 ## Help
 

@@ -1,18 +1,32 @@
 from __future__ import annotations
 
+import json
+import math
+
 import httpx
 import pytest
 
 from worldforge import (
     Action,
+    BBox,
+    EmbeddingResult,
     GenerationOptions,
+    Pose,
+    Position,
     ProviderEvent,
     ProviderRequestPolicy,
+    ReasoningResult,
     RetryPolicy,
+    Rotation,
+    SceneObject,
+    SceneObjectPatch,
+    VideoClip,
     WorldForge,
     WorldForgeError,
+    WorldStateError,
 )
-from worldforge.providers import ProviderError
+from worldforge.models import average, dump_json
+from worldforge.providers import PredictionPayload, ProviderError
 from worldforge.providers.http_utils import asset_to_uri, parse_size, poll_json_task
 
 
@@ -131,3 +145,275 @@ def test_framework_helpers_and_error_paths(tmp_path) -> None:
 
     with pytest.raises(WorldForgeError, match="Only json import"):
         forge.import_world("{}", format="yaml")
+
+
+def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None:
+    with pytest.raises(WorldForgeError, match="Position.x"):
+        Position(math.nan, 0.0, 0.0)
+
+    with pytest.raises(WorldForgeError, match="BBox min coordinates"):
+        BBox(Position(1.0, 0.0, 0.0), Position(0.0, 0.0, 0.0))
+
+    with pytest.raises(WorldForgeError, match="speed"):
+        Action.move_to(0.0, 0.0, 0.0, speed=0.0)
+
+    with pytest.raises(WorldForgeError, match="GenerationOptions fps"):
+        GenerationOptions(fps=math.inf)
+
+    with pytest.raises(WorldForgeError, match="timeout_seconds"):
+        ProviderRequestPolicy.remote_defaults(request_timeout_seconds=math.nan)
+
+    with pytest.raises(WorldForgeError, match="status_code"):
+        ProviderEvent(
+            provider="mock",
+            operation="predict",
+            phase="success",
+            status_code=99,
+        )
+
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("invariant-world", "mock")
+    cube = world.add_object(
+        SceneObject(
+            "cube",
+            Position(0.0, 0.5, 0.0),
+            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+        )
+    )
+    with pytest.raises(WorldForgeError, match="already present"):
+        world.add_object(cube)
+
+    bad_state = {
+        "id": "world_bad",
+        "name": "bad",
+        "provider": "mock",
+        "step": 0,
+        "scene": {
+            "objects": {
+                "obj_key": SceneObject(
+                    "cube",
+                    Position(0.0, 0.5, 0.0),
+                    BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+                    id="obj_embedded",
+                ).to_dict()
+            }
+        },
+        "metadata": {},
+    }
+    with pytest.raises(WorldStateError, match="does not match embedded id"):
+        forge.import_world(json.dumps(bad_state))
+
+
+def test_public_validation_guards_cover_boundary_failure_modes() -> None:
+    assert average([]) == 0.0
+
+    with pytest.raises(WorldForgeError):
+        dump_json({"bad": math.nan})
+
+    with pytest.raises(WorldForgeError):
+        Position.from_dict(["not-a-position"])  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        Position.from_dict({"x": 0.0, "y": 0.0})
+    with pytest.raises(WorldForgeError):
+        Rotation.from_dict(["not-a-rotation"])  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        Pose("not-a-position")  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        BBox("not-a-position", Position(0.0, 0.0, 0.0))  # type: ignore[arg-type]
+
+    with pytest.raises(WorldForgeError):
+        Action("", {})
+    with pytest.raises(WorldForgeError):
+        Action("move", [])  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        Action.move_to(0.0, 0.0, 0.0, object_id="")
+    with pytest.raises(WorldForgeError):
+        Action.spawn_object("")
+    with pytest.raises(WorldForgeError):
+        Action.from_dict(["not-an-action"])  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        Action.from_dict({"type": "move_to", "parameters": []})  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        Action.from_dict({"move_to": {}, "noop": {}})
+    with pytest.raises(WorldForgeError):
+        Action.from_dict({"move_to": []})  # type: ignore[arg-type]
+
+    patch = SceneObjectPatch()
+    with pytest.raises(WorldForgeError):
+        patch.set_name("")
+    with pytest.raises(WorldForgeError):
+        patch.set_position("not-a-position")  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        SceneObject(
+            "",
+            Position(0.0, 0.0, 0.0),
+            BBox(Position(0.0, 0.0, 0.0), Position(1.0, 1.0, 1.0)),
+        )
+    with pytest.raises(WorldForgeError):
+        SceneObject(
+            "cube",
+            "not-a-position",  # type: ignore[arg-type]
+            BBox(Position(0.0, 0.0, 0.0), Position(1.0, 1.0, 1.0)),
+        )
+    with pytest.raises(WorldForgeError):
+        SceneObject(
+            "cube",
+            Position(0.0, 0.0, 0.0),
+            "not-a-bbox",  # type: ignore[arg-type]
+        )
+    with pytest.raises(WorldForgeError):
+        SceneObject(
+            "cube",
+            Position(0.0, 0.0, 0.0),
+            BBox(Position(0.0, 0.0, 0.0), Position(1.0, 1.0, 1.0)),
+            id="",
+        )
+    with pytest.raises(WorldForgeError):
+        SceneObject(
+            "cube",
+            Position(0.0, 0.0, 0.0),
+            BBox(Position(0.0, 0.0, 0.0), Position(1.0, 1.0, 1.0)),
+            metadata=[],  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(WorldForgeError):
+        RetryPolicy(max_attempts=True)  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        RetryPolicy(backoff_seconds=math.inf)
+    with pytest.raises(WorldForgeError):
+        RetryPolicy(backoff_multiplier=0.5)
+    with pytest.raises(WorldForgeError):
+        RetryPolicy(retryable_status_codes=(99,))
+    with pytest.raises(WorldForgeError):
+        GenerationOptions(seed=True)  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        GenerationOptions(reference_images="bad")  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        GenerationOptions(extras=[])  # type: ignore[arg-type]
+
+    with pytest.raises(WorldForgeError):
+        ProviderEvent(provider="", operation="predict", phase="success")
+    with pytest.raises(WorldForgeError):
+        ProviderEvent(provider="mock", operation="", phase="success")
+    with pytest.raises(WorldForgeError):
+        ProviderEvent(provider="mock", operation="predict", phase="")
+    with pytest.raises(WorldForgeError):
+        ProviderEvent(provider="mock", operation="predict", phase="success", attempt=0)
+    with pytest.raises(WorldForgeError):
+        ProviderEvent(
+            provider="mock",
+            operation="predict",
+            phase="success",
+            attempt=2,
+            max_attempts=1,
+        )
+    with pytest.raises(WorldForgeError):
+        ProviderEvent(
+            provider="mock",
+            operation="predict",
+            phase="success",
+            duration_ms=-1.0,
+        )
+    with pytest.raises(WorldForgeError):
+        ProviderEvent(
+            provider="mock",
+            operation="predict",
+            phase="success",
+            metadata=[],  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(WorldForgeError):
+        VideoClip(frames=[object()], fps=1.0, resolution=(1, 1), duration_seconds=0.0)
+    with pytest.raises(WorldForgeError):
+        VideoClip(frames=[b"ok"], fps=0.0, resolution=(1, 1), duration_seconds=0.0)
+    with pytest.raises(WorldForgeError):
+        VideoClip(frames=[b"ok"], fps=1.0, resolution=(1,), duration_seconds=0.0)
+    with pytest.raises(WorldForgeError):
+        VideoClip(frames=[b"ok"], fps=1.0, resolution=(0, 1), duration_seconds=0.0)
+    with pytest.raises(WorldForgeError):
+        VideoClip(frames=[b"ok"], fps=1.0, resolution=(1, 1), duration_seconds=math.nan)
+    with pytest.raises(WorldForgeError):
+        VideoClip(
+            frames=[b"ok"],
+            fps=1.0,
+            resolution=(1, 1),
+            duration_seconds=0.0,
+            metadata=[],  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(WorldForgeError):
+        ReasoningResult(provider="", answer="answer", confidence=0.5)
+    with pytest.raises(WorldForgeError):
+        ReasoningResult(provider="mock", answer=1, confidence=0.5)  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        ReasoningResult(provider="mock", answer="answer", confidence=2.0)
+    with pytest.raises(WorldForgeError):
+        ReasoningResult(
+            provider="mock",
+            answer="answer",
+            confidence=0.5,
+            evidence="bad",  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(WorldForgeError):
+        EmbeddingResult(provider="", model="model", vector=[0.0])
+    with pytest.raises(WorldForgeError):
+        EmbeddingResult(provider="mock", model="", vector=[0.0])
+    with pytest.raises(WorldForgeError):
+        EmbeddingResult(provider="mock", model="model", vector=[])  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError):
+        EmbeddingResult(provider="mock", model="model", vector=[math.nan])
+
+    valid_state = {
+        "id": "world",
+        "name": "world",
+        "provider": "mock",
+        "scene": {"objects": {}},
+        "metadata": {},
+        "step": 0,
+    }
+    with pytest.raises(WorldForgeError):
+        PredictionPayload(
+            state=[],  # type: ignore[arg-type]
+            confidence=0.5,
+            physics_score=0.5,
+            frames=[],
+            metadata={},
+            latency_ms=0.0,
+        )
+    with pytest.raises(WorldForgeError):
+        PredictionPayload(
+            state=valid_state,
+            confidence=1.5,
+            physics_score=0.5,
+            frames=[],
+            metadata={},
+            latency_ms=0.0,
+        )
+    with pytest.raises(WorldForgeError):
+        PredictionPayload(
+            state=valid_state,
+            confidence=0.5,
+            physics_score=0.5,
+            frames=[object()],  # type: ignore[list-item]
+            metadata={},
+            latency_ms=0.0,
+        )
+    with pytest.raises(WorldForgeError):
+        PredictionPayload(
+            state=valid_state,
+            confidence=0.5,
+            physics_score=0.5,
+            frames=[],
+            metadata=[],  # type: ignore[arg-type]
+            latency_ms=0.0,
+        )
+    with pytest.raises(WorldForgeError):
+        PredictionPayload(
+            state=valid_state,
+            confidence=0.5,
+            physics_score=0.5,
+            frames=[],
+            metadata={},
+            latency_ms=-1.0,
+        )

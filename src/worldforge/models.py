@@ -32,7 +32,12 @@ def generate_id(prefix: str) -> str:
 def dump_json(payload: Any) -> str:
     """Serialize data with deterministic formatting."""
 
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    try:
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise WorldForgeError(
+            "Payload must be JSON serializable and contain only finite numbers."
+        ) from exc
 
 
 def ensure_directory(path: Path) -> None:
@@ -56,6 +61,26 @@ def require_positive_int(value: int, *, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise WorldForgeError(f"{name} must be an integer greater than 0.")
     return value
+
+
+def require_finite_number(value: float | int, *, name: str) -> float:
+    """Raise WorldForgeError unless ``value`` is a finite real number."""
+
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise WorldForgeError(f"{name} must be a finite number.")
+    number = float(value)
+    if not math.isfinite(number):
+        raise WorldForgeError(f"{name} must be a finite number.")
+    return number
+
+
+def require_probability(value: float | int, *, name: str) -> float:
+    """Raise WorldForgeError unless ``value`` is finite and within [0, 1]."""
+
+    number = require_finite_number(value, name=name)
+    if number < 0.0 or number > 1.0:
+        raise WorldForgeError(f"{name} must be between 0 and 1.")
+    return number
 
 
 def deterministic_floats(seed: str, size: int) -> list[float]:
@@ -83,16 +108,28 @@ class Position:
     y: float
     z: float
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "x", require_finite_number(self.x, name="Position.x"))
+        object.__setattr__(self, "y", require_finite_number(self.y, name="Position.y"))
+        object.__setattr__(self, "z", require_finite_number(self.z, name="Position.z"))
+
     def to_dict(self) -> JSONDict:
         return {"x": self.x, "y": self.y, "z": self.z}
 
     @classmethod
     def from_dict(cls, payload: JSONDict) -> Position:
-        return cls(
-            x=float(payload["x"]),
-            y=float(payload["y"]),
-            z=float(payload["z"]),
-        )
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Position payload must be a JSON object.")
+        try:
+            return cls(
+                x=payload["x"],
+                y=payload["y"],
+                z=payload["z"],
+            )
+        except KeyError as exc:
+            raise WorldForgeError(
+                f"Position payload is missing coordinate '{exc.args[0]}'."
+            ) from exc
 
     def distance_to(self, other: Position) -> float:
         return math.dist((self.x, self.y, self.z), (other.x, other.y, other.z))
@@ -107,6 +144,12 @@ class Rotation:
     y: float = 0.0
     z: float = 0.0
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "w", require_finite_number(self.w, name="Rotation.w"))
+        object.__setattr__(self, "x", require_finite_number(self.x, name="Rotation.x"))
+        object.__setattr__(self, "y", require_finite_number(self.y, name="Rotation.y"))
+        object.__setattr__(self, "z", require_finite_number(self.z, name="Rotation.z"))
+
     def to_dict(self) -> JSONDict:
         return {"w": self.w, "x": self.x, "y": self.y, "z": self.z}
 
@@ -114,11 +157,13 @@ class Rotation:
     def from_dict(cls, payload: JSONDict | None) -> Rotation:
         if payload is None:
             return cls()
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Rotation payload must be a JSON object when provided.")
         return cls(
-            w=float(payload.get("w", 1.0)),
-            x=float(payload.get("x", 0.0)),
-            y=float(payload.get("y", 0.0)),
-            z=float(payload.get("z", 0.0)),
+            w=payload.get("w", 1.0),
+            x=payload.get("x", 0.0),
+            y=payload.get("y", 0.0),
+            z=payload.get("z", 0.0),
         )
 
 
@@ -129,11 +174,19 @@ class Pose:
     position: Position
     rotation: Rotation = field(default_factory=Rotation)
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.position, Position):
+            raise WorldForgeError("Pose position must be a Position.")
+        if not isinstance(self.rotation, Rotation):
+            raise WorldForgeError("Pose rotation must be a Rotation.")
+
     def to_dict(self) -> JSONDict:
         return {"position": self.position.to_dict(), "rotation": self.rotation.to_dict()}
 
     @classmethod
     def from_dict(cls, payload: JSONDict) -> Pose:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Pose payload must be a JSON object.")
         return cls(
             position=Position.from_dict(payload["position"]),
             rotation=Rotation.from_dict(payload.get("rotation")),
@@ -147,11 +200,19 @@ class BBox:
     min: Position
     max: Position
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.min, Position) or not isinstance(self.max, Position):
+            raise WorldForgeError("BBox min and max must be Position instances.")
+        if self.min.x > self.max.x or self.min.y > self.max.y or self.min.z > self.max.z:
+            raise WorldForgeError("BBox min coordinates must be less than or equal to max.")
+
     def to_dict(self) -> JSONDict:
         return {"min": self.min.to_dict(), "max": self.max.to_dict()}
 
     @classmethod
     def from_dict(cls, payload: JSONDict) -> BBox:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("BBox payload must be a JSON object.")
         return cls(
             min=Position.from_dict(payload["min"]),
             max=Position.from_dict(payload["max"]),
@@ -165,6 +226,14 @@ class Action:
     kind: str
     parameters: JSONDict = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, str) or not self.kind.strip():
+            raise WorldForgeError("Action kind must be a non-empty string.")
+        if not isinstance(self.parameters, dict):
+            raise WorldForgeError("Action parameters must be a JSON object.")
+        self.kind = self.kind.strip()
+        self.parameters = dict(self.parameters)
+
     @staticmethod
     def move_to(
         x: float,
@@ -174,12 +243,18 @@ class Action:
         *,
         object_id: str | None = None,
     ) -> Action:
+        target_position = Position(x, y, z)
+        resolved_speed = require_finite_number(speed, name="Action.move_to speed")
+        if resolved_speed <= 0.0:
+            raise WorldForgeError("Action.move_to speed must be greater than 0.")
         parameters: JSONDict = {
-            "target": {"x": float(x), "y": float(y), "z": float(z)},
-            "speed": float(speed),
+            "target": target_position.to_dict(),
+            "speed": resolved_speed,
         }
         if object_id is not None:
-            parameters["object_id"] = str(object_id)
+            if not str(object_id).strip():
+                raise WorldForgeError("Action.move_to object_id must not be empty when provided.")
+            parameters["object_id"] = str(object_id).strip()
         return Action(
             "move_to",
             parameters,
@@ -191,6 +266,8 @@ class Action:
         position: Position | None = None,
         bbox: BBox | None = None,
     ) -> Action:
+        if not isinstance(name, str) or not name.strip():
+            raise WorldForgeError("Action.spawn_object name must be a non-empty string.")
         object_position = position or Position(0.0, 0.5, 0.0)
         object_bbox = bbox or BBox(
             Position(object_position.x - 0.05, object_position.y - 0.05, object_position.z - 0.05),
@@ -199,7 +276,7 @@ class Action:
         return Action(
             "spawn_object",
             {
-                "name": name,
+                "name": name.strip(),
                 "position": object_position.to_dict(),
                 "bbox": object_bbox.to_dict(),
             },
@@ -207,12 +284,19 @@ class Action:
 
     @staticmethod
     def from_dict(payload: JSONDict) -> Action:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Action.from_dict expects a JSON object.")
         if "type" in payload:
-            return Action(str(payload["type"]), dict(payload.get("parameters", {})))
+            parameters = payload.get("parameters", {})
+            if not isinstance(parameters, dict):
+                raise WorldForgeError("Action.from_dict field 'parameters' must be a JSON object.")
+            return Action(str(payload["type"]), parameters)
         if len(payload) != 1:
-            raise ValueError("Action.from_dict expects {'type': ...} or a single-key mapping.")
+            raise WorldForgeError("Action.from_dict expects {'type': ...} or a single-key mapping.")
         kind, parameters = next(iter(payload.items()))
-        return Action(str(kind), dict(parameters))
+        if not isinstance(parameters, dict):
+            raise WorldForgeError("Action.from_dict single-key parameters must be a JSON object.")
+        return Action(str(kind), parameters)
 
     def to_dict(self) -> JSONDict:
         return {"type": self.kind, "parameters": dict(self.parameters)}
@@ -235,6 +319,11 @@ class StructuredGoal:
     tolerance: float = 0.05
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "tolerance",
+            require_finite_number(self.tolerance, name="StructuredGoal tolerance"),
+        )
         if self.kind not in {"object_at", "spawn_object", "object_near", "swap_objects"}:
             raise WorldForgeError(
                 "StructuredGoal kind must be one of: object_at, spawn_object, "
@@ -361,7 +450,7 @@ class StructuredGoal:
             object_id=object_id,
             object_name=object_name,
             position=position,
-            tolerance=float(tolerance),
+            tolerance=tolerance,
         )
 
     @classmethod
@@ -382,7 +471,7 @@ class StructuredGoal:
             reference_object_id=reference_object_id,
             reference_object_name=reference_object_name,
             offset=offset,
-            tolerance=float(tolerance),
+            tolerance=tolerance,
         )
 
     @classmethod
@@ -414,7 +503,7 @@ class StructuredGoal:
             object_name=object_name,
             reference_object_id=reference_object_id,
             reference_object_name=reference_object_name,
-            tolerance=float(tolerance),
+            tolerance=tolerance,
         )
 
     @classmethod
@@ -455,7 +544,7 @@ class StructuredGoal:
                 reference_object_id=reference_object_id,
                 reference_object_name=reference_object_name,
                 offset=offset,
-                tolerance=float(payload.get("tolerance", 0.05)),
+                tolerance=payload.get("tolerance", 0.05),
             )
 
         if payload.get("type") != "condition":
@@ -482,7 +571,7 @@ class StructuredGoal:
                 object_id=str(object_value) if object_value is not None else None,
                 object_name=str(object_name) if object_name is not None else None,
                 position=Position.from_dict(position_payload),
-                tolerance=float(condition_payload.get("tolerance", 0.05)),
+                tolerance=condition_payload.get("tolerance", 0.05),
             )
 
         if condition_name == "SpawnObject":
@@ -524,7 +613,7 @@ class StructuredGoal:
                 reference_object_id=reference_object_id,
                 reference_object_name=reference_object_name,
                 offset=offset,
-                tolerance=float(condition_payload.get("tolerance", 0.05)),
+                tolerance=condition_payload.get("tolerance", 0.05),
             )
 
         if condition_name == "SwapObjects":
@@ -541,7 +630,7 @@ class StructuredGoal:
                 object_name=object_name,
                 reference_object_id=reference_object_id,
                 reference_object_name=reference_object_name,
-                tolerance=float(condition_payload.get("tolerance", 0.05)),
+                tolerance=condition_payload.get("tolerance", 0.05),
             )
 
         raise WorldForgeError(f"Unsupported legacy structured goal condition '{condition_name}'.")
@@ -610,9 +699,13 @@ class SceneObjectPatch:
     graspable: bool | None = None
 
     def set_name(self, name: str) -> None:
-        self.name = name
+        if not isinstance(name, str) or not name.strip():
+            raise WorldForgeError("SceneObjectPatch name must be a non-empty string.")
+        self.name = name.strip()
 
     def set_position(self, position: Position) -> None:
+        if not isinstance(position, Position):
+            raise WorldForgeError("SceneObjectPatch position must be a Position.")
         self.position = position
 
     def set_graspable(self, value: bool) -> None:
@@ -629,6 +722,22 @@ class SceneObject:
     id: str = field(default_factory=lambda: generate_id("obj"))
     is_graspable: bool = False
     metadata: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise WorldForgeError("SceneObject name must be a non-empty string.")
+        if not isinstance(self.position, Position):
+            raise WorldForgeError("SceneObject position must be a Position.")
+        if not isinstance(self.bbox, BBox):
+            raise WorldForgeError("SceneObject bbox must be a BBox.")
+        if not isinstance(self.id, str) or not self.id.strip():
+            raise WorldForgeError("SceneObject id must be a non-empty string.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("SceneObject metadata must be a JSON object.")
+        self.name = self.name.strip()
+        self.id = self.id.strip()
+        self.is_graspable = bool(self.is_graspable)
+        self.metadata = dict(self.metadata)
 
     @property
     def pose(self) -> Pose:
@@ -657,6 +766,8 @@ class SceneObject:
 
     @classmethod
     def from_dict(cls, payload: JSONDict) -> SceneObject:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("SceneObject payload must be a JSON object.")
         pose = (
             Pose.from_dict(payload["pose"])
             if "pose" in payload
@@ -710,16 +821,40 @@ class RetryPolicy:
     retryable_status_codes: tuple[int, ...] = (408, 429, 500, 502, 503, 504)
 
     def __post_init__(self) -> None:
-        if self.max_attempts < 1:
+        if (
+            isinstance(self.max_attempts, bool)
+            or not isinstance(self.max_attempts, int)
+            or self.max_attempts < 1
+        ):
             raise WorldForgeError("RetryPolicy max_attempts must be greater than or equal to 1.")
+        object.__setattr__(
+            self,
+            "backoff_seconds",
+            require_finite_number(self.backoff_seconds, name="RetryPolicy backoff_seconds"),
+        )
+        object.__setattr__(
+            self,
+            "backoff_multiplier",
+            require_finite_number(self.backoff_multiplier, name="RetryPolicy backoff_multiplier"),
+        )
         if self.backoff_seconds < 0.0:
             raise WorldForgeError("RetryPolicy backoff_seconds must be non-negative.")
         if self.backoff_multiplier < 1.0:
             raise WorldForgeError(
                 "RetryPolicy backoff_multiplier must be greater than or equal to 1."
             )
+        object.__setattr__(
+            self,
+            "retryable_status_codes",
+            tuple(self.retryable_status_codes),
+        )
         for status_code in self.retryable_status_codes:
-            if status_code < 100 or status_code > 599:
+            if (
+                isinstance(status_code, bool)
+                or not isinstance(status_code, int)
+                or status_code < 100
+                or status_code > 599
+            ):
                 raise WorldForgeError(
                     "RetryPolicy retryable_status_codes must contain valid HTTP status codes."
                 )
@@ -748,6 +883,14 @@ class RequestOperationPolicy:
     retry: RetryPolicy = field(default_factory=RetryPolicy)
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "timeout_seconds",
+            require_finite_number(
+                self.timeout_seconds,
+                name="RequestOperationPolicy timeout_seconds",
+            ),
+        )
         if self.timeout_seconds <= 0.0:
             raise WorldForgeError("RequestOperationPolicy timeout_seconds must be greater than 0.")
 
@@ -785,21 +928,27 @@ class ProviderRequestPolicy:
             backoff_multiplier=read_backoff_multiplier,
         )
         no_retry = RetryPolicy(max_attempts=1)
-        resolved_request_timeout = float(request_timeout_seconds)
-        resolved_health_timeout = float(
+        resolved_request_timeout = require_finite_number(
+            request_timeout_seconds,
+            name="ProviderRequestPolicy request_timeout_seconds",
+        )
+        resolved_health_timeout = require_finite_number(
             health_timeout_seconds
             if health_timeout_seconds is not None
-            else min(resolved_request_timeout, 10.0)
+            else min(resolved_request_timeout, 10.0),
+            name="ProviderRequestPolicy health_timeout_seconds",
         )
-        resolved_polling_timeout = float(
+        resolved_polling_timeout = require_finite_number(
             polling_timeout_seconds
             if polling_timeout_seconds is not None
-            else min(resolved_request_timeout, 30.0)
+            else min(resolved_request_timeout, 30.0),
+            name="ProviderRequestPolicy polling_timeout_seconds",
         )
-        resolved_download_timeout = float(
+        resolved_download_timeout = require_finite_number(
             download_timeout_seconds
             if download_timeout_seconds is not None
-            else resolved_request_timeout
+            else resolved_request_timeout,
+            name="ProviderRequestPolicy download_timeout_seconds",
         )
         return cls(
             health=RequestOperationPolicy(
@@ -843,6 +992,24 @@ class GenerationOptions:
     negative_prompt: str | None = None
     reference_images: list[str] = field(default_factory=list)
     extras: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.fps is not None:
+            self.fps = require_finite_number(self.fps, name="GenerationOptions fps")
+            if self.fps <= 0.0:
+                raise WorldForgeError("GenerationOptions fps must be greater than 0.")
+        if self.seed is not None and (
+            isinstance(self.seed, bool) or not isinstance(self.seed, int)
+        ):
+            raise WorldForgeError("GenerationOptions seed must be an integer when provided.")
+        if not isinstance(self.reference_images, list) or not all(
+            isinstance(reference, str) for reference in self.reference_images
+        ):
+            raise WorldForgeError("GenerationOptions reference_images must be a list of strings.")
+        if not isinstance(self.extras, dict):
+            raise WorldForgeError("GenerationOptions extras must be a JSON object.")
+        self.reference_images = list(self.reference_images)
+        self.extras = dict(self.extras)
 
     def to_dict(self) -> JSONDict:
         return {
@@ -941,14 +1108,42 @@ class ProviderEvent:
     metadata: JSONDict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.attempt < 1:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ProviderEvent provider must be a non-empty string.")
+        if not isinstance(self.operation, str) or not self.operation.strip():
+            raise WorldForgeError("ProviderEvent operation must be a non-empty string.")
+        if not isinstance(self.phase, str) or not self.phase.strip():
+            raise WorldForgeError("ProviderEvent phase must be a non-empty string.")
+        if isinstance(self.attempt, bool) or not isinstance(self.attempt, int) or self.attempt < 1:
             raise WorldForgeError("ProviderEvent attempt must be greater than or equal to 1.")
-        if self.max_attempts < self.attempt:
+        if (
+            isinstance(self.max_attempts, bool)
+            or not isinstance(self.max_attempts, int)
+            or self.max_attempts < self.attempt
+        ):
             raise WorldForgeError(
                 "ProviderEvent max_attempts must be greater than or equal to attempt."
             )
+        if self.status_code is not None and (
+            isinstance(self.status_code, bool)
+            or not isinstance(self.status_code, int)
+            or self.status_code < 100
+            or self.status_code > 599
+        ):
+            raise WorldForgeError("ProviderEvent status_code must be a valid HTTP status code.")
+        if self.duration_ms is not None:
+            self.duration_ms = require_finite_number(
+                self.duration_ms,
+                name="ProviderEvent duration_ms",
+            )
         if self.duration_ms is not None and self.duration_ms < 0.0:
             raise WorldForgeError("ProviderEvent duration_ms must be non-negative when set.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("ProviderEvent metadata must be a JSON object.")
+        self.provider = self.provider.strip()
+        self.operation = self.operation.strip()
+        self.phase = self.phase.strip()
+        self.metadata = dict(self.metadata)
 
     def to_dict(self) -> JSONDict:
         return {
@@ -1050,13 +1245,33 @@ class VideoClip:
     def __post_init__(self) -> None:
         if not all(isinstance(frame, bytes) for frame in self.frames):
             raise WorldForgeError("VideoClip frames must be bytes.")
+        self.fps = require_finite_number(self.fps, name="VideoClip fps")
         if self.fps <= 0.0:
             raise WorldForgeError("VideoClip fps must be greater than 0.")
-        width, height = self.resolution
-        if width <= 0 or height <= 0:
+        try:
+            width, height = self.resolution
+        except (TypeError, ValueError) as exc:
+            raise WorldForgeError("VideoClip resolution must contain width and height.") from exc
+        if (
+            isinstance(width, bool)
+            or isinstance(height, bool)
+            or not isinstance(width, int)
+            or not isinstance(height, int)
+            or width <= 0
+            or height <= 0
+        ):
             raise WorldForgeError("VideoClip resolution values must be greater than 0.")
+        self.resolution = (width, height)
+        self.duration_seconds = require_finite_number(
+            self.duration_seconds,
+            name="VideoClip duration_seconds",
+        )
         if self.duration_seconds < 0.0:
             raise WorldForgeError("VideoClip duration_seconds must be non-negative.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("VideoClip metadata must be a JSON object.")
+        self.frames = list(self.frames)
+        self.metadata = dict(self.metadata)
 
     @property
     def frame_count(self) -> int:
@@ -1131,6 +1346,22 @@ class ReasoningResult:
     confidence: float
     evidence: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ReasoningResult provider must be a non-empty string.")
+        if not isinstance(self.answer, str):
+            raise WorldForgeError("ReasoningResult answer must be a string.")
+        self.confidence = require_probability(
+            self.confidence,
+            name="ReasoningResult confidence",
+        )
+        if not isinstance(self.evidence, list) or not all(
+            isinstance(item, str) for item in self.evidence
+        ):
+            raise WorldForgeError("ReasoningResult evidence must be a list of strings.")
+        self.provider = self.provider.strip()
+        self.evidence = list(self.evidence)
+
 
 @dataclass(slots=True)
 class EmbeddingResult:
@@ -1139,6 +1370,20 @@ class EmbeddingResult:
     provider: str
     model: str
     vector: list[float]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("EmbeddingResult provider must be a non-empty string.")
+        if not isinstance(self.model, str) or not self.model.strip():
+            raise WorldForgeError("EmbeddingResult model must be a non-empty string.")
+        if not isinstance(self.vector, list) or not self.vector:
+            raise WorldForgeError("EmbeddingResult vector must be a non-empty list.")
+        self.provider = self.provider.strip()
+        self.model = self.model.strip()
+        self.vector = [
+            require_finite_number(value, name="EmbeddingResult vector value")
+            for value in self.vector
+        ]
 
     @property
     def shape(self) -> list[int]:

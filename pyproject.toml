@@ -49,7 +49,7 @@ worldforge = "worldforge.cli:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3",
+    "pytest>=9.0.3",
     "pytest-cov>=7.0",
     "ruff>=0.8",
 ]
@@ -64,6 +64,8 @@ include = [
     "/examples",
     "/docs",
     "/scripts",
+    "/AGENTS.md",
+    "/CHANGELOG.md",
     "/README.md",
     "/CONTRIBUTING.md",
     "/LICENSE",

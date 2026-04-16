@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from time import perf_counter
+from dataclasses import dataclass
+from time import perf_counter, sleep
 
 import httpx
 
@@ -15,13 +16,14 @@ from worldforge.models import (
     ProviderHealth,
     ProviderRequestPolicy,
     VideoClip,
+    require_finite_number,
+    require_positive_int,
 )
 
 from .base import ProviderError, RemoteProvider
 from .http_utils import (
     asset_to_uri,
     clip_to_data_uri,
-    poll_json_task,
     request_bytes_with_policy,
     request_json_with_policy,
 )
@@ -29,6 +31,169 @@ from .http_utils import (
 _RUNWAY_API_VERSION = "2024-11-06"
 _RUNWAY_DEFAULT_RATIO = "1280:720"
 _RUNWAY_DEFAULT_DURATION = 5
+
+
+def _parse_ratio(ratio: str) -> tuple[int, int]:
+    try:
+        width_text, height_text = ratio.split(":", maxsplit=1)
+        width = int(width_text)
+        height = int(height_text)
+    except ValueError as exc:
+        raise ProviderError(f"Invalid Runway ratio '{ratio}'. Expected WIDTH:HEIGHT.") from exc
+    if width <= 0 or height <= 0:
+        raise ProviderError("Runway ratio width and height must be greater than 0.")
+    return width, height
+
+
+def _payload_message(payload: dict[str, object]) -> str:
+    for key in ("failure", "error", "message"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            nested_message = value.get("message")
+            if isinstance(nested_message, str) and nested_message.strip():
+                return nested_message.strip()
+    return "no failure detail returned"
+
+
+@dataclass(slots=True, frozen=True)
+class RunwayOrganizationResponse:
+    """Validated response from Runway organization health checks."""
+
+    organization_id: str | None = None
+    name: str | None = None
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: dict[str, object],
+        *,
+        provider_name: str,
+    ) -> RunwayOrganizationResponse:
+        organization_id = payload.get("id")
+        name = payload.get("name")
+        if organization_id is not None and (
+            not isinstance(organization_id, str) or not organization_id.strip()
+        ):
+            raise ProviderError(
+                f"Provider '{provider_name}' organization response field 'id' "
+                "must be a non-empty string when present."
+            )
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise ProviderError(
+                f"Provider '{provider_name}' organization response field 'name' "
+                "must be a non-empty string when present."
+            )
+        if organization_id is None and name is None:
+            raise ProviderError(
+                f"Provider '{provider_name}' organization response must include 'id' or 'name'."
+            )
+        return cls(
+            organization_id=organization_id.strip() if isinstance(organization_id, str) else None,
+            name=name.strip() if isinstance(name, str) else None,
+        )
+
+    def details(self) -> str:
+        return self.name or self.organization_id or "organization ok"
+
+
+@dataclass(slots=True, frozen=True)
+class RunwayTaskCreationResponse:
+    """Validated response returned when creating a Runway task."""
+
+    task_id: str
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: dict[str, object],
+        *,
+        provider_name: str,
+        operation_name: str,
+    ) -> RunwayTaskCreationResponse:
+        task_id = payload.get("id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise ProviderError(
+                f"Provider '{provider_name}' {operation_name} response field 'id' "
+                "must be a non-empty task id."
+            )
+        return cls(task_id=task_id.strip())
+
+
+@dataclass(slots=True, frozen=True)
+class RunwayTaskStatusResponse:
+    """Validated response returned when polling a Runway task."""
+
+    task_id: str
+    status: str
+    outputs: tuple[str, ...] = ()
+    message: str = ""
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: dict[str, object],
+        *,
+        provider_name: str,
+        expected_task_id: str,
+    ) -> RunwayTaskStatusResponse:
+        task_id = payload.get("id")
+        if task_id is not None:
+            if not isinstance(task_id, str) or not task_id.strip():
+                raise ProviderError(
+                    f"Provider '{provider_name}' task response field 'id' "
+                    "must be a non-empty string when present."
+                )
+            if task_id.strip() != expected_task_id:
+                raise ProviderError(
+                    f"Provider '{provider_name}' task response id '{task_id}' "
+                    f"does not match requested task '{expected_task_id}'."
+                )
+
+        status = payload.get("status")
+        if not isinstance(status, str) or not status.strip():
+            raise ProviderError(
+                f"Provider '{provider_name}' task {expected_task_id} response field "
+                "'status' must be a non-empty string."
+            )
+
+        outputs_payload = payload.get("output", [])
+        if outputs_payload is None:
+            outputs_payload = []
+        if not isinstance(outputs_payload, list):
+            raise ProviderError(
+                f"Provider '{provider_name}' task {expected_task_id} response field "
+                "'output' must be a list when present."
+            )
+
+        outputs: list[str] = []
+        invalid_indexes: list[int] = []
+        for index, item in enumerate(outputs_payload):
+            if isinstance(item, str) and item.strip():
+                outputs.append(item.strip())
+            else:
+                invalid_indexes.append(index)
+        if invalid_indexes:
+            joined = ", ".join(str(index) for index in invalid_indexes)
+            raise ProviderError(
+                f"Provider '{provider_name}' task {expected_task_id} response field "
+                f"'output' contains invalid entries at index(es): {joined}."
+            )
+
+        return cls(
+            task_id=expected_task_id,
+            status=status.strip().upper(),
+            outputs=tuple(outputs),
+            message=_payload_message(payload),
+        )
+
+    def require_outputs(self, *, provider_name: str) -> tuple[str, ...]:
+        if not self.outputs:
+            raise ProviderError(
+                f"Provider '{provider_name}' task {self.task_id} completed without outputs."
+            )
+        return self.outputs
 
 
 class RunwayProvider(RemoteProvider):
@@ -82,8 +247,13 @@ class RunwayProvider(RemoteProvider):
         self._base_url = (
             base_url or os.environ.get("RUNWAYML_BASE_URL") or "https://api.dev.runwayml.com"
         )
-        self._poll_interval_seconds = poll_interval_seconds
-        self._max_polls = max_polls
+        self._poll_interval_seconds = require_finite_number(
+            poll_interval_seconds,
+            name="Runway poll_interval_seconds",
+        )
+        if self._poll_interval_seconds < 0.0:
+            raise ProviderError("Runway poll_interval_seconds must be non-negative.")
+        self._max_polls = require_positive_int(max_polls, name="Runway max_polls")
         self._transport = transport
 
     def configured(self) -> bool:
@@ -131,7 +301,11 @@ class RunwayProvider(RemoteProvider):
                     policy=request_policy.health,
                     emit_event=self._emit_event,
                 )
-            details = str(payload.get("name") or payload.get("id") or "organization ok")
+            organization = RunwayOrganizationResponse.from_payload(
+                payload,
+                provider_name=self.name,
+            )
+            details = organization.details()
             healthy = True
         except ProviderError as exc:
             healthy = False
@@ -156,48 +330,59 @@ class RunwayProvider(RemoteProvider):
             return f"{width}:{height}"
         return _RUNWAY_DEFAULT_RATIO
 
-    def _poll_task(self, client: httpx.Client, task_id: str) -> dict[str, object]:
+    def _poll_task(self, client: httpx.Client, task_id: str) -> RunwayTaskStatusResponse:
         request_policy = self._require_request_policy()
-        payload = poll_json_task(
-            client,
-            path=f"/v1/tasks/{task_id}",
-            success_values={"SUCCEEDED"},
-            failure_values={"FAILED", "CANCELLED"},
-            poll_interval_seconds=self._poll_interval_seconds,
-            max_polls=self._max_polls,
-            provider_name=self.name,
-            operation_policy=request_policy.polling,
-            emit_event=self._emit_event,
-        )
-        outputs = payload.get("output")
-        if (
-            not isinstance(outputs, list)
-            or not outputs
-            or not all(isinstance(item, str) and item for item in outputs)
-        ):
-            raise ProviderError(f"Provider '{self.name}' task {task_id} completed without outputs.")
-        return payload
+        for _ in range(self._max_polls):
+            payload = request_json_with_policy(
+                client,
+                method="GET",
+                url=f"/v1/tasks/{task_id}",
+                provider_name=self.name,
+                operation_name="task poll",
+                policy=request_policy.polling,
+                emit_event=self._emit_event,
+            )
+            task = RunwayTaskStatusResponse.from_payload(
+                payload,
+                provider_name=self.name,
+                expected_task_id=task_id,
+            )
+            if task.status == "SUCCEEDED":
+                task.require_outputs(provider_name=self.name)
+                return task
+            if task.status in {"FAILED", "CANCELLED"}:
+                raise ProviderError(
+                    f"Provider '{self.name}' task {task_id} failed with "
+                    f"status {task.status}: {task.message}"
+                )
+            if self._poll_interval_seconds > 0.0:
+                sleep(self._poll_interval_seconds)
+        raise ProviderError(f"Provider '{self.name}' task did not complete before timeout.")
 
     def _download_output(self, output_url: str) -> bytes:
         request_policy = self._require_request_policy()
         with httpx.Client(transport=self._transport) as client:
-            return request_bytes_with_policy(
-                client,
-                method="GET",
-                url=output_url,
-                provider_name=self.name,
-                operation_name="artifact download",
-                policy=request_policy.download,
-                emit_event=self._emit_event,
-            )
-
-    def _task_id(self, payload: dict[str, object], *, operation_name: str) -> str:
-        task_id = payload.get("id")
-        if not isinstance(task_id, str) or not task_id:
-            raise ProviderError(
-                f"Provider '{self.name}' {operation_name} did not return a task id."
-            )
-        return task_id
+            try:
+                data = request_bytes_with_policy(
+                    client,
+                    method="GET",
+                    url=output_url,
+                    provider_name=self.name,
+                    operation_name="artifact download",
+                    policy=request_policy.download,
+                    emit_event=self._emit_event,
+                    accepted_content_types=("video/", "application/octet-stream"),
+                )
+            except ProviderError as exc:
+                message = str(exc)
+                if "status 403" in message or "status 404" in message:
+                    raise ProviderError(
+                        f"Provider '{self.name}' artifact URL is expired or unavailable: {message}"
+                    ) from exc
+                raise
+        if not data:
+            raise ProviderError(f"Provider '{self.name}' artifact download returned no bytes.")
+        return data
 
     def generate(
         self,
@@ -217,6 +402,7 @@ class RunwayProvider(RemoteProvider):
 
         duration = max(2, min(10, int(round(duration_seconds or _RUNWAY_DEFAULT_DURATION))))
         ratio = self._ratio(options=options)
+        resolution = _parse_ratio(ratio)
         model = options.model if options and options.model else self.default_model
         body: dict[str, object] = {
             "model": model,
@@ -247,15 +433,19 @@ class RunwayProvider(RemoteProvider):
                 emit_event=self._emit_event,
                 json=body,
             )
-            task_id = self._task_id(payload, operation_name="generation request")
+            task_id = RunwayTaskCreationResponse.from_payload(
+                payload,
+                provider_name=self.name,
+                operation_name="generation request",
+            ).task_id
             task = self._poll_task(client, task_id)
 
-        output_url = str(task["output"][0])
+        output_url = task.outputs[0]
         clip_bytes = self._download_output(output_url)
         return VideoClip(
             frames=[clip_bytes],
             fps=options.fps if options and options.fps is not None else 24.0,
-            resolution=tuple(int(part) for part in ratio.split(":", maxsplit=1)),  # type: ignore[arg-type]
+            resolution=resolution,
             duration_seconds=float(duration),
             metadata={
                 "provider": self.name,
@@ -318,10 +508,14 @@ class RunwayProvider(RemoteProvider):
                 emit_event=self._emit_event,
                 json=body,
             )
-            task_id = self._task_id(payload, operation_name="transfer request")
+            task_id = RunwayTaskCreationResponse.from_payload(
+                payload,
+                provider_name=self.name,
+                operation_name="transfer request",
+            ).task_id
             task = self._poll_task(client, task_id)
 
-        output_url = str(task["output"][0])
+        output_url = task.outputs[0]
         clip_bytes = self._download_output(output_url)
         return VideoClip(
             frames=[clip_bytes],

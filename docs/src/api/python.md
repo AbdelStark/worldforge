@@ -111,3 +111,47 @@ from worldforge.testing import assert_provider_contract
 report = assert_provider_contract(MockProvider())
 print(report.to_dict())
 ```
+
+## Public failure modes
+
+WorldForge uses three public exception families for runtime workflows:
+
+- `WorldForgeError`: invalid caller input, invalid model values, unsupported formats, and invalid
+  local configuration values.
+- `WorldStateError`: malformed persisted state or provider-supplied world state that cannot be
+  safely restored or applied.
+- `ProviderError`: provider credentials, transport failures, unsupported provider operations,
+  malformed upstream responses, provider-specific input limits, expired artifacts, and invalid
+  downloaded media.
+
+Provider-facing workflows touched by remote adapters fail before returning partial results:
+
+```python
+from worldforge import GenerationOptions, WorldForge
+from worldforge.providers import ProviderError
+
+forge = WorldForge()
+
+try:
+    clip = forge.generate(
+        "a rainy alley at night",
+        "runway",
+        duration_seconds=4.0,
+        options=GenerationOptions(ratio="1280:720"),
+    )
+except ProviderError as exc:
+    # Inspect emitted ProviderEvent records for transport status and attempts.
+    raise
+```
+
+Important boundary checks:
+
+- `Position`, `Rotation`, `VideoClip`, request policies, provider events, embeddings, reasoning
+  confidence, and prediction payload metrics reject non-finite numbers.
+- `World.add_object(...)` rejects duplicate scene object IDs.
+- Imported or provider-supplied world state rejects scene-object keys that disagree with embedded
+  object IDs.
+- Cosmos generation responses must include a non-empty base64 `b64_video` field and typed
+  optional metadata.
+- Runway task creation, polling, and artifact download responses are validated before constructing
+  a returned `VideoClip`.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from time import perf_counter
 
 import httpx
@@ -20,6 +21,79 @@ from worldforge.models import (
 
 from .base import ProviderError, RemoteProvider
 from .http_utils import asset_to_uri, parse_size, request_json_with_policy
+
+
+@dataclass(slots=True, frozen=True)
+class CosmosHealthResponse:
+    """Validated response from Cosmos health endpoints."""
+
+    status: str
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: dict[str, object],
+        *,
+        provider_name: str,
+    ) -> CosmosHealthResponse:
+        status = payload.get("status")
+        if not isinstance(status, str) or not status.strip():
+            raise ProviderError(
+                f"Provider '{provider_name}' healthcheck response field 'status' "
+                "must be a non-empty string."
+            )
+        return cls(status=status.strip())
+
+
+@dataclass(slots=True, frozen=True)
+class CosmosGenerationResponse:
+    """Validated response from the Cosmos generation endpoint."""
+
+    b64_video: str
+    seed: int | None = None
+    upsampled_prompt: str | None = None
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: dict[str, object],
+        *,
+        provider_name: str,
+    ) -> CosmosGenerationResponse:
+        b64_video = payload.get("b64_video")
+        if not isinstance(b64_video, str) or not b64_video.strip():
+            raise ProviderError(
+                f"Provider '{provider_name}' generation response field 'b64_video' "
+                "must be a non-empty base64 string."
+            )
+
+        seed = payload.get("seed")
+        if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
+            raise ProviderError(
+                f"Provider '{provider_name}' generation response field 'seed' "
+                "must be an integer when present."
+            )
+
+        upsampled_prompt = payload.get("upsampled_prompt")
+        if upsampled_prompt is not None and not isinstance(upsampled_prompt, str):
+            raise ProviderError(
+                f"Provider '{provider_name}' generation response field "
+                "'upsampled_prompt' must be a string when present."
+            )
+
+        return cls(
+            b64_video=b64_video.strip(),
+            seed=seed,
+            upsampled_prompt=upsampled_prompt,
+        )
+
+    def decode_video(self, *, provider_name: str) -> bytes:
+        try:
+            return base64.b64decode(self.b64_video, validate=True)
+        except (ValueError, TypeError) as exc:
+            raise ProviderError(
+                f"Provider '{provider_name}' returned an invalid base64 video payload."
+            ) from exc
 
 
 class CosmosProvider(RemoteProvider):
@@ -124,9 +198,12 @@ class CosmosProvider(RemoteProvider):
                     policy=request_policy.health,
                     emit_event=self._emit_event,
                 )
-            status = str(payload.get("status", "unknown"))
-            healthy = status.lower() == "ready"
-            details = status
+            health_response = CosmosHealthResponse.from_payload(
+                payload,
+                provider_name=self.name,
+            )
+            healthy = health_response.status.lower() == "ready"
+            details = health_response.status
         except ProviderError as exc:
             healthy = False
             details = str(exc)
@@ -193,16 +270,8 @@ class CosmosProvider(RemoteProvider):
                 json=body,
             )
 
-        b64_video = payload.get("b64_video")
-        if not isinstance(b64_video, str) or not b64_video:
-            raise ProviderError(f"Provider '{self.name}' did not return a `b64_video` payload.")
-
-        try:
-            clip_bytes = base64.b64decode(b64_video, validate=True)
-        except (ValueError, TypeError) as exc:
-            raise ProviderError(
-                f"Provider '{self.name}' returned an invalid base64 video payload."
-            ) from exc
+        parsed_response = CosmosGenerationResponse.from_payload(payload, provider_name=self.name)
+        clip_bytes = parsed_response.decode_video(provider_name=self.name)
         mode = "text2world"
         if options and options.image:
             mode = "image2world"
@@ -217,8 +286,8 @@ class CosmosProvider(RemoteProvider):
                 "provider": self.name,
                 "prompt": prompt,
                 "mode": mode,
-                "seed": payload.get("seed"),
-                "upsampled_prompt": payload.get("upsampled_prompt"),
+                "seed": parsed_response.seed,
+                "upsampled_prompt": parsed_response.upsampled_prompt,
                 "content_type": "video/mp4",
                 "model": options.model if options and options.model else self.default_model,
                 "base_url": self._resolved_base_url(),

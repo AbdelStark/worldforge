@@ -1,0 +1,7 @@
+{
+  "id": "task_generate",
+  "status": "FAILED",
+  "error": {
+    "message": "moderation rejected prompt"
+  }
+}

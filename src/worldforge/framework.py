@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from worldforge.models import (
     Action,
@@ -46,6 +46,9 @@ from worldforge.providers import (
     RunwayProvider,
 )
 
+if TYPE_CHECKING:
+    from worldforge.evaluation import EvaluationReport, EvaluationResult
+
 SCHEMA_VERSION = 1
 
 
@@ -81,6 +84,15 @@ def _validate_world_state_payload(state: JSONDict, *, context: str) -> None:
     objects = scene.get("objects", {})
     if not isinstance(objects, dict):
         raise WorldStateError(f"{context} field 'scene.objects' must be a JSON object.")
+    for object_id, object_state in objects.items():
+        if not isinstance(object_state, dict):
+            raise WorldStateError(f"{context} scene object '{object_id}' must be a JSON object.")
+        embedded_id = object_state.get("id")
+        if embedded_id is not None and str(embedded_id) != str(object_id):
+            raise WorldStateError(
+                f"{context} scene object key '{object_id}' does not match embedded id "
+                f"'{embedded_id}'."
+            )
 
     metadata = state.get("metadata", {})
     if not isinstance(metadata, dict):
@@ -96,6 +108,21 @@ def _validate_world_state_payload(state: JSONDict, *, context: str) -> None:
         raise WorldStateError(f"{context} field 'step' must be an integer.") from exc
     if step < 0:
         raise WorldStateError(f"{context} field 'step' must be greater than or equal to 0.")
+
+
+def _restore_scene_objects(state: JSONDict, *, context: str) -> dict[str, SceneObject]:
+    objects = state.get("scene", {}).get("objects", {})
+    restored: dict[str, SceneObject] = {}
+    for object_id, object_state in objects.items():
+        object_payload = dict(object_state)
+        object_payload.setdefault("id", str(object_id))
+        try:
+            restored[str(object_id)] = SceneObject.from_dict(object_payload)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise WorldStateError(
+                f"{context} scene object '{object_id}' could not be restored: {exc}"
+            ) from exc
+    return restored
 
 
 @dataclass(slots=True)
@@ -268,10 +295,7 @@ class World:
                 metadata=dict(state.get("metadata", {})),
             )
             world.step = int(state.get("step", 0))
-            world.scene_objects = {
-                str(object_id): SceneObject.from_dict(object_state)
-                for object_id, object_state in state.get("scene", {}).get("objects", {}).items()
-            }
+            world.scene_objects = _restore_scene_objects(state, context="World state")
             world._history = [
                 HistoryEntry.from_dict(entry) for entry in state.get("history", [])
             ] or [
@@ -319,10 +343,7 @@ class World:
             self.description = str(state.get("description", ""))
             self.step = int(state.get("step", 0))
             self.metadata = dict(state.get("metadata", {}))
-            self.scene_objects = {
-                str(object_id): SceneObject.from_dict(object_state)
-                for object_id, object_state in state.get("scene", {}).get("objects", {}).items()
-            }
+            self.scene_objects = _restore_scene_objects(state, context="World state")
             if not preserve_history:
                 self._history = [
                     HistoryEntry.from_dict(entry) for entry in state.get("history", [])
@@ -356,6 +377,8 @@ class World:
         return dump_json(self.to_dict())
 
     def add_object(self, obj: SceneObject) -> SceneObject:
+        if obj.id in self.scene_objects:
+            raise WorldForgeError(f"Object id '{obj.id}' is already present in world '{self.id}'.")
         self.scene_objects[obj.id] = obj.copy()
         self.metadata["name"] = self.name
         return self.scene_objects[obj.id]
@@ -632,7 +655,7 @@ class World:
             executed_world.predict(action, steps=1, provider=plan.provider)
         return PlanExecution(executed_world, plan.actions)
 
-    def evaluate(self, suite: str = "physics"):  # type: ignore[no-untyped-def]
+    def evaluate(self, suite: str = "physics") -> EvaluationReport:
         from worldforge.evaluation import EvaluationSuite
 
         return EvaluationSuite.from_builtin(suite).run_report(
@@ -945,7 +968,12 @@ def list_eval_suites() -> list[str]:
     return EvaluationSuite.builtin_names()
 
 
-def run_eval(suite: str, provider: str, *, forge: WorldForge | None = None):
+def run_eval(
+    suite: str,
+    provider: str,
+    *,
+    forge: WorldForge | None = None,
+) -> list[EvaluationResult]:
     """Run a built-in evaluation suite and return scenario-level results."""
 
     from worldforge.evaluation import EvaluationSuite

@@ -1,0 +1,7 @@
+{
+  "id": "task_generate",
+  "status": "SUCCEEDED",
+  "output": [
+    "https://downloads.example.com/generated.mp4"
+  ]
+}

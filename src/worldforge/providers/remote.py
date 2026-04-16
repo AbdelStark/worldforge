@@ -5,15 +5,17 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from worldforge.models import (
+    Action,
     EmbeddingResult,
     GenerationOptions,
+    JSONDict,
     ProviderCapabilities,
     ProviderEvent,
     ReasoningResult,
     VideoClip,
 )
 
-from .base import RemoteProvider
+from .base import PredictionPayload, RemoteProvider
 from .mock import MockProvider
 
 
@@ -31,7 +33,7 @@ class StubRemoteProvider(RemoteProvider):
             )
         return self._mock_surrogate
 
-    def predict(self, world_state, action, steps):  # type: ignore[no-untyped-def]
+    def predict(self, world_state: JSONDict, action: Action, steps: int) -> PredictionPayload:
         self._require_credentials()
         payload = self._surrogate.predict(world_state, action, steps)
         payload.metadata["mode"] = "stub-remote-adapter"
@@ -74,7 +76,7 @@ class StubRemoteProvider(RemoteProvider):
         transferred.metadata["credential_env"] = self.env_var
         return transferred
 
-    def reason(self, query: str, *, world_state=None) -> ReasoningResult:  # type: ignore[no-untyped-def]
+    def reason(self, query: str, *, world_state: JSONDict | None = None) -> ReasoningResult:
         self._require_credentials()
         result = self._surrogate.reason(query, world_state=world_state)
         result.evidence.append(f"Executed via stub adapter gated by {self.env_var}")

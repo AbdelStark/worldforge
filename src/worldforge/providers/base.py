@@ -20,6 +20,9 @@ from worldforge.models import (
     ProviderRequestPolicy,
     ReasoningResult,
     VideoClip,
+    WorldForgeError,
+    require_finite_number,
+    require_probability,
 )
 
 
@@ -37,6 +40,33 @@ class PredictionPayload:
     frames: list[bytes]
     metadata: JSONDict
     latency_ms: float
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.state, dict):
+            raise WorldForgeError("PredictionPayload state must be a JSON object.")
+        self.confidence = require_probability(
+            self.confidence,
+            name="PredictionPayload confidence",
+        )
+        self.physics_score = require_probability(
+            self.physics_score,
+            name="PredictionPayload physics_score",
+        )
+        if not isinstance(self.frames, list) or not all(
+            isinstance(frame, bytes) for frame in self.frames
+        ):
+            raise WorldForgeError("PredictionPayload frames must be a list of bytes.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("PredictionPayload metadata must be a JSON object.")
+        self.latency_ms = require_finite_number(
+            self.latency_ms,
+            name="PredictionPayload latency_ms",
+        )
+        if self.latency_ms < 0.0:
+            raise WorldForgeError("PredictionPayload latency_ms must be non-negative.")
+        self.state = dict(self.state)
+        self.frames = list(self.frames)
+        self.metadata = dict(self.metadata)
 
 
 class BaseProvider:

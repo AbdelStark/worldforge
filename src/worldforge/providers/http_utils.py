@@ -104,6 +104,17 @@ def _raise_status_error(
     )
 
 
+def _content_type_is_allowed(content_type: str, accepted_content_types: tuple[str, ...]) -> bool:
+    normalized = content_type.split(";", maxsplit=1)[0].strip().lower()
+    for accepted in accepted_content_types:
+        expected = accepted.lower()
+        if expected.endswith("/") and normalized.startswith(expected):
+            return True
+        if normalized == expected:
+            return True
+    return False
+
+
 def request_with_policy(
     client: httpx.Client,
     *,
@@ -317,6 +328,7 @@ def request_bytes_with_policy(
     operation_name: str,
     policy: RequestOperationPolicy,
     emit_event: Callable[[ProviderEvent], None] | None = None,
+    accepted_content_types: tuple[str, ...] | None = None,
     **kwargs: Any,
 ) -> bytes:
     """Send an HTTP request and return the raw response bytes."""
@@ -331,6 +343,19 @@ def request_bytes_with_policy(
         emit_event=emit_event,
         **kwargs,
     )
+    content_type = response.headers.get("content-type")
+    if (
+        content_type
+        and accepted_content_types
+        and not _content_type_is_allowed(
+            content_type,
+            accepted_content_types,
+        )
+    ):
+        raise ProviderError(
+            f"Provider '{provider_name}' {operation_name} returned unsupported "
+            f"content type '{content_type}'."
+        )
     return response.content
 
 
