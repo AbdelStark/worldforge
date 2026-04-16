@@ -12,6 +12,8 @@ releases may still include breaking changes when the public API needs to tighten
 - Added `leworldmodel` as a first-class optional provider for LeWorldModel JEPA cost models,
   including the `score` capability, `ActionScoreResult`, `WorldForge.score_actions(...)`, typed
   input validation, score-output validation, provider profile metadata, and fixture-driven tests.
+- Added score-based planning support so `World.plan(...)` can select candidate action plans from
+  `ActionScoreResult.best_index`, plus a real-checkpoint LeWorldModel smoke script.
 
 ### Security
 

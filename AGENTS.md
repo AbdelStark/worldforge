@@ -49,8 +49,8 @@ Run these from the repository root:
 ```bash
 uv sync --group dev
 uv lock --check
-uv run ruff check src tests examples
-uv run ruff format --check src tests examples
+uv run ruff check src tests examples scripts
+uv run ruff format --check src tests examples scripts
 uv run pytest
 uv run pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
 bash scripts/test_package.sh
@@ -108,6 +108,9 @@ rm -f "$tmp_req"
 - LeWorldModel expects preprocessed pixel/action/goal tensors or rectangular nested numeric
   arrays shaped for the configured checkpoint. WorldForge validates the adapter boundary but does
   not infer task-specific image transforms.
+- `scripts/smoke_leworldmodel.py` is an optional real-checkpoint smoke. Run it from an isolated
+  Python 3.10 environment with the upstream GitHub `stable-worldmodel[train,env]` runtime; do not
+  add those dependencies to WorldForge's base package.
 - `RUNWAYML_API_SECRET` is preferred, but `RUNWAY_API_SECRET` remains supported as a legacy alias.
 
 ## Current State

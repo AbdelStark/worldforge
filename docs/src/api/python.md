@@ -80,6 +80,32 @@ print(result.best_index, result.best_score)
 `ActionScoreResult` validates finite scores, exposes `best_index` and `best_score`, and includes
 `lower_is_better` so callers do not have to infer score direction from provider-specific docs.
 
+The planner can consume the same score surface when callers provide the model-shaped payload and
+the WorldForge actions that correspond to each scored candidate:
+
+```python
+from worldforge import Action
+
+plan = world.plan(
+    goal="choose the lowest-cost LeWorldModel action",
+    provider="leworldmodel",
+    planner="leworldmodel-mpc",
+    candidate_actions=[
+        [Action.move_to(0.1, 0.5, 0.0)],
+        [Action.move_to(0.4, 0.5, 0.0)],
+    ],
+    score_info=info,
+    score_action_candidates=action_candidates,
+    execution_provider="mock",
+)
+
+print(plan.actions, plan.metadata["score_result"]["best_index"])
+```
+
+Score-based plans do not ask the score provider to predict state. `Plan.predicted_states` stays
+empty, score details are stored in `Plan.metadata`, and `execute_plan(...)` uses
+`execution_provider` when the scoring provider does not implement `predict()`.
+
 ## `World`
 
 Stateful runtime object responsible for:

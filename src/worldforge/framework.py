@@ -62,6 +62,32 @@ def _normalize_provider_name(provider: str | None, fallback: str) -> str:
     return provider or fallback
 
 
+def _is_sequence_of_actions(value: object) -> bool:
+    return isinstance(value, Sequence) and not isinstance(value, str | bytes)
+
+
+def _normalize_candidate_action_plans(
+    candidate_actions: Sequence[Action | Sequence[Action]],
+) -> list[list[Action]]:
+    if not _is_sequence_of_actions(candidate_actions) or not candidate_actions:
+        raise WorldForgeError("candidate_actions must be a non-empty sequence.")
+
+    normalized: list[list[Action]] = []
+    for index, candidate in enumerate(candidate_actions):
+        if isinstance(candidate, Action):
+            normalized.append([candidate])
+            continue
+        if not _is_sequence_of_actions(candidate) or not candidate:
+            raise WorldForgeError(
+                f"candidate_actions[{index}] must be an Action or non-empty sequence of Actions."
+            )
+        actions = list(candidate)
+        if not all(isinstance(action, Action) for action in actions):
+            raise WorldForgeError(f"candidate_actions[{index}] must contain only Action instances.")
+        normalized.append(actions)
+    return normalized
+
+
 def _world_file(state_dir: Path, world_id: str) -> Path:
     return state_dir / f"{world_id}.json"
 
@@ -219,6 +245,7 @@ class Plan:
         predicted_states: Sequence[JSONDict],
         success_probability: float,
         goal_spec: JSONDict | None = None,
+        metadata: JSONDict | None = None,
     ) -> None:
         self.goal = goal
         self.planner = planner
@@ -227,6 +254,7 @@ class Plan:
         self.predicted_states = [_clone_state(state) for state in predicted_states]
         self.success_probability = success_probability
         self.goal_spec = _clone_state(goal_spec) if goal_spec is not None else None
+        self.metadata = _clone_state(metadata or {})
 
     @property
     def action_count(self) -> int:
@@ -242,6 +270,7 @@ class Plan:
             "action_count": self.action_count,
             "success_probability": self.success_probability,
             "predicted_states": self.predicted_states,
+            "metadata": self.metadata,
         }
 
     def to_json(self) -> str:
@@ -606,6 +635,10 @@ class World:
         planner: str = "cem",
         max_steps: int = 20,
         provider: str | None = None,
+        candidate_actions: Sequence[Action | Sequence[Action]] | None = None,
+        score_info: JSONDict | None = None,
+        score_action_candidates: object | None = None,
+        execution_provider: str | None = None,
         **_: Any,
     ) -> Plan:
         require_positive_int(max_steps, name="max_steps")
@@ -616,6 +649,21 @@ class World:
         if goal is not None and not goal.strip():
             raise WorldForgeError("goal must not be empty when provided.")
         selected_provider = _normalize_provider_name(provider, self.provider)
+        selected_provider_instance = self._provider(selected_provider)
+        uses_score_planning = any(
+            item is not None for item in (candidate_actions, score_info, score_action_candidates)
+        )
+        if uses_score_planning:
+            if not selected_provider_instance.capabilities.score:
+                raise WorldForgeError(
+                    f"Provider '{selected_provider}' does not support score-based planning."
+                )
+            if candidate_actions is None or score_info is None or score_action_candidates is None:
+                raise WorldForgeError(
+                    "Score-based planning requires candidate_actions, score_info, "
+                    "and score_action_candidates."
+                )
+
         resolved_goal_spec = goal_spec
         if goal_json is not None:
             resolved_goal_spec = StructuredGoal.from_json(goal_json)
@@ -631,6 +679,42 @@ class World:
             serialized_goal_spec = None
             actions = self._goal_actions(resolved_goal)
         actions = actions[: min(max_steps, len(actions))]
+
+        if uses_score_planning:
+            assert candidate_actions is not None
+            assert score_info is not None
+            candidate_action_plans = _normalize_candidate_action_plans(candidate_actions)
+            score_result = selected_provider_instance.score_actions(
+                info=score_info,
+                action_candidates=score_action_candidates,
+            )
+            if score_result.best_index >= len(candidate_action_plans):
+                raise WorldForgeError(
+                    f"Provider '{selected_provider}' selected candidate index "
+                    f"{score_result.best_index}, but only {len(candidate_action_plans)} "
+                    "candidate action plan(s) were provided."
+                )
+            selected_actions = candidate_action_plans[score_result.best_index][:max_steps]
+            best_score = max(0.0, score_result.best_score)
+            success_probability = 1.0 / (1.0 + best_score)
+            metadata: JSONDict = {
+                "planning_mode": "score",
+                "score_result": score_result.to_dict(),
+                "candidate_count": len(candidate_action_plans),
+                "success_probability_source": "inverse_best_cost_heuristic",
+            }
+            if execution_provider is not None:
+                metadata["execution_provider"] = execution_provider
+            return Plan(
+                goal=resolved_goal,
+                goal_spec=serialized_goal_spec,
+                planner=planner,
+                provider=selected_provider,
+                actions=selected_actions,
+                predicted_states=[],
+                success_probability=max(0.0, min(1.0, success_probability)),
+                metadata=metadata,
+            )
 
         simulated_state = self._snapshot()
         predicted_states: list[JSONDict] = []
@@ -649,12 +733,28 @@ class World:
             actions=actions,
             predicted_states=predicted_states,
             success_probability=max(0.65, min(0.98, average(scores) if scores else 0.7)),
+            metadata={"planning_mode": "predict"},
         )
 
-    def execute_plan(self, plan: Plan, *_: Any) -> PlanExecution:
+    def execute_plan(
+        self,
+        plan: Plan,
+        *args: Any,
+        provider: str | None = None,
+    ) -> PlanExecution:
+        selected_provider = provider
+        if selected_provider is None:
+            selected_provider = next((arg for arg in args if isinstance(arg, str)), None)
+        if selected_provider is None:
+            selected_provider = str(plan.metadata.get("execution_provider") or plan.provider)
+        if not self._provider(selected_provider).capabilities.predict:
+            raise WorldForgeError(
+                f"Provider '{selected_provider}' cannot execute plans because it does not "
+                "support predict(). Pass an execution provider that supports predict()."
+            )
         executed_world = World.from_state(self._forge, self.to_dict())
         for action in plan.actions:
-            executed_world.predict(action, steps=1, provider=plan.provider)
+            executed_world.predict(action, steps=1, provider=selected_provider)
         return PlanExecution(executed_world, plan.actions)
 
     def evaluate(self, suite: str = "physics") -> EvaluationReport:

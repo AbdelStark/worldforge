@@ -131,3 +131,6 @@ LeWorldModel:
 - `action_candidates` must be a tensor or rectangular nested numeric sequence shaped as
   `(batch, samples, horizon, action_dim)`.
 - Model output must flatten to at least one finite numeric score.
+- `scripts/smoke_leworldmodel.py` can run a local end-to-end smoke against
+  `quentinll/lewm-pusht`; it requires the upstream GitHub version of `stable-worldmodel[train,env]`
+  because the PyPI package may lag the LeWM module.

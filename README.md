@@ -199,6 +199,9 @@ environment, place checkpoints under `$STABLEWM_HOME` or set `LEWORLDMODEL_CACHE
 `LEWORLDMODEL_POLICY` to the checkpoint run name without the `_object.ckpt` suffix, for example
 `pusht/lewm`. The adapter expects tensors or nested numeric arrays that already match the
 checkpoint's task preprocessing contract; WorldForge does not infer raw-image transforms.
+Use `scripts/smoke_leworldmodel.py` from an isolated environment with the upstream
+`stable-worldmodel[train,env]` runtime to download the public `quentinll/lewm-pusht` weights,
+prepare the object checkpoint, and run a real `score_actions(...)` smoke.
 
 ## Development
 
@@ -206,8 +209,8 @@ Primary commands:
 
 ```bash
 uv sync --group dev
-uv run ruff check src tests examples
-uv run ruff format --check src tests examples
+uv run ruff check src tests examples scripts
+uv run ruff format --check src tests examples scripts
 uv run pytest
 uv run pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
 bash scripts/test_package.sh

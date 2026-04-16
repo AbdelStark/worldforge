@@ -91,6 +91,9 @@ include those IDs in surrounding application logs.
 - For LeWorldModel failures, run `worldforge provider health leworldmodel`, verify
   `stable-worldmodel[env]` and `torch` are installed in the host environment, then confirm the
   configured policy exists under `$STABLEWM_HOME` or `LEWORLDMODEL_CACHE_DIR`.
+- To smoke-test a real LeWorldModel checkpoint, install the upstream
+  `stable-worldmodel[train,env]` runtime in an isolated environment and run
+  `python scripts/smoke_leworldmodel.py --stablewm-home /path/to/stablewm-home`.
 
 ## Release Checklist
 

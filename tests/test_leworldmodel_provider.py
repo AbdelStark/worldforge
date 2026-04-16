@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from worldforge import ActionScoreResult, WorldForge
+from worldforge import Action, ActionScoreResult, WorldForge, WorldForgeError
 from worldforge.providers import LeWorldModelProvider, ProviderError
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "providers"
@@ -141,6 +141,62 @@ def test_leworldmodel_provider_scores_fixture_payload_and_routes_through_forge(t
     assert len(model.calls) == 1
     assert events[-1].operation == "score"
     assert events[-1].phase == "success"
+
+
+def test_leworldmodel_score_planning_selects_best_candidate_and_execution_provider(
+    tmp_path,
+) -> None:
+    payload = _fixture("leworldmodel_score_request.json")
+    provider = LeWorldModelProvider(
+        policy="pusht/lewm",
+        model_loader=lambda _policy, _cache_dir: FakeLeWorldModel([0.7, 0.15, 0.4]),
+        tensor_module=FakeTorch(),
+    )
+    forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
+    forge.register_provider(provider)
+    world = forge.create_world_from_prompt("room with cube", provider="mock")
+
+    candidate_plans = [
+        [Action.move_to(0.1, 0.5, 0.0)],
+        [Action.move_to(0.4, 0.5, 0.0)],
+        [Action.move_to(0.7, 0.5, 0.0)],
+    ]
+    plan = world.plan(
+        goal="choose the lowest-cost LeWorldModel action",
+        provider="leworldmodel",
+        planner="leworldmodel-mpc",
+        candidate_actions=candidate_plans,
+        score_info=payload["info"],
+        score_action_candidates=payload["action_candidates"],
+        execution_provider="mock",
+    )
+
+    assert plan.provider == "leworldmodel"
+    assert plan.actions == candidate_plans[1]
+    assert plan.predicted_states == []
+    assert plan.metadata["planning_mode"] == "score"
+    assert plan.metadata["score_result"]["best_index"] == 1
+    assert plan.metadata["execution_provider"] == "mock"
+
+    execution = world.execute_plan(plan)
+    assert execution.actions_applied == candidate_plans[1]
+    assert execution.final_world().provider == "mock"
+
+    with pytest.raises(WorldForgeError, match="requires candidate_actions"):
+        world.plan(
+            goal="incomplete score plan",
+            provider="leworldmodel",
+            score_info=payload["info"],
+        )
+
+    with pytest.raises(WorldForgeError, match="does not support score-based planning"):
+        world.plan(
+            goal="wrong provider",
+            provider="mock",
+            candidate_actions=candidate_plans,
+            score_info=payload["info"],
+            score_action_candidates=payload["action_candidates"],
+        )
 
 
 def test_leworldmodel_provider_reports_profile_health_and_auto_registration(
