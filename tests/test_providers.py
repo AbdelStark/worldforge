@@ -5,6 +5,7 @@ from worldforge.providers import (
     CosmosProvider,
     GenieProvider,
     JepaProvider,
+    LeWorldModelProvider,
     MockProvider,
     RunwayProvider,
 )
@@ -14,6 +15,7 @@ def test_provider_submodule_exports_provider_classes() -> None:
     assert CosmosProvider is not None
     assert GenieProvider is not None
     assert JepaProvider is not None
+    assert LeWorldModelProvider is not None
     assert MockProvider is not None
     assert RunwayProvider is not None
 

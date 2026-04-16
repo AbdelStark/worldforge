@@ -793,6 +793,7 @@ class ProviderCapabilities:
     embed: bool = False
     plan: bool = False
     transfer: bool = False
+    score: bool = False
 
     def to_dict(self) -> JSONDict:
         return {
@@ -802,6 +803,7 @@ class ProviderCapabilities:
             "embed": self.embed,
             "plan": self.plan,
             "transfer": self.transfer,
+            "score": self.score,
         }
 
     def supports(self, capability: str) -> bool:
@@ -1388,6 +1390,57 @@ class EmbeddingResult:
     @property
     def shape(self) -> list[int]:
         return [len(self.vector)]
+
+
+@dataclass(slots=True)
+class ActionScoreResult:
+    """Provider scores for a batch of candidate action sequences.
+
+    Scores are provider-defined, but ``best_index`` must identify the candidate the
+    provider recommends for downstream planning.
+    """
+
+    provider: str
+    scores: list[float]
+    best_index: int
+    lower_is_better: bool = True
+    metadata: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ActionScoreResult provider must be a non-empty string.")
+        if not isinstance(self.scores, list) or not self.scores:
+            raise WorldForgeError("ActionScoreResult scores must be a non-empty list.")
+        self.scores = [
+            require_finite_number(score, name="ActionScoreResult score") for score in self.scores
+        ]
+        if (
+            isinstance(self.best_index, bool)
+            or not isinstance(self.best_index, int)
+            or self.best_index < 0
+            or self.best_index >= len(self.scores)
+        ):
+            raise WorldForgeError("ActionScoreResult best_index is out of range.")
+        if not isinstance(self.lower_is_better, bool):
+            raise WorldForgeError("ActionScoreResult lower_is_better must be a boolean.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("ActionScoreResult metadata must be a JSON object.")
+        self.provider = self.provider.strip()
+        self.metadata = dict(self.metadata)
+
+    @property
+    def best_score(self) -> float:
+        return self.scores[self.best_index]
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "provider": self.provider,
+            "scores": list(self.scores),
+            "best_index": self.best_index,
+            "best_score": self.best_score,
+            "lower_is_better": self.lower_is_better,
+            "metadata": dict(self.metadata),
+        }
 
 
 @dataclass(slots=True)

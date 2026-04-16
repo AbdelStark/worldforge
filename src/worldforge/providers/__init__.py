@@ -9,6 +9,7 @@ from worldforge.models import (
 
 from .base import BaseProvider, PredictionPayload, ProviderError, RemoteProvider
 from .cosmos import CosmosProvider
+from .leworldmodel import LeWorldModelProvider
 from .mock import MockProvider
 from .remote import GenieProvider, JepaProvider, StubRemoteProvider
 from .runway import RunwayProvider
@@ -18,6 +19,7 @@ __all__ = [
     "CosmosProvider",
     "GenieProvider",
     "JepaProvider",
+    "LeWorldModelProvider",
     "MockProvider",
     "PredictionPayload",
     "ProviderError",

@@ -45,7 +45,8 @@ lightweight request aggregation.
 ### `providers/`
 
 Provider primitives and adapters. The mock provider is the reference implementation. `cosmos`
-and `runway` are live HTTP adapters. `jepa` and `genie` are scaffold adapters.
+and `runway` are live HTTP adapters. `leworldmodel` is a real optional local adapter for
+LeWorldModel JEPA cost-model scoring. `jepa` and `genie` are scaffold adapters.
 
 ### `evaluation/`
 
@@ -55,8 +56,9 @@ Evaluation suites, scenario runners, and report rendering.
 
 1. `WorldForge` resolves or registers a provider.
 2. `World` snapshots the current state and sends it to the provider.
-3. The provider returns a `PredictionPayload` or `VideoClip`.
-4. The framework validates and applies the returned state.
+3. Prediction/generation providers return a `PredictionPayload` or `VideoClip`; score providers
+   return an `ActionScoreResult`.
+4. The framework validates and applies returned world state when prediction is involved.
 5. Optional provider event callbacks receive structured `ProviderEvent` records from local and remote provider operations.
 6. Host apps can fan those events out to logging, recording, and metrics sinks through `worldforge.observability.compose_event_handlers(...)`.
 7. History, persistence, evaluation, benchmarks, and CLI output are derived from that validated state.
@@ -67,6 +69,7 @@ Evaluation suites, scenario runners, and report rendering.
 - world `step` is always a non-negative integer
 - invalid public inputs fail explicitly instead of being silently coerced
 - provider capability metadata must match the implemented surface
+- score providers must return finite scores and an in-range `best_index`
 - missing local asset files fail before network I/O
 - remote provider reads use typed retry/backoff policy; mutation requests default to single-attempt behavior
 - forge-level event handlers propagate to builtin providers and to providers later registered at runtime
@@ -79,6 +82,8 @@ Evaluation suites, scenario runners, and report rendering.
 - malformed persisted state raises `WorldStateError`
 - provider/runtime integration failures raise `ProviderError`
 - remote health checks may fail due to missing credentials, invalid endpoints, or upstream errors
+- LeWorldModel health may fail because optional `stable_worldmodel` / `torch` dependencies are
+  absent, the policy is unset, or the checkpoint cannot be loaded at scoring time
 - remote HTTP adapters share one typed request policy contract for timeout, polling, download, and retry behavior
 - provider event callbacks surface structured retry, success, and failure records but do not replace host-level logging or metrics sinks
 

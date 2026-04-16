@@ -8,6 +8,7 @@ from worldforge.providers import MockProvider
 
 def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.__version__
+    assert worldforge.ActionScoreResult is not None
     assert worldforge.BenchmarkInputs is not None
     assert worldforge.BenchmarkReport is not None
     assert worldforge.BenchmarkResult is not None

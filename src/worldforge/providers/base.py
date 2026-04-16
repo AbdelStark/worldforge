@@ -9,6 +9,7 @@ from time import perf_counter
 
 from worldforge.models import (
     Action,
+    ActionScoreResult,
     EmbeddingResult,
     GenerationOptions,
     JSONDict,
@@ -188,6 +189,9 @@ class BaseProvider:
 
     def embed(self, *, text: str) -> EmbeddingResult:
         raise ProviderError(f"Provider '{self.name}' does not implement embed().")
+
+    def score_actions(self, *, info: JSONDict, action_candidates: object) -> ActionScoreResult:
+        raise ProviderError(f"Provider '{self.name}' does not implement score_actions().")
 
 
 class RemoteProvider(BaseProvider):

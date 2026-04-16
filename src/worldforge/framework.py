@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from worldforge.models import (
     Action,
+    ActionScoreResult,
     BBox,
     DoctorReport,
     EmbeddingResult,
@@ -41,6 +42,7 @@ from worldforge.providers import (
     CosmosProvider,
     GenieProvider,
     JepaProvider,
+    LeWorldModelProvider,
     MockProvider,
     ProviderError,
     RunwayProvider,
@@ -691,6 +693,7 @@ class WorldForge:
             MockProvider(event_handler=self._event_handler),
             CosmosProvider(event_handler=self._event_handler),
             RunwayProvider(event_handler=self._event_handler),
+            LeWorldModelProvider(event_handler=self._event_handler),
             JepaProvider(event_handler=self._event_handler),
             GenieProvider(event_handler=self._event_handler),
         )
@@ -782,7 +785,7 @@ class WorldForge:
                 )
             )
             if not health.healthy:
-                if profile.required_env_vars:
+                if profile.required_env_vars and not provider.configured():
                     required = ", ".join(profile.required_env_vars)
                     issues.append(
                         f"Provider '{name}' is unavailable: missing or invalid {required}."
@@ -958,6 +961,18 @@ class WorldForge:
 
     def embed(self, provider: str, *, text: str) -> EmbeddingResult:
         return self._require_provider(provider).embed(text=text)
+
+    def score_actions(
+        self,
+        provider: str,
+        *,
+        info: JSONDict,
+        action_candidates: object,
+    ) -> ActionScoreResult:
+        return self._require_provider(provider).score_actions(
+            info=info,
+            action_candidates=action_candidates,
+        )
 
 
 def list_eval_suites() -> list[str]:

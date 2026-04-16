@@ -7,6 +7,12 @@ releases may still include breaking changes when the public API needs to tighten
 
 ## Unreleased
 
+### Added
+
+- Added `leworldmodel` as a first-class optional provider for LeWorldModel JEPA cost models,
+  including the `score` capability, `ActionScoreResult`, `WorldForge.score_actions(...)`, typed
+  input validation, score-output validation, provider profile metadata, and fixture-driven tests.
+
 ### Security
 
 - Raised the development dependency floor to `pytest>=9.0.3` and refreshed `uv.lock` to remove

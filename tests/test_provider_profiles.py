@@ -9,6 +9,10 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         "NVIDIA_API_KEY",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
+        "LEWORLDMODEL_POLICY",
+        "LEWM_POLICY",
+        "LEWORLDMODEL_CACHE_DIR",
+        "LEWORLDMODEL_DEVICE",
         "JEPA_MODEL_PATH",
         "GENIE_API_KEY",
     ):
@@ -23,7 +27,7 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert registered_profiles["mock"].request_policy is None
 
     builtin_profiles = {profile.name: profile for profile in forge.builtin_provider_profiles()}
-    assert {"mock", "cosmos", "runway", "jepa", "genie"} <= set(builtin_profiles)
+    assert {"mock", "cosmos", "runway", "leworldmodel", "jepa", "genie"} <= set(builtin_profiles)
     assert builtin_profiles["cosmos"].implementation_status == "beta"
     assert builtin_profiles["cosmos"].required_env_vars == ["COSMOS_BASE_URL"]
     assert builtin_profiles["cosmos"].request_policy is not None
@@ -35,6 +39,13 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     ]
     assert builtin_profiles["runway"].request_policy is not None
     assert builtin_profiles["runway"].request_policy.download.retry.max_attempts == 3
+    assert builtin_profiles["leworldmodel"].implementation_status == "beta"
+    assert builtin_profiles["leworldmodel"].capabilities.score is True
+    assert builtin_profiles["leworldmodel"].capabilities.predict is False
+    assert builtin_profiles["leworldmodel"].required_env_vars == [
+        "LEWORLDMODEL_POLICY",
+        "LEWM_POLICY",
+    ]
 
     report = forge.doctor()
     assert isinstance(report, DoctorReport)

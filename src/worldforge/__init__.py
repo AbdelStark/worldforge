@@ -45,6 +45,7 @@ from worldforge.framework import (
 )
 from worldforge.models import (
     Action,
+    ActionScoreResult,
     BBox,
     DoctorReport,
     EmbeddingResult,
@@ -78,6 +79,7 @@ except PackageNotFoundError:  # pragma: no cover - fallback for editable local i
 __all__ = [
     "__version__",
     "Action",
+    "ActionScoreResult",
     "BBox",
     "BenchmarkInputs",
     "BenchmarkReport",

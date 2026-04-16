@@ -21,6 +21,8 @@ evaluation harnesses, and testable prototypes.
   contract checks.
 - `src/worldforge/providers/cosmos.py` and `runway.py`: real HTTP adapters with typed timeout,
   retry, polling, download policies, and response parsers.
+- `src/worldforge/providers/leworldmodel.py`: real optional LeWorldModel JEPA cost-model adapter
+  for scoring action candidates through `stable_worldmodel.policy.AutoCostModel`.
 - `src/worldforge/providers/remote.py`: credential-gated scaffold providers for `jepa` and
   `genie`; these intentionally use deterministic mock behavior after credential checks.
 - `src/worldforge/evaluation/`: built-in generation, physics, planning, reasoning, and transfer
@@ -35,6 +37,8 @@ evaluation harnesses, and testable prototypes.
 - Python `>=3.10`, tested in CI on Python 3.10, 3.11, 3.12, and 3.13.
 - Packaging/build: `hatchling`, `uv`, `uv.lock`.
 - Runtime dependency: `httpx`.
+- Optional LeWorldModel runtime: `stable-worldmodel[env]` and `torch`, supplied by the host
+  environment only when using `leworldmodel`.
 - Development tools: `pytest`, `pytest-cov`, `ruff`, `pip-audit` in CI.
 - License: MIT.
 
@@ -66,6 +70,8 @@ rm -f "$tmp_req"
 - Public inputs fail explicitly with `WorldForgeError`; malformed persisted/provider state fails
   with `WorldStateError`; provider/runtime integration failures fail with `ProviderError`.
 - Provider capabilities must only advertise operations that are implemented end to end.
+- `leworldmodel` exposes `score`, not `predict`, `generate`, or `reason`; do not fake those
+  capabilities around a cost model.
 - Remote create/mutation requests are single-attempt by default; health, polling, and downloads
   use retry/backoff policy.
 - Keep public API models typed and serializable. Validate boundary values before persistence or
@@ -79,7 +85,9 @@ rm -f "$tmp_req"
 
 - Do not replace scaffold providers with claims of real JEPA/Genie integration; they are
   credential-gated mock-backed adapters until real provider behavior is implemented.
-- Do not auto-register remote providers unless their required environment variables are present.
+- Do not add `stable_worldmodel`, `torch`, checkpoint archives, or downloaded datasets to the base
+  dependency set or repository. Keep LeWorldModel optional and host-owned.
+- Do not auto-register optional providers unless their required environment variables are present.
 - Do not add hardcoded credentials, test secrets, or environment-specific endpoints.
 - Do not weaken coverage gates or remove package validation from CI.
 - Do not silently coerce invalid world state. A loud failure is preferable to persisted
@@ -97,6 +105,9 @@ rm -f "$tmp_req"
   or service adapter without an explicit design.
 - Built-in evaluation suites are deterministic contract harnesses, not claims of physical or
   media-quality fidelity.
+- LeWorldModel expects preprocessed pixel/action/goal tensors or rectangular nested numeric
+  arrays shaped for the configured checkpoint. WorldForge validates the adapter boundary but does
+  not infer task-specific image transforms.
 - `RUNWAYML_API_SECRET` is preferred, but `RUNWAY_API_SECRET` remains supported as a legacy alias.
 
 ## Current State

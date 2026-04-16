@@ -123,7 +123,7 @@ uv run worldforge eval --suite transfer --provider mock
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 ```
 
-Built-in evaluation suites are `generation`, `physics`, `planning`, `reasoning`, and `transfer`. Evaluation and benchmark reports can be exported as Markdown, JSON, or CSV. Remote provider configuration lives in [.env.example](./.env.example). WorldForge only auto-registers remote providers when their required environment variables are present.
+Built-in evaluation suites are `generation`, `physics`, `planning`, `reasoning`, and `transfer`. Evaluation and benchmark reports can be exported as Markdown, JSON, or CSV. Provider configuration lives in [.env.example](./.env.example). WorldForge only auto-registers optional providers when their required environment variables are present.
 
 ## Architecture
 
@@ -159,7 +159,7 @@ Module responsibilities:
 | `src/worldforge/models.py` | Typed domain models, serialization helpers, and framework-level validation errors |
 | `src/worldforge/framework.py` | `WorldForge`, `World`, persistence, planning, prediction, comparison, and diagnostics |
 | `src/worldforge/observability.py` | Composable `ProviderEvent` sinks for JSON logging, in-memory recording, and metrics aggregation |
-| `src/worldforge/providers/` | Provider primitives plus `mock`, `cosmos`, `runway`, `jepa`, and `genie` adapters |
+| `src/worldforge/providers/` | Provider primitives plus `mock`, `cosmos`, `runway`, `leworldmodel`, `jepa`, and `genie` adapters |
 | `src/worldforge/evaluation/` | Built-in evaluation suites and report rendering |
 | `src/worldforge/testing/` | Reusable provider contract assertions for adapter packages |
 | `tests/` | Framework, CLI, packaging, and adapter regression coverage |
@@ -169,6 +169,7 @@ Operational invariants:
 - invalid public inputs fail explicitly instead of being silently coerced
 - malformed persisted state raises `WorldStateError` with context
 - provider adapters must report only capabilities they actually implement
+- score-based providers return explicit `ActionScoreResult` objects and must document score semantics
 - missing local assets for remote providers fail before the outbound request
 - remote adapters expose a typed `ProviderRequestPolicy` for health, request, polling, and download operations
 - `WorldForge(event_handler=...)` propagates a single provider event callback, including composed observability sinks, to builtin and manually registered providers
@@ -189,8 +190,15 @@ More detail lives in [docs/src/architecture.md](./docs/src/architecture.md), [do
 | `mock` | stable | always registered | deterministic local provider used by tests, examples, and contract checks |
 | `cosmos` | beta | auto-registers when `COSMOS_BASE_URL` is set | real HTTP adapter for Cosmos NIM; optionally sends `NVIDIA_API_KEY` |
 | `runway` | beta | auto-registers when `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` is set | real HTTP adapter for Runway image-to-video and video-to-video APIs |
+| `leworldmodel` | beta | auto-registers when `LEWORLDMODEL_POLICY` or `LEWM_POLICY` is set | real optional adapter for LeWorldModel JEPA cost models via `stable_worldmodel.policy.AutoCostModel`; scores action candidates with lower cost as better |
 | `jepa` | scaffold | auto-registers when `JEPA_MODEL_PATH` is set | credential-gated stub backed by deterministic mock behavior |
 | `genie` | scaffold | auto-registers when `GENIE_API_KEY` is set | credential-gated stub backed by deterministic mock behavior |
+
+LeWorldModel is a local optional integration. Install the upstream runtime in the host
+environment, place checkpoints under `$STABLEWM_HOME` or set `LEWORLDMODEL_CACHE_DIR`, then set
+`LEWORLDMODEL_POLICY` to the checkpoint run name without the `_object.ckpt` suffix, for example
+`pusht/lewm`. The adapter expects tensors or nested numeric arrays that already match the
+checkpoint's task preprocessing contract; WorldForge does not infer raw-image transforms.
 
 ## Development
 
@@ -223,6 +231,9 @@ See [AGENTS.md](./AGENTS.md) for repository context used by AI-assisted and firs
 - Planning still supports heuristic goal strings, but structured goals are now typed and validated through `StructuredGoal`, including relocation, neighbor placement, spawn, and swap workflows.
 - Evaluation remains a deterministic harness; the built-in suites now cover generation, transfer, physics, planning, and reasoning baselines.
 - `jepa` and `genie` are scaffold adapters and should not be treated as production integrations.
+- `leworldmodel` is a real optional cost-model adapter, but callers must install
+  `stable-worldmodel[env]`, provide compatible checkpoints, and pass task-shaped pixel/action/goal
+  tensors; it does not generate videos or reason over text.
 - Remote provider health checks depend on live credentials and network reachability even though they now use typed timeout and retry policy.
 - Provider observability includes local JSON logging and in-memory metrics sinks, but host applications still own production logging, metrics export, trace IDs, dashboards, and alerts.
 - World persistence is local JSON state, not a concurrent multi-writer store or service.

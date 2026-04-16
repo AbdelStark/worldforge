@@ -14,6 +14,9 @@ Configuration comes from constructor arguments and environment variables documen
 - `RUNWAYML_API_SECRET` enables the Runway adapter.
 - `RUNWAY_API_SECRET` remains supported as the legacy Runway alias.
 - `RUNWAYML_BASE_URL` overrides the default Runway API endpoint.
+- `LEWORLDMODEL_POLICY` or `LEWM_POLICY` enables the optional LeWorldModel adapter.
+- `LEWORLDMODEL_CACHE_DIR` overrides the LeWorldModel checkpoint root.
+- `LEWORLDMODEL_DEVICE` selects the optional torch device for LeWorldModel scoring.
 - `JEPA_MODEL_PATH` and `GENIE_API_KEY` enable scaffold adapters only.
 
 Validate configuration at startup with:
@@ -72,6 +75,9 @@ include those IDs in surrounding application logs.
   objects.
 - Runway artifact downloads fail explicitly on expired/unavailable URLs, empty downloads, and
   explicit unsupported content types.
+- LeWorldModel scoring fails explicitly when optional dependencies are unavailable, the checkpoint
+  cannot load, required `pixels` / `goal` / `action` fields are missing, action candidates are not
+  four-dimensional, or returned scores are not finite.
 
 ## Recovery
 
@@ -82,6 +88,9 @@ include those IDs in surrounding application logs.
   `phase`, `status_code`, `attempt`, and `target`.
 - For expired Runway artifact URLs, regenerate or persist downloaded outputs immediately after
   task completion.
+- For LeWorldModel failures, run `worldforge provider health leworldmodel`, verify
+  `stable-worldmodel[env]` and `torch` are installed in the host environment, then confirm the
+  configured policy exists under `$STABLEWM_HOME` or `LEWORLDMODEL_CACHE_DIR`.
 
 ## Release Checklist
 

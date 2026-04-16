@@ -3,7 +3,7 @@
 ## Entry points
 
 ```python
-from worldforge import WorldForge, World, Action
+from worldforge import Action, ActionScoreResult, World, WorldForge
 ```
 
 ## `WorldForge`
@@ -12,7 +12,7 @@ Top-level framework object responsible for:
 
 - provider registration
 - world creation and persistence
-- generation, transfer, reasoning, and embedding helpers
+- generation, transfer, reasoning, embedding, and action-scoring helpers
 - provider profiles and environment diagnostics
 
 Common inspection helpers:
@@ -48,6 +48,37 @@ forge = WorldForge(
 forge.generate("orbiting cube", "mock", duration_seconds=1.0)
 print(metrics.get("mock", "generate").to_dict())
 ```
+
+## Action Scoring
+
+Providers that expose the `score` capability can rank candidate action sequences without claiming
+prediction, generation, or reasoning support. LeWorldModel uses this path because its upstream
+runtime is a JEPA cost model.
+
+```python
+from worldforge import WorldForge
+
+forge = WorldForge()
+result = forge.score_actions(
+    "leworldmodel",
+    info={
+        "pixels": [[[0.0, 0.1, 0.2]]],
+        "goal": [[[0.8, 0.9, 1.0]]],
+        "action": [[[0.0, 0.0, 0.0]]],
+    },
+    action_candidates=[
+        [
+            [[0.0], [0.1], [0.2]],
+            [[0.3], [0.2], [0.1]],
+        ]
+    ],
+)
+
+print(result.best_index, result.best_score)
+```
+
+`ActionScoreResult` validates finite scores, exposes `best_index` and `best_score`, and includes
+`lower_is_better` so callers do not have to infer score direction from provider-specific docs.
 
 ## `World`
 
@@ -121,8 +152,8 @@ WorldForge uses three public exception families for runtime workflows:
 - `WorldStateError`: malformed persisted state or provider-supplied world state that cannot be
   safely restored or applied.
 - `ProviderError`: provider credentials, transport failures, unsupported provider operations,
-  malformed upstream responses, provider-specific input limits, expired artifacts, and invalid
-  downloaded media.
+  malformed upstream responses, provider-specific input limits, expired artifacts, invalid
+  downloaded media, optional dependency failures, and malformed model score outputs.
 
 Provider-facing workflows touched by remote adapters fail before returning partial results:
 
@@ -155,3 +186,6 @@ Important boundary checks:
   optional metadata.
 - Runway task creation, polling, and artifact download responses are validated before constructing
   a returned `VideoClip`.
+- LeWorldModel scoring requires `pixels`, `goal`, and `action` info fields, four-dimensional
+  action candidates, optional `stable_worldmodel` and `torch` runtime dependencies, and finite
+  model scores.

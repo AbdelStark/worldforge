@@ -12,6 +12,10 @@ def test_doctor_and_provider_info_cli(tmp_path, monkeypatch, capsys) -> None:
         "NVIDIA_API_KEY",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
+        "LEWORLDMODEL_POLICY",
+        "LEWM_POLICY",
+        "LEWORLDMODEL_CACHE_DIR",
+        "LEWORLDMODEL_DEVICE",
         "JEPA_MODEL_PATH",
         "GENIE_API_KEY",
     ):

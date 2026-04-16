@@ -7,6 +7,7 @@
 | `mock` | stable | always registered | deterministic local provider used by tests, examples, framework development, and adapter contract checks |
 | `cosmos` | beta | register when `COSMOS_BASE_URL` is set | real HTTP adapter for Cosmos NIM; `NVIDIA_API_KEY` is optional and sent as bearer auth when present |
 | `runway` | beta | register when `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` is set | real HTTP adapter for Runway image-to-video and video-to-video APIs |
+| `leworldmodel` | beta | register when `LEWORLDMODEL_POLICY` or `LEWM_POLICY` is set | real optional adapter for LeWorldModel JEPA cost models through `stable_worldmodel.policy.AutoCostModel` |
 | `jepa` | scaffold | register when `JEPA_MODEL_PATH` is set | credential-gated stub backed by deterministic mock behavior |
 | `genie` | scaffold | register when `GENIE_API_KEY` is set | credential-gated stub backed by deterministic mock behavior |
 
@@ -72,6 +73,11 @@ Providers can declare support for:
 - `embed`
 - `plan`
 - `transfer`
+- `score`
+
+`score` providers return `ActionScoreResult` from `score_actions(...)`. The result contains the
+provider name, one score per candidate, `best_index`, `best_score`, and explicit score direction.
+For `leworldmodel`, scores are costs and lower values are better.
 
 ## Operational notes
 
@@ -80,11 +86,15 @@ Providers can declare support for:
 - `cosmos` and `runway` expose a typed `ProviderRequestPolicy` through `provider_profile()` and CLI JSON output.
 - `cosmos` validates health and generation response payloads before decoding generated video bytes.
 - `runway` validates organization, task creation, task polling, task output, artifact content type, and expired artifact responses before returning a `VideoClip`.
+- `leworldmodel` validates required `pixels`, `goal`, and `action` fields plus four-dimensional
+  action-candidate payloads before invoking the cost model.
 - Health checks, polling, and downloads retry with backoff by default. Create-style POST requests remain single-attempt unless a caller passes a custom policy.
 - `WorldForge(event_handler=...)` and provider constructor `event_handler=` arguments accept a `ProviderEvent` callback for host-side logging and metrics.
 - `worldforge.observability.compose_event_handlers(...)` lets host apps attach multiple sinks without writing a custom dispatcher.
 - `ProviderMetricsSink.request_count` counts emitted request attempts, so retry events increment both `request_count` and `retry_count`.
-- `cosmos` and `runway` emit `retry`, `success`, and `failure` events for HTTP operations. `mock`, `jepa`, and `genie` emit success events for local provider operations.
+- `cosmos` and `runway` emit `retry`, `success`, and `failure` events for HTTP operations.
+  `leworldmodel` emits `success` and `failure` events for local scoring. `mock`, `jepa`, and
+  `genie` emit success events for local provider operations.
 - `cosmos` and `runway` are the only in-repo adapters that currently perform real HTTP requests.
 
 ## Provider-specific limits
@@ -109,3 +119,15 @@ Runway:
   `status` when polling tasks.
 - Succeeded tasks must include at least one non-empty output URL.
 - Downloaded artifacts reject explicit non-video content types such as `text/html`.
+
+LeWorldModel:
+
+- `LEWORLDMODEL_POLICY` or `LEWM_POLICY` must be the checkpoint run name relative to
+  `$STABLEWM_HOME`, without the `_object.ckpt` suffix.
+- `stable_worldmodel` and `torch` are optional host dependencies and are imported only when the
+  provider is configured or used.
+- `info` must include `pixels`, `goal`, and `action` as tensors or rectangular nested numeric
+  sequences with at least three dimensions.
+- `action_candidates` must be a tensor or rectangular nested numeric sequence shaped as
+  `(batch, samples, horizon, action_dim)`.
+- Model output must flatten to at least one finite numeric score.
