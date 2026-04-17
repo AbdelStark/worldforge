@@ -10,4 +10,12 @@ The project is structured as a framework first:
 - framework primitives for state, planning, comparison, evaluation, and benchmarking
 - action-scoring support for cost-model providers such as LeWorldModel
 
-The goal is to provide a clean, public-facing framework surface that fits naturally into the Python ML ecosystem.
+The goal is to provide a clean, public-facing framework surface that fits naturally into the
+Python ML ecosystem.
+
+WorldForge uses a precise definition of "world model": an action-conditioned predictive model
+that helps a caller evaluate, rank, or roll out possible futures from observations, state, actions,
+and goals. That definition is narrower than the current hype cycle, where the same term may refer
+to video generators, 3D scene tools, simulation platforms, or cognitive architectures. Read
+[World Model Taxonomy](./world-model-taxonomy.md) before evaluating provider semantics, then read
+[Architecture](./architecture.md) for the end-to-end runtime pipeline.

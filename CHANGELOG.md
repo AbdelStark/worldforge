@@ -40,6 +40,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added this changelog and linked it from the README.
 - Documented the Provider Hardening RC persistence decision, provider limits, and provider
   workflow failure modes.
+- Added a world-model taxonomy and vision document, plus expanded architecture docs with text and
+  Mermaid diagrams for provider injection, predictive planning, score-based planning, observability,
+  and the LeWorldModel-shaped runtime pipeline.
 
 ## 0.3.0 - 2026-04-08
 

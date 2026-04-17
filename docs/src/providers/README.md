@@ -1,5 +1,9 @@
 # Providers
 
+WorldForge providers are capability adapters, not a claim that every upstream system uses the same
+definition of "world model." See [World Model Taxonomy](../world-model-taxonomy.md) for the project
+definition and [Architecture](../architecture.md) for the end-to-end provider injection pipeline.
+
 ## In-repo providers
 
 | Provider | Status | Auto-registration rule | Notes |
@@ -78,6 +82,11 @@ Providers can declare support for:
 `score` providers return `ActionScoreResult` from `score_actions(...)`. The result contains the
 provider name, one score per candidate, `best_index`, `best_score`, and explicit score direction.
 For `leworldmodel`, scores are costs and lower values are better.
+
+LeWorldModel is the architectural reference provider for score-based planning. It is first class
+because it matches the JEPA planning contract WorldForge is designed to support: observations,
+goals, and action candidates in; ranked futures out. WorldForge therefore models it as `score`
+instead of pretending it can generate video, reason over text, or mutate world state directly.
 
 ## Operational notes
 

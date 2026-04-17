@@ -16,6 +16,18 @@ World-model experiments usually start as notebooks and one-off provider scripts.
 
 WorldForge is for Python developers building world-model tooling, provider adapters, local evaluation flows, and testable prototypes. It is not an end-user application and it does not ship a hosted control plane.
 
+## World Model Definition
+
+WorldForge uses a narrow, planning-oriented definition of world model: an action-conditioned
+predictive model that helps a caller evaluate, rank, or roll out possible futures from
+observations, state, actions, and goals. The term is overloaded in the broader market, where it can
+also mean video generation, spatial 3D reconstruction, simulation infrastructure, or active
+inference systems. WorldForge supports those systems through explicit provider capabilities, but
+LeWorldModel is the reference provider shaping the core score-planning architecture.
+
+Read [docs/src/world-model-taxonomy.md](./docs/src/world-model-taxonomy.md) for the taxonomy and
+[docs/src/architecture.md](./docs/src/architecture.md) for the end-to-end provider pipeline.
+
 ## Status
 
 As of 2026-04-16, WorldForge is **alpha**. It is suitable for local development, contract testing, provider adapter prototyping, deterministic evaluation flows, and single-writer JSON persistence. It is not yet suitable for claiming real-world physics fidelity, running unattended production workloads against third-party providers without host-level operational safeguards, or presenting scaffold adapters as fully implemented integrations. Known limitations are listed in [Current limitations](#current-limitations). User-visible changes are tracked in [CHANGELOG.md](./CHANGELOG.md).
@@ -181,7 +193,7 @@ Operational invariants:
 - local `mock` and scaffold adapters emit structured success events for provider operations
 - the deterministic mock path remains available for local tests and examples
 
-More detail lives in [docs/src/architecture.md](./docs/src/architecture.md), [docs/src/providers/README.md](./docs/src/providers/README.md), and [docs/src/operations.md](./docs/src/operations.md).
+More detail lives in [docs/src/world-model-taxonomy.md](./docs/src/world-model-taxonomy.md), [docs/src/architecture.md](./docs/src/architecture.md), [docs/src/providers/README.md](./docs/src/providers/README.md), and [docs/src/operations.md](./docs/src/operations.md).
 
 ## Provider Matrix
 
