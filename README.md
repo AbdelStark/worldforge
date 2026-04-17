@@ -25,8 +25,10 @@ also mean video generation, spatial 3D reconstruction, simulation infrastructure
 inference systems. WorldForge supports those systems through explicit provider capabilities, but
 LeWorldModel is the reference provider shaping the core score-planning architecture.
 
-Read [docs/src/world-model-taxonomy.md](./docs/src/world-model-taxonomy.md) for the taxonomy and
-[docs/src/architecture.md](./docs/src/architecture.md) for the end-to-end provider pipeline.
+Read [docs/src/world-model-taxonomy.md](./docs/src/world-model-taxonomy.md) for the taxonomy,
+[docs/src/architecture.md](./docs/src/architecture.md) for the end-to-end provider pipeline, and
+[docs/src/provider-authoring-guide.md](./docs/src/provider-authoring-guide.md) before adding a new
+adapter.
 
 ## Status
 
@@ -193,7 +195,7 @@ Operational invariants:
 - local `mock` and scaffold adapters emit structured success events for provider operations
 - the deterministic mock path remains available for local tests and examples
 
-More detail lives in [docs/src/world-model-taxonomy.md](./docs/src/world-model-taxonomy.md), [docs/src/architecture.md](./docs/src/architecture.md), [docs/src/providers/README.md](./docs/src/providers/README.md), and [docs/src/operations.md](./docs/src/operations.md).
+More detail lives in [docs/src/world-model-taxonomy.md](./docs/src/world-model-taxonomy.md), [docs/src/architecture.md](./docs/src/architecture.md), [docs/src/provider-authoring-guide.md](./docs/src/provider-authoring-guide.md), [docs/src/providers/README.md](./docs/src/providers/README.md), and [docs/src/operations.md](./docs/src/operations.md).
 
 ## Provider Matrix
 

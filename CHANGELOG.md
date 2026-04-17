@@ -43,6 +43,8 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a world-model taxonomy and vision document, plus expanded architecture docs with text and
   Mermaid diagrams for provider injection, predictive planning, score-based planning, observability,
   and the LeWorldModel-shaped runtime pipeline.
+- Added a provider authoring guide that turns the taxonomy into capability, validation, testing,
+  observability, and documentation checklists for new adapters.
 
 ## 0.3.0 - 2026-04-08
 

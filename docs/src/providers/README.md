@@ -2,7 +2,8 @@
 
 WorldForge providers are capability adapters, not a claim that every upstream system uses the same
 definition of "world model." See [World Model Taxonomy](../world-model-taxonomy.md) for the project
-definition and [Architecture](../architecture.md) for the end-to-end provider injection pipeline.
+definition, [Architecture](../architecture.md) for the end-to-end provider injection pipeline, and
+[Provider Authoring Guide](../provider-authoring-guide.md) before adding a new adapter.
 
 ## In-repo providers
 

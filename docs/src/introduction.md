@@ -18,4 +18,5 @@ that helps a caller evaluate, rank, or roll out possible futures from observatio
 and goals. That definition is narrower than the current hype cycle, where the same term may refer
 to video generators, 3D scene tools, simulation platforms, or cognitive architectures. Read
 [World Model Taxonomy](./world-model-taxonomy.md) before evaluating provider semantics, then read
-[Architecture](./architecture.md) for the end-to-end runtime pipeline.
+[Architecture](./architecture.md) for the end-to-end runtime pipeline. New adapters should follow
+the [Provider Authoring Guide](./provider-authoring-guide.md).

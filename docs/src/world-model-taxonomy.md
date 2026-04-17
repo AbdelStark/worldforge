@@ -281,6 +281,9 @@ flowchart TD
 
 ## Design Rules for New Providers
 
+Use the full [Provider Authoring Guide](./provider-authoring-guide.md) when turning these rules
+into a new adapter PR.
+
 1. Declare capabilities narrowly.
 2. Document the provider's actual meaning of "world model."
 3. Validate input shape, range, content type, and task-specific limits at the adapter boundary.
