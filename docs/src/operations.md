@@ -94,6 +94,11 @@ include those IDs in surrounding application logs.
 - To smoke-test a real LeWorldModel checkpoint, install the upstream
   `stable-worldmodel[train,env]` runtime in an isolated environment and run
   `python scripts/smoke_leworldmodel.py --stablewm-home /path/to/stablewm-home`.
+- To smoke-test a real GR00T policy server, install or check out NVIDIA Isaac-GR00T, prepare a
+  host-specific observation factory and action translator, then run
+  `python scripts/smoke_gr00t_policy.py --gr00t-root /path/to/Isaac-GR00T --start-server ...`.
+  The script can also connect to an existing server with `GROOT_POLICY_HOST` and
+  `--policy-info-json` or `--observation-module`.
 
 ## Release Checklist
 

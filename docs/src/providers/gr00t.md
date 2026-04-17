@@ -170,6 +170,39 @@ the score provider. If the scorer needs native tensors or latents, pass
 `score_action_candidates=...`; WorldForge only requires that the number of policy candidates and
 native score candidates describe the same candidate set.
 
+## Live Smoke
+
+Use `scripts/smoke_gr00t_policy.py` for a real PolicyClient smoke. The script can either connect
+to a server that is already running or launch the upstream GR00T server from an Isaac-GR00T
+checkout.
+
+Connect to an existing server:
+
+```bash
+GROOT_POLICY_HOST=127.0.0.1 \
+GROOT_POLICY_PORT=5555 \
+uv run python scripts/smoke_gr00t_policy.py \
+  --policy-info-json /path/to/policy_info.json \
+  --translator /path/to/translator.py:translate_actions
+```
+
+Launch the upstream server first, then run the smoke:
+
+```bash
+uv run python scripts/smoke_gr00t_policy.py \
+  --start-server \
+  --gr00t-root /path/to/Isaac-GR00T \
+  --model-path nvidia/GR00T-N1.6-3B \
+  --embodiment-tag GR1 \
+  --policy-info-json /path/to/policy_info.json \
+  --translator /path/to/translator.py:translate_actions
+```
+
+The translator callable receives `(raw_actions, info, provider_info)` and must return either a
+single WorldForge action chunk or multiple candidate chunks. Use `--observation-module
+module_or_file:function` when observations need NumPy arrays or host-side preprocessing that JSON
+cannot represent cleanly.
+
 ## Failure Modes
 
 - Missing `GROOT_POLICY_HOST` leaves the auto-registered provider unavailable.

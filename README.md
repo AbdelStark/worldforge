@@ -226,6 +226,11 @@ Use `scripts/smoke_leworldmodel.py` from an isolated environment with the upstre
 `stable-worldmodel[train,env]` runtime to download the public `quentinll/lewm-pusht` weights,
 prepare the object checkpoint, and run a real `score_actions(...)` smoke.
 
+GR00T is a host-owned live policy integration. Run `scripts/smoke_gr00t_policy.py` from an
+environment that can import Isaac-GR00T and reach a policy server. The script can launch
+`gr00t/eval/run_gr00t_server.py` from a local Isaac-GR00T checkout with `--start-server`, but the
+host must supply real policy observations and an embodiment-specific action translator.
+
 ## Development
 
 Primary commands:

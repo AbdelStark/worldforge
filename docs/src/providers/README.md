@@ -177,3 +177,6 @@ GR00T:
   `language`.
 - A host-supplied `action_translator` maps GR00T's embodiment-specific raw actions to WorldForge
   `Action` objects.
+- `scripts/smoke_gr00t_policy.py` can connect to an existing policy server or launch
+  `gr00t/eval/run_gr00t_server.py` from a local Isaac-GR00T checkout for a live PolicyClient
+  smoke.
