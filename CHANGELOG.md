@@ -9,6 +9,25 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added `.env.example` documenting every provider environment variable recognized by
+  WorldForge (`COSMOS_BASE_URL`, `NVIDIA_API_KEY`, `RUNWAYML_API_SECRET` and the legacy
+  `RUNWAY_API_SECRET` alias, `RUNWAYML_BASE_URL`, `LEWORLDMODEL_POLICY` and the legacy
+  `LEWM_POLICY` alias, `LEWORLDMODEL_CACHE_DIR`, `LEWORLDMODEL_DEVICE`, the full
+  `GROOT_POLICY_*` and `GROOT_EMBODIMENT_TAG` set, the full `LEROBOT_*` set including the
+  legacy `LEROBOT_POLICY` alias, the `JEPA_WMS_*` candidate variables, and the scaffold
+  `JEPA_MODEL_PATH` and `GENIE_API_KEY`). Each variable is annotated with whether it is
+  required for auto-registration or strictly optional, closing the gap between the README's
+  `cp .env.example .env` onboarding step and the repository contents.
+
+### Fixed
+
+- Tracked `.env.example` in the repository by adding an explicit `!.env.example` exception
+  to `.gitignore`; the general `.env.*` glob was silently excluding the onboarding template.
+- Aligned `make lint` and `make format` with CI, `README.md`, and `AGENTS.md` by adding
+  `scripts/` to the `ruff check` and `ruff format` invocations and to the `clean` sweep.
+  The previous Makefile skipped scripts, so local `make lint` could pass while CI failed on
+  changes under `scripts/`.
+
 - Added `lerobot` as a first-class optional policy provider for Hugging Face LeRobot
   pretrained policies (ACT, Diffusion, TDMPC, VQBet, Pi0, Pi0Fast, SAC, SmolVLA). The
   adapter lazily imports `lerobot.policies.pretrained.PreTrainedPolicy`, supports injectable

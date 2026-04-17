@@ -6,11 +6,11 @@ sync:
 	$(UV) sync --group dev
 
 format:
-	$(UV) run ruff format src tests examples
+	$(UV) run ruff format src tests examples scripts
 
 lint:
-	$(UV) run ruff check src tests examples
-	$(UV) run ruff format --check src tests examples
+	$(UV) run ruff check src tests examples scripts
+	$(UV) run ruff format --check src tests examples scripts
 
 test:
 	$(UV) run pytest
@@ -31,4 +31,4 @@ check: lint test test-package
 
 clean:
 	rm -rf build dist .pytest_cache .ruff_cache .worldforge .coverage
-	find src tests examples -name '__pycache__' -type d -prune -exec rm -rf {} +
+	find src tests examples scripts -name '__pycache__' -type d -prune -exec rm -rf {} +

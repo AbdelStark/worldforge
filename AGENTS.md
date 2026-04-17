@@ -167,6 +167,11 @@ rm -f "$tmp_req"
   `jepa-wms` candidate only. They do not make `JEPAWMSProvider` available through `WorldForge`;
   direct tests must inject `runtime=` or use `JEPAWMSProvider.from_torch_hub(...)`.
 - `RUNWAYML_API_SECRET` is preferred, but `RUNWAY_API_SECRET` remains supported as a legacy alias.
+- `.env.example` is tracked via an explicit `!.env.example` rule in `.gitignore` (the general
+  `.env.*` pattern would otherwise exclude it). Keep both the template and the exception in sync
+  when adding new provider environment variables.
+- `make lint` and `make format` run against `src tests examples scripts` to match CI and the
+  commands documented in `README.md`. Do not drop `scripts` from either target.
 
 ## Current State
 
