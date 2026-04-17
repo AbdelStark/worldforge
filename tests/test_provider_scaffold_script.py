@@ -47,13 +47,16 @@ def test_scaffold_provider_script_generates_safe_adapter_files(tmp_path: Path) -
 
     provider_source = provider_path.read_text(encoding="utf-8")
     assert "class AcmeWMProvider(BaseProvider)" in provider_source
-    assert "capabilities=ProviderCapabilities()" in provider_source
+    assert "capabilities=ProviderCapabilities(predict=False)" in provider_source
     assert "planned_capabilities = ('score', 'generate')" in provider_source
     assert 'ACME_WM_ENV_VAR = "ACME_WM_API_KEY"' in provider_source
+    assert "healthy=False" in provider_source
+    assert "no runtime adapter implemented" in provider_source
 
     test_source = test_path.read_text(encoding="utf-8")
     assert "score_actions_is_not_implemented_yet" in test_source
     assert "generate_is_not_implemented_yet" in test_source
+    assert "profile.supported_tasks == []" in test_source
 
     docs_source = docs_path.read_text(encoding="utf-8")
     assert "Taxonomy category: JEPA latent predictive world model" in docs_source

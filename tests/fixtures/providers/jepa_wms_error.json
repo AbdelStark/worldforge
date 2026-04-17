@@ -1,0 +1,11 @@
+{
+  "error": {
+    "message": "Replace this scaffold fixture with a real malformed upstream response.",
+    "type": "replace-with-real-provider-error"
+  },
+  "planned_capabilities": [
+    "score"
+  ],
+  "provider": "jepa-wms",
+  "taxonomy_category": "JEPA latent predictive world model"
+}

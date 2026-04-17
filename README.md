@@ -208,6 +208,10 @@ More detail lives in [docs/src/world-model-taxonomy.md](./docs/src/world-model-t
 | `jepa` | scaffold | auto-registers when `JEPA_MODEL_PATH` is set | credential-gated stub backed by deterministic mock behavior |
 | `genie` | scaffold | auto-registers when `GENIE_API_KEY` is set | credential-gated stub backed by deterministic mock behavior |
 
+Provider candidate scaffolds are kept outside package exports and auto-registration until they have
+a real runtime adapter. The current candidate is [`jepa-wms`](./docs/src/providers/jepa-wms.md), a
+generated local scaffold for future `facebookresearch/jepa-wms` score-provider work.
+
 LeWorldModel is a local optional integration. Install the upstream runtime in the host
 environment, place checkpoints under `$STABLEWM_HOME` or set `LEWORLDMODEL_CACHE_DIR`, then set
 `LEWORLDMODEL_POLICY` to the checkpoint run name without the `_object.ckpt` suffix, for example

@@ -170,7 +170,7 @@ def _provider_source(options: ScaffoldOptions) -> str:
     if "score" in options.planned_capabilities:
         model_imports.extend(["ActionScoreResult", "JSONDict"])
 
-    deduped_model_imports = list(dict.fromkeys(model_imports))
+    deduped_model_imports = sorted(dict.fromkeys(model_imports))
     base_imports = ["BaseProvider", "ProviderError"]
     if "predict" in options.planned_capabilities:
         base_imports.insert(1, "PredictionPayload")
@@ -205,7 +205,7 @@ def _provider_source(options: ScaffoldOptions) -> str:
         ]
     )
     if options.env_var:
-        lines.extend([f'{env_constant} = "{options.env_var}"', ""])
+        lines.extend([f'{env_constant} = "{options.env_var}"', "", ""])
 
     lines.extend(
         [
@@ -228,7 +228,7 @@ def _provider_source(options: ScaffoldOptions) -> str:
             "    ) -> None:",
             "        super().__init__(",
             "            name=name,",
-            "            capabilities=ProviderCapabilities(),",
+            "            capabilities=ProviderCapabilities(predict=False),",
             f"            is_local={options.is_local!r},",
             f'            description="{names.display} provider scaffold.",',
             '            package="worldforge",',
@@ -280,9 +280,9 @@ def _provider_source(options: ScaffoldOptions) -> str:
         [
             "        return ProviderHealth(",
             "            name=self.name,",
-            "            healthy=True,",
+            "            healthy=False,",
             "            latency_ms=max(0.1, (perf_counter() - started) * 1000),",
-            '            details="scaffold generated; implement provider before production use",',
+            '            details="scaffold generated; no runtime adapter implemented",',
             "        )",
             "",
             stubs,
@@ -319,7 +319,7 @@ def _test_source(options: ScaffoldOptions) -> str:
             "",
             f'    assert profile.name == "{names.slug}"',
             '    assert profile.implementation_status == "scaffold"',
-            "    assert profile.capabilities.supported_tasks() == []",
+            "    assert profile.supported_tasks == []",
             f"    assert provider.planned_capabilities == {options.planned_capabilities!r}",
             f"    assert provider.taxonomy_category == {options.taxonomy!r}",
         ]

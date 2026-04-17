@@ -16,6 +16,16 @@ definition, [Architecture](../architecture.md) for the end-to-end provider injec
 | `jepa` | scaffold | register when `JEPA_MODEL_PATH` is set | credential-gated stub backed by deterministic mock behavior |
 | `genie` | scaffold | register when `GENIE_API_KEY` is set | credential-gated stub backed by deterministic mock behavior |
 
+## Provider candidate scaffolds
+
+Candidate scaffolds are source files kept outside package exports and auto-registration until they
+have a real runtime adapter, typed parser coverage, provider-specific limits, and API docs. They
+exist to make future integrations explicit without claiming runtime support.
+
+| Provider | Status | Registration rule | Notes |
+| --- | --- | --- | --- |
+| [`jepa-wms`](./jepa-wms.md) | scaffold candidate | none; not exported or registered | generated local scaffold for a future `facebookresearch/jepa-wms` score provider following the LeWorldModel-shaped planning contract |
+
 ## Provider profiles
 
 Every provider exposes a profile describing:

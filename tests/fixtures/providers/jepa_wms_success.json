@@ -1,0 +1,8 @@
+{
+  "planned_capabilities": [
+    "score"
+  ],
+  "provider": "jepa-wms",
+  "status": "replace-with-real-success-payload",
+  "taxonomy_category": "JEPA latent predictive world model"
+}
