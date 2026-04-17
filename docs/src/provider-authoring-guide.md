@@ -13,6 +13,34 @@ Related docs:
 - [Providers](./providers/README.md)
 - [Python API](./api/python.md)
 
+## Scaffold Generator
+
+Use the scaffold generator to create the first draft of a provider adapter, fixture files, test
+file, and provider docs stub:
+
+```bash
+uv run python scripts/scaffold_provider.py "Acme WM" \
+  --taxonomy "JEPA latent predictive world model" \
+  --planned-capability score \
+  --remote \
+  --env-var ACME_WM_API_KEY
+```
+
+Generated files:
+
+```text
+src/worldforge/providers/acme_wm.py
+tests/test_acme_wm_provider.py
+tests/fixtures/providers/acme_wm_success.json
+tests/fixtures/providers/acme_wm_error.json
+docs/src/providers/acme-wm.md
+```
+
+The generated provider is safe by default: it starts as `implementation_status="scaffold"`,
+advertises no public capabilities, and raises `ProviderError` from generated method stubs. Enable
+capabilities only after the adapter calls the real upstream runtime, validates inputs and outputs,
+and has fixture-driven tests for every documented failure mode.
+
 ## Adapter Decision Tree
 
 Start with the provider's real contract, not its marketing category.

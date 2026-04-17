@@ -232,6 +232,17 @@ bash scripts/test_package.sh
 
 Package validation builds a wheel in an isolated virtual environment and reruns the root test suite against the installed artifact.
 
+Provider scaffolding:
+
+```bash
+uv run python scripts/scaffold_provider.py "Acme WM" \
+  --taxonomy "JEPA latent predictive world model" \
+  --planned-capability score
+```
+
+The scaffold starts safe: it creates adapter, fixture, test, and docs-stub files without
+advertising public capabilities until the implementation is complete.
+
 Contribution guidance:
 
 - keep the public API typed and Pythonic

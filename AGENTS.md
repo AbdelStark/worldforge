@@ -31,6 +31,8 @@ evaluation harnesses, and testable prototypes.
 - `src/worldforge/observability.py`: composable `ProviderEvent` sinks for JSON logging, in-memory
   recording, and metrics aggregation.
 - `src/worldforge/testing/`: reusable adapter contract helpers.
+- `scripts/scaffold_provider.py`: safe scaffold generator for new provider adapter files,
+  fixture placeholders, tests, and docs stubs.
 
 ## Tech Stack
 
@@ -54,6 +56,14 @@ uv run ruff format --check src tests examples scripts
 uv run pytest
 uv run pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
 bash scripts/test_package.sh
+```
+
+Generate a provider scaffold:
+
+```bash
+uv run python scripts/scaffold_provider.py "Acme WM" \
+  --taxonomy "JEPA latent predictive world model" \
+  --planned-capability score
 ```
 
 Local security audit:

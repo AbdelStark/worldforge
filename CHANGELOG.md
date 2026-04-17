@@ -14,6 +14,8 @@ releases may still include breaking changes when the public API needs to tighten
   input validation, score-output validation, provider profile metadata, and fixture-driven tests.
 - Added score-based planning support so `World.plan(...)` can select candidate action plans from
   `ActionScoreResult.best_index`, plus a real-checkpoint LeWorldModel smoke script.
+- Added `scripts/scaffold_provider.py` to generate safe provider adapter scaffolds, fixture
+  placeholders, generated scaffold tests, and provider docs stubs from planned capabilities.
 
 ### Security
 
