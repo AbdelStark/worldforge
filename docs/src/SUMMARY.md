@@ -5,6 +5,8 @@
 - [World Model Taxonomy](./world-model-taxonomy.md)
 - [Architecture](./architecture.md)
 - [Providers](./providers/README.md)
+  - [GR00T](./providers/gr00t.md)
+  - [JEPA-WMS](./providers/jepa-wms.md)
 - [Provider Authoring Guide](./provider-authoring-guide.md)
 - [Python API](./api/python.md)
 - [Evaluation](./evaluation.md)

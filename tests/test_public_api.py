@@ -3,11 +3,12 @@ from __future__ import annotations
 import worldforge
 import worldforge.observability as observability
 from worldforge.evaluation import EvaluationSuite
-from worldforge.providers import MockProvider
+from worldforge.providers import GrootPolicyClientProvider, MockProvider
 
 
 def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.__version__
+    assert worldforge.ActionPolicyResult is not None
     assert worldforge.ActionScoreResult is not None
     assert worldforge.BenchmarkInputs is not None
     assert worldforge.BenchmarkReport is not None
@@ -29,6 +30,7 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.PlanningEvaluationSuite is not None
     assert worldforge.ReasoningEvaluationSuite is not None
     assert MockProvider is not None
+    assert GrootPolicyClientProvider is not None
     assert observability.JsonLoggerSink is not None
     assert observability.InMemoryRecorderSink is not None
     assert observability.ProviderMetricsSink is not None

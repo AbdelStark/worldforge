@@ -51,6 +51,9 @@ New upstream provider
   |-- Can it rank action candidates from observations/goals?
   |     `-- expose score_actions(...) -> ActionScoreResult
   |
+  |-- Can it choose robot action chunks from observations/instructions?
+  |     `-- expose select_actions(...) -> ActionPolicyResult
+  |
   |-- Can it roll a WorldForge state forward from an Action?
   |     `-- expose predict(...) -> PredictionPayload
   |
@@ -77,7 +80,9 @@ flowchart TD
     Upstream[New upstream provider]
     Upstream --> Score{Ranks action candidates?}
     Score -- yes --> ScoreApi[score_actions -> ActionScoreResult]
-    Score -- no --> Predict{Rolls state forward?}
+    Score -- no --> Policy{Selects robot action chunks?}
+    Policy -- yes --> PolicyApi[select_actions -> ActionPolicyResult]
+    Policy -- no --> Predict{Rolls state forward?}
     Predict -- yes --> PredictApi[predict -> PredictionPayload]
     Predict -- no --> Generate{Generates video artifact?}
     Generate -- yes --> GenerateApi[generate -> VideoClip]
@@ -101,6 +106,7 @@ Every provider doc and profile should identify the provider's taxonomy category.
 | Generative video simulator | `generate`, maybe future action-conditioned `predict` | Do not imply controllable planning unless the API supports it. |
 | Spatial / 3D world model | future scene or asset surfaces | Keep out of core until typed scene contracts exist. |
 | Physical AI infrastructure | `generate`, `transfer`, future data/eval adapters | Model each stable API as one capability. |
+| Embodied policy / VLA action model | `policy`, maybe paired with a score provider | Treat as an actor. Do not claim it predicts futures. |
 | Active inference / structured generative model | future belief, uncertainty, or policy outputs | Preserve beliefs and uncertainty explicitly. |
 | Deterministic local surrogate | any tested local subset | Make it obvious that it is a surrogate. |
 
@@ -124,6 +130,7 @@ capabilities.transfer -> transfer(clip, width, height, fps, prompt, options)
 capabilities.reason   -> reason(query, world_state)
 capabilities.embed    -> embed(text)
 capabilities.score    -> score_actions(info, action_candidates)
+capabilities.policy   -> select_actions(info)
 capabilities.plan     -> currently reserved for providers that implement planning directly
 ```
 
@@ -133,6 +140,8 @@ Rules:
 - [ ] Do not set `generate=True` unless the adapter returns a validated `VideoClip`.
 - [ ] Do not set `score=True` unless the adapter returns `ActionScoreResult` with finite scores
       and a valid `best_index`.
+- [ ] Do not set `policy=True` unless the adapter returns `ActionPolicyResult` with at least one
+      executable WorldForge `Action`.
 - [ ] Do not set `reason=True` for models that only return unstructured logs, captions, or
       provider diagnostics.
 - [ ] Do not set `plan=True` just because a provider can score candidates. Score-based planning is
@@ -171,6 +180,7 @@ Questions to answer:
 - [ ] What are the provider-specific limits: duration, resolution, action shape, token budget,
       file size, content type, polling limits, or model context?
 - [ ] What does a lower or higher score mean?
+- [ ] If this is a policy, who owns embodiment-specific action translation?
 - [ ] What does the provider return when output is partial, expired, missing, malformed, or
       physically implausible?
 
@@ -254,6 +264,7 @@ Caller input:
 - [ ] Existing local file paths before network upload.
 - [ ] Rectangular nested numeric arrays when accepting tensor-like JSON.
 - [ ] Explicit action tensor rank and shape for score providers.
+- [ ] Explicit observation modalities and action translator requirements for policy providers.
 
 Upstream response:
 
@@ -268,6 +279,8 @@ Upstream response:
 - [ ] Unsupported content types fail before returning `VideoClip`.
 - [ ] Base64 media fields decode successfully.
 - [ ] Scores flatten to a non-empty finite list.
+- [ ] Policy action chunks preserve raw provider output and translate to executable
+      WorldForge `Action` objects.
 
 State mutation:
 
@@ -312,7 +325,40 @@ Do not:
 - [ ] Do not hide score direction in prose only.
 - [ ] Do not infer raw image transforms unless the adapter actually implements and tests them.
 
-## Step 7: Predictive Provider Checklist
+## Step 7: Embodied Policy Provider Checklist
+
+Use this checklist for VLA and robot policy providers such as NVIDIA Isaac GR00T.
+
+```text
+host sensors / simulation state
+  -> policy observation dict
+  -> provider.select_actions(...)
+  -> ActionPolicyResult(actions, raw_actions, action_candidates)
+  -> optional score provider filters candidates
+  -> Plan(actions=selected candidate)
+```
+
+Required behavior:
+
+- [ ] Expose `policy=True` and no unrelated capabilities unless separately implemented.
+- [ ] Keep GR00T, CUDA, checkpoints, TensorRT, and robot runtime dependencies host-owned.
+- [ ] Import optional runtime packages lazily or accept an injected client/runtime.
+- [ ] `info["observation"]` names the modalities it contains, such as `video`, `state`, and
+      `language`.
+- [ ] Raw provider actions are preserved in `ActionPolicyResult.raw_actions` for debugging.
+- [ ] Embodiment tags, action horizons, and provider-native info are preserved in metadata.
+- [ ] Embodiment-specific action translation is explicit. Do not guess robot action semantics.
+- [ ] Tests cover missing translator, malformed observations, malformed provider output, policy
+      plan selection, and policy+score plan selection.
+
+Do not:
+
+- [ ] Do not call a policy a world model just because it is trained for embodied control.
+- [ ] Do not set `predict=True` unless the provider returns a validated future WorldForge state.
+- [ ] Do not set `score=True` unless it ranks candidates with explicit score semantics.
+- [ ] Do not hide real-robot safety checks inside WorldForge. Safety interlocks are host-owned.
+
+## Step 8: Predictive Provider Checklist
 
 Use this checklist for providers that roll a world state forward.
 
@@ -325,7 +371,7 @@ Use this checklist for providers that roll a world state forward.
 - [ ] Tests cover malformed world state, missing scene objects, impossible actions if applicable,
       non-finite metrics, and provider failure propagation.
 
-## Step 8: Generative and Transfer Provider Checklist
+## Step 9: Generative and Transfer Provider Checklist
 
 Use this checklist for video or artifact providers.
 
@@ -340,7 +386,7 @@ Use this checklist for video or artifact providers.
 - [ ] Tests cover bad content types, expired artifacts, missing outputs, task failures, malformed
       JSON, timeout, retry, and provider-specific limits.
 
-## Step 9: Observability and Failure Semantics
+## Step 10: Observability and Failure Semantics
 
 Every real provider should emit useful `ProviderEvent` records.
 
@@ -362,7 +408,7 @@ Checklist:
       "request failed."
 - [ ] Unexpected exceptions are wrapped in `ProviderError` with context.
 
-## Step 10: Test Requirements
+## Step 11: Test Requirements
 
 Provider tests should be fixture-driven and contract-driven.
 
@@ -406,7 +452,7 @@ Local model providers:
 - [ ] A real-model smoke script is optional, documented, and not part of the default unit suite.
 - [ ] Checkpoint paths and cache directories are host-owned.
 
-## Step 11: Documentation Requirements
+## Step 12: Documentation Requirements
 
 A provider PR is incomplete without docs.
 

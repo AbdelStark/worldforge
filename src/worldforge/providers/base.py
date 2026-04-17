@@ -9,6 +9,7 @@ from time import perf_counter
 
 from worldforge.models import (
     Action,
+    ActionPolicyResult,
     ActionScoreResult,
     EmbeddingResult,
     GenerationOptions,
@@ -192,6 +193,9 @@ class BaseProvider:
 
     def score_actions(self, *, info: JSONDict, action_candidates: object) -> ActionScoreResult:
         raise ProviderError(f"Provider '{self.name}' does not implement score_actions().")
+
+    def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
+        raise ProviderError(f"Provider '{self.name}' does not implement select_actions().")
 
 
 class RemoteProvider(BaseProvider):

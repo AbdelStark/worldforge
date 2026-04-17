@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 
-CAPABILITIES = ("predict", "generate", "transfer", "reason", "embed", "score")
+CAPABILITIES = ("predict", "generate", "transfer", "reason", "embed", "score", "policy")
 DEFAULT_TAXONOMY = "unclassified provider scaffold"
 
 
@@ -146,6 +146,15 @@ def _capability_stubs(names: ProviderNames, planned_capabilities: tuple[str, ...
         )
 """
         )
+    if "policy" in planned_capabilities:
+        stubs.append(
+            """
+    def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
+        raise ProviderError(
+            f"Provider '{self.name}' select_actions() scaffold is not implemented yet."
+        )
+"""
+        )
 
     if not stubs:
         raise ValueError(f"{names.slug} scaffold requires at least one planned capability")
@@ -169,6 +178,8 @@ def _provider_source(options: ScaffoldOptions) -> str:
         model_imports.append("EmbeddingResult")
     if "score" in options.planned_capabilities:
         model_imports.extend(["ActionScoreResult", "JSONDict"])
+    if "policy" in options.planned_capabilities:
+        model_imports.extend(["ActionPolicyResult", "JSONDict"])
 
     deduped_model_imports = sorted(dict.fromkeys(model_imports))
     base_imports = ["BaseProvider", "ProviderError"]
@@ -417,6 +428,18 @@ def _test_source(options: ScaffoldOptions) -> str:
                 "",
                 '    with pytest.raises(ProviderError, match="not implemented"):',
                 "        provider.score_actions(info={}, action_candidates=[])",
+            ]
+        )
+    if "policy" in options.planned_capabilities:
+        lines.extend(
+            [
+                "",
+                "",
+                f"def test_{names.snake}_select_actions_is_not_implemented_yet() -> None:",
+                f"    provider = {names.class_name}()",
+                "",
+                '    with pytest.raises(ProviderError, match="not implemented"):',
+                "        provider.select_actions(info={})",
             ]
         )
     return "\n".join(lines).rstrip() + "\n"

@@ -23,6 +23,8 @@ evaluation harnesses, and testable prototypes.
   retry, polling, download policies, and response parsers.
 - `src/worldforge/providers/leworldmodel.py`: real optional LeWorldModel JEPA cost-model adapter
   for scoring action candidates through `stable_worldmodel.policy.AutoCostModel`.
+- `src/worldforge/providers/gr00t.py`: experimental host-owned NVIDIA Isaac GR00T PolicyClient
+  adapter for selecting embodied action chunks through the `policy` capability.
 - `src/worldforge/providers/jepa_wms.py`: candidate contract scaffold for
   `facebookresearch/jepa-wms` score-provider work; it supports injected fake/runtime scoring and a
   host-owned torch-hub runtime but is intentionally not exported or registered.
@@ -44,6 +46,8 @@ evaluation harnesses, and testable prototypes.
 - Runtime dependency: `httpx`.
 - Optional LeWorldModel runtime: `stable-worldmodel[env]` and `torch`, supplied by the host
   environment only when using `leworldmodel`.
+- Optional GR00T runtime: `gr00t.policy.server_client.PolicyClient`, CUDA/TensorRT/checkpoints,
+  and robot-specific dependencies supplied by the host environment only when using `gr00t`.
 - Development tools: `pytest`, `pytest-cov`, `ruff`, `pip-audit` in CI.
 - License: MIT.
 
@@ -85,6 +89,8 @@ rm -f "$tmp_req"
 - Provider capabilities must only advertise operations that are implemented end to end.
 - `leworldmodel` exposes `score`, not `predict`, `generate`, or `reason`; do not fake those
   capabilities around a cost model.
+- `gr00t` exposes `policy`, not `predict`, `score`, or `generate`; do not call an embodied policy
+  a predictive world model.
 - Remote create/mutation requests are single-attempt by default; health, polling, and downloads
   use retry/backoff policy.
 - Keep public API models typed and serializable. Validate boundary values before persistence or
@@ -103,6 +109,8 @@ rm -f "$tmp_req"
   PyTorch plus JEPA-WMS dependencies host-owned.
 - Do not add `stable_worldmodel`, `torch`, checkpoint archives, or downloaded datasets to the base
   dependency set or repository. Keep LeWorldModel optional and host-owned.
+- Do not add Isaac GR00T, CUDA, TensorRT, robot checkpoints, or robot controller dependencies to
+  the base dependency set. Keep GR00T host-owned and require explicit action translators.
 - Do not auto-register optional providers unless their required environment variables are present.
 - Do not add hardcoded credentials, test secrets, or environment-specific endpoints.
 - Do not weaken coverage gates or remove package validation from CI.
@@ -124,6 +132,10 @@ rm -f "$tmp_req"
 - LeWorldModel expects preprocessed pixel/action/goal tensors or rectangular nested numeric
   arrays shaped for the configured checkpoint. WorldForge validates the adapter boundary but does
   not infer task-specific image transforms.
+- GR00T returns embodiment-specific raw action arrays. WorldForge preserves those raw actions but
+  requires a host-supplied `action_translator` before it can return executable `Action` objects.
+- Policy+score planning uses `policy_provider="gr00t"` plus `score_provider="leworldmodel"` or
+  another score provider; score tensors remain host-preprocessed and provider-native.
 - `scripts/smoke_leworldmodel.py` is an optional real-checkpoint smoke. Run it from an isolated
   Python 3.10 environment with the upstream GitHub `stable-worldmodel[train,env]` runtime; do not
   add those dependencies to WorldForge's base package.

@@ -24,6 +24,7 @@ worldforge/
 |   |   |-- mock.py        # deterministic reference provider
 |   |   |-- leworldmodel.py# local JEPA cost-model adapter
 |   |   |-- cosmos.py      # HTTP video generation adapter
+|   |   |-- gr00t.py       # host-owned embodied policy client adapter
 |   |   |-- runway.py      # HTTP video generation/transfer adapter
 |   |   `-- remote.py      # scaffold adapters for JEPA and Genie
 |   |-- observability.py   # ProviderEvent sinks
@@ -70,6 +71,7 @@ Host application
 | Prediction        |
 | VideoClip         |
 | ActionScoreResult |
+| ActionPolicyResult|
 | ReasoningResult   |
 +-------------------+
 ```
@@ -82,8 +84,8 @@ flowchart TD
     Forge[WorldForge facade\nregistry, diagnostics, persistence]
     World[World\nstate, history, planning]
     Provider[Provider adapter\ncapability contract]
-    Upstream[Upstream runtime or API\nLeWM, Cosmos, Runway, mock]
-    Models[Typed public models\nPrediction, VideoClip, ActionScoreResult]
+    Upstream[Upstream runtime or API\nLeWM, GR00T, Cosmos, Runway, mock]
+    Models[Typed public models\nPrediction, VideoClip, ActionScoreResult, ActionPolicyResult]
     Obs[ProviderEvent sinks\nlogs, recorder, metrics]
     Store[Local JSON state]
 
@@ -104,7 +106,7 @@ flowchart TD
 
 - `WorldForge`: top-level object for provider registration, diagnostics, persistence helpers, and
   provider-wide operations such as `generate(...)`, `transfer(...)`, `reason(...)`, `embed(...)`,
-  and `score_actions(...)`.
+  `score_actions(...)`, and `select_actions(...)`.
 - `World`: mutable world state with scene objects, history, prediction, comparison, planning, plan
   execution, and evaluation entry points.
 - `Prediction`, `Plan`, `PlanExecution`, and `Comparison`: workflow-level result objects.
@@ -112,7 +114,8 @@ flowchart TD
 `models.py`
 
 - Public data contracts such as `Action`, `SceneObject`, `StructuredGoal`, `VideoClip`,
-  `ProviderProfile`, `ProviderHealth`, `ProviderEvent`, and `ActionScoreResult`.
+  `ProviderProfile`, `ProviderHealth`, `ProviderEvent`, `ActionScoreResult`, and
+  `ActionPolicyResult`.
 - Validation helpers and public framework errors: `WorldForgeError` and `WorldStateError`.
 
 `providers/base.py`
@@ -132,6 +135,12 @@ flowchart TD
 
 - Real HTTP adapters with typed request policy, parser boundaries, retry events, and artifact
   validation.
+
+`providers/gr00t.py`
+
+- Experimental host-owned adapter for NVIDIA Isaac GR00T PolicyClient inference.
+- Exposes only `policy=True`.
+- Requires an explicit action translator because robot actions are embodiment-specific.
 
 `observability.py`
 
@@ -173,12 +182,13 @@ Expanded:
    - world.predict(...) requires a provider with predict=True
    - forge.generate(...) requires generate=True
    - forge.transfer(...) requires transfer=True
-   - world.plan(...) can use predictive planning or score-based planning
+   - forge.select_actions(...) requires policy=True
+   - world.plan(...) can use predictive, score-based, policy, or policy+score planning
    - world.evaluate(...) and benchmark harnesses select operations by capability
 
 4. Provider boundary
-   - provider receives a JSON world snapshot, media request, query, embedding request, or score
-     payload
+   - provider receives a JSON world snapshot, media request, query, embedding request, score
+     payload, or policy observation
    - adapter validates local inputs before network/model calls when possible
    - provider emits ProviderEvent records for success, failure, and retries where supported
 
@@ -186,6 +196,7 @@ Expanded:
    - PredictionPayload updates world state only after validation
    - VideoClip validates media metadata and bytes/source paths
    - ActionScoreResult validates finite scores and an in-range best_index
+   - ActionPolicyResult validates executable actions and JSON-compatible raw actions
    - ProviderError surfaces provider/runtime failures with context
 
 6. Host-owned operation
@@ -206,6 +217,7 @@ WorldForge(auto_register_remote=True)
   |-- cosmos            if COSMOS_BASE_URL is set
   |-- runway            if RUNWAYML_API_SECRET or RUNWAY_API_SECRET is set
   |-- leworldmodel      if LEWORLDMODEL_POLICY or LEWM_POLICY is set
+  |-- gr00t             if GROOT_POLICY_HOST is set
   |-- jepa              if JEPA_MODEL_PATH is set
   `-- genie             if GENIE_API_KEY is set
 ```
@@ -293,8 +305,8 @@ sequenceDiagram
 
 ## Score-Based Planning Pipeline
 
-Score-based planning is the LeWorldModel-shaped path. It separates model-native tensors from
-WorldForge-native actions.
+Score-based planning is the LeWorldModel-shaped path. It keeps WorldForge-native actions separate
+from optional model-native scorer payloads.
 
 ```text
 Host owns task preprocessing
@@ -304,9 +316,9 @@ Host owns task preprocessing
   |     |-- goal      task-shaped goal observation
   |     `-- action    task-shaped action history
   |
-  |-- score_action_candidates
-  |     `-- tensor or nested numeric array shaped:
-  |         (batch, samples, horizon, action_dim)
+  |-- score_action_candidates (optional)
+  |     |-- omitted: WorldForge serializes candidate_actions with Action.to_dict()
+  |     `-- provided: tensor or nested numeric array shaped for the score provider
   |
   `-- candidate_actions
         `-- WorldForge Action sequences, one sequence per scored candidate
@@ -379,6 +391,62 @@ print(plan.metadata["score_result"]["best_index"])
 execution = world.execute_plan(plan)
 ```
 
+## Policy Planning Pipeline
+
+Policy planning is the GR00T-shaped path. It treats a VLA policy as an actor that proposes
+executable action chunks from observations and instructions.
+
+```text
+policy_info
+  |
+  |-- observation
+  |     |-- video       camera streams or image history
+  |     |-- state       proprioception or environment state
+  |     `-- language    task instruction
+  |
+  |-- embodiment_tag
+  `-- action_horizon
+
+World.plan(..., provider="gr00t", policy_info=...)
+  |
+  |-- require provider.capabilities.policy
+  |-- call provider.select_actions(info)
+  |-- receive ActionPolicyResult(actions, raw_actions, action_candidates)
+  |-- return Plan(planning_mode="policy", predicted_states=[])
+```
+
+Policy plus score planning composes an actor with a world-model scorer:
+
+```text
+GR00T policy provider
+  -> proposes one or more candidate action chunks
+
+LeWorldModel / JEPA-WMS score provider
+  -> scores serialized policy candidates or a host-supplied model-native candidate tensor
+
+WorldForge
+  -> selects policy_candidates[score_result.best_index]
+```
+
+Concrete shape:
+
+```python
+plan = world.plan(
+    goal="choose the lowest-cost policy candidate",
+    policy_provider="gr00t",
+    score_provider="leworldmodel",
+    policy_info=policy_info,
+    score_info=lewm_info,
+    execution_provider="mock",
+)
+```
+
+WorldForge passes serialized policy candidates to the score provider by default. Pass
+`score_action_candidates=...` when the scorer requires native tensors or latents. The host still
+owns the mapping between GR00T raw actions, WorldForge `Action` objects, and score-provider native
+payloads. WorldForge validates that each provider returns a typed result and that the selected
+candidate index is in range.
+
 ## Provider Capability Surface
 
 WorldForge does not ask "is this a world model?" at runtime. It asks which operations a provider
@@ -391,7 +459,8 @@ BaseProvider
 |-- transfer(clip, width, height, fps, prompt, options) -> VideoClip
 |-- reason(query, world_state) -> ReasoningResult
 |-- embed(text) -> EmbeddingResult
-`-- score_actions(info, action_candidates) -> ActionScoreResult
+|-- score_actions(info, action_candidates) -> ActionScoreResult
+`-- select_actions(info) -> ActionPolicyResult
 ```
 
 Current in-repo mapping:
@@ -400,6 +469,7 @@ Current in-repo mapping:
 | --- | --- | --- | --- |
 | `mock` | yes | predict, generate, reason, embed, plan, transfer | deterministic local surrogate |
 | `leworldmodel` | yes | score | local JEPA cost model |
+| `gr00t` | yes | policy | host-owned embodied VLA policy client |
 | `cosmos` | yes | generate | remote physical-AI video foundation model API |
 | `runway` | yes | generate, transfer | remote video generation API |
 | `jepa` | scaffold | mock-backed | placeholder for future JEPA provider work |
@@ -430,6 +500,15 @@ ActionScoreResult
   lower_is_better: bool
   metadata: JSON object
 
+ActionPolicyResult
+  provider: non-empty string
+  actions: non-empty list of Action objects
+  raw_actions: JSON object
+  action_horizon: optional positive integer
+  embodiment_tag: optional non-empty string
+  metadata: JSON object
+  action_candidates: non-empty list of action plans
+
 Plan
   goal: string
   planner: string
@@ -449,6 +528,7 @@ State invariants:
 - metadata and history are JSON containers
 - invalid public inputs fail explicitly instead of being silently coerced
 - score providers return finite scores and an in-range `best_index`
+- policy providers return executable actions and preserve raw provider actions
 - remote media artifacts reject unsupported content types before returning a `VideoClip`
 
 ## Failure Boundaries
@@ -543,6 +623,8 @@ must preserve the same state validation invariants before it becomes a supported
   as a generator or predictor.
 - LeWorldModel defines the canonical score-planning path: model-native candidate tensors in,
   `ActionScoreResult.best_index` out, WorldForge `Action` sequence selected.
+- GR00T defines the first embodied-policy path: multimodal observation in, action chunk out, with
+  host-owned translation from embodiment-specific raw actions to WorldForge actions.
 - Generative video providers are useful, but video output is not the core abstraction of
   WorldForge.
 - Host applications own preprocessing between sensors, robot task tensors, and WorldForge actions.

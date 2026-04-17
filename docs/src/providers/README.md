@@ -13,6 +13,7 @@ definition, [Architecture](../architecture.md) for the end-to-end provider injec
 | `cosmos` | beta | register when `COSMOS_BASE_URL` is set | real HTTP adapter for Cosmos NIM; `NVIDIA_API_KEY` is optional and sent as bearer auth when present |
 | `runway` | beta | register when `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` is set | real HTTP adapter for Runway image-to-video and video-to-video APIs |
 | `leworldmodel` | beta | register when `LEWORLDMODEL_POLICY` or `LEWM_POLICY` is set | real optional adapter for LeWorldModel JEPA cost models through `stable_worldmodel.policy.AutoCostModel` |
+| [`gr00t`](./gr00t.md) | experimental | register when `GROOT_POLICY_HOST` is set | host-owned NVIDIA Isaac GR00T PolicyClient adapter for embodied action selection |
 | `jepa` | scaffold | register when `JEPA_MODEL_PATH` is set | credential-gated stub backed by deterministic mock behavior |
 | `genie` | scaffold | register when `GENIE_API_KEY` is set | credential-gated stub backed by deterministic mock behavior |
 
@@ -89,10 +90,18 @@ Providers can declare support for:
 - `plan`
 - `transfer`
 - `score`
+- `policy`
 
 `score` providers return `ActionScoreResult` from `score_actions(...)`. The result contains the
 provider name, one score per candidate, `best_index`, `best_score`, and explicit score direction.
-For `leworldmodel`, scores are costs and lower values are better.
+For `leworldmodel`, scores are costs and lower values are better. `World.plan(...)` serializes
+WorldForge action candidates for scoring by default; hosts can pass provider-native tensors through
+`score_action_candidates` when an adapter needs them.
+
+`policy` providers return `ActionPolicyResult` from `select_actions(...)`. The result preserves raw
+provider actions, selected WorldForge actions, candidate action chunks, embodiment metadata, and
+provider-native info. `gr00t` uses this surface because Isaac GR00T is an embodied VLA policy, not
+a future-state predictor.
 
 LeWorldModel is the architectural reference provider for score-based planning. It is first class
 because it matches the JEPA planning contract WorldForge is designed to support: observations,
@@ -108,6 +117,8 @@ instead of pretending it can generate video, reason over text, or mutate world s
 - `runway` validates organization, task creation, task polling, task output, artifact content type, and expired artifact responses before returning a `VideoClip`.
 - `leworldmodel` validates required `pixels`, `goal`, and `action` fields plus four-dimensional
   action-candidate payloads before invoking the cost model.
+- `gr00t` validates policy observations, preserves raw policy actions, and requires a host-owned
+  action translator before returning executable WorldForge actions.
 - Health checks, polling, and downloads retry with backoff by default. Create-style POST requests remain single-attempt unless a caller passes a custom policy.
 - `WorldForge(event_handler=...)` and provider constructor `event_handler=` arguments accept a `ProviderEvent` callback for host-side logging and metrics.
 - `worldforge.observability.compose_event_handlers(...)` lets host apps attach multiple sinks without writing a custom dispatcher.
@@ -154,3 +165,15 @@ LeWorldModel:
 - `scripts/smoke_leworldmodel.py` can run a local end-to-end smoke against
   `quentinll/lewm-pusht`; it requires the upstream GitHub version of `stable-worldmodel[train,env]`
   because the PyPI package may lag the LeWM module.
+
+GR00T:
+
+- `GROOT_POLICY_HOST` points at a running Isaac GR00T policy server.
+- `GROOT_POLICY_PORT` defaults to `5555`; `GROOT_POLICY_TIMEOUT_MS` defaults to `15000`.
+- `GROOT_POLICY_API_TOKEN`, `GROOT_POLICY_STRICT`, and `GROOT_EMBODIMENT_TAG` are optional.
+- The adapter lazily imports `gr00t.policy.server_client.PolicyClient` only when a non-injected
+  client is used.
+- `info["observation"]` must be a JSON object containing at least one of `video`, `state`, or
+  `language`.
+- A host-supplied `action_translator` maps GR00T's embodiment-specific raw actions to WorldForge
+  `Action` objects.

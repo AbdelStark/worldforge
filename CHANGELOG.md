@@ -20,6 +20,9 @@ releases may still include breaking changes when the public API needs to tighten
   contract tests, parser fixtures, `World.plan(...)` coverage, event assertions, and docs for
   future `facebookresearch/jepa-wms` integration without exporting or auto-registering it as a
   working provider.
+- Added a `policy` capability, `ActionPolicyResult`, `WorldForge.select_actions(...)`, and an
+  experimental host-owned `gr00t` provider for NVIDIA Isaac GR00T PolicyClient action selection,
+  including policy-only and policy+score planning support.
 
 ### Security
 

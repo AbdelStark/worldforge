@@ -13,6 +13,12 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         "LEWM_POLICY",
         "LEWORLDMODEL_CACHE_DIR",
         "LEWORLDMODEL_DEVICE",
+        "GROOT_POLICY_HOST",
+        "GROOT_POLICY_PORT",
+        "GROOT_POLICY_TIMEOUT_MS",
+        "GROOT_POLICY_API_TOKEN",
+        "GROOT_POLICY_STRICT",
+        "GROOT_EMBODIMENT_TAG",
         "JEPA_MODEL_PATH",
         "GENIE_API_KEY",
     ):
@@ -27,7 +33,9 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert registered_profiles["mock"].request_policy is None
 
     builtin_profiles = {profile.name: profile for profile in forge.builtin_provider_profiles()}
-    assert {"mock", "cosmos", "runway", "leworldmodel", "jepa", "genie"} <= set(builtin_profiles)
+    assert {"mock", "cosmos", "runway", "leworldmodel", "gr00t", "jepa", "genie"} <= set(
+        builtin_profiles
+    )
     assert builtin_profiles["cosmos"].implementation_status == "beta"
     assert builtin_profiles["cosmos"].required_env_vars == ["COSMOS_BASE_URL"]
     assert builtin_profiles["cosmos"].request_policy is not None
@@ -46,6 +54,10 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         "LEWORLDMODEL_POLICY",
         "LEWM_POLICY",
     ]
+    assert builtin_profiles["gr00t"].implementation_status == "experimental"
+    assert builtin_profiles["gr00t"].capabilities.policy is True
+    assert builtin_profiles["gr00t"].capabilities.predict is False
+    assert builtin_profiles["gr00t"].required_env_vars == ["GROOT_POLICY_HOST"]
 
     report = forge.doctor()
     assert isinstance(report, DoctorReport)

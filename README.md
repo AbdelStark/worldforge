@@ -25,6 +25,10 @@ also mean video generation, spatial 3D reconstruction, simulation infrastructure
 inference systems. WorldForge supports those systems through explicit provider capabilities, but
 LeWorldModel is the reference provider shaping the core score-planning architecture.
 
+Embodied policies such as NVIDIA Isaac GR00T are modeled separately as action-policy providers:
+they propose robot action chunks from observations and instructions, then can be paired with a
+score provider such as LeWorldModel or JEPA-WMS for policy+score planning.
+
 Read [docs/src/world-model-taxonomy.md](./docs/src/world-model-taxonomy.md) for the taxonomy,
 [docs/src/architecture.md](./docs/src/architecture.md) for the end-to-end provider pipeline, and
 [docs/src/provider-authoring-guide.md](./docs/src/provider-authoring-guide.md) before adding a new

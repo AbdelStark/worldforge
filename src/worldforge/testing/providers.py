@@ -8,6 +8,7 @@ from typing import TypeVar
 
 from worldforge.models import (
     Action,
+    ActionPolicyResult,
     ActionScoreResult,
     BBox,
     EmbeddingResult,
@@ -48,6 +49,25 @@ def sample_contract_world_state() -> JSONDict:
         "step": 0,
         "scene": {"objects": {cube.id: cube.to_dict()}},
         "metadata": {"name": "contract-world"},
+    }
+
+
+def sample_contract_policy_info() -> JSONDict:
+    """Return a minimal embodied-policy observation payload for contract checks."""
+
+    return {
+        "observation": {
+            "video": {
+                "front": [[[[[0, 0, 0]]]]],
+            },
+            "state": {
+                "eef": [[[0.0, 0.5, 0.0]]],
+            },
+            "language": {
+                "task": [["move the object"]],
+            },
+        },
+        "action_horizon": 1,
     }
 
 
@@ -133,11 +153,25 @@ def _validate_action_scores(provider: str, result: ActionScoreResult) -> None:
     assert isinstance(result.metadata, dict)
 
 
+def _validate_action_policy(provider: str, result: ActionPolicyResult) -> None:
+    assert result.provider == provider
+    assert isinstance(result.actions, list)
+    assert result.actions
+    assert all(isinstance(action, Action) for action in result.actions)
+    assert isinstance(result.raw_actions, dict)
+    assert result.action_horizon is None or result.action_horizon >= 1
+    assert isinstance(result.metadata, dict)
+    assert isinstance(result.action_candidates, list)
+    assert result.action_candidates
+    assert all(candidate for candidate in result.action_candidates)
+
+
 def assert_provider_contract(
     provider: BaseProvider,
     *,
     world_state: JSONDict | None = None,
     action: Action | None = None,
+    policy_info: JSONDict | None = None,
     score_info: JSONDict | None = None,
     score_action_candidates: object | None = None,
 ) -> ProviderContractReport:
@@ -263,6 +297,17 @@ def assert_provider_contract(
                     if score_action_candidates is None
                     else score_action_candidates,
                 ),
+            )
+
+    if profile.capabilities.policy:
+        if can_invoke:
+            policy = provider.select_actions(info=policy_info or sample_contract_policy_info())
+            _validate_action_policy(provider.name, policy)
+            report.exercised_operations.append("policy")
+        else:
+            _expect_provider_error(
+                "policy",
+                lambda: provider.select_actions(info=policy_info or sample_contract_policy_info()),
             )
 
     return report

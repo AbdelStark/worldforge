@@ -45,6 +45,7 @@ flowchart TD
     WM --> Spatial[Spatial / 3D world generation]
     WM --> Infra[Physical AI infrastructure]
     WM --> Active[Active inference / structured generative models]
+    WM --> Policy[Embodied policy / VLA action model]
 
     Latent --> JEPA[JEPA / V-JEPA / LeWorldModel]
     Latent --> RL[Dreamer-style model-based RL]
@@ -52,6 +53,7 @@ flowchart TD
     Video --> Genie[Genie-style interactive worlds]
     Spatial --> Marble[World Labs Marble]
     Infra --> Cosmos[NVIDIA Cosmos platform]
+    Policy --> Groot[NVIDIA Isaac GR00T]
 ```
 
 ## WorldForge's Center of Gravity
@@ -78,7 +80,7 @@ WorldForge's corresponding runtime shape is:
 World state / observation tensors
   |
   |-- candidate_actions            # public WorldForge Action sequences
-  |-- score_action_candidates      # model-native tensor candidates
+  |-- score_action_candidates      # optional model-native tensor candidates
   |-- score_info                   # model-native observation/action/goal context
   v
 provider.score_actions(...)
@@ -108,6 +110,7 @@ provider architecture more than generic video-generation providers do.
 | Generative video simulators | Can a model synthesize plausible future pixels or interactive frames? | Pixels, latents, video tokens | Video clips, interactive frames | Fits `generate`, `transfer`, maybe future `predict` |
 | Spatial / 3D world models | What persistent 3D world can be reconstructed or generated? | Geometry, depth, radiance, assets | 3D scenes, meshes, camera paths | Future provider family |
 | Physical AI infrastructure | How do teams produce data, tokenizers, fine-tunes, and evaluation at scale? | Platform stack | Models, synthetic data, APIs | Provider/platform adapters |
+| Embodied policy / VLA action models | What action chunk should a robot execute from this observation and instruction? | Vision-language-action policy state | Robot action chunks | First-class actor provider family |
 | Active inference / structured generative models | How should beliefs, objects, uncertainty, and action be updated online? | Probabilistic structured state | Beliefs, policies, expected free energy | Conceptual influence, future adapter target |
 
 ## Category Notes
@@ -225,6 +228,40 @@ WorldForge should integrate platform pieces through explicit provider capabiliti
 - future data-curation or tokenizer adapters if they become library scope
 - future evaluation adapters if upstream APIs expose stable contracts
 
+### Embodied Policy / VLA Action Models
+
+NVIDIA Isaac GR00T is best classified as an embodied policy rather than a world model under the
+WorldForge planning definition. Its policy API accepts multimodal observations such as video,
+state, and language, then returns future action chunks for a robot embodiment. That is an actor
+surface:
+
+```text
+observation + language instruction -> action chunk
+```
+
+It is not a future-state transition model:
+
+```text
+state + action -> predicted next state
+```
+
+and it is not a JEPA-style candidate scorer:
+
+```text
+observation + goal + candidate actions -> action costs
+```
+
+WorldForge therefore models GR00T as a `policy` provider. This makes it useful in the control loop
+without overstating what it can prove about future physical state:
+
+```text
+GR00T proposes actions
+  -> LeWorldModel / JEPA-WMS scores or filters candidates
+  -> WorldForge selects a plan
+  -> a host-owned controller, simulator, or predict provider executes
+  -> the host observes again
+```
+
 ### Active Inference
 
 Active inference uses structured generative models, beliefs, and expected free energy rather than
@@ -250,6 +287,11 @@ cosmos
   generation provider
   useful for synthetic video and physical-AI artifacts
 
+gr00t
+  host-owned embodied policy client adapter
+  policy provider
+  useful as an actor that proposes robot action chunks
+
 runway
   remote video generation and transfer adapter
   generation/transfer provider
@@ -272,12 +314,14 @@ flowchart TD
     WF --> Mock[mock\nreference runtime]
     WF --> LeWM[leworldmodel\nJEPA score provider]
     WF --> Cosmos[cosmos\nvideo generation platform adapter]
+    WF --> Groot[gr00t\nembodied policy adapter]
     WF --> Runway[runway\nvideo generation/transfer adapter]
     WF --> JEPA[jepa\nscaffold]
     WF --> Genie[genie\nscaffold]
 
     LeWM --> Score[score_actions -> ActionScoreResult]
     Cosmos --> Generate[generate -> VideoClip]
+    Groot --> Policy[select_actions -> ActionPolicyResult]
     Runway --> Transfer[generate/transfer -> VideoClip]
     Mock --> Predict[predict -> PredictionPayload]
 ```
@@ -315,4 +359,5 @@ Primary sources used to shape this taxonomy:
 - [OpenAI, Video generation models as world simulators](https://openai.com/index/video-generation-models-as-world-simulators/)
 - [Google DeepMind Genie 3](https://deepmind.google/models/genie/)
 - [NVIDIA Cosmos announcement](https://nvidianews.nvidia.com/news/nvidia-launches-cosmos-world-foundation-model-platform-to-accelerate-physical-ai-development)
+- [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T)
 - [World Labs Marble documentation](https://docs.worldlabs.ai/)

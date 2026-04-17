@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from worldforge.models import (
     Action,
+    ActionPolicyResult,
     ActionScoreResult,
     BBox,
     DoctorReport,
@@ -41,6 +42,7 @@ from worldforge.providers import (
     BaseProvider,
     CosmosProvider,
     GenieProvider,
+    GrootPolicyClientProvider,
     JepaProvider,
     LeWorldModelProvider,
     MockProvider,
@@ -86,6 +88,12 @@ def _normalize_candidate_action_plans(
             raise WorldForgeError(f"candidate_actions[{index}] must contain only Action instances.")
         normalized.append(actions)
     return normalized
+
+
+def _action_plans_to_score_payload(
+    candidate_action_plans: Sequence[Sequence[Action]],
+) -> list[list[JSONDict]]:
+    return [[action.to_dict() for action in candidate] for candidate in candidate_action_plans]
 
 
 def _world_file(state_dir: Path, world_id: str) -> Path:
@@ -636,6 +644,9 @@ class World:
         max_steps: int = 20,
         provider: str | None = None,
         candidate_actions: Sequence[Action | Sequence[Action]] | None = None,
+        policy_provider: str | None = None,
+        policy_info: JSONDict | None = None,
+        score_provider: str | None = None,
         score_info: JSONDict | None = None,
         score_action_candidates: object | None = None,
         execution_provider: str | None = None,
@@ -649,20 +660,45 @@ class World:
         if goal is not None and not goal.strip():
             raise WorldForgeError("goal must not be empty when provided.")
         selected_provider = _normalize_provider_name(provider, self.provider)
-        selected_provider_instance = self._provider(selected_provider)
+        uses_policy_planning = policy_info is not None or policy_provider is not None
         uses_score_planning = any(
-            item is not None for item in (candidate_actions, score_info, score_action_candidates)
+            item is not None
+            for item in (candidate_actions, score_provider, score_info, score_action_candidates)
         )
+        selected_policy_provider = policy_provider or selected_provider
+        selected_policy_provider_instance = (
+            self._provider(selected_policy_provider) if uses_policy_planning else None
+        )
+        selected_score_provider = score_provider or selected_provider
+        selected_score_provider_instance = (
+            self._provider(selected_score_provider) if uses_score_planning else None
+        )
+        if uses_policy_planning:
+            assert selected_policy_provider_instance is not None
+            if not selected_policy_provider_instance.capabilities.policy:
+                raise WorldForgeError(
+                    f"Provider '{selected_policy_provider}' does not support policy planning."
+                )
+            if policy_info is None:
+                raise WorldForgeError("Policy planning requires policy_info.")
+            if candidate_actions is not None:
+                raise WorldForgeError(
+                    "Policy planning derives candidate actions from the policy provider; do not "
+                    "pass candidate_actions."
+                )
         if uses_score_planning:
-            if not selected_provider_instance.capabilities.score:
+            assert selected_score_provider_instance is not None
+            if not selected_score_provider_instance.capabilities.score:
                 raise WorldForgeError(
-                    f"Provider '{selected_provider}' does not support score-based planning."
+                    f"Provider '{selected_score_provider}' does not support score-based planning."
                 )
-            if candidate_actions is None or score_info is None or score_action_candidates is None:
+            if not uses_policy_planning and candidate_actions is None:
                 raise WorldForgeError(
-                    "Score-based planning requires candidate_actions, score_info, "
-                    "and score_action_candidates."
+                    "Score-based planning requires candidate_actions unless policy planning "
+                    "provides candidates."
                 )
+            if score_info is None:
+                raise WorldForgeError("Score-based planning requires score_info.")
 
         resolved_goal_spec = goal_spec
         if goal_json is not None:
@@ -680,17 +716,99 @@ class World:
             actions = self._goal_actions(resolved_goal)
         actions = actions[: min(max_steps, len(actions))]
 
+        if uses_policy_planning:
+            assert policy_info is not None
+            assert selected_policy_provider_instance is not None
+            policy_result = selected_policy_provider_instance.select_actions(info=policy_info)
+            candidate_action_plans = [
+                candidate[:max_steps] for candidate in policy_result.action_candidates
+            ]
+            if not candidate_action_plans:
+                raise WorldForgeError(
+                    f"Provider '{selected_policy_provider}' returned no policy action candidates."
+                )
+            if uses_score_planning:
+                assert score_info is not None
+                assert selected_score_provider_instance is not None
+                score_payload = (
+                    score_action_candidates
+                    if score_action_candidates is not None
+                    else _action_plans_to_score_payload(candidate_action_plans)
+                )
+                score_result = selected_score_provider_instance.score_actions(
+                    info=score_info,
+                    action_candidates=score_payload,
+                )
+                if score_result.best_index >= len(candidate_action_plans):
+                    raise WorldForgeError(
+                        f"Provider '{selected_score_provider}' selected candidate index "
+                        f"{score_result.best_index}, but policy provider "
+                        f"'{selected_policy_provider}' returned only "
+                        f"{len(candidate_action_plans)} candidate action plan(s)."
+                    )
+                selected_actions = candidate_action_plans[score_result.best_index]
+                best_score = max(0.0, score_result.best_score)
+                success_probability = 1.0 / (1.0 + best_score)
+                metadata = {
+                    "planning_mode": "policy+score",
+                    "policy_provider": selected_policy_provider,
+                    "score_provider": selected_score_provider,
+                    "policy_result": policy_result.to_dict(),
+                    "score_result": score_result.to_dict(),
+                    "candidate_count": len(candidate_action_plans),
+                    "success_probability_source": "inverse_best_cost_heuristic",
+                }
+                if execution_provider is not None:
+                    metadata["execution_provider"] = execution_provider
+                return Plan(
+                    goal=resolved_goal,
+                    goal_spec=serialized_goal_spec,
+                    planner=planner,
+                    provider=selected_score_provider,
+                    actions=selected_actions,
+                    predicted_states=[],
+                    success_probability=max(0.0, min(1.0, success_probability)),
+                    metadata=metadata,
+                )
+
+            selected_actions = policy_result.actions[:max_steps]
+            metadata = {
+                "planning_mode": "policy",
+                "policy_provider": selected_policy_provider,
+                "policy_result": policy_result.to_dict(),
+                "candidate_count": len(candidate_action_plans),
+                "success_probability_source": "policy_provider_no_world_model",
+            }
+            if execution_provider is not None:
+                metadata["execution_provider"] = execution_provider
+            return Plan(
+                goal=resolved_goal,
+                goal_spec=serialized_goal_spec,
+                planner=planner,
+                provider=selected_policy_provider,
+                actions=selected_actions,
+                predicted_states=[],
+                success_probability=0.5,
+                metadata=metadata,
+            )
+
         if uses_score_planning:
             assert candidate_actions is not None
             assert score_info is not None
+            assert selected_score_provider_instance is not None
             candidate_action_plans = _normalize_candidate_action_plans(candidate_actions)
-            score_result = selected_provider_instance.score_actions(
+            score_payload = (
+                score_action_candidates
+                if score_action_candidates is not None
+                else _action_plans_to_score_payload(candidate_action_plans)
+            )
+            score_result = selected_score_provider_instance.score_actions(
                 info=score_info,
-                action_candidates=score_action_candidates,
+                action_candidates=score_payload,
             )
             if score_result.best_index >= len(candidate_action_plans):
                 raise WorldForgeError(
-                    f"Provider '{selected_provider}' selected candidate index "
+                    f"Provider '{selected_score_provider}' selected candidate index "
                     f"{score_result.best_index}, but only {len(candidate_action_plans)} "
                     "candidate action plan(s) were provided."
                 )
@@ -709,7 +827,7 @@ class World:
                 goal=resolved_goal,
                 goal_spec=serialized_goal_spec,
                 planner=planner,
-                provider=selected_provider,
+                provider=selected_score_provider,
                 actions=selected_actions,
                 predicted_states=[],
                 success_probability=max(0.0, min(1.0, success_probability)),
@@ -794,6 +912,7 @@ class WorldForge:
             CosmosProvider(event_handler=self._event_handler),
             RunwayProvider(event_handler=self._event_handler),
             LeWorldModelProvider(event_handler=self._event_handler),
+            GrootPolicyClientProvider(event_handler=self._event_handler),
             JepaProvider(event_handler=self._event_handler),
             GenieProvider(event_handler=self._event_handler),
         )
@@ -1073,6 +1192,9 @@ class WorldForge:
             info=info,
             action_candidates=action_candidates,
         )
+
+    def select_actions(self, provider: str, *, info: JSONDict) -> ActionPolicyResult:
+        return self._require_provider(provider).select_actions(info=info)
 
 
 def list_eval_suites() -> list[str]:

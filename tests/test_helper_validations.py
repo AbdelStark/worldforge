@@ -8,6 +8,7 @@ import pytest
 
 from worldforge import (
     Action,
+    ActionPolicyResult,
     BBox,
     EmbeddingResult,
     GenerationOptions,
@@ -156,6 +157,33 @@ def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None
 
     with pytest.raises(WorldForgeError, match="speed"):
         Action.move_to(0.0, 0.0, 0.0, speed=0.0)
+
+    policy_result = ActionPolicyResult(
+        provider="policy",
+        actions=[Action.move_to(0.1, 0.5, 0.0)],
+        raw_actions={"arm": [[[0.1, 0.5, 0.0]]]},
+        action_horizon=1,
+        embodiment_tag="TEST",
+    )
+    assert policy_result.action_candidates == [[Action.move_to(0.1, 0.5, 0.0)]]
+    assert policy_result.to_dict()["embodiment_tag"] == "TEST"
+
+    with pytest.raises(WorldForgeError, match="actions"):
+        ActionPolicyResult(provider="policy", actions=[])
+
+    with pytest.raises(WorldForgeError, match="raw_actions"):
+        ActionPolicyResult(
+            provider="policy",
+            actions=[Action.move_to(0.1, 0.5, 0.0)],
+            raw_actions=[],  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(WorldForgeError, match="action_horizon"):
+        ActionPolicyResult(
+            provider="policy",
+            actions=[Action.move_to(0.1, 0.5, 0.0)],
+            action_horizon=0,
+        )
 
     with pytest.raises(WorldForgeError, match="GenerationOptions fps"):
         GenerationOptions(fps=math.inf)

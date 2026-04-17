@@ -3,7 +3,7 @@
 ## Entry points
 
 ```python
-from worldforge import Action, ActionScoreResult, World, WorldForge
+from worldforge import Action, ActionPolicyResult, ActionScoreResult, World, WorldForge
 ```
 
 ## `WorldForge`
@@ -12,7 +12,7 @@ Top-level framework object responsible for:
 
 - provider registration
 - world creation and persistence
-- generation, transfer, reasoning, embedding, and action-scoring helpers
+- generation, transfer, reasoning, embedding, action-scoring, and action-policy helpers
 - provider profiles and environment diagnostics
 
 Common inspection helpers:
@@ -80,8 +80,10 @@ print(result.best_index, result.best_score)
 `ActionScoreResult` validates finite scores, exposes `best_index` and `best_score`, and includes
 `lower_is_better` so callers do not have to infer score direction from provider-specific docs.
 
-The planner can consume the same score surface when callers provide the model-shaped payload and
-the WorldForge actions that correspond to each scored candidate:
+The planner can consume the same score surface when callers provide WorldForge actions that
+correspond to each scored candidate. By default, those actions are serialized and passed to the
+score provider. Pass `score_action_candidates` when the scorer expects a provider-native tensor or
+latent candidate payload:
 
 ```python
 from worldforge import Action
@@ -105,6 +107,62 @@ print(plan.actions, plan.metadata["score_result"]["best_index"])
 Score-based plans do not ask the score provider to predict state. `Plan.predicted_states` stays
 empty, score details are stored in `Plan.metadata`, and `execute_plan(...)` uses
 `execution_provider` when the scoring provider does not implement `predict()`.
+
+## Action Policy
+
+Providers that expose the `policy` capability select executable action chunks from observations.
+NVIDIA Isaac GR00T uses this surface because it is an embodied VLA policy, not a predictive world
+model.
+
+```python
+result = forge.select_actions(
+    "gr00t",
+    info={
+        "observation": {
+            "video": {"front": video_array},
+            "state": {"eef": state_array},
+            "language": {"task": [["pick up the cube"]]},
+        },
+        "embodiment_tag": "LIBERO_PANDA",
+        "action_horizon": 16,
+    },
+)
+
+print(result.actions, result.raw_actions)
+```
+
+`ActionPolicyResult` validates that the provider returned at least one WorldForge `Action`,
+preserves provider-native raw actions for debugging, and can carry multiple candidate action
+chunks for downstream scoring.
+
+Policy-only planning:
+
+```python
+plan = world.plan(
+    goal="pick up the cube",
+    provider="gr00t",
+    policy_info=policy_info,
+    execution_provider="mock",
+)
+```
+
+Policy plus score planning:
+
+```python
+plan = world.plan(
+    goal="choose the lowest-cost policy candidate",
+    policy_provider="gr00t",
+    score_provider="leworldmodel",
+    policy_info=policy_info,
+    score_info=lewm_info,
+    execution_provider="mock",
+)
+```
+
+By default, WorldForge serializes the policy candidates as lists of `Action.to_dict()` payloads
+before calling the score provider. Pass `score_action_candidates` when the scorer needs a
+provider-native tensor or latent candidate format. The host still owns embodiment-specific action
+translation and any model-native mapping.
 
 ## `World`
 
@@ -178,6 +236,12 @@ report = assert_provider_contract(
     score_info={"observation": [[0.0]], "goal": [[1.0]]},
     score_action_candidates=[[[[0.0]]]],
 )
+```
+
+For policy providers, pass provider-specific policy observations:
+
+```python
+report = assert_provider_contract(provider, policy_info=policy_info)
 ```
 
 ## Public failure modes

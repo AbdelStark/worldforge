@@ -794,6 +794,7 @@ class ProviderCapabilities:
     plan: bool = False
     transfer: bool = False
     score: bool = False
+    policy: bool = False
 
     def to_dict(self) -> JSONDict:
         return {
@@ -804,6 +805,7 @@ class ProviderCapabilities:
             "plan": self.plan,
             "transfer": self.transfer,
             "score": self.score,
+            "policy": self.policy,
         }
 
     def supports(self, capability: str) -> bool:
@@ -1440,6 +1442,88 @@ class ActionScoreResult:
             "best_score": self.best_score,
             "lower_is_better": self.lower_is_better,
             "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(slots=True)
+class ActionPolicyResult:
+    """Provider-selected action chunk from an embodied policy.
+
+    Policy providers choose or propose actions from observations. They do not imply future-state
+    prediction or candidate scoring unless the provider exposes those capabilities separately.
+    ``action_candidates`` stores one or more executable candidate plans when the policy can expose
+    alternatives for downstream scoring.
+    """
+
+    provider: str
+    actions: list[Action]
+    raw_actions: JSONDict = field(default_factory=dict)
+    action_horizon: int | None = None
+    embodiment_tag: str | None = None
+    metadata: JSONDict = field(default_factory=dict)
+    action_candidates: list[list[Action]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ActionPolicyResult provider must be a non-empty string.")
+        if not isinstance(self.actions, list) or not self.actions:
+            raise WorldForgeError("ActionPolicyResult actions must be a non-empty list.")
+        if not all(isinstance(action, Action) for action in self.actions):
+            raise WorldForgeError("ActionPolicyResult actions must contain only Action instances.")
+        if not isinstance(self.raw_actions, dict):
+            raise WorldForgeError("ActionPolicyResult raw_actions must be a JSON object.")
+        if self.action_horizon is not None:
+            self.action_horizon = require_positive_int(
+                self.action_horizon,
+                name="ActionPolicyResult action_horizon",
+            )
+        if self.embodiment_tag is not None:
+            if not isinstance(self.embodiment_tag, str) or not self.embodiment_tag.strip():
+                raise WorldForgeError(
+                    "ActionPolicyResult embodiment_tag must be a non-empty string when provided."
+                )
+            self.embodiment_tag = self.embodiment_tag.strip()
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("ActionPolicyResult metadata must be a JSON object.")
+        if not isinstance(self.action_candidates, list):
+            raise WorldForgeError("ActionPolicyResult action_candidates must be a list.")
+
+        normalized_candidates: list[list[Action]]
+        if self.action_candidates:
+            normalized_candidates = []
+            for index, candidate in enumerate(self.action_candidates):
+                if not isinstance(candidate, list) or not candidate:
+                    raise WorldForgeError(
+                        "ActionPolicyResult action_candidates must contain non-empty action lists."
+                    )
+                if not all(isinstance(action, Action) for action in candidate):
+                    raise WorldForgeError(
+                        f"ActionPolicyResult action_candidates[{index}] must contain only "
+                        "Action instances."
+                    )
+                normalized_candidates.append(list(candidate))
+        else:
+            normalized_candidates = [list(self.actions)]
+
+        dump_json(self.raw_actions)
+        dump_json(self.metadata)
+        self.provider = self.provider.strip()
+        self.actions = list(self.actions)
+        self.raw_actions = dict(self.raw_actions)
+        self.metadata = dict(self.metadata)
+        self.action_candidates = normalized_candidates
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "provider": self.provider,
+            "actions": [action.to_dict() for action in self.actions],
+            "raw_actions": dict(self.raw_actions),
+            "action_horizon": self.action_horizon,
+            "embodiment_tag": self.embodiment_tag,
+            "metadata": dict(self.metadata),
+            "action_candidates": [
+                [action.to_dict() for action in candidate] for candidate in self.action_candidates
+            ],
         }
 
 
