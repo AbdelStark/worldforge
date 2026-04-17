@@ -177,7 +177,7 @@ Module responsibilities:
 | `src/worldforge/models.py` | Typed domain models, serialization helpers, and framework-level validation errors |
 | `src/worldforge/framework.py` | `WorldForge`, `World`, persistence, planning, prediction, comparison, and diagnostics |
 | `src/worldforge/observability.py` | Composable `ProviderEvent` sinks for JSON logging, in-memory recording, and metrics aggregation |
-| `src/worldforge/providers/` | Provider primitives plus `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `jepa`, and `genie` adapters |
+| `src/worldforge/providers/` | Provider primitives plus `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, `jepa`, and `genie` adapters |
 | `src/worldforge/evaluation/` | Built-in evaluation suites and report rendering |
 | `src/worldforge/testing/` | Reusable provider contract assertions for adapter packages |
 | `tests/` | Framework, CLI, packaging, and adapter regression coverage |
@@ -210,6 +210,7 @@ More detail lives in [docs/src/world-model-taxonomy.md](./docs/src/world-model-t
 | `runway` | beta | auto-registers when `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` is set | real HTTP adapter for Runway image-to-video and video-to-video APIs |
 | `leworldmodel` | beta | auto-registers when `LEWORLDMODEL_POLICY` or `LEWM_POLICY` is set | real optional adapter for LeWorldModel JEPA cost models via `stable_worldmodel.policy.AutoCostModel`; scores action candidates with lower cost as better |
 | `gr00t` | experimental | auto-registers when `GROOT_POLICY_HOST` is set | host-owned NVIDIA Isaac GR00T PolicyClient adapter for embodied action selection; exposes `policy`, not predictive world-model capabilities |
+| `lerobot` | beta | auto-registers when `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` is set | host-owned Hugging Face LeRobot `PreTrainedPolicy` adapter for embodied action selection (ACT, Diffusion, TDMPC, VQBet, Pi0, SmolVLA, ...); exposes `policy` |
 | `jepa` | scaffold | auto-registers when `JEPA_MODEL_PATH` is set | credential-gated stub backed by deterministic mock behavior |
 | `genie` | scaffold | auto-registers when `GENIE_API_KEY` is set | credential-gated stub backed by deterministic mock behavior |
 
@@ -270,6 +271,55 @@ The demo's `predicted_states` list is empty by design: a score provider ranks ca
 it does not mutate the world or emit generated video/world-state rollouts. Execution remains a
 separate provider step.
 
+LeRobot is a host-owned live policy integration. Install
+[`lerobot`](https://github.com/huggingface/lerobot) in the host environment and set
+`LEROBOT_POLICY_PATH` (or `LEROBOT_POLICY`) to a Hugging Face repo id or local checkpoint
+directory, for example `lerobot/act_aloha_sim_transfer_cube_human`. LeRobot is an
+action-policy provider: observations (state, camera images, task language) go in, raw robot
+action tensors come out. WorldForge cannot infer what those tensors mean for a given robot, so
+a host-supplied `action_translator` maps them into WorldForge `Action` objects. The adapter
+lazily imports `lerobot.policies.pretrained.PreTrainedPolicy` only when a non-injected policy
+is loaded, so a clean WorldForge install does not pull in LeRobot, PyTorch, or robot runtime
+dependencies.
+
+For a checkout-safe end-to-end walkthrough that does not need `lerobot` or checkpoints, run
+`uv run python examples/lerobot_e2e_demo.py`. It wires the real `LeRobotPolicyProvider` to a
+deterministic fake policy, then demonstrates provider registration, candidate action
+proposal, score-based candidate selection, mock execution, JSON persistence, and reload
+through the real WorldForge policy+score planning pipeline. Use
+`scripts/smoke_lerobot_policy.py` for the real-checkpoint path.
+
+Concretely, the demo:
+
+1. Registers the real `LeRobotPolicyProvider` next to the local `mock` execution provider and
+   a tiny deterministic distance-to-goal score provider.
+2. Creates a small world with one `blue_cube` and an `object_at` goal.
+3. Calls `WorldForge.select_actions("lerobot", info=...)` to get three candidate two-step
+   action chunks from the injected policy through the host-supplied translator.
+4. Calls `World.plan(..., policy_provider="lerobot", score_provider=..., policy_info=...)`,
+   which ranks the policy's candidates by distance to the goal and picks the best one.
+5. Executes the selected WorldForge actions through `execution_provider="mock"`, saves the
+   final world, reloads it from disk, and reports the final cube position.
+
+```bash
+uv run python examples/lerobot_e2e_demo.py
+```
+
+Real-checkpoint path:
+
+```bash
+uv venv --python=3.10 .venv-lerobot
+source .venv-lerobot/bin/activate
+uv pip install -e .
+uv pip install "lerobot[aloha]"
+
+python scripts/smoke_lerobot_policy.py \
+  --policy-path lerobot/act_aloha_sim_transfer_cube_human \
+  --observation-module /path/to/obs.py:build_observation \
+  --translator /path/to/translator.py:translate_actions \
+  --device cpu
+```
+
 GR00T is a host-owned live policy integration. Run `scripts/smoke_gr00t_policy.py` from an
 environment that can import Isaac-GR00T and reach a policy server. The script can launch
 `gr00t/eval/run_gr00t_server.py` from a local Isaac-GR00T checkout with `--start-server`, but the
@@ -326,6 +376,10 @@ See [AGENTS.md](./AGENTS.md) for repository context used by AI-assisted and firs
 - `gr00t` is a real optional policy-client adapter, but live execution requires a host-owned
   Isaac-GR00T runtime, reachable policy server, compatible NVIDIA CUDA/TensorRT environment when
   launching the upstream server, real observations, and an embodiment-specific action translator.
+- `lerobot` is a real optional policy-client adapter, but live execution requires `lerobot`
+  and its robot or simulation dependencies installed in the host environment, a Hugging Face
+  repo id or local checkpoint path, real observations, and an embodiment-specific action
+  translator. The adapter never drives hardware; it only evaluates the policy.
 - Remote provider health checks depend on live credentials and network reachability even though they now use typed timeout and retry policy.
 - Provider observability includes local JSON logging and in-memory metrics sinks, but host applications still own production logging, metrics export, trace IDs, dashboards, and alerts.
 - World persistence is local JSON state, not a concurrent multi-writer store or service.

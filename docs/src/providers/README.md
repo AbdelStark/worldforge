@@ -14,6 +14,7 @@ definition, [Architecture](../architecture.md) for the end-to-end provider injec
 | `runway` | beta | register when `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` is set | real HTTP adapter for Runway image-to-video and video-to-video APIs |
 | `leworldmodel` | beta | register when `LEWORLDMODEL_POLICY` or `LEWM_POLICY` is set | real optional adapter for LeWorldModel JEPA cost models through `stable_worldmodel.policy.AutoCostModel` |
 | [`gr00t`](./gr00t.md) | experimental | register when `GROOT_POLICY_HOST` is set | host-owned NVIDIA Isaac GR00T PolicyClient adapter for embodied action selection |
+| [`lerobot`](./lerobot.md) | beta | register when `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` is set | host-owned Hugging Face LeRobot `PreTrainedPolicy` adapter for embodied action selection |
 | `jepa` | scaffold | register when `JEPA_MODEL_PATH` is set | credential-gated stub backed by deterministic mock behavior |
 | `genie` | scaffold | register when `GENIE_API_KEY` is set | credential-gated stub backed by deterministic mock behavior |
 
@@ -100,8 +101,8 @@ WorldForge action candidates for scoring by default; hosts can pass provider-nat
 
 `policy` providers return `ActionPolicyResult` from `select_actions(...)`. The result preserves raw
 provider actions, selected WorldForge actions, candidate action chunks, embodiment metadata, and
-provider-native info. `gr00t` uses this surface because Isaac GR00T is an embodied VLA policy, not
-a future-state predictor.
+provider-native info. `gr00t` and `lerobot` both use this surface because Isaac GR00T and Hugging
+Face LeRobot are embodied action policies, not future-state predictors.
 
 LeWorldModel is the architectural reference provider for score-based planning. It is first class
 because it matches the JEPA planning contract WorldForge is designed to support: observations,
@@ -119,6 +120,9 @@ instead of pretending it can generate video, reason over text, or mutate world s
   action-candidate payloads before invoking the cost model.
 - `gr00t` validates policy observations, preserves raw policy actions, and requires a host-owned
   action translator before returning executable WorldForge actions.
+- `lerobot` validates policy observations, preserves raw policy actions, lazily loads
+  `lerobot.policies.pretrained.PreTrainedPolicy`, and requires a host-owned action translator
+  before returning executable WorldForge actions.
 - Health checks, polling, and downloads retry with backoff by default. Create-style POST requests remain single-attempt unless a caller passes a custom policy.
 - `WorldForge(event_handler=...)` and provider constructor `event_handler=` arguments accept a `ProviderEvent` callback for host-side logging and metrics.
 - `worldforge.observability.compose_event_handlers(...)` lets host apps attach multiple sinks without writing a custom dispatcher.
@@ -191,3 +195,24 @@ GR00T:
   smoke.
 - The latest local live-smoke attempt could not run upstream Isaac-GR00T on macOS arm64 because
   CUDA/TensorRT packages such as `tensorrt-cu13-libs` require a compatible NVIDIA/Linux runtime.
+
+LeRobot:
+
+- `LEROBOT_POLICY_PATH` (alias `LEROBOT_POLICY`) is the Hugging Face repo id or local checkpoint
+  directory for a LeRobot `PreTrainedPolicy`.
+- `LEROBOT_POLICY_TYPE` optionally pins a specific policy class such as `act`, `diffusion`,
+  `tdmpc`, `vqbet`, `pi0`, `pi0fast`, `sac`, or `smolvla`.
+- `LEROBOT_DEVICE`, `LEROBOT_CACHE_DIR`, and `LEROBOT_EMBODIMENT_TAG` are optional.
+- The adapter lazily imports `lerobot.policies.pretrained.PreTrainedPolicy` only when a
+  non-injected policy is loaded.
+- `info["observation"]` must be a non-empty JSON object; keys follow LeRobot's naming
+  conventions (`observation.state`, `observation.images.<camera>`, `task`, ...).
+- `info["mode"]` picks between `select_action` (single-step) and `predict_chunk` (full action
+  chunk, only available when the policy implements `predict_action_chunk`).
+- A host-supplied `action_translator` maps LeRobot's embodiment-specific raw action tensors to
+  WorldForge `Action` objects, optionally as multiple candidate chunks.
+- `examples/lerobot_e2e_demo.py` runs a checkout-safe end-to-end demo of the real provider
+  with an injected deterministic policy.
+- `scripts/smoke_lerobot_policy.py` loads a real LeRobot checkpoint via `PreTrainedPolicy`
+  and runs a live policy smoke; it requires `lerobot` and any robot-specific dependencies in
+  the host environment.

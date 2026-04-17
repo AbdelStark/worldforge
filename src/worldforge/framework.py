@@ -44,6 +44,7 @@ from worldforge.providers import (
     GenieProvider,
     GrootPolicyClientProvider,
     JepaProvider,
+    LeRobotPolicyProvider,
     LeWorldModelProvider,
     MockProvider,
     ProviderError,
@@ -913,6 +914,7 @@ class WorldForge:
             RunwayProvider(event_handler=self._event_handler),
             LeWorldModelProvider(event_handler=self._event_handler),
             GrootPolicyClientProvider(event_handler=self._event_handler),
+            LeRobotPolicyProvider(event_handler=self._event_handler),
             JepaProvider(event_handler=self._event_handler),
             GenieProvider(event_handler=self._event_handler),
         )

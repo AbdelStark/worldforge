@@ -9,6 +9,15 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added `lerobot` as a first-class optional policy provider for Hugging Face LeRobot
+  pretrained policies (ACT, Diffusion, TDMPC, VQBet, Pi0, Pi0Fast, SAC, SmolVLA). The
+  adapter lazily imports `lerobot.policies.pretrained.PreTrainedPolicy`, supports injectable
+  policies and policy loaders for offline testing, validates observation payloads, preserves
+  raw policy tensors, and requires a host-owned action translator before returning executable
+  WorldForge actions. Ships with policy-only and policy+score planning support,
+  auto-registration when `LEROBOT_POLICY_PATH` (or `LEROBOT_POLICY`) is set, contract tests,
+  a full end-to-end demo at `examples/lerobot_e2e_demo.py`, and a real-checkpoint live smoke
+  script at `scripts/smoke_lerobot_policy.py`.
 - Added `leworldmodel` as a first-class optional provider for LeWorldModel JEPA cost models,
   including the `score` capability, `ActionScoreResult`, `WorldForge.score_actions(...)`, typed
   input validation, score-output validation, provider profile metadata, and fixture-driven tests.
