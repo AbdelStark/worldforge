@@ -14,12 +14,6 @@
     ]
   ],
   "info": {
-    "goal": [
-      [
-        1.0,
-        0.0
-      ]
-    ],
     "observation": [
       [
         0.0,
@@ -27,12 +21,9 @@
       ]
     ]
   },
-  "model_path": "/models/jepa-wms/missing-checkpoint.pt",
-  "provider": "jepa-wms",
   "runtime_response": {
-    "error": {
-      "message": "checkpoint artifact is expired or unavailable",
-      "type": "checkpoint_expired"
-    }
+    "scores": [
+      0.2
+    ]
   }
 }

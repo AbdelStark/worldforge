@@ -10,6 +10,16 @@
           0.1,
           0.1
         ]
+      ],
+      [
+        [
+          0.2,
+          0.2
+        ],
+        [
+          0.3,
+          0.3
+        ]
       ]
     ]
   ],
@@ -27,12 +37,10 @@
       ]
     ]
   },
-  "model_path": "/models/jepa-wms/missing-checkpoint.pt",
-  "provider": "jepa-wms",
   "runtime_response": {
-    "error": {
-      "message": "checkpoint artifact is expired or unavailable",
-      "type": "checkpoint_expired"
-    }
+    "scores": [
+      0.2,
+      "not-a-number"
+    ]
   }
 }

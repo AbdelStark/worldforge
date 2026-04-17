@@ -210,7 +210,7 @@ More detail lives in [docs/src/world-model-taxonomy.md](./docs/src/world-model-t
 
 Provider candidate scaffolds are kept outside package exports and auto-registration until they have
 a real runtime adapter. The current candidate is [`jepa-wms`](./docs/src/providers/jepa-wms.md), a
-generated local scaffold for future `facebookresearch/jepa-wms` score-provider work.
+local fake-runtime contract scaffold for future `facebookresearch/jepa-wms` score-provider work.
 
 LeWorldModel is a local optional integration. Install the upstream runtime in the host
 environment, place checkpoints under `$STABLEWM_HOME` or set `LEWORLDMODEL_CACHE_DIR`, then set

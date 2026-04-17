@@ -1,8 +1,110 @@
 {
-  "planned_capabilities": [
-    "score"
+  "action_candidates": [
+    [
+      [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.1,
+          0.1
+        ]
+      ],
+      [
+        [
+          0.2,
+          0.2
+        ],
+        [
+          0.3,
+          0.3
+        ]
+      ],
+      [
+        [
+          0.4,
+          0.4
+        ],
+        [
+          0.5,
+          0.5
+        ]
+      ]
+    ]
   ],
+  "info": {
+    "action_history": [
+      [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.1,
+          0.1
+        ]
+      ]
+    ],
+    "goal": [
+      [
+        [
+          1.0,
+          0.9
+        ],
+        [
+          0.8,
+          0.7
+        ]
+      ],
+      [
+        [
+          0.6,
+          0.5
+        ],
+        [
+          0.4,
+          0.3
+        ]
+      ]
+    ],
+    "observation": [
+      [
+        [
+          0.0,
+          0.1
+        ],
+        [
+          0.2,
+          0.3
+        ]
+      ],
+      [
+        [
+          0.4,
+          0.5
+        ],
+        [
+          0.6,
+          0.7
+        ]
+      ]
+    ],
+    "task": "contract-pusht"
+  },
+  "model_path": "/models/jepa-wms/checkpoint.pt",
   "provider": "jepa-wms",
-  "status": "replace-with-real-success-payload",
+  "runtime_response": {
+    "lower_is_better": true,
+    "metadata": {
+      "runtime": "fake-jepa-wms",
+      "score_units": "latent_cost"
+    },
+    "scores": [
+      0.4,
+      0.12,
+      0.9
+    ]
+  },
   "taxonomy_category": "JEPA latent predictive world model"
 }

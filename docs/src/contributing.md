@@ -24,3 +24,13 @@ from worldforge.testing import assert_provider_contract
 report = assert_provider_contract(provider)
 print(report.exercised_operations)
 ```
+
+Score-capable providers must pass provider-specific score fixtures:
+
+```python
+report = assert_provider_contract(
+    provider,
+    score_info=score_fixture["info"],
+    score_action_candidates=score_fixture["action_candidates"],
+)
+```

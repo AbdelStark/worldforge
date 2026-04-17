@@ -164,9 +164,9 @@ planning evaluations for joint-embedding predictive world models.
 WorldForge's current `jepa` provider is only a scaffold. A real JEPA provider should follow the
 LeWorldModel pattern: do not advertise generation or reasoning unless implemented; expose score,
 latent rollout, or prediction capabilities explicitly; document tensor shapes and task contracts.
-WorldForge also carries a generated [`jepa-wms` provider candidate scaffold](./providers/jepa-wms.md)
-for future work against `facebookresearch/jepa-wms`; it is intentionally not exported or registered
-until a real runtime adapter exists.
+WorldForge also carries a [`jepa-wms` provider candidate scaffold](./providers/jepa-wms.md) with
+fake-runtime contract tests for future work against `facebookresearch/jepa-wms`; it is intentionally
+not exported or registered until a real runtime adapter exists.
 
 ### Dreamer-style Model-Based RL
 

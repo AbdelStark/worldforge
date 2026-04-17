@@ -169,6 +169,17 @@ report = assert_provider_contract(MockProvider())
 print(report.to_dict())
 ```
 
+For score providers, pass provider-specific score payloads so the helper can exercise
+`score_actions(...)`:
+
+```python
+report = assert_provider_contract(
+    provider,
+    score_info={"observation": [[0.0]], "goal": [[1.0]]},
+    score_action_candidates=[[[[0.0]]]],
+)
+```
+
 ## Public failure modes
 
 WorldForge uses three public exception families for runtime workflows:

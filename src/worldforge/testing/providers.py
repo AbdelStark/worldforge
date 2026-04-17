@@ -8,6 +8,7 @@ from typing import TypeVar
 
 from worldforge.models import (
     Action,
+    ActionScoreResult,
     BBox,
     EmbeddingResult,
     JSONDict,
@@ -120,11 +121,25 @@ def _validate_clip(clip: VideoClip) -> None:
     assert isinstance(clip.metadata, dict)
 
 
+def _validate_action_scores(provider: str, result: ActionScoreResult) -> None:
+    assert result.provider == provider
+    assert isinstance(result.scores, list)
+    assert result.scores
+    assert all(isinstance(score, float) for score in result.scores)
+    assert isinstance(result.best_index, int)
+    assert 0 <= result.best_index < len(result.scores)
+    assert result.best_score == result.scores[result.best_index]
+    assert isinstance(result.lower_is_better, bool)
+    assert isinstance(result.metadata, dict)
+
+
 def assert_provider_contract(
     provider: BaseProvider,
     *,
     world_state: JSONDict | None = None,
     action: Action | None = None,
+    score_info: JSONDict | None = None,
+    score_action_candidates: object | None = None,
 ) -> ProviderContractReport:
     """Assert that a provider obeys the WorldForge adapter contract.
 
@@ -224,6 +239,30 @@ def assert_provider_contract(
             _expect_provider_error(
                 "transfer",
                 lambda: provider.transfer(transfer_input, width=48, height=48, fps=12.0),
+            )
+
+    if profile.capabilities.score:
+        if can_invoke:
+            if score_info is None or score_action_candidates is None:
+                raise AssertionError(
+                    "Provider contract requires score_info and score_action_candidates for "
+                    "configured score providers."
+                )
+            scores = provider.score_actions(
+                info=score_info,
+                action_candidates=score_action_candidates,
+            )
+            _validate_action_scores(provider.name, scores)
+            report.exercised_operations.append("score")
+        else:
+            _expect_provider_error(
+                "score",
+                lambda: provider.score_actions(
+                    info=score_info or {},
+                    action_candidates=[]
+                    if score_action_candidates is None
+                    else score_action_candidates,
+                ),
             )
 
     return report
