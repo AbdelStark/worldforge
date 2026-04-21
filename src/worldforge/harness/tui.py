@@ -1425,12 +1425,24 @@ class WorldsScreen(Screen):
     def on_mount(self) -> None:
         table = self.query_one("#worlds-table", DataTable)
         table.add_columns("id", "name", "provider", "step", "last touched")
+        # Focus the table so the screen bindings (``n``, ``d``, ``f``, ``/``)
+        # win over the filter ``Input`` at the top of the screen. The filter
+        # focuses explicitly via ``/`` → ``action_focus_filter``.
+        table.focus()
         self._update_chrome()
         self.refresh_worlds()
 
     def on_screen_resume(self) -> None:
         self._update_chrome()
-        self.refresh_worlds()
+        table = _maybe_query(self, "#worlds-table", DataTable)
+        if table is not None:
+            table.focus()
+        # We intentionally avoid calling ``refresh_worlds`` here: screen
+        # resume fires when a modal dismisses, and an exclusive persistence
+        # worker started there would cancel an in-flight save/delete/fork
+        # worker that just started from the modal's own callback. State
+        # changes inside the app flow back via ``WorldSaved`` / ``WorldDeleted``
+        # / ``WorldForked`` messages instead.
 
     def _update_chrome(self) -> None:
         breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
@@ -1796,6 +1808,12 @@ class WorldEditScreen(Screen):
         self._populate_objects()
         self._refresh_preview_static()
         self.dirty = self._is_new or is_dirty(self._original, self._world)
+        # Focus the object list so the screen-level ``a``/``delete`` bindings
+        # fire before the name ``Input`` swallows them. The user can press
+        # ``Tab`` (or click) to move to the name field when renaming.
+        options = _maybe_query(self, "#edit-objects", OptionList)
+        if options is not None:
+            options.focus()
 
     def on_screen_resume(self) -> None:
         self._update_chrome()

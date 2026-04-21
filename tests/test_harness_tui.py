@@ -306,3 +306,403 @@ def test_home_jump_card_keyboard_activation(tmp_path) -> None:
             assert isinstance(app.screen, WorldsScreen)
 
     asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# M2 — Worlds CRUD tests
+# ---------------------------------------------------------------------------
+
+
+def _seed_world(state_dir, name: str = "lab", world_id: str | None = None) -> str:
+    """Save one world through the public WorldForge API so the table has rows."""
+
+    from worldforge import WorldForge
+
+    forge = WorldForge(state_dir=state_dir)
+    world = forge.create_world(name, provider="mock")
+    if world_id:
+        world.id = world_id
+    return forge.save_world(world)
+
+
+def test_worlds_screen_shows_empty_state_on_empty_state_dir(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import Static
+
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldsScreen
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            empty = app.screen.query_one("#worlds-empty", Static)
+            assert "No worlds yet" in empty.render().plain  # type: ignore[union-attr]
+
+    asyncio.run(scenario())
+
+
+def test_worlds_screen_populates_table_from_state_dir(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import DataTable
+
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldsScreen
+
+    _seed_world(tmp_path, name="alpha")
+    _seed_world(tmp_path, name="beta")
+    _seed_world(tmp_path, name="gamma")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            table = app.screen.query_one("#worlds-table", DataTable)
+            assert table.row_count == 3
+
+    asyncio.run(scenario())
+
+
+def test_worlds_create_new_world_round_trip(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import Input
+
+    from worldforge import WorldForge
+    from worldforge.harness.tui import (
+        NewWorldScreen,
+        TheWorldHarnessApp,
+        WorldEditScreen,
+        WorldsScreen,
+    )
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("n")
+            await pilot.pause()
+            assert isinstance(app.screen, NewWorldScreen)
+            # Fill the name and submit.
+            name_input = app.screen.query_one("#new-world-name", Input)
+            name_input.value = "kitchen"
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldEditScreen)
+            # Save via Ctrl+S.
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            await pilot.pause()
+            # Back to the Worlds screen: row should have been persisted.
+            forge = WorldForge(state_dir=tmp_path)
+            ids = forge.list_worlds()
+            assert len(ids) == 1
+
+    asyncio.run(scenario())
+
+
+def test_worlds_delete_cancel_keeps_row(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge import WorldForge
+    from worldforge.harness.tui import ConfirmDeleteScreen, TheWorldHarnessApp, WorldsScreen
+
+    _seed_world(tmp_path, name="lab-keep", world_id="lab-keep")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("d")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmDeleteScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            forge = WorldForge(state_dir=tmp_path)
+            assert forge.list_worlds() == ["lab-keep"]
+
+    asyncio.run(scenario())
+
+
+def test_worlds_delete_confirm_removes_row(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge import WorldForge
+    from worldforge.harness.tui import ConfirmDeleteScreen, TheWorldHarnessApp, WorldsScreen
+
+    _seed_world(tmp_path, name="lab-drop", world_id="lab-drop")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("d")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmDeleteScreen)
+            await pilot.click("#confirm-accept")
+            # Wait for the persistence worker to complete and post the
+            # WorldDeleted message back to the worlds screen.
+            for _ in range(10):
+                await pilot.pause()
+            forge = WorldForge(state_dir=tmp_path)
+            assert forge.list_worlds() == []
+
+    asyncio.run(scenario())
+
+
+def test_worlds_fork_opens_edit_screen_with_fresh_id(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge import WorldForge
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldEditScreen, WorldsScreen
+
+    _seed_world(tmp_path, name="lab-fork", world_id="lab-fork")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("f")
+            await pilot.pause()
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldEditScreen)
+            assert app.screen.dirty is True
+            # Fork is in-memory only until saved.
+            forge = WorldForge(state_dir=tmp_path)
+            assert forge.list_worlds() == ["lab-fork"]
+
+    asyncio.run(scenario())
+
+
+def test_worlds_filter_narrows_table(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import DataTable, Input
+
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldsScreen
+
+    _seed_world(tmp_path, name="kitchen-a", world_id="kitchen-a")
+    _seed_world(tmp_path, name="kitchen-b", world_id="kitchen-b")
+    _seed_world(tmp_path, name="lab-1", world_id="lab-1")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            filt = app.screen.query_one("#worlds-filter", Input)
+            filt.value = "kit"
+            await pilot.pause()
+            await pilot.pause()
+            table = app.screen.query_one("#worlds-table", DataTable)
+            assert table.row_count == 2
+
+    asyncio.run(scenario())
+
+
+def test_worlds_rejected_id_surfaces_toast(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import Input
+
+    from worldforge import WorldForge
+    from worldforge.harness.tui import (
+        NewWorldScreen,
+        TheWorldHarnessApp,
+        WorldEditScreen,
+        WorldsScreen,
+    )
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("n")
+            await pilot.pause()
+            assert isinstance(app.screen, NewWorldScreen)
+            # Valid-looking name, but we then rewrite the id to an unsafe one
+            # before saving, ensuring the save worker surfaces a toast and
+            # does not leave a file on disk.
+            name_input = app.screen.query_one("#new-world-name", Input)
+            name_input.value = "kitchen"
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldEditScreen)
+            app.screen._world.id = "../escape"
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            await pilot.pause()
+            forge = WorldForge(state_dir=tmp_path)
+            # The save worker rejected the id; no file under state_dir.
+            assert forge.list_worlds() == []
+
+    asyncio.run(scenario())
+
+
+def test_worlds_command_palette_exposes_new_and_jump_worlds(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import TheWorldHarnessApp
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)):
+            titles = [cmd.title for cmd in app.get_system_commands(app.screen)]
+            assert "Jump: Worlds" in titles
+            assert "New world" in titles
+
+    asyncio.run(scenario())
+
+
+def test_worlds_initial_screen_opens_worlds(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldsScreen
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)):
+            assert isinstance(app.screen, WorldsScreen)
+
+    asyncio.run(scenario())
+
+
+def test_worlds_chord_g_w_jumps_to_worlds(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldsScreen
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.press("g", "w")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+
+    asyncio.run(scenario())
+
+
+def test_worlds_edit_save_round_trip_preserves_rename(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import Input
+
+    from worldforge import WorldForge
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldEditScreen, WorldsScreen
+
+    _seed_world(tmp_path, name="lab-rename", world_id="lab-rename")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldEditScreen)
+            name_input = app.screen.query_one("#edit-name", Input)
+            name_input.value = "workbench"
+            await pilot.pause()
+            assert app.screen.dirty is True
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            await pilot.pause()
+            forge = WorldForge(state_dir=tmp_path)
+            reloaded = forge.load_world("lab-rename")
+            assert reloaded.name == "workbench"
+
+    asyncio.run(scenario())
+
+
+def test_worlds_add_object_and_preview(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import (
+        EditObjectScreen,
+        TheWorldHarnessApp,
+        WorldEditScreen,
+        WorldsScreen,
+    )
+
+    _seed_world(tmp_path, name="lab-add", world_id="lab-add")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldEditScreen)
+            await pilot.press("a")
+            await pilot.pause()
+            assert isinstance(app.screen, EditObjectScreen)
+            # Accept defaults.
+            await pilot.click("#edit-object-save")
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldEditScreen)
+            # Staged action is a preview; history must not be bumped.
+            assert len(app.screen._world.scene_objects) == 1
+            assert app.screen.staged_action is not None
+
+    asyncio.run(scenario())
+
+
+def test_confirm_delete_returns_false_on_escape(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import ConfirmDeleteScreen, TheWorldHarnessApp
+
+    outcome: list[bool | None] = []
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await app.push_screen(ConfirmDeleteScreen(), outcome.append)
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmDeleteScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+
+    asyncio.run(scenario())
+    assert outcome == [False]
+
+
+def test_confirm_delete_returns_true_on_enter(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import ConfirmDeleteScreen, TheWorldHarnessApp
+
+    outcome: list[bool | None] = []
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await app.push_screen(ConfirmDeleteScreen(), outcome.append)
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmDeleteScreen)
+            await pilot.click("#confirm-accept")
+            await pilot.pause()
+
+    asyncio.run(scenario())
+    assert outcome == [True]

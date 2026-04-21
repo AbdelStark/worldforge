@@ -80,9 +80,7 @@ def validate_id_or_reason(world_id: str) -> str | None:
     if "/" in trimmed or "\\" in trimmed:
         return "World ID must not contain path separators."
     if _STORAGE_ID_PATTERN.fullmatch(trimmed) is None:
-        return (
-            "World ID must use only letters, numbers, '.', '_', or '-'."
-        )
+        return "World ID must use only letters, numbers, '.', '_', or '-'."
     return None
 
 
@@ -108,9 +106,7 @@ def format_world_row(
             mtime = 0.0
         if mtime > 0.0:
             last_touched = (
-                datetime.fromtimestamp(mtime, tz=timezone.utc)
-                .replace(microsecond=0)
-                .isoformat()
+                datetime.fromtimestamp(mtime, tz=timezone.utc).replace(microsecond=0).isoformat()
             )
     return (world.id, world.name, world.provider, int(world.step), last_touched)
 
