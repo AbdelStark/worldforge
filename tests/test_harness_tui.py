@@ -293,7 +293,7 @@ def test_command_palette_lists_screens_and_flows(tmp_path) -> None:
 def test_home_jump_card_keyboard_activation(tmp_path) -> None:
     pytest.importorskip("textual")
 
-    from worldforge.harness.tui import HomeScreen, PlaceholderScreen, TheWorldHarnessApp
+    from worldforge.harness.tui import HomeScreen, TheWorldHarnessApp, WorldsScreen
 
     async def scenario() -> None:
         app = TheWorldHarnessApp(state_dir=tmp_path)
@@ -301,6 +301,8 @@ def test_home_jump_card_keyboard_activation(tmp_path) -> None:
             assert isinstance(app.screen, HomeScreen)
             await pilot.press("n")
             await pilot.pause()
-            assert isinstance(app.screen, PlaceholderScreen)
+            # With M2 landed, the "Create a world" jump card opens the real
+            # Worlds screen instead of the M2 placeholder.
+            assert isinstance(app.screen, WorldsScreen)
 
     asyncio.run(scenario())
