@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import queue
+import time
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from rich.align import Align
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from textual import events, on
+from textual import events, on, work
 from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
@@ -21,8 +24,20 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
-from textual.widgets import Button, DataTable, Footer, Header, Select, Static
+from textual.widgets import (
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    ProgressBar,
+    RichLog,
+    Select,
+    Static,
+)
+from textual.worker import get_current_worker
 
+from worldforge.framework import World, WorldForge
 from worldforge.harness.flows import available_flows, run_flow
 from worldforge.harness.models import HarnessFlow, HarnessRun, HarnessStep
 from worldforge.harness.theme import (
@@ -32,8 +47,19 @@ from worldforge.harness.theme import (
     WORLDFORGE_DARK_PALETTE,
     WORLDFORGE_LIGHT_PALETTE,
 )
+from worldforge.models import CAPABILITY_NAMES, Action, ProviderEvent
+from worldforge.providers.base import ProviderError
+from worldforge.providers.mock import MockProvider
 
-InitialScreen = Literal["home", "run-inspector"]
+InitialScreen = Literal["home", "run-inspector", "providers"]
+
+RunOperationState = Literal["idle", "running", "cancelled", "error", "done"]
+
+# Glyphs used in the capability matrix. Dual-coded with semantic color so
+# a colorblind reader still parses the matrix — see plan D2.
+_CAPABILITY_GLYPH_REAL = "●"
+_CAPABILITY_GLYPH_SCAFFOLD = "○"
+_CAPABILITY_GLYPH_MISSING = " "
 
 
 def _build_theme(name: str, palette: dict[str, str], *, dark: bool) -> Theme:
@@ -472,9 +498,11 @@ class HomeScreen(Screen):
 
     def on_jump_requested(self, event: JumpRequested) -> None:
         event.stop()
+        if event.target == "providers":
+            self.app.action_switch_screen("providers")
+            return
         routing = {
             "worlds": ("M2", "Worlds CRUD lands in M2 — see roadmap §8."),
-            "providers": ("M3", "Live provider streaming lands in M3 — see roadmap §8."),
             "eval": ("M4", "Eval and benchmark land in M4 — see roadmap §8."),
         }
         milestone, message = routing.get(event.target, ("?", "Target not yet routed."))
@@ -865,6 +893,744 @@ class PlaceholderScreen(ModalScreen[None]):
 
 
 # ---------------------------------------------------------------------------
+# M3 — Live providers: messages, helpers, ProvidersScreen, RegisterProviderModal
+# ---------------------------------------------------------------------------
+
+
+class ProviderEventReceived(Message):
+    """Posted once per drained ``ProviderEvent`` from a worker."""
+
+    def __init__(self, event: ProviderEvent) -> None:
+        super().__init__()
+        self.event = event
+
+
+class RunRequested(Message):
+    """Posted when the user asks to run a capability on the current provider."""
+
+    def __init__(self, provider: str, capability: str) -> None:
+        super().__init__()
+        self.provider = provider
+        self.capability = capability
+
+
+class RunCompleted(Message):
+    """Posted by the provider worker once the call returns successfully."""
+
+    def __init__(self, provider: str, latency_ms: float) -> None:
+        super().__init__()
+        self.provider = provider
+        self.latency_ms = latency_ms
+
+
+class RunCancelled(Message):
+    """Posted by the provider worker when ``is_cancelled`` is observed."""
+
+    def __init__(self, provider: str) -> None:
+        super().__init__()
+        self.provider = provider
+
+
+class _QueueingEventHandler:
+    """Callable event handler that enqueues ``ProviderEvent`` objects.
+
+    Given to ``WorldForge(event_handler=...)`` at App startup, so every
+    registered (and auto-registered) provider inherits the handler and every
+    emitted event flows into a thread-safe queue the provider worker drains.
+    """
+
+    def __init__(self) -> None:
+        self.queue: queue.Queue[ProviderEvent] = queue.Queue()
+
+    def __call__(self, event: ProviderEvent) -> None:
+        self.queue.put(event)
+
+    def drain(self) -> list[ProviderEvent]:
+        events: list[ProviderEvent] = []
+        while True:
+            try:
+                events.append(self.queue.get_nowait())
+            except queue.Empty:
+                break
+        return events
+
+
+def _phase_color(phase: str) -> str:
+    """Return the semantic color token for a provider event phase."""
+    return {
+        "success": "$success",
+        "failure": "$error",
+        "retry": "$warning",
+    }.get(phase, "$muted")
+
+
+def _capability_cell(
+    capabilities_flags: dict[str, bool],
+    capability: str,
+    implementation_status: str,
+) -> tuple[str, str]:
+    """Return ``(glyph, semantic_token)`` for a single capability cell.
+
+    Sourced **only** from the provider's own capability flags and
+    ``implementation_status`` — no hand-coded per-provider table. The matrix
+    mirrors ``provider.capabilities`` exactly.
+    """
+    if not capabilities_flags.get(capability, False):
+        return _CAPABILITY_GLYPH_MISSING, "$muted"
+    if implementation_status == "scaffold":
+        return _CAPABILITY_GLYPH_SCAFFOLD, "$warning"
+    return _CAPABILITY_GLYPH_REAL, "$success"
+
+
+class RegisterProviderModal(ModalScreen["BaseProvider | None"]):
+    """Modal form to register an ad-hoc mock-backed provider.
+
+    The modal intentionally keeps its public surface minimal: a name field,
+    an implementation-status choice, and submit / cancel targets. Dismissing
+    with a non-``None`` payload returns a ready-to-register ``BaseProvider``
+    instance; the parent screen calls ``WorldForge.register_provider`` and
+    refreshes its row set in place.
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=True),
+        Binding("ctrl+s", "submit", "Register", show=True),
+    ]
+
+    DEFAULT_CSS = """
+    RegisterProviderModal {
+        align: center middle;
+    }
+
+    RegisterProviderModal > #register-card {
+        width: 60%;
+        max-width: 80;
+        height: auto;
+        padding: 1 2;
+        border: round $accent;
+        background: $surface;
+    }
+
+    RegisterProviderModal #register-title {
+        height: auto;
+        padding: 0 0 1 0;
+        text-style: bold;
+        color: $accent;
+    }
+
+    RegisterProviderModal #register-hint {
+        height: auto;
+        padding: 1 0 0 0;
+        color: $text-muted;
+    }
+
+    RegisterProviderModal Input {
+        margin-bottom: 1;
+    }
+
+    RegisterProviderModal #register-buttons {
+        height: 3;
+        align-horizontal: right;
+    }
+
+    RegisterProviderModal Button {
+        margin-left: 1;
+    }
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        with Container(id="register-card"):
+            yield Static("Register a provider", id="register-title")
+            yield Static(
+                "Name a new mock-backed provider. It becomes callable on any "
+                "registered world immediately.",
+                id="register-description",
+            )
+            yield Input(
+                placeholder="Provider name (e.g. mock-alt)",
+                id="register-name",
+            )
+            with Horizontal(id="register-buttons"):
+                yield Button("Cancel", id="register-cancel", variant="default")
+                yield Button("Register", id="register-submit", variant="primary")
+            yield Static(
+                "Press [bold]Ctrl+S[/] to register, [bold]Esc[/] to cancel.",
+                id="register-hint",
+            )
+
+    def on_mount(self) -> None:
+        name_input = _maybe_query(self, "#register-name", Input)
+        if name_input is not None:
+            name_input.focus()
+
+    @on(Button.Pressed, "#register-cancel")
+    def _on_cancel_pressed(self) -> None:
+        self.action_cancel()
+
+    @on(Button.Pressed, "#register-submit")
+    def _on_submit_pressed(self) -> None:
+        self.action_submit()
+
+    @on(Input.Submitted, "#register-name")
+    def _on_name_submitted(self) -> None:
+        self.action_submit()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_submit(self) -> None:
+        name_input = _maybe_query(self, "#register-name", Input)
+        name = (name_input.value if name_input is not None else "").strip()
+        if not name:
+            # Keep the modal open; visual error feedback is deferred —
+            # the user can correct the input or press Esc to cancel.
+            if name_input is not None:
+                name_input.focus()
+            return
+        provider = MockProvider(name=name)
+        self.dismiss(provider)
+
+
+class ProvidersScreen(Screen):
+    """Capability matrix + live event stream for registered providers.
+
+    Renders the canonical WorldForge provider matrix — rows sourced from
+    ``WorldForge.list_providers()``, columns from ``CAPABILITY_NAMES``, cells
+    derived only from ``provider.capabilities`` and ``provider.implementation_status``.
+    Selecting a row sets ``App.current_provider``; pressing ``p`` runs a real
+    ``mock.predict`` through a background worker and streams ``ProviderEvent``s
+    into the ``RichLog``. ``Esc`` cancels the worker, and ``r`` opens the
+    ``RegisterProviderModal``.
+    """
+
+    BINDINGS = [
+        Binding("enter", "select_current", "Select provider", show=True),
+        Binding("p", "run_predict", "Run predict", show=True),
+        Binding("r", "register_provider", "Register provider", show=True),
+        Binding("escape", "cancel_run", "Cancel run / back", show=True),
+    ]
+
+    DEFAULT_CSS = """
+    ProvidersScreen {
+        background: $background;
+        color: $foreground;
+    }
+
+    ProvidersScreen #providers-root {
+        padding: 1 2;
+        height: 1fr;
+    }
+
+    ProvidersScreen #providers-body {
+        height: 2fr;
+    }
+
+    ProvidersScreen #providers-matrix {
+        width: 2fr;
+        border: round $panel;
+        background: $surface;
+        margin-right: 1;
+    }
+
+    ProvidersScreen #providers-matrix:focus-within {
+        border: round $accent;
+    }
+
+    ProvidersScreen #providers-detail {
+        width: 1fr;
+        padding: 1 2;
+        border: round $panel;
+        background: $surface;
+        color: $foreground;
+    }
+
+    ProvidersScreen #providers-stream {
+        height: 1fr;
+        margin-top: 1;
+        padding: 1 2;
+        border: round $panel;
+        background: $surface;
+    }
+
+    ProvidersScreen #providers-stream:focus-within {
+        border: round $accent;
+    }
+
+    ProvidersScreen #providers-progress-row {
+        height: 3;
+        margin-top: 1;
+    }
+
+    ProvidersScreen #providers-progress {
+        width: 1fr;
+        margin-right: 1;
+    }
+
+    ProvidersScreen #providers-cancel {
+        width: auto;
+    }
+
+    ProvidersScreen #providers-empty {
+        height: auto;
+        padding: 1 2;
+        color: $text-muted;
+    }
+
+    ProvidersScreen DataTable {
+        background: $surface;
+    }
+    """
+
+    current_row_provider: reactive[str | None] = reactive(None, init=False)
+    running_operation: reactive[RunOperationState] = reactive("idle", init=False)
+    last_call_summary: reactive[dict[str, dict[str, Any]]] = reactive(
+        dict, init=False, always_update=True
+    )
+
+    def __init__(
+        self,
+        *,
+        event_handler: _QueueingEventHandler | None = None,
+    ) -> None:
+        super().__init__()
+        # The App constructs and injects the queueing handler so every
+        # auto-registered provider inherits it at registration time.
+        self._event_handler = event_handler or _QueueingEventHandler()
+        self._row_providers: list[str] = []
+        self._worker_started_at: float | None = None
+
+    # -- composition -----------------------------------------------------
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with Horizontal(id="chrome"):
+            yield Breadcrumb(id="breadcrumb")
+            yield ProviderStatusPill(id="provider-pill")
+        with Container(id="providers-root"):
+            with Horizontal(id="providers-body"):
+                yield DataTable(
+                    id="providers-matrix",
+                    cursor_type="row",
+                    zebra_stripes=True,
+                )
+                yield Static(id="providers-detail")
+            yield Static(
+                "No providers registered — set the env vars in .env.example or "
+                "run with --provider mock.",
+                id="providers-empty",
+            )
+            with Horizontal(id="providers-progress-row"):
+                yield ProgressBar(
+                    id="providers-progress",
+                    total=None,
+                    show_percentage=False,
+                )
+                yield Button(
+                    "Cancel",
+                    id="providers-cancel",
+                    variant="warning",
+                    disabled=True,
+                )
+            yield RichLog(
+                id="providers-stream",
+                highlight=True,
+                markup=True,
+                max_lines=5000,
+                wrap=True,
+            )
+        yield Footer()
+
+    # -- lifecycle -------------------------------------------------------
+
+    def on_mount(self) -> None:
+        self._update_chrome()
+        self._populate_matrix()
+        self._render_detail()
+        self._update_empty_visibility()
+
+    def on_screen_resume(self) -> None:
+        self._update_chrome()
+        self._populate_matrix()
+        self._render_detail()
+        self._update_empty_visibility()
+
+    # -- matrix rendering ------------------------------------------------
+
+    def _populate_matrix(self) -> None:
+        table = _maybe_query(self, "#providers-matrix", DataTable)
+        if table is None:
+            return
+        table.clear(columns=True)
+        table.add_column("Provider", key="provider")
+        for capability in CAPABILITY_NAMES:
+            table.add_column(capability, key=capability)
+        forge = getattr(self.app, "forge", None)
+        if forge is None:
+            self._row_providers = []
+            return
+        providers = forge.list_providers()
+        self._row_providers = [info.name for info in providers]
+        for info in providers:
+            profile = forge.provider_profile(info.name)
+            flags = info.capabilities.to_dict()
+            cells: list[Text] = [Text(info.name, style="bold")]
+            for capability in CAPABILITY_NAMES:
+                glyph, token = _capability_cell(flags, capability, profile.implementation_status)
+                cells.append(
+                    Text(
+                        f" {glyph} ",
+                        style=self._resolve_token(token),
+                        justify="center",
+                    )
+                )
+            table.add_row(*cells, key=info.name)
+        if self._row_providers:
+            # Pre-select the App's current provider if any, otherwise the
+            # first row. The DataTable keeps the cursor visible either way.
+            current = getattr(self.app, "current_provider", "") or ""
+            if current in self._row_providers:
+                table.move_cursor(row=self._row_providers.index(current))
+                self.current_row_provider = current
+            else:
+                table.move_cursor(row=0)
+                self.current_row_provider = self._row_providers[0]
+
+    def _resolve_token(self, token: str) -> str:
+        # Translate ``$token`` into the concrete color the active theme
+        # resolved. Static cells in DataTable don't pick up TCSS variables
+        # on their own, so we flatten them at render time.
+        name = token.lstrip("$")
+        variables = self.app.get_css_variables()
+        return variables.get(name, variables.get("foreground", ""))
+
+    def _update_empty_visibility(self) -> None:
+        empty = _maybe_query(self, "#providers-empty", Static)
+        if empty is None:
+            return
+        empty.display = not bool(self._row_providers)
+
+    # -- selection / detail ---------------------------------------------
+
+    @on(DataTable.RowHighlighted, "#providers-matrix")
+    def _on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.row_key is None:
+            return
+        self.current_row_provider = str(event.row_key.value)
+
+    def watch_current_row_provider(self, _old: str | None, _new: str | None) -> None:
+        self._render_detail()
+
+    def watch_running_operation(self, _old: RunOperationState, new: RunOperationState) -> None:
+        progress = _maybe_query(self, "#providers-progress", ProgressBar)
+        cancel = _maybe_query(self, "#providers-cancel", Button)
+        if cancel is not None:
+            cancel.disabled = new != "running"
+        if progress is not None:
+            if new == "running":
+                progress.update(total=None, progress=0)
+            elif new == "done":
+                progress.update(total=1, progress=1)
+            elif new in {"cancelled", "error"}:
+                progress.update(total=1, progress=0)
+            else:
+                progress.update(total=None, progress=0)
+
+    def watch_last_call_summary(
+        self,
+        _old: dict[str, dict[str, Any]],
+        _new: dict[str, dict[str, Any]],
+    ) -> None:
+        self._render_detail()
+
+    def _render_detail(self) -> None:
+        detail = _maybe_query(self, "#providers-detail", Static)
+        if detail is None:
+            return
+        name = self.current_row_provider
+        forge = getattr(self.app, "forge", None)
+        if not name or forge is None:
+            detail.update(
+                Text(
+                    "No run captured — press [p] to run mock.predict.",
+                    style="dim",
+                )
+            )
+            return
+        profile = forge.provider_profile(name)
+        health = forge.provider_health(name)
+        summary = self.last_call_summary.get(name, {})
+        lines: list[Text] = []
+        lines.append(Text(name, style="bold"))
+        lines.append(Text(f"status: {profile.implementation_status}", style="dim"))
+        health_style = "$success" if health.healthy else "$error"
+        lines.append(
+            Text(
+                f"health: {'healthy' if health.healthy else 'unhealthy'} "
+                f"({health.latency_ms:.1f}ms)",
+                style=self._resolve_token(health_style),
+            )
+        )
+        lines.append(Text(f"detail: {health.details}", style="dim"))
+        lines.append(Text(""))
+        lines.append(Text("required env vars:", style="bold"))
+        if profile.required_env_vars:
+            for var in profile.required_env_vars:
+                lines.append(Text(f"  - {var}", style="dim"))
+        else:
+            lines.append(Text("  (none)", style="dim"))
+        lines.append(Text(""))
+        lines.append(Text("last call:", style="bold"))
+        if summary:
+            lines.append(
+                Text(
+                    f"  phase: {summary.get('phase', '—')}",
+                    style=self._resolve_token(_phase_color(str(summary.get("phase", "")))),
+                )
+            )
+            lines.append(Text(f"  latency_ms: {summary.get('latency_ms', 0):.1f}", style="dim"))
+            lines.append(Text(f"  retries: {summary.get('retries', 0)}", style="dim"))
+        else:
+            lines.append(Text("  (no prior call)", style="dim"))
+        detail.update(Group(*lines))
+
+    # -- chrome ----------------------------------------------------------
+
+    def _update_chrome(self) -> None:
+        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
+        if breadcrumb is not None:
+            breadcrumb.path = ("worldforge", "providers")
+        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
+        if pill is not None:
+            current = getattr(self.app, "current_provider", "") or ""
+            pill.label = f"{current} · predict" if current else ""
+
+    # -- bindings --------------------------------------------------------
+
+    def action_select_current(self) -> None:
+        if self.current_row_provider is None:
+            return
+        self.app.current_provider = self.current_row_provider
+        self._update_chrome()
+
+    def action_run_predict(self) -> None:
+        forge = getattr(self.app, "forge", None)
+        current = getattr(self.app, "current_provider", "") or self.current_row_provider
+        if forge is None or not current:
+            return
+        if current not in self._row_providers:
+            return
+        if self.running_operation == "running":
+            return
+        self.post_message(RunRequested(provider=current, capability="predict"))
+
+    def action_register_provider(self) -> None:
+        self._open_register_modal()
+
+    def action_cancel_run(self) -> None:
+        if self.running_operation == "running":
+            self.workers.cancel_group(self, "provider")
+        else:
+            # Fall through: pop to the previous screen when nothing is running.
+            self.app.pop_screen()
+
+    @on(Button.Pressed, "#providers-cancel")
+    def _on_cancel_pressed(self) -> None:
+        if self.running_operation == "running":
+            self.workers.cancel_group(self, "provider")
+
+    # -- run request / worker -------------------------------------------
+
+    def on_run_requested(self, event: RunRequested) -> None:
+        event.stop()
+        self._start_run(event.provider)
+
+    def _start_run(self, provider_name: str) -> None:
+        # Drain any stale events from a prior call before kicking off a new
+        # worker so the new stream cannot inherit a leaked event.
+        self._event_handler.drain()
+        rich_log = _maybe_query(self, "#providers-stream", RichLog)
+        if rich_log is not None:
+            rich_log.write(
+                f"[dim]{self._timestamp()}[/] "
+                f"[{self._resolve_token('$accent')}]request  [/] "
+                f"{provider_name}.predict"
+            )
+        self.running_operation = "running"
+        self._worker_started_at = time.perf_counter()
+        self._run_predict(provider_name)
+
+    @work(thread=True, group="provider", exclusive=True, name="provider.predict")
+    def _run_predict(self, provider_name: str) -> None:
+        """Run mock.predict in a worker, draining the event queue to the UI.
+
+        Worker hygiene: UI mutation ONLY via ``self.app.call_from_thread``.
+        Never touch a widget directly from here.
+        """
+        worker = get_current_worker()
+        forge: WorldForge = self.app.forge
+        try:
+            world = self._current_or_scratch_world(forge)
+        except Exception as exc:
+            self.app.call_from_thread(
+                self.post_message,
+                ProviderEventReceived(_failure_event(provider_name, exc)),
+            )
+            self.app.call_from_thread(self.post_message, RunCancelled(provider_name))
+            return
+
+        try:
+            prediction = world.predict(Action(kind="noop"), steps=1, provider=provider_name)
+        except ProviderError as exc:
+            self.app.call_from_thread(
+                self.post_message,
+                ProviderEventReceived(_failure_event(provider_name, exc)),
+            )
+            return
+        except Exception as exc:  # defensive — surface unknown failures
+            self.app.call_from_thread(
+                self.post_message,
+                ProviderEventReceived(_failure_event(provider_name, exc)),
+            )
+            return
+
+        # Drain emitted events. For remote (M4+) providers that emit
+        # progressively, we poll with a short sleep so cancellation is
+        # observable between slices.
+        drained_any = False
+        while True:
+            if worker.is_cancelled:
+                self.app.call_from_thread(self.post_message, RunCancelled(provider_name))
+                return
+            try:
+                event = self._event_handler.queue.get_nowait()
+            except queue.Empty:
+                # ``mock.predict`` emits synchronously and returns, so once we
+                # drained the queue the run is complete. We give one short
+                # pause to let late emitters catch up without blocking.
+                if drained_any:
+                    break
+                time.sleep(0.01)
+                try:
+                    event = self._event_handler.queue.get_nowait()
+                except queue.Empty:
+                    break
+            drained_any = True
+            self.app.call_from_thread(self.post_message, ProviderEventReceived(event))
+
+        if worker.is_cancelled:
+            self.app.call_from_thread(self.post_message, RunCancelled(provider_name))
+            return
+
+        self.app.call_from_thread(
+            self.post_message,
+            RunCompleted(provider=provider_name, latency_ms=prediction.latency_ms),
+        )
+
+    def _current_or_scratch_world(self, forge: WorldForge) -> World:
+        selected = getattr(self.app, "selected_world", None)
+        if isinstance(selected, World):
+            return selected
+        # Scratch world stays in-memory — ``create_world`` does not persist.
+        return forge.create_world("scratch")
+
+    # -- message handlers -----------------------------------------------
+
+    def on_provider_event_received(self, message: ProviderEventReceived) -> None:
+        message.stop()
+        event = message.event
+        rich_log = _maybe_query(self, "#providers-stream", RichLog)
+        if rich_log is not None:
+            rich_log.write(self._format_event_line(event))
+        # Update the per-provider last-call summary. We only track provider,
+        # operation, phase, attempt, and duration — never ``metadata`` or
+        # ``message`` (they can carry provider-shaped payloads and must be
+        # sanitised at the provider boundary, not here).
+        updated = dict(self.last_call_summary)
+        updated[event.provider] = {
+            "phase": event.phase,
+            "latency_ms": float(event.duration_ms or 0.0),
+            "retries": max(0, event.attempt - 1),
+            "operation": event.operation,
+        }
+        self.last_call_summary = updated
+
+    def on_run_completed(self, message: RunCompleted) -> None:
+        message.stop()
+        self.running_operation = "done"
+        rich_log = _maybe_query(self, "#providers-stream", RichLog)
+        if rich_log is not None:
+            rich_log.write(
+                f"[dim]{self._timestamp()}[/] "
+                f"[{self._resolve_token('$success')}]complete [/] "
+                f"{message.provider}.predict ({message.latency_ms:.1f}ms)"
+            )
+
+    def on_run_cancelled(self, message: RunCancelled) -> None:
+        message.stop()
+        self.running_operation = "cancelled"
+        rich_log = _maybe_query(self, "#providers-stream", RichLog)
+        if rich_log is not None:
+            rich_log.write(
+                f"[dim]{self._timestamp()}[/] "
+                f"[{self._resolve_token('$warning')}]cancelled[/] "
+                f"{message.provider}.predict"
+            )
+        try:
+            self.app.notify("Cancelled", severity="warning", timeout=2.0)
+        except Exception:  # pragma: no cover - defensive for test environments
+            pass
+
+    # -- register-provider modal plumbing -------------------------------
+
+    @work(group="provider-modal", exclusive=True, name="provider.register-modal")
+    async def _open_register_modal(self) -> None:
+        provider = await self.app.push_screen_wait(RegisterProviderModal())
+        if provider is None:
+            return
+        forge: WorldForge = self.app.forge
+        try:
+            forge.register_provider(provider)
+        except Exception as exc:  # surface as a toast; keep the screen stable
+            try:
+                self.app.notify(f"Register failed: {exc}", severity="error")
+            except Exception:
+                pass
+            return
+        self._populate_matrix()
+        self._render_detail()
+        self._update_empty_visibility()
+
+    # -- formatting helpers ---------------------------------------------
+
+    @staticmethod
+    def _timestamp() -> str:
+        return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+    def _format_event_line(self, event: ProviderEvent) -> str:
+        color = self._resolve_token(_phase_color(event.phase))
+        duration = event.duration_ms if event.duration_ms is not None else 0.0
+        return (
+            f"[dim]{self._timestamp()}[/] "
+            f"[{color}]{event.phase:^9}[/] "
+            f"{event.provider}.{event.operation} ({duration:.1f}ms)"
+        )
+
+
+def _failure_event(provider_name: str, exc: BaseException) -> ProviderEvent:
+    """Construct a best-effort failure ``ProviderEvent`` for worker errors."""
+    message = str(exc) or exc.__class__.__name__
+    return ProviderEvent(
+        provider=provider_name,
+        operation="predict",
+        phase="failure",
+        message=message,
+    )
+
+
+# ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
@@ -880,8 +1646,18 @@ class TheWorldHarnessApp(App[None]):
         Binding("ctrl+t", "toggle_theme", "Theme", show=False),
         Binding("g,h", "switch_screen('home')", "Jump: Home", show=False),
         Binding("g,r", "switch_screen('run-inspector')", "Jump: Run Inspector", show=False),
+        Binding("g,p", "switch_screen('providers')", "Jump: Providers", show=False),
     ]
-    SCREENS = {"home": HomeScreen, "run-inspector": RunInspectorScreen}
+    SCREENS = {
+        "home": HomeScreen,
+        "run-inspector": RunInspectorScreen,
+        "providers": ProvidersScreen,
+    }
+
+    # App-level reactives that screens can read / write.
+    # ``current_provider`` is the cross-screen source of truth (plan D1).
+    current_provider: reactive[str] = reactive("", init=False)
+    selected_world: reactive[World | None] = reactive(None, init=False)
     CSS = """
     Header {
         background: $surface;
@@ -914,12 +1690,21 @@ class TheWorldHarnessApp(App[None]):
         initial_screen: InitialScreen = "home",
         state_dir: Path | None = None,
         step_delay: float = 0.18,
+        forge: WorldForge | None = None,
     ) -> None:
         super().__init__()
         self._initial_flow_id = initial_flow_id
         self._initial_screen: InitialScreen = initial_screen
         self._state_dir = state_dir
         self._step_delay = step_delay
+        # Queueing event handler shared across providers so every registered
+        # provider inherits the same observability path (plan D5).
+        self._provider_event_handler = _QueueingEventHandler()
+        self.forge: WorldForge = forge or WorldForge(
+            state_dir=state_dir,
+            event_handler=self._provider_event_handler,
+            auto_register_remote=True,
+        )
 
     # The harness keeps its own screen factories so we can pass per-instance
     # construction args (state_dir, step_delay, initial flow) into screens
@@ -934,6 +1719,9 @@ class TheWorldHarnessApp(App[None]):
     def _make_home(self) -> HomeScreen:
         return HomeScreen()
 
+    def _make_providers(self) -> ProvidersScreen:
+        return ProvidersScreen(event_handler=self._provider_event_handler)
+
     async def on_mount(self) -> None:
         self.register_theme(_build_theme(THEME_NAME_DARK, WORLDFORGE_DARK_PALETTE, dark=True))
         self.register_theme(_build_theme(THEME_NAME_LIGHT, WORLDFORGE_LIGHT_PALETTE, dark=False))
@@ -943,6 +1731,8 @@ class TheWorldHarnessApp(App[None]):
         # active screen consistent before any test/Pilot interaction runs.
         if self._initial_screen == "run-inspector":
             await self.push_screen(self._make_run_inspector())
+        elif self._initial_screen == "providers":
+            await self.push_screen(self._make_providers())
         else:
             await self.push_screen(self._make_home())
 
@@ -970,6 +1760,8 @@ class TheWorldHarnessApp(App[None]):
             self.switch_screen(self._make_run_inspector())
         elif screen_name == "home":
             self.switch_screen(self._make_home())
+        elif screen_name == "providers":
+            self.switch_screen(self._make_providers())
         else:  # pragma: no cover - defensive
             self.switch_screen(screen_name)
 
@@ -986,6 +1778,11 @@ class TheWorldHarnessApp(App[None]):
             "Jump: Run Inspector",
             "Open the Run Inspector screen",
             lambda: self.action_switch_screen("run-inspector"),
+        )
+        yield SystemCommand(
+            "Open providers",
+            "Open the Providers screen with the capability matrix",
+            lambda: self.action_switch_screen("providers"),
         )
         yield SystemCommand(
             "Open Help",
