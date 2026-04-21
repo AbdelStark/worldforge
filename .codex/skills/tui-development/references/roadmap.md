@@ -268,7 +268,7 @@ the milestone "done" with the date.
 
 | Milestone | Spec | Plan | Tasks | Implementation status |
 | --- | --- | --- | --- | --- |
-| M0 — Theme + chrome reset | [spec](../../../../specs/theworldharness-M0-theme-chrome/spec.md) | [plan](../../../../specs/theworldharness-M0-theme-chrome/plan.md) | [tasks](../../../../specs/theworldharness-M0-theme-chrome/tasks.md) | not started |
+| M0 — Theme + chrome reset | [spec](../../../../specs/theworldharness-M0-theme-chrome/spec.md) | [plan](../../../../specs/theworldharness-M0-theme-chrome/plan.md) | [tasks](../../../../specs/theworldharness-M0-theme-chrome/tasks.md) | done · 2026-04-21 |
 | M1 — Screen architecture | [spec](../../../../specs/theworldharness-M1-screen-architecture/spec.md) | [plan](../../../../specs/theworldharness-M1-screen-architecture/plan.md) | [tasks](../../../../specs/theworldharness-M1-screen-architecture/tasks.md) | not started |
 | M2 — Worlds CRUD | [spec](../../../../specs/theworldharness-M2-worlds-crud/spec.md) | [plan](../../../../specs/theworldharness-M2-worlds-crud/plan.md) | [tasks](../../../../specs/theworldharness-M2-worlds-crud/tasks.md) | not started |
 | M3 — Live providers | [spec](../../../../specs/theworldharness-M3-live-providers/spec.md) | [plan](../../../../specs/theworldharness-M3-live-providers/plan.md) | [tasks](../../../../specs/theworldharness-M3-live-providers/tasks.md) | not started |

@@ -7,6 +7,17 @@ releases may still include breaking changes when the public API needs to tighten
 
 ## Unreleased
 
+### Harness
+
+- Reskinned TheWorldHarness with registered `worldforge-dark` and `worldforge-light` themes,
+  retiring the hard-coded hex literals in `src/worldforge/harness/tui.py` in favour of semantic
+  tokens (`$accent`, `$success`, `$warning`, `$error`, `$panel`, `$boost`, `$surface`, plus the
+  custom `$muted` variable) so the harness reads as a polished workspace on light terminals.
+- Added a header chrome strip with a `worldforge > <flow>` breadcrumb and a
+  `<provider> . <capability>` status pill that update reactively when the selected flow changes.
+- Added a hidden `Ctrl+T` binding that cycles between the two registered themes without
+  restarting the harness.
+
 ### Added
 
 - Added the `worldforge world` CLI command group for local JSON persistence workflows, including
