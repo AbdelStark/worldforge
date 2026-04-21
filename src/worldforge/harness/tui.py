@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Literal
 
 from rich.align import Align
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from textual import on
-from textual.app import App, ComposeResult
+from textual import events, on
+from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.css.query import NoMatches
+from textual.message import Message
 from textual.reactive import reactive
+from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
-from textual.widgets import Button, Footer, Header, Select, Static
+from textual.widgets import Button, DataTable, Footer, Header, Select, Static
 
 from worldforge.harness.flows import available_flows, run_flow
 from worldforge.harness.models import HarnessFlow, HarnessRun, HarnessStep
@@ -28,6 +32,8 @@ from worldforge.harness.theme import (
     WORLDFORGE_DARK_PALETTE,
     WORLDFORGE_LIGHT_PALETTE,
 )
+
+InitialScreen = Literal["home", "run-inspector"]
 
 
 def _build_theme(name: str, palette: dict[str, str], *, dark: bool) -> Theme:
@@ -71,8 +77,21 @@ class _ThemedRenderer:
         return variables.get(token, variables.get("foreground", ""))
 
 
+def _maybe_query(node, selector: str, expected_type):
+    """Return a widget from ``node`` if composed, else ``None``.
+
+    Reactives can fire before all widgets in ``compose()`` are mounted (and
+    chrome updates can fire on a screen that hasn't mounted yet). Treat a
+    missing target as a no-op rather than crashing.
+    """
+    try:
+        return node.query_one(selector, expected_type)
+    except NoMatches:
+        return None
+
+
 class Breadcrumb(Static):
-    """Header breadcrumb showing ``worldforge › <flow short_title>``.
+    """Header breadcrumb showing ``worldforge › <screen> [› <flow>]``.
 
     Path segments live in a reactive tuple; later milestones can deepen the
     trail (worlds, runs) without changing the rendering surface.
@@ -263,46 +282,219 @@ class TranscriptPane(Static, _ThemedRenderer):
         self.update(Panel(Group(*lines), title="Run Transcript", border_style=accent))
 
 
-class TheWorldHarnessApp(App[None]):
-    """Visual TUI harness for WorldForge E2E demos."""
+# ---------------------------------------------------------------------------
+# Jump cards & messages (Home screen)
+# ---------------------------------------------------------------------------
 
-    TITLE = "TheWorldHarness"
-    SUB_TITLE = "WorldForge visual integration harness"
+
+class JumpRequested(Message):
+    """Posted by a ``JumpCard`` when the user activates it."""
+
+    def __init__(self, target: str) -> None:
+        super().__init__()
+        self.target = target
+
+
+class JumpCard(Static, _ThemedRenderer):
+    """Focusable Home-screen jump target.
+
+    Activates on ``enter``, click, or its bound letter key (handled by
+    the parent screen). Posts a :class:`JumpRequested` so the parent
+    screen owns the routing decision per the skill's "messages over
+    reach-across" rule.
+    """
+
+    DEFAULT_CSS = """
+    JumpCard {
+        height: 7;
+        padding: 1 2;
+        margin-bottom: 1;
+        border: round $panel;
+        background: $surface;
+        color: $foreground;
+    }
+    JumpCard:focus, JumpCard:focus-within {
+        border: round $accent;
+        background: $boost;
+    }
+    """
+
     BINDINGS = [
-        ("r", "run_selected", "Run"),
-        ("1", "select_flow('leworldmodel')", "LeWorldModel"),
-        ("2", "select_flow('lerobot')", "LeRobot"),
-        ("3", "select_flow('diagnostics')", "Diagnostics"),
-        ("q", "quit", "Quit"),
-        Binding("ctrl+t", "toggle_theme", "Theme", show=False),
+        Binding("enter", "activate", "Activate", show=False),
     ]
-    CSS = """
-    Screen {
+
+    can_focus = True
+
+    def __init__(
+        self,
+        *,
+        target: str,
+        title: str,
+        binding: str,
+        description: str,
+        widget_id: str | None = None,
+    ) -> None:
+        super().__init__(id=widget_id)
+        self._target = target
+        self._title = title
+        self._binding = binding
+        self._description = description
+
+    def on_mount(self) -> None:
+        accent = self._color("accent")
+        body = Text()
+        body.append(self._title, style=f"bold {accent}")
+        body.append(f"   [{self._binding}]\n", style="dim")
+        body.append(self._description, style="dim")
+        self.update(body)
+
+    def action_activate(self) -> None:
+        self.post_message(JumpRequested(self._target))
+
+    def on_click(self, event: events.Click) -> None:  # pragma: no cover - thin wrapper
+        event.stop()
+        self.focus()
+        self.post_message(JumpRequested(self._target))
+
+
+# ---------------------------------------------------------------------------
+# Screens
+# ---------------------------------------------------------------------------
+
+
+class HomeScreen(Screen):
+    """Landing screen with a 30-second intro and three jump cards."""
+
+    BINDINGS = [
+        Binding("n", "jump('worlds')", "Create a world", show=True),
+        Binding("p", "jump('providers')", "Run a provider", show=True),
+        Binding("e", "jump('eval')", "Run an eval", show=True),
+    ]
+
+    DEFAULT_CSS = """
+    HomeScreen {
         background: $background;
         color: $foreground;
     }
 
-    Header {
+    #home-root {
+        padding: 1 2;
+        height: 1fr;
+    }
+
+    #home-intro {
+        height: auto;
+        padding: 1 2;
+        margin-bottom: 1;
+        border: round $panel;
         background: $surface;
-        color: $foreground;
     }
 
-    Footer {
+    #home-cards {
+        height: auto;
+    }
+
+    #home-recent {
+        height: auto;
+        margin-top: 1;
+        padding: 1 2;
+        border: round $panel;
         background: $surface;
+        color: $text-muted;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with Horizontal(id="chrome"):
+            yield Breadcrumb(id="breadcrumb")
+            yield ProviderStatusPill(id="provider-pill")
+        with Container(id="home-root"):
+            yield Static(
+                Text.from_markup(
+                    "[bold]TheWorldHarness[/] is the visual integration reference for "
+                    "WorldForge.\n"
+                    "It runs the same provider, planning, evaluation, and persistence APIs "
+                    "you would use in a script — wired into a keyboard-first workspace so "
+                    "you can see every boundary as it executes.\n\n"
+                    "Pick a jump target below, press [bold]Ctrl+P[/] to search every action, "
+                    "or [bold]?[/] to see this screen's bindings."
+                ),
+                id="home-intro",
+            )
+            with Vertical(id="home-cards"):
+                yield JumpCard(
+                    target="worlds",
+                    title="Create a world",
+                    binding="n",
+                    description="Open the Worlds screen — create, edit, save, fork.",
+                    widget_id="jump-create-world",
+                )
+                yield JumpCard(
+                    target="providers",
+                    title="Run a provider",
+                    binding="p",
+                    description="Stream live provider events with cancellable workers.",
+                    widget_id="jump-run-provider",
+                )
+                yield JumpCard(
+                    target="eval",
+                    title="Run an eval",
+                    binding="e",
+                    description="Execute a deterministic evaluation suite against a provider.",
+                    widget_id="jump-run-eval",
+                )
+            yield Static(
+                "No recent items yet — jump targets will appear here once you open them.",
+                id="home-recent",
+            )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._update_chrome()
+        first_card = _maybe_query(self, "#jump-create-world", JumpCard)
+        if first_card is not None:
+            first_card.focus()
+
+    def on_screen_resume(self) -> None:
+        self._update_chrome()
+
+    def _update_chrome(self) -> None:
+        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
+        if breadcrumb is not None:
+            breadcrumb.path = ("worldforge", "home")
+        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
+        if pill is not None:
+            pill.label = ""
+
+    def action_jump(self, target: str) -> None:
+        self.post_message(JumpRequested(target))
+
+    def on_jump_requested(self, event: JumpRequested) -> None:
+        event.stop()
+        routing = {
+            "worlds": ("M2", "Worlds CRUD lands in M2 — see roadmap §8."),
+            "providers": ("M3", "Live provider streaming lands in M3 — see roadmap §8."),
+            "eval": ("M4", "Eval and benchmark land in M4 — see roadmap §8."),
+        }
+        milestone, message = routing.get(event.target, ("?", "Target not yet routed."))
+        self.app.push_screen(PlaceholderScreen(target_milestone=milestone, next_action=message))
+
+
+class RunInspectorScreen(Screen):
+    """Hosts the existing flow visualisation (hero, rail, timeline, inspector, transcript)."""
+
+    BINDINGS = [
+        Binding("r", "run_selected", "Run", show=True),
+        Binding("1", "select_flow('leworldmodel')", "LeWorldModel", show=True),
+        Binding("2", "select_flow('lerobot')", "LeRobot", show=True),
+        Binding("3", "select_flow('diagnostics')", "Diagnostics", show=True),
+    ]
+
+    DEFAULT_CSS = """
+    RunInspectorScreen {
+        background: $background;
         color: $foreground;
-    }
-
-    #chrome {
-        height: 1;
-        background: $boost;
-    }
-
-    #breadcrumb {
-        width: 1fr;
-    }
-
-    #provider-pill {
-        width: auto;
     }
 
     #root {
@@ -354,6 +546,8 @@ class TheWorldHarnessApp(App[None]):
 
     selected_flow_id: reactive[str] = reactive("leworldmodel", init=False)
     current_provider: reactive[str] = reactive("", init=False)
+    running: reactive[bool] = reactive(False, init=False)
+    last_run: reactive[HarnessRun | None] = reactive(None, init=False)
 
     def __init__(
         self,
@@ -365,15 +559,13 @@ class TheWorldHarnessApp(App[None]):
         super().__init__()
         self.flows = {flow.id: flow for flow in available_flows()}
         resolved_id = initial_flow_id if initial_flow_id in self.flows else "leworldmodel"
-        self.set_reactive(TheWorldHarnessApp.selected_flow_id, resolved_id)
+        self.set_reactive(RunInspectorScreen.selected_flow_id, resolved_id)
         self.set_reactive(
-            TheWorldHarnessApp.current_provider,
+            RunInspectorScreen.current_provider,
             self._provider_label(self.flows[resolved_id]),
         )
         self.state_dir = state_dir
         self.step_delay = step_delay
-        self.running = False
-        self.last_run: HarnessRun | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -400,10 +592,11 @@ class TheWorldHarnessApp(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.register_theme(_build_theme(THEME_NAME_DARK, WORLDFORGE_DARK_PALETTE, dark=True))
-        self.register_theme(_build_theme(THEME_NAME_LIGHT, WORLDFORGE_LIGHT_PALETTE, dark=False))
-        self.theme = THEME_NAME_DARK
-        self._sync_chrome()
+        self._update_chrome()
+        self._refresh_static()
+
+    def on_screen_resume(self) -> None:
+        self._update_chrome()
         self._refresh_static()
 
     @on(Select.Changed, "#flow-select")
@@ -418,37 +611,21 @@ class TheWorldHarnessApp(App[None]):
     def action_select_flow(self, flow_id: str) -> None:
         if flow_id in self.flows:
             self.selected_flow_id = flow_id
-            select = self.query_one("#flow-select", Select)
-            if select.value != flow_id:
+            select = _maybe_query(self, "#flow-select", Select)
+            if select is not None and select.value != flow_id:
                 select.value = flow_id
-
-    def action_toggle_theme(self) -> None:
-        """Cycle between the two registered worldforge themes."""
-        self.theme = THEME_NAME_LIGHT if self.theme == THEME_NAME_DARK else THEME_NAME_DARK
 
     def watch_selected_flow_id(self, _old: str, new: str) -> None:
         if new not in self.flows:
             return
         self.current_provider = self._provider_label(self.flows[new])
-        self._sync_chrome()
+        self._update_chrome()
         self._refresh_static()
 
     def watch_current_provider(self, _old: str, new: str) -> None:
-        pill = self._maybe_query("#provider-pill", ProviderStatusPill)
+        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
         if pill is not None:
             pill.label = new
-
-    def _maybe_query(self, selector: str, expected_type):
-        """Return a widget if it has been composed, else ``None``.
-
-        Reactives can fire before all widgets in ``compose()`` are mounted
-        (e.g. when the App is being torn down between Pilot tests). We treat
-        a missing target as a no-op rather than crashing.
-        """
-        try:
-            return self.query_one(selector, expected_type)
-        except NoMatches:
-            return None
 
     async def action_run_selected(self) -> None:
         if self.running:
@@ -473,15 +650,12 @@ class TheWorldHarnessApp(App[None]):
         self.query_one("#run-button", Button).disabled = False
         self._refresh_static()
 
-    def _sync_chrome(self) -> None:
+    def _update_chrome(self) -> None:
         flow = self.flows[self.selected_flow_id]
-        breadcrumb = self._maybe_query("#breadcrumb", Breadcrumb)
+        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
         if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", flow.short_title)
-        # Pill mirrors current_provider via watch_current_provider; setting it
-        # here as well keeps on_mount idempotent in case the watcher fires
-        # before the widget exists.
-        pill = self._maybe_query("#provider-pill", ProviderStatusPill)
+            breadcrumb.path = ("worldforge", "run-inspector", flow.short_title)
+        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
         if pill is not None:
             pill.label = self.current_provider
 
@@ -492,7 +666,7 @@ class TheWorldHarnessApp(App[None]):
 
     def _refresh_static(self) -> None:
         selected = self.flows[self.selected_flow_id]
-        hero = self._maybe_query("#hero", HeroPane)
+        hero = _maybe_query(self, "#hero", HeroPane)
         if hero is None:
             return
         hero.update(hero.compose_panel(selected, self.running))
@@ -516,3 +690,326 @@ class TheWorldHarnessApp(App[None]):
             )
             self.query_one("#inspector", InspectorPane).render_empty()
             self.query_one("#transcript", TranscriptPane).render_empty()
+
+
+class HelpScreen(ModalScreen[None]):
+    """Modal overlay that lists the bindings of the screen below it."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=True),
+        Binding("q", "dismiss", "Close", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    HelpScreen {
+        align: center middle;
+    }
+
+    HelpScreen > #help-card {
+        width: 70%;
+        max-width: 90;
+        height: auto;
+        max-height: 80%;
+        padding: 1 2;
+        border: round $accent;
+        background: $surface;
+    }
+
+    HelpScreen #help-title {
+        height: auto;
+        padding: 0 0 1 0;
+        text-style: bold;
+        color: $accent;
+    }
+
+    HelpScreen DataTable {
+        height: auto;
+        max-height: 30;
+        background: $surface;
+    }
+
+    HelpScreen #help-footnote {
+        height: auto;
+        padding: 1 0 0 0;
+        color: $text-muted;
+    }
+    """
+
+    def __init__(self, source_screen: Screen | None = None) -> None:
+        super().__init__()
+        self._source_screen = source_screen
+
+    def compose(self) -> ComposeResult:
+        with Container(id="help-card"):
+            yield Static("Bindings on this screen", id="help-title")
+            yield DataTable(id="help-table", cursor_type="row", zebra_stripes=True)
+            yield Static(
+                "Press [bold]Esc[/] or [bold]q[/] to close. "
+                "[bold]Ctrl+P[/] opens the command palette.",
+                id="help-footnote",
+            )
+
+    def on_mount(self) -> None:
+        # Update breadcrumb (sits on the screen below this modal) and
+        # populate the table from that same source screen.
+        breadcrumb = _maybe_query(self.app, "#breadcrumb", Breadcrumb)
+        if breadcrumb is not None:
+            breadcrumb.path = ("worldforge", "help")
+        table = self.query_one("#help-table", DataTable)
+        table.add_columns("Key", "Description", "Action")
+        source = self._source_screen or self._previous_screen()
+        for binding in self._iter_bindings(source):
+            table.add_row(
+                binding.key,
+                binding.description or "",
+                binding.action,
+            )
+
+    def _previous_screen(self) -> Screen | None:
+        """Return the screen below this modal on the stack, if any."""
+        stack = list(self.app.screen_stack)
+        if self in stack:
+            stack.remove(self)
+        return stack[-1] if stack else None
+
+    @staticmethod
+    def _iter_bindings(screen: Screen | None) -> Iterable[Binding]:
+        if screen is None:
+            return ()
+        # Surface every binding declared on the source screen — discovery is
+        # the whole point of this overlay, so ``show=False`` entries are
+        # included alongside footer-visible ones. We also fold in App-level
+        # bindings so the user can see "Help / Quit / Ctrl+P" alongside the
+        # screen-local ones.
+        seen: set[tuple[str, str]] = set()
+        bindings: list[Binding] = []
+        sources = (screen, screen.app)
+        for source in sources:
+            try:
+                items = source._bindings.key_to_bindings.items()  # type: ignore[attr-defined]
+            except AttributeError:  # pragma: no cover - defensive
+                continue
+            for _key, binding_list in items:
+                for binding in binding_list:
+                    fingerprint = (binding.key, binding.action)
+                    if fingerprint in seen:
+                        continue
+                    seen.add(fingerprint)
+                    bindings.append(binding)
+        return bindings
+
+
+class PlaceholderScreen(ModalScreen[None]):
+    """Modal explaining a jump target that lands in a later milestone."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=True),
+        Binding("q", "dismiss", "Close", show=False),
+        Binding("enter", "dismiss", "Close", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    PlaceholderScreen {
+        align: center middle;
+    }
+
+    PlaceholderScreen > #placeholder-card {
+        width: 60%;
+        max-width: 80;
+        height: auto;
+        padding: 1 2;
+        border: round $warning;
+        background: $surface;
+    }
+
+    PlaceholderScreen #placeholder-title {
+        height: auto;
+        padding: 0 0 1 0;
+        text-style: bold;
+        color: $warning;
+    }
+
+    PlaceholderScreen #placeholder-body {
+        height: auto;
+        color: $foreground;
+    }
+
+    PlaceholderScreen #placeholder-footnote {
+        height: auto;
+        padding: 1 0 0 0;
+        color: $text-muted;
+    }
+    """
+
+    def __init__(self, *, target_milestone: str, next_action: str) -> None:
+        super().__init__()
+        self._target_milestone = target_milestone
+        self._next_action = next_action
+
+    def compose(self) -> ComposeResult:
+        with Container(id="placeholder-card"):
+            yield Static(
+                f"Coming in milestone {self._target_milestone}",
+                id="placeholder-title",
+            )
+            yield Static(self._next_action, id="placeholder-body")
+            yield Static(
+                "Press [bold]Esc[/], [bold]q[/], or [bold]Enter[/] to close.",
+                id="placeholder-footnote",
+            )
+
+    def on_mount(self) -> None:
+        breadcrumb = _maybe_query(self.app, "#breadcrumb", Breadcrumb)
+        if breadcrumb is not None:
+            breadcrumb.path = ("worldforge", "placeholder")
+
+
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
+
+class TheWorldHarnessApp(App[None]):
+    """Visual TUI harness for WorldForge E2E demos."""
+
+    TITLE = "TheWorldHarness"
+    SUB_TITLE = "WorldForge visual integration harness"
+    BINDINGS = [
+        Binding("?", "show_help", "Help", show=True),
+        Binding("q", "quit", "Quit", show=True),
+        Binding("ctrl+t", "toggle_theme", "Theme", show=False),
+        Binding("g,h", "switch_screen('home')", "Jump: Home", show=False),
+        Binding("g,r", "switch_screen('run-inspector')", "Jump: Run Inspector", show=False),
+    ]
+    SCREENS = {"home": HomeScreen, "run-inspector": RunInspectorScreen}
+    CSS = """
+    Header {
+        background: $surface;
+        color: $foreground;
+    }
+
+    Footer {
+        background: $surface;
+        color: $foreground;
+    }
+
+    #chrome {
+        height: 1;
+        background: $boost;
+    }
+
+    #breadcrumb {
+        width: 1fr;
+    }
+
+    #provider-pill {
+        width: auto;
+    }
+    """
+
+    def __init__(
+        self,
+        *,
+        initial_flow_id: str = "leworldmodel",
+        initial_screen: InitialScreen = "home",
+        state_dir: Path | None = None,
+        step_delay: float = 0.18,
+    ) -> None:
+        super().__init__()
+        self._initial_flow_id = initial_flow_id
+        self._initial_screen: InitialScreen = initial_screen
+        self._state_dir = state_dir
+        self._step_delay = step_delay
+
+    # The harness keeps its own screen factories so we can pass per-instance
+    # construction args (state_dir, step_delay, initial flow) into screens
+    # without resorting to module-level globals.
+    def _make_run_inspector(self) -> RunInspectorScreen:
+        return RunInspectorScreen(
+            initial_flow_id=self._initial_flow_id,
+            state_dir=self._state_dir,
+            step_delay=self._step_delay,
+        )
+
+    def _make_home(self) -> HomeScreen:
+        return HomeScreen()
+
+    async def on_mount(self) -> None:
+        self.register_theme(_build_theme(THEME_NAME_DARK, WORLDFORGE_DARK_PALETTE, dark=True))
+        self.register_theme(_build_theme(THEME_NAME_LIGHT, WORLDFORGE_LIGHT_PALETTE, dark=False))
+        self.theme = THEME_NAME_DARK
+        # Replace the stock default screen with the harness landing screen
+        # (Home unless the CLI passed --flow). Awaiting the push keeps the
+        # active screen consistent before any test/Pilot interaction runs.
+        if self._initial_screen == "run-inspector":
+            await self.push_screen(self._make_run_inspector())
+        else:
+            await self.push_screen(self._make_home())
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen(source_screen=self.screen))
+
+    def action_toggle_theme(self) -> None:
+        """Cycle between the two registered worldforge themes."""
+        self.theme = THEME_NAME_LIGHT if self.theme == THEME_NAME_DARK else THEME_NAME_DARK
+
+    def action_switch_screen(self, screen_name: str) -> None:
+        """Switch to ``screen_name`` if not already the active screen.
+
+        Replaces (rather than stacks on top of) the active non-modal screen
+        so chord navigation does not grow the stack indefinitely. Modal
+        overlays are popped first so the user does not get stuck behind
+        them.
+        """
+        while isinstance(self.screen, ModalScreen):
+            self.pop_screen()
+        target_cls = self.SCREENS.get(screen_name)
+        if target_cls is None or isinstance(self.screen, target_cls):
+            return
+        if screen_name == "run-inspector":
+            self.switch_screen(self._make_run_inspector())
+        elif screen_name == "home":
+            self.switch_screen(self._make_home())
+        else:  # pragma: no cover - defensive
+            self.switch_screen(screen_name)
+
+    def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
+        # Yield the stock Textual commands first (theme, quit) so they stay
+        # discoverable, then layer the harness-specific entries.
+        yield from super().get_system_commands(screen)
+        yield SystemCommand(
+            "Jump: Home",
+            "Open the Home screen",
+            lambda: self.action_switch_screen("home"),
+        )
+        yield SystemCommand(
+            "Jump: Run Inspector",
+            "Open the Run Inspector screen",
+            lambda: self.action_switch_screen("run-inspector"),
+        )
+        yield SystemCommand(
+            "Open Help",
+            "Show the bindings on the active screen",
+            self.action_show_help,
+        )
+        for flow in available_flows():
+            yield SystemCommand(
+                f"Run flow: {flow.title}",
+                f"Switch the Run Inspector to {flow.short_title} and run it",
+                self._make_run_flow_command(flow.id),
+            )
+        yield SystemCommand(
+            "Switch theme",
+            "Toggle between worldforge-dark and worldforge-light",
+            self.action_toggle_theme,
+        )
+
+    def _make_run_flow_command(self, flow_id: str):
+        async def _run() -> None:
+            self.action_switch_screen("run-inspector")
+            screen = self.screen
+            if isinstance(screen, RunInspectorScreen):
+                screen.action_select_flow(flow_id)
+                await screen.action_run_selected()
+
+        return _run

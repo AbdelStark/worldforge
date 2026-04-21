@@ -17,6 +17,19 @@ releases may still include breaking changes when the public API needs to tighten
   `<provider> . <capability>` status pill that update reactively when the selected flow changes.
 - Added a hidden `Ctrl+T` binding that cycles between the two registered themes without
   restarting the harness.
+- Split TheWorldHarness into a screen stack: a `HomeScreen` landing page with three jump cards
+  (`n` create a world, `p` run a provider, `e` run an eval), a `RunInspectorScreen` that owns
+  the existing flow visualisation, plus modal `HelpScreen` and `PlaceholderScreen` overlays.
+  `worldforge-harness` opens on Home by default and on the Run Inspector when `--flow` is
+  passed.
+- Added the static command palette layer via `App.get_system_commands` (`Ctrl+P`): "Jump:
+  Home", "Jump: Run Inspector", "Open Help", one "Run flow: <title>" entry per registered
+  flow, "Switch theme", and the stock Quit. The dynamic provider for worlds, providers, and
+  recent runs is reserved for a later milestone.
+- Added `?` to open a modal `HelpScreen` that lists every binding declared on the screen below
+  it, plus chord bindings `g h` / `g r` for jump-to-Home and jump-to-Run-Inspector.
+- Updated the `Header` breadcrumb to reflect the active screen, deepening to the selected flow
+  on the Run Inspector (`worldforge › run-inspector › <flow>`).
 
 ### Added
 
