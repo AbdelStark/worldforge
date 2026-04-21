@@ -688,6 +688,221 @@ def test_confirm_delete_returns_false_on_escape(tmp_path) -> None:
     assert outcome == [False]
 
 
+def test_command_palette_new_world_routes_to_modal(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import NewWorldScreen, TheWorldHarnessApp, WorldsScreen
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            app._command_new_world()
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, (NewWorldScreen, WorldsScreen))
+
+    asyncio.run(scenario())
+
+
+def test_worlds_jump_palette_command_switches_screen(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldsScreen
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            app.action_switch_screen("worlds")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            # Re-issuing the same command is a no-op (already active).
+            app.action_switch_screen("worlds")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+
+    asyncio.run(scenario())
+
+
+def test_new_world_modal_inline_validation_blocks_unsafe_id(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import Input, Static
+
+    from worldforge.harness.tui import NewWorldScreen, TheWorldHarnessApp, WorldsScreen
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("n")
+            await pilot.pause()
+            assert isinstance(app.screen, NewWorldScreen)
+            name_input = app.screen.query_one("#new-world-name", Input)
+            name_input.value = "../escape"
+            await pilot.pause()
+            await pilot.click("#new-world-create")
+            await pilot.pause()
+            # Modal stays open with an error visible.
+            assert isinstance(app.screen, NewWorldScreen)
+            error = app.screen.query_one("#new-world-error", Static)
+            assert "hidden" not in error.classes
+
+    asyncio.run(scenario())
+
+
+def test_new_world_modal_cancel_returns_none(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import NewWorldScreen, TheWorldHarnessApp
+
+    outcome: list[object | None] = []
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await app.push_screen(NewWorldScreen(providers=("mock",)), outcome.append)
+            await pilot.pause()
+            assert isinstance(app.screen, NewWorldScreen)
+            await pilot.click("#new-world-cancel")
+            await pilot.pause()
+
+    asyncio.run(scenario())
+    assert outcome == [None]
+
+
+def test_edit_object_modal_cancel_returns_none(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import EditObjectScreen, TheWorldHarnessApp
+
+    outcome: list[object | None] = []
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await app.push_screen(EditObjectScreen(), outcome.append)
+            await pilot.pause()
+            assert isinstance(app.screen, EditObjectScreen)
+            await pilot.click("#edit-object-cancel")
+            await pilot.pause()
+
+    asyncio.run(scenario())
+    assert outcome == [None]
+
+
+def test_edit_object_modal_invalid_position_blocks_save(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import Input, Static
+
+    from worldforge.harness.tui import EditObjectScreen, TheWorldHarnessApp
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await app.push_screen(EditObjectScreen(), lambda _: None)
+            await pilot.pause()
+            assert isinstance(app.screen, EditObjectScreen)
+            app.screen.query_one("#edit-object-x", Input).value = "not-a-number"
+            await pilot.click("#edit-object-save")
+            await pilot.pause()
+            error = app.screen.query_one("#edit-object-error", Static)
+            assert "hidden" not in error.classes
+
+    asyncio.run(scenario())
+
+
+def test_delete_world_file_helper_validates_and_unlinks(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    import pytest as _pytest
+
+    from worldforge import WorldForge, WorldForgeError, WorldStateError
+    from worldforge.harness.tui import _delete_world_file
+
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("lab", provider="mock")
+    forge.save_world(world)
+    _delete_world_file(tmp_path, world.id)
+    assert forge.list_worlds() == []
+
+    with _pytest.raises(WorldForgeError):
+        _delete_world_file(tmp_path, "../escape")
+
+    with _pytest.raises(WorldStateError):
+        _delete_world_file(tmp_path, world.id)  # already gone
+
+
+def test_worlds_close_dirty_requires_confirm(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import Input
+
+    from worldforge.harness.tui import (
+        ConfirmDeleteScreen,
+        TheWorldHarnessApp,
+        WorldEditScreen,
+        WorldsScreen,
+    )
+
+    _seed_world(tmp_path, name="lab", world_id="lab-close")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldEditScreen)
+            # Make the screen dirty without saving.
+            app.screen.query_one("#edit-name", Input).value = "kitchen"
+            await pilot.pause()
+            # Pressing Esc on a dirty screen opens the discard confirmation.
+            await pilot.press("escape")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmDeleteScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            # Cancelling discard returns to the edit screen.
+            assert isinstance(app.screen, WorldEditScreen)
+
+    asyncio.run(scenario())
+
+
+def test_worlds_filter_substring_and_clear(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import DataTable, Input
+
+    from worldforge.harness.tui import TheWorldHarnessApp, WorldsScreen
+
+    _seed_world(tmp_path, name="alpha", world_id="alpha")
+    _seed_world(tmp_path, name="beta", world_id="beta")
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="worlds")
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
+            filt = app.screen.query_one("#worlds-filter", Input)
+            filt.value = "alp"
+            await pilot.pause()
+            table = app.screen.query_one("#worlds-table", DataTable)
+            assert table.row_count == 1
+            # Clear via screen action and confirm all rows reappear.
+            app.screen.action_clear_filter()
+            await pilot.pause()
+            assert table.row_count == 2
+
+    asyncio.run(scenario())
+
+
 def test_confirm_delete_returns_true_on_enter(tmp_path) -> None:
     pytest.importorskip("textual")
 

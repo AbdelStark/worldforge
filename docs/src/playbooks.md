@@ -184,6 +184,23 @@ Recovery guidance:
 - do not add a lock file, SQLite store, or service adapter to WorldForge without a separate
   persistence design.
 
+### 5a. Manage Worlds From TheWorldHarness
+
+The Worlds screen in TheWorldHarness is the keyboard-first mirror of the `worldforge world`
+CLI. Launch the harness and press `g w` (or pick "Jump: Worlds" from `Ctrl+P`):
+
+```bash
+uv run --extra harness worldforge-harness
+```
+
+Bindings mirror the CLI commands exactly: `n` maps to `worldforge world create`, `Enter`
+opens the editor (`world show` + `add-object` + `update-object`), `d` calls the same save
+path as `world delete` would, `f` maps to `world fork`, and `/` narrows the table by id or
+name substring. Every disk write goes through `WorldForge.save_world` on a
+`@work(thread=True, group="persistence")` worker; no JSON is hand-written. Validation errors
+raised by the framework (`WorldStateError` / `WorldForgeError`) appear as toasts — the
+in-memory edit buffer stays intact so the user can fix and retry.
+
 ## 6. Run Evaluation And Benchmarks
 
 Use evaluation for deterministic behavior checks and benchmarks for adapter latency and event
