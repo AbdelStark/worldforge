@@ -2,6 +2,8 @@
 
 Capabilities: `generate`, `transfer`
 
+Maturity: `beta`
+
 Taxonomy category: remote video generation and transformation adapter
 
 `runway` is an HTTP adapter for Runway's image-to-video, text-to-video-compatible, video-to-video,

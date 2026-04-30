@@ -48,6 +48,7 @@ CLI_EPILOG = """Common commands:
   worldforge provider list
   worldforge provider docs
   worldforge provider info mock
+  worldforge provider workbench mock
   worldforge harness --list
   worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
   worldforge eval --suite planning --provider mock --format json
@@ -515,6 +516,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for provider docs metadata.",
     )
 
+    provider_workbench = provider_subparsers.add_parser(
+        "workbench",
+        help="Run provider authoring checks without launching the TUI.",
+    )
+    provider_workbench.add_argument("name", help="Provider name.")
+    provider_workbench.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="Output format for the workbench report.",
+    )
+    provider_workbench.add_argument(
+        "--live",
+        action="store_true",
+        help="Allow live provider calls on a prepared host.",
+    )
+    provider_workbench.add_argument(
+        "--fixtures-dir",
+        type=Path,
+        default=Path("tests/fixtures/providers"),
+        help="Directory containing provider fixture JSON files.",
+    )
+
     world = subparsers.add_parser("world", help="Manage persisted local JSON worlds.")
     world_subparsers = world.add_subparsers(
         dest="world_command",
@@ -975,6 +999,24 @@ def _cmd_provider_docs(args: argparse.Namespace, parser: argparse.ArgumentParser
     else:
         _print_provider_docs_markdown(entries)
     return 0
+
+
+def _cmd_provider_workbench(args: argparse.Namespace) -> int:
+    from worldforge.harness.workbench import (
+        provider_workbench_markdown,
+        provider_workbench_report,
+    )
+
+    report = provider_workbench_report(
+        args.name,
+        live=args.live,
+        fixtures_dir=args.fixtures_dir,
+    )
+    if args.format == "json":
+        _print_json(report)
+    else:
+        print(provider_workbench_markdown(report))
+    return 0 if report["status"] == "passed" else 1
 
 
 def _cmd_harness(args: argparse.Namespace) -> int:
@@ -1569,6 +1611,12 @@ def main() -> int:
 
     if args.command == "provider" and args.provider_command == "docs":
         return _cmd_provider_docs(args, parser)
+
+    if args.command == "provider" and args.provider_command == "workbench":
+        try:
+            return _cmd_provider_workbench(args)
+        except (ProviderError, WorldForgeError, ValueError) as exc:
+            parser.exit(2, f"{exc}\n")
 
     if args.command == "harness":
         return _cmd_harness(args)

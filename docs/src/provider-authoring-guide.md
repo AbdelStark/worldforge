@@ -41,6 +41,22 @@ advertises no public capabilities, and raises `ProviderError` from generated met
 capabilities only after the adapter calls the real upstream runtime, validates inputs and outputs,
 and has fixture-driven tests for every documented failure mode.
 
+## Workbench Loop
+
+Before opening a provider PR, run the non-TUI workbench from a clean checkout:
+
+```bash
+uv run worldforge provider workbench mock
+uv run worldforge provider workbench <provider> --format json
+uv run python scripts/generate_provider_docs.py --check
+```
+
+The report lists the conformance helper required for every advertised capability, validates
+`tests/fixtures/providers/<provider>_*.json` playback files when they exist, links this guide, and
+prints a pasteable issue summary. It invokes only deterministic local providers by default. Use
+`--live` only on a prepared host when credentials, optional dependencies, injected runtimes, and
+runtime-owned artifacts are intentionally available.
+
 ## Adapter Decision Tree
 
 Start with the provider's real contract, not its label or category.

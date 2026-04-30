@@ -40,6 +40,8 @@ Without the `harness` extra, metadata commands still work:
 ```bash
 uv run worldforge harness --list
 uv run worldforge harness --list --format json
+uv run worldforge provider workbench mock
+uv run worldforge provider workbench runway --format json
 ```
 
 Launching the TUI without Textual exits with an install hint instead of importing optional
@@ -73,9 +75,32 @@ The diagnostics, eval, and benchmark screens map directly to non-TUI commands:
 ```bash
 uv run worldforge doctor --registered-only
 uv run worldforge provider list
+uv run worldforge provider workbench mock
 uv run worldforge benchmark --provider mock --iterations 2 --format json
 uv run worldforge eval --suite planning --provider mock --format json
 ```
+
+## Provider Workbench
+
+`worldforge provider workbench <provider>` is the checkout-safe adapter author loop behind the
+harness provider development workflow. It does not import Textual and does not make live provider
+calls unless `--live` is passed explicitly. The default report is designed to paste into GitHub
+issues: provider profile, required capability conformance helpers, fixture JSON status, docs/catalog
+drift hints, redaction-safe provider event status, and exact follow-up commands.
+
+```bash
+uv run worldforge provider workbench mock
+uv run worldforge provider workbench runway --format json
+uv run worldforge provider workbench runway --live
+```
+
+For deterministic local providers such as `mock`, the workbench invokes the advertised capability
+helpers. For HTTP adapters it validates matching `tests/fixtures/providers/<provider>_*.json`
+playback files and lists the capability helpers that the provider test module must cover. For
+host-owned local runtimes such as LeRobot and LeWorldModel, the default path inspects profile,
+health, docs, and fixtures while leaving injected-runtime/live smoke execution to prepared hosts.
+Run `uv run python scripts/generate_provider_docs.py --check` before opening a provider PR so
+profile metadata and generated catalog tables stay in sync.
 
 Completed checkout-safe flows also preserve a sanitized run workspace:
 
