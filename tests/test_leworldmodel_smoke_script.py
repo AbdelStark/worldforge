@@ -534,6 +534,8 @@ def test_smoke_main_prints_provider_result(
     assert output["checkpoint"] == str(tmp_path / "pusht/lewm_object.ckpt")
     assert output["health"] == {"healthy": True, "name": "leworldmodel"}
     assert output["result"] == {"best_index": 0, "scores": [0.1]}
+    assert output["score_payload_summary"]["candidate_count"] == 1
+    assert output["score_payload_summary"]["score_direction"] == "lower_is_better"
     assert output["inputs"]["seed"] == 7
     assert output["inputs"]["total_tensor_elements"] == 0
     assert output["metrics"]["score_latency_ms"] >= 0.0
@@ -651,6 +653,8 @@ def test_smoke_main_prints_visual_pipeline_by_default(
     payload = json.loads(json_output.read_text(encoding="utf-8"))
     assert payload["inputs"]["seed"] == 7
     assert payload["inputs"]["total_tensor_elements"] == 903198
+    assert payload["score_payload_summary"]["candidate_count"] == 2
+    assert payload["score_payload_summary"]["best_index"] == 1
     assert payload["metrics"]["gap_to_runner_up"] == pytest.approx(0.2)
     assert payload["provider_events"][0]["phase"] == "success"
 

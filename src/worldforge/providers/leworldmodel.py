@@ -115,7 +115,7 @@ class LeWorldModelProvider(BaseProvider):
                     "action, and goal tensors."
                 ),
                 package="worldforge + stable_worldmodel AutoCostModel",
-                implementation_status="beta",
+                implementation_status="stable",
                 deterministic=True,
                 requires_credentials=False,
                 required_env_vars=tuple(LEWORLDMODEL_POLICY_ENV_ALIASES),
@@ -128,6 +128,8 @@ class LeWorldModelProvider(BaseProvider):
                     "Runs real AutoCostModel.get_cost(...) inference when the host supplies the "
                     "optional runtime and checkpoint.",
                     "Set LEWORLDMODEL_POLICY to the checkpoint run name relative to STABLEWM_HOME.",
+                    "Defaults smoke/runtime execution to CPU unless LEWORLDMODEL_DEVICE or a "
+                    "direct device override is supplied.",
                     "Input tensors or nested numeric arrays must already match the checkpoint "
                     "task.",
                     "Scores are costs: lower values are better and best_index is the argmin.",
@@ -250,6 +252,9 @@ class LeWorldModelProvider(BaseProvider):
                 + ")."
             ) from exc
 
+    def _effective_device(self) -> str:
+        return self.device or "cpu"
+
     def _load_model(self) -> Any:
         if not self.configured():
             raise ProviderError(
@@ -273,7 +278,7 @@ class LeWorldModelProvider(BaseProvider):
                 f"Failed to load LeWorldModel policy '{self.policy}': {exc}"
             ) from exc
 
-        model = prepare_model(model, device=self.device)
+        model = prepare_model(model, device=self._effective_device())
         if hasattr(model, "interpolate_pos_encoding"):
             model.interpolate_pos_encoding = True
         self._model = model
@@ -381,6 +386,47 @@ class LeWorldModelProvider(BaseProvider):
             raise ProviderError("LeWorldModel action_candidates sample dimension must be positive.")
         return samples
 
+    def _score_output_shape(self, raw_scores: object) -> tuple[int, ...]:
+        try:
+            shape = _shape(raw_scores, name="LeWorldModel scores")
+            if any(dimension < 0 for dimension in shape):
+                tolist = getattr(raw_scores, "tolist", None)
+                if callable(tolist):
+                    return _shape(tolist(), name="LeWorldModel scores")
+            return shape
+        except ProviderError:
+            try:
+                require_finite_number(raw_scores, name="LeWorldModel scores")  # type: ignore[arg-type]
+            except WorldForgeError as exc:
+                raise ProviderError(
+                    "LeWorldModel scores must contain only finite score values."
+                ) from exc
+            return ()
+
+    def _json_shape(self, value: object, *, name: str) -> list[int]:
+        shape = _shape(value, name=name)
+        if any(dimension < 0 for dimension in shape):
+            tolist = getattr(value, "tolist", None)
+            if callable(tolist):
+                shape = _shape(tolist(), name=name)
+        return list(shape)
+
+    def _validate_score_output_shape(self, shape: tuple[int, ...], *, candidate_count: int) -> None:
+        if shape == ():
+            if candidate_count == 1:
+                return
+            raise ProviderError(
+                "LeWorldModel score output must contain one finite score per candidate action "
+                f"sample; got scalar output for {candidate_count} candidates."
+            )
+        non_singleton_dimensions = [dimension for dimension in shape if dimension != 1]
+        if non_singleton_dimensions not in ([candidate_count], []):
+            raise ProviderError(
+                "LeWorldModel score output shape must expose only the candidate sample "
+                f"dimension plus optional singleton dimensions; got {shape} for "
+                f"{candidate_count} candidates."
+            )
+
     def _tensor_to_scores(self, raw_scores: object) -> list[float]:
         value = raw_scores
         for method_name in ("detach", "cpu"):
@@ -419,6 +465,15 @@ class LeWorldModelProvider(BaseProvider):
             tensor_info = self._tensorize_info(torch, info)
             candidate_count = self._candidate_sample_count(action_candidates)
             action_tensor = self._tensorize_action_candidates(torch, action_candidates)
+            input_shapes = {
+                "pixels": self._json_shape(tensor_info["pixels"], name="LeWorldModel info.pixels"),
+                "goal": self._json_shape(tensor_info["goal"], name="LeWorldModel info.goal"),
+                "action": self._json_shape(tensor_info["action"], name="LeWorldModel info.action"),
+                "action_candidates": self._json_shape(
+                    action_tensor,
+                    name="LeWorldModel action_candidates",
+                ),
+            }
             with no_grad_context(torch):
                 raw_scores = model.get_cost(tensor_info, action_tensor)
             scores = self._tensor_to_scores(raw_scores)
@@ -427,6 +482,8 @@ class LeWorldModelProvider(BaseProvider):
                     f"LeWorldModel returned {len(scores)} score(s) for "
                     f"{candidate_count} candidate action sample(s)."
                 )
+            score_shape = self._score_output_shape(raw_scores)
+            self._validate_score_output_shape(score_shape, candidate_count=candidate_count)
             best_index = min(range(len(scores)), key=scores.__getitem__)
             duration_ms = max(0.1, (perf_counter() - started) * 1000)
             result = ActionScoreResult(
@@ -437,13 +494,17 @@ class LeWorldModelProvider(BaseProvider):
                 metadata={
                     "policy": self.policy,
                     "cache_dir": self.cache_dir,
-                    "device": self.device,
+                    "device": self._effective_device(),
+                    "requested_device": self.device,
                     "score_type": "cost",
+                    "score_direction": "lower_is_better",
                     "model_family": "LeWorldModel (LeWM)",
                     "official_code": LEWORLDMODEL_OFFICIAL_REPO_URL,
                     "runtime_api": LEWORLDMODEL_RUNTIME_API,
                     "checkpoint_format": "<policy>_object.ckpt",
                     "candidate_count": candidate_count,
+                    "input_shapes": input_shapes,
+                    "score_shape": list(score_shape),
                 },
             )
             self._emit_operation_event(
@@ -454,6 +515,7 @@ class LeWorldModelProvider(BaseProvider):
                     "policy": self.policy,
                     "candidate_count": candidate_count,
                     "best_index": best_index,
+                    "score_shape": list(score_shape),
                 },
             )
             return result

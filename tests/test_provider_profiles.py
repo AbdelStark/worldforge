@@ -62,7 +62,7 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     ]
     assert builtin_profiles["runway"].request_policy is not None
     assert builtin_profiles["runway"].request_policy.download.retry.max_attempts == 3
-    assert builtin_profiles["leworldmodel"].implementation_status == "beta"
+    assert builtin_profiles["leworldmodel"].implementation_status == "stable"
     assert builtin_profiles["leworldmodel"].capabilities.score is True
     assert builtin_profiles["leworldmodel"].capabilities.predict is False
     assert builtin_profiles["leworldmodel"].required_env_vars == [

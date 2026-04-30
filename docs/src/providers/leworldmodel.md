@@ -4,6 +4,8 @@ Capability: `score`
 
 Taxonomy category: JEPA latent predictive world model
 
+Maturity: `stable`
+
 `leworldmodel` wraps LeWorldModel's `stable_worldmodel.policy.AutoCostModel` surface. It ranks
 candidate action sequences from task-shaped observations, goals, and actions. WorldForge models it
 as an action scorer because the upstream runtime returns costs; it does not generate video, answer
@@ -40,7 +42,8 @@ WorldForge does not add LeWorldModel, torch, checkpoint archives, or datasets to
 Runtime manifest:
 `src/worldforge/providers/runtime_manifests/leworldmodel.json` records the policy aliases,
 optional checkpoint/device settings, host-owned checkpoint artifacts, minimum real-checkpoint smoke
-command, and expected finite-cost signal.
+command, the pinned upstream import boundary
+`stable_worldmodel.policy.AutoCostModel`, and expected finite-cost signal.
 
 Programmatic construction can inject a loader and tensor module for tests or host-owned runtimes:
 
@@ -79,6 +82,9 @@ Validation rules:
 - `action_candidates` must be a tensor or rectangular nested numeric array shaped as
   `(batch, samples, horizon, action_dim)`.
 - Returned costs must flatten to finite numeric scores.
+- Returned score tensor shape must contain exactly one score per candidate action sample. Shapes
+  such as `(samples,)`, `(1, samples)`, or `(samples, 1)` are accepted; ambiguous non-singleton
+  dimensions fail before `ActionScoreResult` is returned.
 - The number of returned scores must match the scored candidate set.
 
 Scores are costs: lower values are better. WorldForge sets `best_index` to the lowest-cost
@@ -128,12 +134,18 @@ path without loading an upstream checkpoint.
 Real-checkpoint smoke:
 
 ```bash
-scripts/lewm-real --checkpoint ~/.stable-wm/pusht/lewm_object.ckpt --device cpu
+scripts/lewm-real --checkpoint ~/.stable-wm/pusht/lewm_object.ckpt --device cpu \
+  --json-output /tmp/lewm-real-summary.json \
+  --run-manifest .worldforge/runs/lewm-real/run_manifest.json
 ```
 
 This loads the host-owned upstream runtime and object checkpoint, then scores synthetic
 PushT-shaped candidate tensors through `LeWorldModelProvider`. It is real checkpoint scoring, not
 task-specific preprocessing or robot execution.
+
+The JSON summary and optional run manifest include the score payload summary, input tensor shape
+summary, provider event count, runtime API, and sanitized artifact links. They do not include
+checkpoint bytes or host credentials.
 
 The upstream dependency shown by the wrapper is `stable-worldmodel` because the official
 `lucas-maes/le-wm` repository documents `stable_worldmodel.policy.AutoCostModel("pusht/lewm")` as
@@ -155,10 +167,15 @@ and [Robotics Replay Showcase](../robotics-showcase.md).
 - Missing `LEWORLDMODEL_POLICY` and `LEWM_POLICY` leaves the provider unregistered.
 - Missing `torch` or `stable_worldmodel.policy.AutoCostModel` is reported by `health()`.
 - Checkpoint loading failures are wrapped in `ProviderError`.
+- If no device is configured, the provider prepares the runtime on `cpu`; pass
+  `LEWORLDMODEL_DEVICE` or `device=` for a host-owned accelerator.
 - Missing required `pixels`, `goal`, or `action` fields fail before model invocation.
 - Ragged nested arrays, non-finite values, or low-rank tensors fail before model invocation.
 - Non-four-dimensional action candidates fail before model invocation.
 - Non-finite model outputs fail before `ActionScoreResult` is returned.
+- Score tensor shapes with more than one non-singleton dimension fail before
+  `ActionScoreResult` is returned.
+- Returned score count must match the candidate sample count.
 - Score planning fails if the score result cannot identify an in-range candidate.
 
 ## Tests

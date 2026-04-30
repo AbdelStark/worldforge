@@ -134,9 +134,15 @@ def test_leworldmodel_provider_scores_fixture_payload_and_routes_through_forge(t
     assert result.best_score == 0.15
     assert result.lower_is_better is True
     assert result.metadata["score_type"] == "cost"
+    assert result.metadata["score_direction"] == "lower_is_better"
     assert result.metadata["model_family"] == "LeWorldModel (LeWM)"
     assert result.metadata["official_code"] == "https://github.com/lucas-maes/le-wm"
     assert result.metadata["runtime_api"] == "stable_worldmodel.policy.AutoCostModel"
+    assert result.metadata["device"] == "cpu"
+    assert result.metadata["requested_device"] == "cpu"
+    assert result.metadata["candidate_count"] == 3
+    assert result.metadata["input_shapes"]["action_candidates"] == [1, 3, 3, 1]
+    assert result.metadata["score_shape"] == [3]
     assert result.to_dict()["best_score"] == 0.15
     assert loaded == [("pusht/lewm", "/tmp/stablewm")]
     assert model.device == "cpu"
@@ -160,6 +166,40 @@ def test_leworldmodel_provider_rejects_score_count_mismatch() -> None:
             info=payload["info"],
             action_candidates=payload["action_candidates"],
         )
+
+
+def test_leworldmodel_provider_rejects_ambiguous_score_tensor_shape() -> None:
+    payload = _fixture("leworldmodel_score_request.json")
+    provider = LeWorldModelProvider(
+        policy="pusht/lewm",
+        model_loader=lambda _policy, _cache_dir: FakeLeWorldModel([[0.1, 0.2], [0.3, 0.4]]),
+        tensor_module=FakeTorch(),
+    )
+
+    with pytest.raises(ProviderError, match="score output shape"):
+        provider.score_actions(
+            info=payload["info"],
+            action_candidates=[[[[0.1, 0.2]], [[0.3, 0.4]], [[0.5, 0.6]], [[0.7, 0.8]]]],
+        )
+
+
+def test_leworldmodel_provider_defaults_runtime_device_to_cpu() -> None:
+    payload = _fixture("leworldmodel_score_request.json")
+    model = FakeLeWorldModel([0.7, 0.15, 0.4])
+    provider = LeWorldModelProvider(
+        policy="pusht/lewm",
+        model_loader=lambda _policy, _cache_dir: model,
+        tensor_module=FakeTorch(),
+    )
+
+    result = provider.score_actions(
+        info=payload["info"],
+        action_candidates=payload["action_candidates"],
+    )
+
+    assert model.device == "cpu"
+    assert result.metadata["device"] == "cpu"
+    assert result.metadata["requested_device"] is None
 
 
 def test_leworldmodel_score_planning_selects_best_candidate_and_execution_provider(
@@ -246,7 +286,7 @@ def test_leworldmodel_provider_reports_profile_health_and_auto_registration(
     assert provider.configured() is True
     assert profile.capabilities.score is True
     assert profile.capabilities.predict is False
-    assert profile.implementation_status == "beta"
+    assert profile.implementation_status == "stable"
     assert profile.requires_credentials is False
     assert profile.default_model == "cube/lewm"
     assert "LEWORLDMODEL_POLICY" in profile.required_env_vars

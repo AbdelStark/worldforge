@@ -231,6 +231,21 @@ def _score_stats(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _score_payload_summary(result: dict[str, Any]) -> dict[str, Any]:
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    scores = result.get("scores") if isinstance(result.get("scores"), list) else []
+    return {
+        "candidate_count": metadata.get("candidate_count", len(scores)),
+        "best_index": result.get("best_index"),
+        "best_score": result.get("best_score"),
+        "lower_is_better": result.get("lower_is_better"),
+        "score_direction": metadata.get("score_direction", "lower_is_better"),
+        "score_shape": metadata.get("score_shape"),
+        "input_shapes": metadata.get("input_shapes"),
+        "runtime_api": metadata.get("runtime_api"),
+    }
+
+
 def _score_chart(result: dict[str, Any], *, color: bool = False) -> list[str]:
     scores = [float(score) for score in result.get("scores", [])]
     if not scores:
@@ -613,6 +628,7 @@ def main() -> int:
     score_latency_ms = (perf_counter() - started) * 1000
     result_payload = result.to_dict()
     score_stats = _score_stats(result_payload)
+    score_payload_summary = _score_payload_summary(result_payload)
     total_latency_ms = (perf_counter() - total_started) * 1000
     metrics = {
         "resolve_latency_ms": resolve_latency_ms,
@@ -640,6 +656,7 @@ def main() -> int:
         "metrics": metrics,
         "provider_events": provider_events,
         "result": result_payload,
+        "score_payload_summary": score_payload_summary,
     }
     if args.json_output is not None:
         json_output_path = _write_json_output(args.json_output, payload)
