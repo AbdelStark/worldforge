@@ -108,6 +108,7 @@ from pathlib import Path
 from worldforge import WorldForge
 from worldforge.observability import (
     JsonLoggerSink,
+    OpenTelemetryProviderEventSink,
     ProviderMetricsSink,
     RunJsonLogSink,
     compose_event_handlers,
@@ -131,6 +132,8 @@ Provider events are log-safe by default. The `target` field keeps endpoint or ar
 but strips URL userinfo, query strings, and fragments; message, metadata, and sink extra fields
 redact obvious bearer tokens, API keys, signatures, passwords, and signed URLs. `RunJsonLogSink`
 appends one JSON object per line and stamps every record with `run_id` for manifest correlation.
+`OpenTelemetryProviderEventSink` is optional and accepts an injected host tracer, so the base
+package does not import OpenTelemetry or configure collectors.
 
 ## Action Scoring
 

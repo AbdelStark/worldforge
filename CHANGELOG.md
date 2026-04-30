@@ -7,7 +7,8 @@ releases may still include breaking changes when the public API needs to tighten
 
 ## Unreleased
 
-No user-visible changes yet.
+- Added an optional OpenTelemetry provider-event sink that maps sanitized provider events to
+  host-owned tracing spans without adding OpenTelemetry to the base dependency set.
 
 ## 0.5.0 - 2026-04-24
 

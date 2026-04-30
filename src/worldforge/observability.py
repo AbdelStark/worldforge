@@ -17,6 +17,10 @@ from worldforge.models import (
     dump_json,
     require_json_dict,
 )
+from worldforge.observability_opentelemetry import (
+    OpenTelemetryProviderEventSink,
+    provider_event_span_attributes,
+)
 
 ProviderEventHandler = Callable[[ProviderEvent], None]
 
@@ -300,9 +304,11 @@ __all__ = [
     "InMemoryRecorderSink",
     "JsonLoggerSink",
     "LatencySummary",
+    "OpenTelemetryProviderEventSink",
     "ProviderEventHandler",
     "ProviderMetricsSink",
     "ProviderOperationMetrics",
     "RunJsonLogSink",
     "compose_event_handlers",
+    "provider_event_span_attributes",
 ]

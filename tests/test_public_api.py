@@ -55,9 +55,11 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert GrootPolicyClientProvider is not None
     assert observability.JsonLoggerSink is not None
     assert observability.InMemoryRecorderSink is not None
+    assert observability.OpenTelemetryProviderEventSink is not None
     assert observability.ProviderMetricsSink is not None
     assert observability.RunJsonLogSink is not None
     assert observability.compose_event_handlers is not None
+    assert observability.provider_event_span_attributes is not None
 
 
 def test_lazy_export_modules_have_expected_dir_and_attribute_errors() -> None:

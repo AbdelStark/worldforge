@@ -115,6 +115,7 @@ Use `compose_event_handlers(...)` to fan out events to:
 - `JsonLoggerSink` for structured JSON logs.
 - `RunJsonLogSink` for newline-delimited JSON files tied to one run id.
 - `ProviderMetricsSink` for request, retry, error, and latency aggregates.
+- `OpenTelemetryProviderEventSink` for optional host-owned tracing spans.
 - `InMemoryRecorderSink` for tests and local debugging.
 
 `ProviderEvent` sanitizes observable fields before they reach these sinks: HTTP targets keep
@@ -129,6 +130,30 @@ adapter. Optional event fields are `run_id`, `request_id`, `trace_id`, `span_id`
 and `input_digest`; they are strings, omitted when unset, and sanitized before sink consumption.
 The event `phase` is normalized to lowercase so hosts can filter stable `success`, `failure`,
 `retry`, and `budget_exceeded` values.
+
+OpenTelemetry export is optional. Importing `worldforge` does not import OpenTelemetry, and the
+base package does not install a collector, SDK, or exporter. Production hosts either install
+`opentelemetry-api` and let `OpenTelemetryProviderEventSink()` resolve the current tracer lazily, or
+inject their already configured tracer:
+
+```python
+from worldforge import WorldForge
+from worldforge.observability import OpenTelemetryProviderEventSink
+
+forge = WorldForge(
+    event_handler=OpenTelemetryProviderEventSink(
+        tracer=host_tracer,
+        extra_attributes={"service": "batch-eval"},
+    )
+)
+```
+
+Each provider event becomes one span named
+`worldforge.provider.<provider>.<operation>.<phase>`. Span attributes are bounded to provider,
+operation, phase, attempt, max attempts, optional duration, optional correlation IDs, HTTP method,
+HTTP status code, sanitized target, status class, capability, redacted message, and redacted
+metadata JSON. Hosts should not add raw prompts, world IDs, target URLs with query strings, or
+high-cardinality business metadata as trace attributes.
 
 Example JSON log record:
 

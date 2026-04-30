@@ -689,6 +689,7 @@ from worldforge import WorldForge
 from worldforge.observability import (
     JsonLoggerSink,
     ProviderMetricsSink,
+    OpenTelemetryProviderEventSink,
     RunJsonLogSink,
     compose_event_handlers,
 )

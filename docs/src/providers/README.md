@@ -176,6 +176,7 @@ from pathlib import Path
 from worldforge import WorldForge
 from worldforge.observability import (
     JsonLoggerSink,
+    OpenTelemetryProviderEventSink,
     ProviderMetricsSink,
     RunJsonLogSink,
     compose_event_handlers,
@@ -195,6 +196,10 @@ forge = WorldForge(
 `ProviderMetricsSink.request_count` counts emitted provider events, so retry events increment both
 `request_count` and `retry_count`. `RunJsonLogSink` writes one redacted JSON record per line and
 keeps `run_id` on every record so provider logs can be joined with host-owned run manifests.
+`OpenTelemetryProviderEventSink` maps provider events to optional host-owned tracing spans with
+bounded attributes: provider, operation, phase, attempt, duration, status class, sanitized target,
+capability, and correlation IDs. WorldForge does not install OpenTelemetry exporters or own
+collector configuration.
 
 Optional live smoke entrypoints accept `--run-manifest <path>` for a validated
 `run_manifest.json`. The manifest is safe issue evidence: it stores command argv, package version,
