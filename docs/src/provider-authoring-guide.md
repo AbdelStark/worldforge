@@ -210,7 +210,7 @@ Current classifications:
 | `cosmos` | `beta` | Real remote generate adapter with fixture coverage and runtime manifest; prepared hosts own the Cosmos deployment. |
 | `runway` | `beta` | Real remote generate/transfer adapter with parser and artifact checks; prepared hosts own credentials and artifact retention. |
 | `leworldmodel` | `stable` | Recommended score adapter for the official LeWM loading path; prepared hosts own torch, `stable_worldmodel`, checkpoints, and task preprocessing. |
-| `gr00t` | `experimental` | Real PolicyClient boundary exists, but prepared-host operation and failure coverage still need beta hardening. |
+| `gr00t` | `beta` | Real remote PolicyClient boundary with fixture-backed failure coverage; prepared hosts own the reachable server, credentials, translator, and robot runtime. |
 | `lerobot` | `beta` | Real policy adapter with host-owned LeRobot/checkpoint runtime and documented translator boundary. |
 | `jepa` | `scaffold` | Fail-closed reservation until a real upstream JEPA runtime and single capability are selected. |
 | `genie` | `scaffold` | Fail-closed reservation until a concrete upstream runtime/API contract exists. |

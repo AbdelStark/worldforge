@@ -52,6 +52,11 @@ class FakeGrootClient:
         return self.response
 
 
+class FailingPingGrootClient(FakeGrootClient):
+    def ping(self) -> bool:
+        raise RuntimeError("server unreachable api_token=secret")
+
+
 class FakeArray:
     def __init__(self, value: object) -> None:
         self.value = value
@@ -155,6 +160,12 @@ def test_gr00t_policy_client_provider_passes_contract_and_emits_events() -> None
     assert client.get_action_calls[-1]["observation"] == _policy_info()["observation"]
     assert events[-1].operation == "policy"
     assert events[-1].phase == "success"
+    assert events[-1].attempt == 1
+    assert events[-1].max_attempts == 1
+    assert events[-1].method == "POLICYCLIENT.GET_ACTION"
+    assert events[-1].target == "injected-policy-client"
+    assert events[-1].metadata["timeout_ms"] == 15000
+    assert events[-1].metadata["strict"] is False
 
 
 @pytest.mark.parametrize(
@@ -332,6 +343,20 @@ def test_gr00t_provider_health_reports_native_import_failures(monkeypatch) -> No
     assert "native loader failed" in health.details
 
 
+def test_gr00t_provider_health_reports_unreachable_policy_server() -> None:
+    provider = GrootPolicyClientProvider(
+        policy_client=FailingPingGrootClient(({"arm": [[[0.0]]]}, {})),
+        action_translator=lambda *_args: [Action("noop")],
+    )
+
+    health = provider.health()
+
+    assert health.healthy is False
+    assert "policy server health check failed" in health.details
+    assert "api_token=[redacted]" in health.details
+    assert "secret" not in health.details
+
+
 def test_gr00t_provider_lazily_constructs_policy_client_from_import(monkeypatch) -> None:
     created: list[dict[str, object]] = []
 
@@ -367,6 +392,43 @@ def test_gr00t_provider_lazily_constructs_policy_client_from_import(monkeypatch)
         }
     ]
     assert result.raw_actions == {"arm": [[[0.2, 0.5, 0.0]]]}
+
+
+def test_gr00t_policy_events_include_sanitized_remote_target_and_redacted_failures() -> None:
+    events: list[ProviderEvent] = []
+    client = FakeGrootClient(({"arm": [[[0.0]]]}, {}))
+
+    def fail_get_action(_observation: object) -> object:
+        raise RuntimeError("server refused bearer secret-token")
+
+    client.get_action = fail_get_action  # type: ignore[method-assign]
+    provider = GrootPolicyClientProvider(
+        host="https://policy.example.test:8443/path?api_token=secret",
+        port=5555,
+        timeout_ms=2500,
+        strict=True,
+        api_token="provider-token",
+        policy_client=client,
+        action_translator=lambda *_args: [Action("noop")],
+        event_handler=events.append,
+    )
+
+    with pytest.raises(ProviderError, match="server refused"):
+        provider.select_actions(info=_policy_info())
+
+    event = events[-1]
+    payload = event.to_dict()
+    assert payload["phase"] == "failure"
+    assert payload["operation"] == "policy"
+    assert payload["attempt"] == 1
+    assert payload["max_attempts"] == 1
+    assert payload["method"] == "POLICYCLIENT.GET_ACTION"
+    assert payload["target"] == "https://policy.example.test:8443/path"
+    assert payload["metadata"]["timeout_ms"] == 2500
+    assert payload["metadata"]["strict"] is True
+    assert "provider-token" not in str(payload)
+    assert "secret-token" not in payload["message"]
+    assert "Bearer [redacted]" in payload["message"]
 
 
 @pytest.mark.parametrize(

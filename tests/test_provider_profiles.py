@@ -69,7 +69,7 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         "LEWORLDMODEL_POLICY",
         "LEWM_POLICY",
     ]
-    assert builtin_profiles["gr00t"].implementation_status == "experimental"
+    assert builtin_profiles["gr00t"].implementation_status == "beta"
     assert builtin_profiles["gr00t"].capabilities.policy is True
     assert builtin_profiles["gr00t"].capabilities.predict is False
     assert builtin_profiles["gr00t"].required_env_vars == ["GROOT_POLICY_HOST"]

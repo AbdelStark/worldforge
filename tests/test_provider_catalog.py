@@ -55,7 +55,7 @@ def test_provider_catalog_statuses_match_promotion_gate() -> None:
         "cosmos": "beta",
         "runway": "beta",
         "leworldmodel": "stable",
-        "gr00t": "experimental",
+        "gr00t": "beta",
         "lerobot": "beta",
         "jepa": "scaffold",
         "genie": "scaffold",

@@ -121,7 +121,7 @@ class GrootPolicyClientProvider(BaseProvider):
                     "NVIDIA Isaac GR00T policy-client adapter for selecting embodied action chunks."
                 ),
                 package="worldforge + host-supplied Isaac-GR00T runtime",
-                implementation_status="experimental",
+                implementation_status="beta",
                 requires_credentials=self.api_token is not None,
                 required_env_vars=(GROOT_POLICY_HOST_ENV_VAR,),
                 supported_modalities=("video", "state", "language", "actions"),
@@ -227,10 +227,49 @@ class GrootPolicyClientProvider(BaseProvider):
                 return self._health(started, "policy server ping failed", healthy=False)
         except ProviderError as exc:
             return self._health(started, str(exc), healthy=False)
+        except Exception as exc:
+            return self._health(
+                started,
+                f"GR00T policy server health check failed: {exc}",
+                healthy=False,
+            )
         return self._health(
             started,
             f"configured for {self.host or 'injected policy client'}:{self.port}",
             healthy=True,
+        )
+
+    def _event_target(self) -> str:
+        if self.host is None:
+            return "injected-policy-client"
+        return f"{self.host}:{self.port}"
+
+    def _emit_policy_event(
+        self,
+        *,
+        phase: str,
+        duration_ms: float,
+        message: str = "",
+        metadata: JSONDict | None = None,
+    ) -> None:
+        self._emit_event(
+            ProviderEvent(
+                provider=self.name,
+                operation="policy",
+                phase=phase,
+                attempt=1,
+                max_attempts=1,
+                method="POLICYCLIENT.GET_ACTION",
+                target=self._event_target(),
+                duration_ms=duration_ms,
+                message=message,
+                metadata={
+                    "timeout_ms": self.timeout_ms,
+                    "strict": self.strict,
+                    "embodiment_tag": self.embodiment_tag,
+                    **dict(metadata or {}),
+                },
+            )
         )
 
     def _runtime_dependency_error(self) -> str | None:
@@ -366,8 +405,7 @@ class GrootPolicyClientProvider(BaseProvider):
                 },
                 action_candidates=candidate_plans,
             )
-            self._emit_operation_event(
-                "policy",
+            self._emit_policy_event(
                 phase="success",
                 duration_ms=max(0.1, (perf_counter() - started) * 1000),
                 metadata={
@@ -378,8 +416,7 @@ class GrootPolicyClientProvider(BaseProvider):
             )
             return result
         except ProviderError as exc:
-            self._emit_operation_event(
-                "policy",
+            self._emit_policy_event(
                 phase="failure",
                 duration_ms=max(0.1, (perf_counter() - started) * 1000),
                 message=str(exc),
@@ -387,8 +424,7 @@ class GrootPolicyClientProvider(BaseProvider):
             raise
         except Exception as exc:
             error = ProviderError(f"GR00T policy selection failed: {exc}")
-            self._emit_operation_event(
-                "policy",
+            self._emit_policy_event(
                 phase="failure",
                 duration_ms=max(0.1, (perf_counter() - started) * 1000),
                 message=str(error),

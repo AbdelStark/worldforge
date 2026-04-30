@@ -52,6 +52,10 @@ expected policy-client health signal.
 
 ## Runtime Contract
 
+Maturity: `beta`. Prepared hosts can use the remote PolicyClient path for policy selection when
+they provide a reachable server, optional auth token, observation envelope, and action translator.
+WorldForge does not start or supervise local GR00T runtime services by default.
+
 Direct construction with an injected test client or host-owned client:
 
 ```python
@@ -103,6 +107,11 @@ Validation rules:
 - `options`, when supplied, must be a JSON object.
 - Tensor-like values with `tolist()` are normalized for metadata and raw-action preservation.
 - A host-supplied `action_translator` is required before `ActionPolicyResult` can be returned.
+
+Provider events emitted by `select_actions()` include operation `policy`, attempt `1`, max attempts
+`1`, method `POLICYCLIENT.GET_ACTION`, a sanitized target, elapsed duration, timeout settings, and
+the strict-mode flag. Token-like values in messages, targets, or metadata are redacted before they
+reach logs or run manifests.
 
 ## Action Translation
 
@@ -187,6 +196,7 @@ dependencies. On unsupported hosts, connect WorldForge to an already running rem
 
 - Missing `GROOT_POLICY_HOST` leaves the provider unregistered.
 - Missing `gr00t.policy.server_client.PolicyClient` is reported by `health()`.
+- Unreachable policy servers or ping failures are reported by `health()` without leaking tokens.
 - Missing `action_translator` fails with `ProviderError`.
 - Malformed observations fail before invoking the policy client.
 - Non-JSON-compatible raw actions or provider info fail before returning `ActionPolicyResult`.
