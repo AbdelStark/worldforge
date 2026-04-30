@@ -26,6 +26,8 @@ def test_run_json_log_sink_writes_run_scoped_jsonl(tmp_path) -> None:
             operation="predict",
             phase="success",
             duration_ms=12.5,
+            request_id="event-req",
+            trace_id="trace-abc",
             metadata={"steps": 2},
         )
     )
@@ -45,10 +47,11 @@ def test_run_json_log_sink_writes_run_scoped_jsonl(tmp_path) -> None:
             "operation": "predict",
             "phase": "success",
             "provider": "mock",
-            "request_id": "req-456",
+            "request_id": "event-req",
             "run_id": "run-123",
             "status_code": None,
             "target": None,
+            "trace_id": "trace-abc",
         }
     ]
 

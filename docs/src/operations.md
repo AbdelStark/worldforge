@@ -123,8 +123,37 @@ fields redact obvious bearer tokens, API keys, signatures, passwords, and signed
 applications should still avoid placing raw credentials in provider exception messages or custom
 metadata.
 
-Host services should add request or trace IDs through `JsonLoggerSink(extra_fields=...)` and
-include those IDs in surrounding application logs.
+Host services can attach correlation IDs directly to a `ProviderEvent` when the provider adapter
+knows them, or through `JsonLoggerSink(extra_fields=...)` when the host owns them outside the
+adapter. Optional event fields are `run_id`, `request_id`, `trace_id`, `span_id`, `artifact_id`,
+and `input_digest`; they are strings, omitted when unset, and sanitized before sink consumption.
+The event `phase` is normalized to lowercase so hosts can filter stable `success`, `failure`, and
+`retry` values.
+
+Example JSON log record:
+
+```json
+{
+  "artifact_id": "artifact-local-id",
+  "attempt": 1,
+  "duration_ms": 812.4,
+  "event_type": "provider_event",
+  "input_digest": "sha256:9fd7...",
+  "max_attempts": 3,
+  "message": "",
+  "metadata": {"status": "submitted"},
+  "method": "POST",
+  "operation": "task create",
+  "phase": "success",
+  "provider": "runway",
+  "request_id": "host-request-id",
+  "run_id": "20260430T120000Z-batch-eval",
+  "span_id": "span-456",
+  "status_code": 200,
+  "target": "https://api.runwayml.com/v1/tasks",
+  "trace_id": "trace-123"
+}
+```
 
 For batch jobs, harness runs, and release evidence, attach a file sink owned by the host process:
 
@@ -147,11 +176,12 @@ forge = WorldForge(
 )
 ```
 
-The file sink creates the parent directory and appends one JSON object per provider event. The
-`run_id` should match the host run manifest so operator bundles can join `manifest.json`,
-`provider-events.jsonl`, benchmark reports, and preserved artifacts without relying on timestamps.
-Extra fields are validated as JSON and redacted with the same observable secret rules as provider
-event messages and metadata.
+The file sink creates the parent directory and appends one JSON object per provider event. Its
+configured `run_id` wins over any `run_id` supplied by extra fields or adapter events so every line
+in the file joins to the same host run manifest. Operator bundles can then correlate
+`manifest.json`, `provider-events.jsonl`, benchmark reports, and preserved artifacts without
+relying on timestamps. Extra fields are validated as JSON and redacted with the same observable
+secret rules as provider event messages and metadata.
 
 Optional live smoke commands can also write a sanitized `run_manifest.json`:
 

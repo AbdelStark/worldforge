@@ -210,6 +210,17 @@ def _sanitize_observable_target(value: object | None) -> str | None:
     return target
 
 
+def _sanitize_observable_id(value: object | None, *, name: str) -> str | None:
+    """Return a provider event correlation identifier safe for logs."""
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise WorldForgeError(f"{name} must be a string when provided.")
+    sanitized = _redact_observable_text(value.strip())
+    return sanitized or None
+
+
 def _redact_observable_text(value: str) -> str:
     """Redact common secret shapes from provider event text."""
 
@@ -1338,6 +1349,12 @@ class ProviderEvent:
     duration_ms: float | None = None
     message: str = ""
     metadata: JSONDict = field(default_factory=dict)
+    run_id: str | None = None
+    request_id: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
+    artifact_id: str | None = None
+    input_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.provider, str) or not self.provider.strip():
@@ -1378,7 +1395,7 @@ class ProviderEvent:
             raise WorldForgeError("ProviderEvent metadata must be a JSON object.")
         self.provider = self.provider.strip()
         self.operation = self.operation.strip()
-        self.phase = self.phase.strip()
+        self.phase = self.phase.strip().lower()
         self.method = self.method.strip().upper() if self.method else None
         self.target = _sanitize_observable_target(self.target)
         self.message = _redact_observable_text(self.message)
@@ -1386,9 +1403,24 @@ class ProviderEvent:
             _redact_observable_value(dict(self.metadata)),
             name="ProviderEvent metadata",
         )
+        self.run_id = _sanitize_observable_id(self.run_id, name="ProviderEvent run_id")
+        self.request_id = _sanitize_observable_id(
+            self.request_id,
+            name="ProviderEvent request_id",
+        )
+        self.trace_id = _sanitize_observable_id(self.trace_id, name="ProviderEvent trace_id")
+        self.span_id = _sanitize_observable_id(self.span_id, name="ProviderEvent span_id")
+        self.artifact_id = _sanitize_observable_id(
+            self.artifact_id,
+            name="ProviderEvent artifact_id",
+        )
+        self.input_digest = _sanitize_observable_id(
+            self.input_digest,
+            name="ProviderEvent input_digest",
+        )
 
     def to_dict(self) -> JSONDict:
-        return {
+        payload: JSONDict = {
             "provider": self.provider,
             "operation": self.operation,
             "phase": self.phase,
@@ -1401,6 +1433,22 @@ class ProviderEvent:
             "message": self.message,
             "metadata": dict(self.metadata),
         }
+        optional_fields = {
+            "run_id": self.run_id,
+            "request_id": self.request_id,
+            "trace_id": self.trace_id,
+            "span_id": self.span_id,
+            "artifact_id": self.artifact_id,
+            "input_digest": self.input_digest,
+        }
+        payload.update(
+            {
+                field_name: value
+                for field_name, value in optional_fields.items()
+                if value is not None
+            }
+        )
+        return payload
 
 
 @dataclass(slots=True)

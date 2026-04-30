@@ -99,9 +99,10 @@ def test_provider_event_validates_and_normalizes_observable_fields() -> None:
     blank_target = ProviderEvent(
         provider="runway",
         operation="artifact download",
-        phase="success",
+        phase=" Success ",
         target="   ",
     )
+    assert blank_target.phase == "success"
     assert blank_target.target is None
 
     invalid_url = ProviderEvent(
@@ -142,6 +143,62 @@ def test_provider_event_validates_and_normalizes_observable_fields() -> None:
             operation="artifact download",
             phase="failure",
             metadata={"shape": (1, 2, 3)},
+        )
+
+
+def test_provider_event_correlation_fields_are_optional_sanitized_and_json_native() -> None:
+    event = ProviderEvent(
+        provider=" runway ",
+        operation=" task create ",
+        phase=" Success ",
+        run_id=" run-123 ",
+        request_id=" req-456 ",
+        trace_id=" trace-abc ",
+        span_id=" span-def ",
+        artifact_id=" artifact-789 ",
+        input_digest="sha256:abc123",
+        metadata={"status": "submitted"},
+    )
+
+    assert event.to_dict() == {
+        "artifact_id": "artifact-789",
+        "attempt": 1,
+        "duration_ms": None,
+        "input_digest": "sha256:abc123",
+        "max_attempts": 1,
+        "message": "",
+        "metadata": {"status": "submitted"},
+        "method": None,
+        "operation": "task create",
+        "phase": "success",
+        "provider": "runway",
+        "request_id": "req-456",
+        "run_id": "run-123",
+        "span_id": "span-def",
+        "status_code": None,
+        "target": None,
+        "trace_id": "trace-abc",
+    }
+
+    redacted = ProviderEvent(
+        provider="runway",
+        operation="artifact download",
+        phase="success",
+        request_id="token=secret-request",
+        artifact_id="https://example.test/video.mp4?X-Amz-Signature=artifact-secret",
+        input_digest=" ",
+    ).to_dict()
+
+    assert redacted["request_id"] == "token=[redacted]"
+    assert redacted["artifact_id"] == "https://example.test/video.mp4"
+    assert "input_digest" not in redacted
+
+    with pytest.raises(WorldForgeError, match="request_id"):
+        ProviderEvent(
+            provider="runway",
+            operation="artifact download",
+            phase="success",
+            request_id=object(),  # type: ignore[arg-type]
         )
 
 

@@ -34,6 +34,12 @@ def _copy_event(event: ProviderEvent) -> ProviderEvent:
         duration_ms=event.duration_ms,
         message=event.message,
         metadata=deepcopy(event.metadata),
+        run_id=event.run_id,
+        request_id=event.request_id,
+        trace_id=event.trace_id,
+        span_id=event.span_id,
+        artifact_id=event.artifact_id,
+        input_digest=event.input_digest,
     )
 
 
