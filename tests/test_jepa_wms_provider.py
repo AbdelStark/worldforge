@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ import pytest
 from worldforge import Action, ActionScoreResult, WorldForge, WorldForgeError
 from worldforge.providers.base import ProviderError
 from worldforge.providers.jepa_wms import JEPAWMSProvider, TorchHubJEPAWMSRuntime
+from worldforge.smoke import jepa_wms
 from worldforge.testing import assert_provider_contract
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "providers"
@@ -161,11 +163,20 @@ class FakeTensor:
 
 
 class FakeTorch:
+    __version__ = "2.9.0-test"
+
     def __init__(self, hub_response: object | None = None) -> None:
         self.hub = FakeHub(hub_response) if hub_response is not None else None
+        self.seed: int | None = None
 
     def as_tensor(self, value: object) -> FakeTensor:
         return value if isinstance(value, FakeTensor) else FakeTensor(value)
+
+    def manual_seed(self, seed: int) -> None:
+        self.seed = seed
+
+    def rand(self, *shape: int) -> FakeTensor:
+        return FakeTensor(_zeros(shape))
 
     def abs(self, value: FakeTensor) -> FakeTensor:
         return FakeTensor(_map_nested(value.value, abs))
@@ -179,6 +190,12 @@ class FakeTorch:
                 return False
 
         return NoGrad()
+
+
+def _zeros(shape: tuple[int, ...]) -> object:
+    if not shape:
+        return 0.0
+    return [_zeros(shape[1:]) for _ in range(shape[0])]
 
 
 class FakePreprocessor:
@@ -852,3 +869,79 @@ def test_jepa_wms_wraps_unexpected_runtime_failures() -> None:
             info=payload["info"],
             action_candidates=payload["action_candidates"],
         )
+
+
+def test_jepa_wms_prepared_host_smoke_writes_runtime_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_torch = FakeTorch(FakeHubScoringModel({"scores": [0.5, 0.1, 0.3]}))
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    summary_path = tmp_path / "results" / "summary.json"
+    manifest_path = tmp_path / "run_manifest.json"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge-smoke-jepa-wms",
+            "--model-name",
+            "jepa_wm_pusht",
+            "--device",
+            "cpu",
+            "--json-output",
+            str(summary_path),
+            "--run-manifest",
+            str(manifest_path),
+        ],
+    )
+
+    assert jepa_wms.main() == 0
+    captured = capsys.readouterr()
+    assert "prepared-host smoke passed" in captured.out
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert summary["runtime_version"]["torch"] == "2.9.0-test"
+    assert summary["runtime_version"]["model_class"] == "FakeHubScoringModel"
+    assert summary["score_summary"]["candidate_count"] == 3
+    assert summary["score_summary"]["best_index"] == 1
+    assert manifest["provider_profile"] == "jepa-wms"
+    assert manifest["capability"] == "score"
+    assert manifest["status"] == "passed"
+    assert manifest["event_count"] == 1
+    assert manifest["input_summary"]["runtime_version"]["torch"] == "2.9.0-test"
+    assert manifest["input_summary"]["score_summary"]["best_score"] == 0.1
+    assert manifest["artifact_paths"]["summary_json"] == str(summary_path)
+
+
+def test_jepa_wms_prepared_host_smoke_records_failed_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delitem(sys.modules, "torch", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge-smoke-jepa-wms",
+            "--model-name",
+            "jepa_wm_pusht",
+            "--run-manifest",
+            str(tmp_path / "run_manifest.json"),
+        ],
+    )
+    monkeypatch.setattr(
+        jepa_wms.importlib,
+        "import_module",
+        lambda name: (_ for _ in ()).throw(ImportError("missing torch")),
+    )
+
+    assert jepa_wms.main() == 1
+    captured = capsys.readouterr()
+    assert "missing torch" in captured.err
+    manifest = json.loads((tmp_path / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "failed"
+    assert manifest["event_count"] == 0

@@ -752,10 +752,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Provider status is not upgraded without real runtime smoke evidence.
-- [ ] Docs state direct-construction versus auto-registration decision.
-- [ ] Fixture and injected-runtime tests cover parser and validation behavior.
-- [ ] Prepared-host smoke writes a manifest with runtime version and score summary.
+- [x] Provider status is not upgraded without real runtime smoke evidence.
+- [x] Docs state direct-construction versus auto-registration decision.
+- [x] Fixture and injected-runtime tests cover parser and validation behavior.
+- [x] Prepared-host smoke writes a manifest with runtime version and score summary.
 
 Validation:
 
