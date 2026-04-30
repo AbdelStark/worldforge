@@ -80,6 +80,27 @@ Both packaged demos validate the WorldForge adapter, planning, execution, persis
 event path in a clean checkout. They do not install optional ML runtimes or run upstream neural
 checkpoint inference.
 
+## Service Host Reference
+
+| Example | Command | Runtime boundary |
+| --- | --- | --- |
+| `service-host` | `uv run python examples/hosts/service/app.py --provider mock --port 8080` | Stdlib HTTP reference host; the embedding service owns deployment, credentials, telemetry export, alerting, and upstream SLA handling. |
+
+The service host exposes:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /healthz` | Process liveness only. |
+| `GET /readyz` | Framework alive, configured provider, provider health, and `doctor()` summary. |
+| `GET /providers` | Registered-provider diagnostics for the current host process. |
+| `POST /workflows/mock-predict` | Safe deterministic mock prediction smoke. |
+| `POST /workflows/generate` | Configurable provider generate workflow using a JSON body with `provider`, `prompt`, and `duration_seconds`. |
+
+Every response includes or echoes a request id. Provider events are sent through `JsonLoggerSink`
+with that request id so host logs can correlate HTTP requests with provider calls. Public errors
+use typed JSON payloads and redact obvious secret-shaped values, but production services still own
+credential storage, request authentication, dashboards, alert routing, and provider SLA policy.
+
 ## Optional Runtime Smoke
 
 | Example | Command | Runtime boundary |

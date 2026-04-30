@@ -49,6 +49,17 @@ comparison flows.
 | --- | --- | --- |
 | `lerobot-policy-score-planning` | policy provider, score provider, planning, persistence | `uv run worldforge-demo-lerobot` |
 
+## Service Host Reference
+
+| Example | Surface | Command |
+| --- | --- | --- |
+| `service-host` | HTTP liveness/readiness, provider diagnostics, mock workflow, configurable generate workflow | `uv run python examples/hosts/service/app.py --provider mock --port 8080` |
+
+The service host uses Python's stdlib HTTP server so it does not add a base dependency. It is a
+reference for embedding WorldForge in a host process, not a WorldForge deployment boundary:
+production services still own authentication, alerting, telemetry export, upstream SLA handling,
+and artifact retention.
+
 ## Optional Runtime Smoke
 
 | Example | Surface | Command |

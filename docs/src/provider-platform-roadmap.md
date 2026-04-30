@@ -1110,10 +1110,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Service host runs with only optional example dependencies.
-- [ ] Health/readiness distinguish framework alive, provider configured, and provider healthy.
-- [ ] Provider errors return typed public error payloads without internal secrets.
-- [ ] Docs state this is a reference host, not the WorldForge product boundary.
+- [x] Service host runs with only optional example dependencies.
+- [x] Health/readiness distinguish framework alive, provider configured, and provider healthy.
+- [x] Provider errors return typed public error payloads without internal secrets.
+- [x] Docs state this is a reference host, not the WorldForge product boundary.
 
 Validation:
 

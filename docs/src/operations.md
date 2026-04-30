@@ -24,6 +24,35 @@ uv run worldforge doctor --registered-only
 uv run worldforge provider health
 ```
 
+## Health And Readiness
+
+Host applications should expose liveness separately from readiness. Liveness answers whether the
+service process can handle an HTTP request. Readiness answers whether the specific provider-backed
+workflow should receive traffic.
+
+The stdlib reference host in `examples/hosts/service/app.py` uses this model:
+
+| State | Source | Meaning | Typical HTTP endpoint |
+| --- | --- | --- | --- |
+| process live | service handler returns `{"status": "live"}` | process and web stack are running | `GET /healthz` |
+| framework alive | `WorldForge(...)` can be constructed and `doctor()` can run | library import, local state path, and provider registry are usable | `GET /readyz` |
+| provider configured | provider appears in `forge.providers()` | required env vars or host injection registered the provider | `GET /readyz` |
+| provider healthy | `forge.provider_health(name).healthy` is true | provider's cheap health check passed | `GET /readyz` |
+| workflow failing | provider is configured and health may pass, but a workflow returns a typed error | request input, upstream response, budget, or artifact handling failed | workflow response body |
+
+Map CLI diagnostics the same way during incidents:
+
+| Command | Readiness signal |
+| --- | --- |
+| `uv run worldforge doctor --registered-only` | registered provider count, health count, and local configuration issues. |
+| `uv run worldforge doctor --capability <capability>` | whether any known provider can satisfy the requested surface. |
+| `uv run worldforge provider health <name>` | provider-specific configured/healthy details. |
+| `uv run worldforge provider info <name>` | redacted config summary plus profile, capability, and health. |
+
+WorldForge reports local provider state and adapter errors. It does not own upstream provider SLAs,
+deployment load balancers, alert channels, retry orchestration outside one provider call, or
+credential rotation.
+
 ## Configuration
 
 Configuration comes from constructor arguments and environment variables documented in
