@@ -112,6 +112,17 @@ EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "task": "Batch evaluation host",
+        "name": "batch-eval-host",
+        "surface": "evaluation, benchmarking, run workspaces, budget gates",
+        "requires": "base WorldForge package; checkout examples directory",
+        "command": "uv run python examples/hosts/batch-eval/app.py benchmark --provider mock",
+        "description": (
+            "Run mock provider eval or benchmark jobs as a production-shaped batch process with "
+            "preserved run manifests, report exports, and non-zero budget-gate failures."
+        ),
+    },
+    {
         "task": "Optional runtime smoke",
         "name": "leworldmodel-real-checkpoint-smoke",
         "surface": "optional runtime smoke",

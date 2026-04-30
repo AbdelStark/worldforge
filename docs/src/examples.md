@@ -106,6 +106,37 @@ with that request id so host logs can correlate HTTP requests with provider call
 use typed JSON payloads and redact obvious secret-shaped values, but production services still own
 credential storage, request authentication, dashboards, alert routing, and provider SLA policy.
 
+## Batch Evaluation Host
+
+| Example | Command | Runtime boundary |
+| --- | --- | --- |
+| `batch-eval-host` | `uv run python examples/hosts/batch-eval/app.py benchmark --provider mock` | Stdlib job reference host; the embedding batch system owns scheduling, durable storage, credentials, and provider-specific runtime setup. |
+
+Run deterministic mock evaluation and benchmark jobs in a clean checkout:
+
+```bash
+uv run python examples/hosts/batch-eval/app.py \
+  --workspace .worldforge/batch-eval \
+  eval --suite planning --provider mock
+
+uv run python examples/hosts/batch-eval/app.py \
+  --workspace .worldforge/batch-eval \
+  benchmark --provider mock --operation generate --iterations 1 \
+  --input-file examples/benchmark-inputs.json \
+  --budget-file examples/benchmark-budget.json
+```
+
+Each job writes a shared run workspace under `.worldforge/batch-eval/runs/<run-id>/` with
+`run_manifest.json`, JSON/Markdown/CSV reports, copied input and budget files for benchmark jobs,
+and a JSON stdout summary that points to the manifest. Benchmark budget violations return exit
+code `1` after preserving the failed run, which lets CI or a scheduler fail the job while still
+keeping issue-safe artifacts.
+
+To swap in a real provider, run the same command on a prepared host that has the provider
+registered, credentials configured, optional runtime dependencies installed, and benchmark inputs
+that match that provider's advertised capability. Keep scheduling, retry policy above the process,
+long-term artifact storage, and credential rotation outside the base package.
+
 ## Optional Runtime Smoke
 
 | Example | Command | Runtime boundary |

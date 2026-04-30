@@ -60,6 +60,16 @@ reference for embedding WorldForge in a host process, not a WorldForge deploymen
 production services still own authentication, alerting, telemetry export, upstream SLA handling,
 and artifact retention.
 
+## Batch Evaluation Host
+
+| Example | Surface | Command |
+| --- | --- | --- |
+| `batch-eval-host` | eval/benchmark jobs, run manifests, budget exits | `uv run python examples/hosts/batch-eval/app.py benchmark --provider mock` |
+
+The batch host uses only the base WorldForge package and Python stdlib. It writes
+`.worldforge/batch-eval/runs/<run-id>/run_manifest.json`, report exports, and copied benchmark
+input or budget files. A benchmark budget violation exits `1` after preserving the failed run.
+
 ## Optional Runtime Smoke
 
 | Example | Surface | Command |
