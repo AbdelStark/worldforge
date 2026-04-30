@@ -5,7 +5,24 @@ provider integrations, production-grade harnesses, host applications, and operat
 It is written as a planning source for GitHub issues, not as a promise that every item is already
 implemented.
 
-Last reviewed: 2026-04-30.
+Last reviewed: 2026-05-01.
+
+## Completion Snapshot
+
+The first production track is complete. The GitHub tracker issues remain useful as an audit trail,
+but new provider and platform work should start from a fresh selection record or a narrowly scoped
+follow-up issue rather than reopening these implementation slices.
+
+| Tracker | Scope | Completion signal |
+| --- | --- | --- |
+| [#47](https://github.com/AbdelStark/worldforge/issues/47) | Provider platform foundation | Promotion gates, runtime manifests, conformance helpers, live-smoke artifacts, and optional runtime profiles are implemented. |
+| [#48](https://github.com/AbdelStark/worldforge/issues/48) | Real provider implementations | LeWorldModel, LeRobot, GR00T, Cosmos, Runway, JEPA, JEPA-WMS, and Genie defer decisions are documented against executable capability claims. |
+| [#49](https://github.com/AbdelStark/worldforge/issues/49) | Production harness | Run workspaces, connector readiness, live inspection, report comparison, and provider workbench flows preserve safe artifacts. |
+| [#50](https://github.com/AbdelStark/worldforge/issues/50) | Reference host applications | Batch eval, service, and robotics operator host examples show host-owned integration boundaries. |
+| [#51](https://github.com/AbdelStark/worldforge/issues/51) | Observability monitoring and logging | Provider event schema, logging, metrics, OpenTelemetry, readiness, and incident runbooks are available without changing the base dependency boundary. |
+| [#52](https://github.com/AbdelStark/worldforge/issues/52) | Reliability security and release gates | Credential hardening, request budgets, persistence ADR, and release evidence generation are in place. |
+
+Use the release gate below before tagging a release that claims this roadmap milestone.
 
 ## Planning Rules
 

@@ -6,6 +6,8 @@ upstream runtimes or robot controllers are involved.
 
 ## Current Focus
 
+- Treat the provider and platform production track as complete baseline infrastructure; use fresh
+  selection records for new provider batches instead of extending the original tracker.
 - Keep the provider catalog honest: adapters advertise only capabilities implemented end to end.
 - Make checkout validation boring: one command should exercise lint, docs, tests, coverage,
   package build, package install, and dependency audit.
