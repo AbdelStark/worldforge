@@ -1375,6 +1375,14 @@ Reliability policy:
 | Live tests | opt-in markers | Default CI stays deterministic. |
 | Coverage gate | keep current gate | Add focused tests for new branches instead of lowering thresholds. |
 
+Completion signal for [#52](https://github.com/AbdelStark/worldforge/issues/52): this workstream is
+implemented as baseline reliability, security, and release infrastructure. `WF-OPS-001` added
+per-operation provider budgets and budget-exceeded events. `WF-OPS-002` hardened credential
+configuration summaries and redaction expectations across safe artifacts. `WF-OPS-003` recorded the
+host-owned persistence adapter boundary in ADR 0001. `WF-OPS-004` added the release evidence bundle
+and release-gate checklist. Future work should start from a narrow follow-up issue when it changes a
+specific provider, host, artifact, or release workflow.
+
 ### WF-OPS-001: Provider Budget And Circuit-Breaker Policy
 
 Type: operations  
