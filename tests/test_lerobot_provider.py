@@ -184,9 +184,17 @@ def test_lerobot_policy_provider_passes_contract_and_emits_events() -> None:
     assert result.raw_actions == {"actions": [[0.1, 0.5, 0.0]]}
     assert result.metadata["runtime"] == "lerobot"
     assert result.metadata["mode"] == "select_action"
+    assert result.metadata["device"] == "cpu"
+    assert result.metadata["loader_mode"] == "injected_policy"
+    assert result.metadata["raw_action_summary"] == {
+        "type": "list",
+        "shape": [1, 3],
+        "preview": [[0.1, 0.5, 0.0]],
+    }
     assert policy.select_action_calls[-1] == _policy_info()["observation"]
     assert events[-1].operation == "policy"
     assert events[-1].phase == "success"
+    assert events[-1].metadata["loader_mode"] == "injected_policy"
 
 
 def test_lerobot_contract_translator_records_safe_metadata() -> None:
@@ -419,6 +427,20 @@ def test_lerobot_provider_reports_unconfigured_and_missing_dependency(monkeypatc
     assert "lerobot" in unhealthy.health().details
 
 
+def test_lerobot_provider_reports_missing_local_checkpoint(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        lerobot_module,
+        "_import_pretrained_policy_module",
+        lambda: pytest.fail("missing local checkpoints should fail before runtime imports"),
+    )
+    provider = LeRobotPolicyProvider(policy_path=str(tmp_path / "missing-checkpoint"))
+
+    health = provider.health()
+
+    assert health.healthy is False
+    assert "checkpoint path does not exist" in health.details
+
+
 def test_lerobot_provider_health_reports_optional_import_crash(monkeypatch) -> None:
     real_import = importlib.import_module
 
@@ -458,6 +480,19 @@ def test_lerobot_provider_reads_env_configuration(monkeypatch) -> None:
     assert provider.embodiment_tag == "pusht"
     assert provider.profile().default_model == "lerobot/diffusion_pusht"
     assert provider.configured() is True
+
+
+def test_lerobot_provider_defaults_device_to_cpu(monkeypatch) -> None:
+    monkeypatch.delenv("LEROBOT_DEVICE", raising=False)
+
+    provider = LeRobotPolicyProvider(policy=FakeLeRobotPolicy(response=FakeTensor([[0.0]])))
+    summary = provider.config_summary().to_dict()
+    device = next(field for field in summary["fields"] if field["name"] == "LEROBOT_DEVICE")
+
+    assert provider.device == "cpu"
+    assert device["source"] == "default"
+    assert device["detail"] == "defaults to cpu"
+    assert "device=cpu" in provider.health().details
 
 
 def test_lerobot_provider_lazily_loads_via_loader_and_applies_device() -> None:
@@ -544,6 +579,8 @@ def test_lerobot_provider_lazily_imports_pretrained_policy(monkeypatch) -> None:
         ({"device": " "}, "device"),
         ({"cache_dir": " "}, "cache_dir"),
         ({"embodiment_tag": " "}, "embodiment_tag"),
+        ({"policy_loader": object()}, "policy_loader"),
+        ({"action_translator": object()}, "action_translator"),
     ],
 )
 def test_lerobot_provider_rejects_invalid_configuration(

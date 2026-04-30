@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 
@@ -53,6 +54,7 @@ LEROBOT_POLICY_TYPE_ENV_VAR = "LEROBOT_POLICY_TYPE"
 LEROBOT_DEVICE_ENV_VAR = "LEROBOT_DEVICE"
 LEROBOT_CACHE_DIR_ENV_VAR = "LEROBOT_CACHE_DIR"
 LEROBOT_EMBODIMENT_TAG_ENV_VAR = "LEROBOT_EMBODIMENT_TAG"
+LEROBOT_DEFAULT_DEVICE = "cpu"
 
 SUPPORTED_POLICY_TYPES: tuple[str, ...] = (
     "act",
@@ -108,6 +110,63 @@ def _import_pretrained_policy_module() -> tuple[Any | None, str | None]:
     return None, "LeRobot PreTrainedPolicy import unavailable (" + "; ".join(failures) + ")"
 
 
+def _looks_like_local_checkpoint(path: str) -> bool:
+    return path.startswith((".", "~")) or Path(path).is_absolute() or Path(path).exists()
+
+
+def _checkpoint_missing_detail(path: str) -> str | None:
+    if not _looks_like_local_checkpoint(path):
+        return None
+    if Path(path).expanduser().exists():
+        return None
+    return "LeRobot local checkpoint path does not exist."
+
+
+def _json_shape(value: object) -> list[int] | None:
+    if not isinstance(value, list):
+        return []
+    length = len(value)
+    if length == 0:
+        return [0]
+    child_shapes = [_json_shape(child) for child in value]
+    if any(shape is None for shape in child_shapes):
+        return None
+    first_shape = child_shapes[0]
+    if any(shape != first_shape for shape in child_shapes[1:]):
+        return None
+    return [length, *(first_shape or [])]
+
+
+def _json_preview(value: object, *, max_items: int = 3, depth: int = 0) -> object:
+    if depth >= 3:
+        return "..."
+    if isinstance(value, list):
+        preview = [
+            _json_preview(child, max_items=max_items, depth=depth + 1)
+            for child in value[:max_items]
+        ]
+        if len(value) > max_items:
+            preview.append("...")
+        return preview
+    if isinstance(value, dict):
+        items = list(value.items())[:max_items]
+        preview = {
+            key: _json_preview(child, max_items=max_items, depth=depth + 1) for key, child in items
+        }
+        if len(value) > max_items:
+            preview["..."] = "..."
+        return preview
+    return value
+
+
+def _raw_action_summary(actions: object) -> JSONDict:
+    return {
+        "type": type(actions).__name__,
+        "shape": _json_shape(actions),
+        "preview": _json_preview(actions),
+    }
+
+
 class LeRobotPolicyProvider(BaseProvider):
     """Adapter for Hugging Face LeRobot pretrained policies.
 
@@ -131,6 +190,10 @@ class LeRobotPolicyProvider(BaseProvider):
         action_translator: ActionTranslator | None = None,
         event_handler: Callable[[ProviderEvent], None] | None = None,
     ) -> None:
+        if policy_loader is not None and not callable(policy_loader):
+            raise WorldForgeError("LeRobot policy_loader must be callable when provided.")
+        if action_translator is not None and not callable(action_translator):
+            raise WorldForgeError("LeRobot action_translator must be callable when provided.")
         self.policy_path = optional_non_empty(
             policy_path
             if policy_path is not None
@@ -141,8 +204,11 @@ class LeRobotPolicyProvider(BaseProvider):
             policy_type if policy_type is not None else env_value(LEROBOT_POLICY_TYPE_ENV_VAR),
             name="LeRobot policy_type",
         )
+        self._device_direct = device is not None
+        configured_device = device if device is not None else env_value(LEROBOT_DEVICE_ENV_VAR)
+        self._device_configured = configured_device is not None
         self.device = optional_non_empty(
-            device if device is not None else env_value(LEROBOT_DEVICE_ENV_VAR),
+            device if device is not None else configured_device or LEROBOT_DEFAULT_DEVICE,
             name="LeRobot device",
         )
         self.cache_dir = optional_non_empty(
@@ -178,13 +244,14 @@ class LeRobotPolicyProvider(BaseProvider):
                     "Hugging Face LeRobot pretrained-policy adapter for embodied action selection."
                 ),
                 package="worldforge + lerobot",
-                implementation_status="beta",
+                implementation_status="stable",
                 requires_credentials=False,
                 required_env_vars=tuple(LEROBOT_POLICY_PATH_ENV_ALIASES),
                 supported_modalities=("state", "images", "language", "actions"),
                 artifact_types=("action_policy",),
                 notes=(
                     "Loads policies with lerobot.policies.PreTrainedPolicy.from_pretrained.",
+                    "Defaults to CPU unless LEROBOT_DEVICE or device= selects another runtime.",
                     "Supports ACT, Diffusion, TDMPC, VQBet, Pi0, Pi0Fast, SAC, SmolVLA policies.",
                     "Set LEROBOT_POLICY_PATH to a Hugging Face repo id or local checkpoint "
                     "directory.",
@@ -234,8 +301,13 @@ class LeRobotPolicyProvider(BaseProvider):
                 _field_summary(
                     LEROBOT_DEVICE_ENV_VAR,
                     required=False,
-                    source=config_source(LEROBOT_DEVICE_ENV_VAR, direct=self.device is not None),
+                    source=config_source(
+                        LEROBOT_DEVICE_ENV_VAR,
+                        direct=self._device_direct,
+                        default=not self._device_configured,
+                    ),
                     present=self.device is not None,
+                    detail="defaults to cpu" if self.device == LEROBOT_DEFAULT_DEVICE else "",
                 ),
                 _field_summary(
                     LEROBOT_CACHE_DIR_ENV_VAR,
@@ -267,13 +339,30 @@ class LeRobotPolicyProvider(BaseProvider):
                 healthy=False,
             )
         if self._policy is None:
+            if self.policy_path is not None:
+                checkpoint_error = _checkpoint_missing_detail(self.policy_path)
+                if checkpoint_error is not None:
+                    return self._health(started, checkpoint_error, healthy=False)
             dependency_error = self._runtime_dependency_error()
             if dependency_error is not None:
                 return self._health(started, dependency_error, healthy=False)
         detail_source = "injected policy"
         if self._policy is None:
             detail_source = self.policy_path or detail_source
-        return self._health(started, f"configured for {detail_source}", healthy=True)
+        return self._health(
+            started,
+            f"configured for {detail_source}; loader={self._loader_mode()}; device={self.device}",
+            healthy=True,
+        )
+
+    def _loader_mode(self) -> str:
+        if self._policy is not None:
+            return "injected_policy"
+        if self._policy_loader is not None:
+            return "policy_loader"
+        if self.policy_type is not None:
+            return "typed_from_pretrained"
+        return "pretrained_policy"
 
     def _runtime_dependency_error(self) -> str | None:
         if self._policy_loader is not None:
@@ -511,11 +600,15 @@ class LeRobotPolicyProvider(BaseProvider):
                 embodiment_tag=embodiment_tag or None,
                 metadata={
                     "runtime": "lerobot",
+                    "loader_mode": self._loader_mode(),
                     "policy_path": self.policy_path,
                     "policy_type": self.policy_type,
                     "device": self.device,
                     "mode": mode,
                     "provider_info": normalized_provider_info,
+                    "raw_action_summary": _raw_action_summary(
+                        normalized_raw_actions["actions"],
+                    ),
                     "candidate_count": len(candidate_plans),
                     "translator_contract": translator_contract,
                 },
@@ -528,6 +621,7 @@ class LeRobotPolicyProvider(BaseProvider):
                 metadata={
                     "policy_path": self.policy_path,
                     "policy_type": self.policy_type,
+                    "loader_mode": self._loader_mode(),
                     "candidate_count": len(result.action_candidates),
                     "action_horizon": result.action_horizon,
                     "embodiment_tag": result.embodiment_tag,

@@ -38,7 +38,7 @@ WorldForge never drives hardware directly.
   `lerobot/act_aloha_sim_transfer_cube_human`.
 - `LEROBOT_POLICY_TYPE`: optional policy class hint. Supported values include `act`, `diffusion`,
   `tdmpc`, `vqbet`, `pi0`, `pi0fast`, `sac`, and `smolvla`.
-- `LEROBOT_DEVICE`: optional device string passed to `policy.to(...)`.
+- `LEROBOT_DEVICE`: optional device string passed to `policy.to(...)`. Defaults to `cpu`.
 - `LEROBOT_CACHE_DIR`: optional Hugging Face cache directory.
 - `LEROBOT_EMBODIMENT_TAG`: optional metadata for the robot embodiment.
 
@@ -72,12 +72,21 @@ policy.predict_action_chunk(observation) -> action_chunk_tensor # optional
 policy.reset()                                                  # optional
 ```
 
+Supported loading modes are explicit:
+
+- injected `policy=...` for tests or host-managed runtimes
+- injected `policy_loader=...` for host-owned custom loading
+- `PreTrainedPolicy.from_pretrained(...)` for the configured path
+- typed policy-class loading when `LEROBOT_POLICY_TYPE` is set
+
 Without an injected policy, WorldForge lazily imports `PreTrainedPolicy` and loads the configured
 checkpoint. If `LEROBOT_POLICY_TYPE` is set, it resolves the specific policy class before calling
 `from_pretrained(...)`.
 
 After loading, the adapter calls `policy.to(device)`, `policy.eval()`,
-`policy.requires_grad_(False)`, and `policy.reset()` when those methods exist.
+`policy.requires_grad_(False)`, and `policy.reset()` when those methods exist. The default device is
+`cpu`; hosts must opt into `cuda`, `mps`, or another runtime-specific device with `LEROBOT_DEVICE`
+or `device=`.
 
 ## Input Contract
 
@@ -108,6 +117,8 @@ Validation rules:
 - `predict_chunk` requires a policy that implements `predict_action_chunk`.
 - Tensor-like values with `tolist()` are normalized for metadata and raw-action preservation.
 - A host-supplied `action_translator` is required before `ActionPolicyResult` can be returned.
+- Result metadata includes `loader_mode` and a bounded `raw_action_summary` with type, rectangular
+  shape when available, and a small preview suitable for run reports.
 
 ## Action Translation
 
@@ -234,6 +245,8 @@ showcase. Full runnable context lives in [CLI Reference](../cli.md),
 
 - Missing `LEROBOT_POLICY_PATH` and `LEROBOT_POLICY` leaves the provider unregistered.
 - Missing `lerobot` or `PreTrainedPolicy` is reported by `health()`.
+- Local-looking checkpoint paths that do not exist are reported by `health()` before runtime import.
+- Unsupported `LEROBOT_POLICY_TYPE` values fail during provider construction.
 - Policy class resolution or checkpoint loading failures are wrapped in `ProviderError`.
 - Missing `action_translator` fails with `ProviderError`.
 - Contracted translators fail on unknown embodiment tags, non-finite raw action values, raw action

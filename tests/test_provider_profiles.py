@@ -73,7 +73,7 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert builtin_profiles["gr00t"].capabilities.policy is True
     assert builtin_profiles["gr00t"].capabilities.predict is False
     assert builtin_profiles["gr00t"].required_env_vars == ["GROOT_POLICY_HOST"]
-    assert builtin_profiles["lerobot"].implementation_status == "beta"
+    assert builtin_profiles["lerobot"].implementation_status == "stable"
     assert builtin_profiles["lerobot"].capabilities.policy is True
     assert builtin_profiles["lerobot"].capabilities.predict is False
     assert builtin_profiles["lerobot"].required_env_vars == [
