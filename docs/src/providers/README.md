@@ -171,21 +171,30 @@ Attach sinks through `WorldForge(event_handler=...)`:
 
 ```python
 import logging
+from pathlib import Path
 
 from worldforge import WorldForge
-from worldforge.observability import JsonLoggerSink, ProviderMetricsSink, compose_event_handlers
+from worldforge.observability import (
+    JsonLoggerSink,
+    ProviderMetricsSink,
+    RunJsonLogSink,
+    compose_event_handlers,
+)
 
+run_id = "provider-smoke"
 metrics = ProviderMetricsSink()
 forge = WorldForge(
     event_handler=compose_event_handlers(
-        JsonLoggerSink(logger=logging.getLogger("demo.worldforge")),
+        JsonLoggerSink(logger=logging.getLogger("demo.worldforge"), extra_fields={"run_id": run_id}),
+        RunJsonLogSink(Path(".worldforge") / "runs" / run_id / "provider-events.jsonl", run_id),
         metrics,
     )
 )
 ```
 
 `ProviderMetricsSink.request_count` counts emitted provider events, so retry events increment both
-`request_count` and `retry_count`.
+`request_count` and `retry_count`. `RunJsonLogSink` writes one redacted JSON record per line and
+keeps `run_id` on every record so provider logs can be joined with host-owned run manifests.
 
 ## Authoring Standard
 

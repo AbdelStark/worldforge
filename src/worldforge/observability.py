@@ -6,9 +6,17 @@ import logging
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from threading import Lock
 
-from worldforge.models import JSONDict, ProviderEvent, WorldForgeError, dump_json
+from worldforge.models import (
+    JSONDict,
+    ProviderEvent,
+    WorldForgeError,
+    _redact_observable_value,
+    dump_json,
+    require_json_dict,
+)
 
 ProviderEventHandler = Callable[[ProviderEvent], None]
 
@@ -60,6 +68,13 @@ def compose_event_handlers(*handlers: ProviderEventHandler | None) -> ProviderEv
     return _EventHandlerFanout(tuple(resolved_handlers))
 
 
+def _redacted_extra_fields(extra_fields: JSONDict, *, name: str) -> JSONDict:
+    return require_json_dict(
+        _redact_observable_value(deepcopy(extra_fields)),
+        name=name,
+    )
+
+
 @dataclass(slots=True)
 class JsonLoggerSink:
     """Log provider events as a single structured JSON record."""
@@ -73,11 +88,53 @@ class JsonLoggerSink:
     def __post_init__(self) -> None:
         # Deep-copy once; isolating callers from later extra-field mutation only
         # matters at construction time, so don't pay the cost per event.
-        self.extra_fields = deepcopy(self.extra_fields)
+        self.extra_fields = _redacted_extra_fields(
+            self.extra_fields,
+            name="JsonLoggerSink extra_fields",
+        )
 
     def __call__(self, event: ProviderEvent) -> None:
         payload = {"event_type": "provider_event", **self.extra_fields, **event.to_dict()}
         self.logger.log(self.level, dump_json(payload))
+
+
+@dataclass(slots=True)
+class RunJsonLogSink:
+    """Append provider events to a run-scoped JSONL file."""
+
+    path: Path | str
+    run_id: str
+    extra_fields: JSONDict = field(default_factory=dict)
+    _path: Path = field(init=False, repr=False)
+    _lock: Lock = field(default_factory=Lock, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.run_id, str) or not self.run_id.strip():
+            raise WorldForgeError("RunJsonLogSink run_id must be a non-empty string.")
+        self.run_id = self.run_id.strip()
+        self._path = Path(self.path)
+        self.extra_fields = _redacted_extra_fields(
+            self.extra_fields,
+            name="RunJsonLogSink extra_fields",
+        )
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def log_path(self) -> Path:
+        """Return the concrete JSONL file path used by this sink."""
+
+        return self._path
+
+    def __call__(self, event: ProviderEvent) -> None:
+        payload = {
+            "event_type": "provider_event",
+            **self.extra_fields,
+            **event.to_dict(),
+            "run_id": self.run_id,
+        }
+        line = f"{dump_json(payload)}\n"
+        with self._lock, self._path.open("a", encoding="utf-8") as handle:
+            handle.write(line)
 
 
 @dataclass(slots=True)
@@ -240,5 +297,6 @@ __all__ = [
     "ProviderEventHandler",
     "ProviderMetricsSink",
     "ProviderOperationMetrics",
+    "RunJsonLogSink",
     "compose_event_handlers",
 ]

@@ -55,6 +55,7 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert observability.JsonLoggerSink is not None
     assert observability.InMemoryRecorderSink is not None
     assert observability.ProviderMetricsSink is not None
+    assert observability.RunJsonLogSink is not None
     assert observability.compose_event_handlers is not None
 
 

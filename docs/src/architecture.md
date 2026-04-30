@@ -669,26 +669,36 @@ Provider operation
   |
   `-- host event_handler
         |-- JsonLoggerSink
+        |-- RunJsonLogSink
         |-- InMemoryRecorderSink
         `-- ProviderMetricsSink
 ```
 
 Targets in provider events are intentionally route-level. They keep enough context to identify the
 provider endpoint or artifact path, but query strings, fragments, URL userinfo, bearer tokens, and
-secret-like metadata fields are removed before JSON logging or in-memory recording.
+secret-like metadata fields are removed before JSON logging, run log export, or in-memory
+recording.
 
 Example:
 
 ```python
 import logging
+from pathlib import Path
 
 from worldforge import WorldForge
-from worldforge.observability import JsonLoggerSink, ProviderMetricsSink, compose_event_handlers
+from worldforge.observability import (
+    JsonLoggerSink,
+    ProviderMetricsSink,
+    RunJsonLogSink,
+    compose_event_handlers,
+)
 
+run_id = "demo-run"
 metrics = ProviderMetricsSink()
 forge = WorldForge(
     event_handler=compose_event_handlers(
-        JsonLoggerSink(logger=logging.getLogger("demo.worldforge")),
+        JsonLoggerSink(logger=logging.getLogger("demo.worldforge"), extra_fields={"run_id": run_id}),
+        RunJsonLogSink(Path(".worldforge") / "runs" / run_id / "provider-events.jsonl", run_id),
         metrics,
     )
 )

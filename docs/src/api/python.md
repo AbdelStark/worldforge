@@ -103,14 +103,22 @@ of being treated as successful no-ops.
 
 ```python
 import logging
+from pathlib import Path
 
 from worldforge import WorldForge
-from worldforge.observability import JsonLoggerSink, ProviderMetricsSink, compose_event_handlers
+from worldforge.observability import (
+    JsonLoggerSink,
+    ProviderMetricsSink,
+    RunJsonLogSink,
+    compose_event_handlers,
+)
 
+run_id = "demo-run"
 metrics = ProviderMetricsSink()
 forge = WorldForge(
     event_handler=compose_event_handlers(
-        JsonLoggerSink(logger=logging.getLogger("demo.worldforge")),
+        JsonLoggerSink(logger=logging.getLogger("demo.worldforge"), extra_fields={"run_id": run_id}),
+        RunJsonLogSink(Path(".worldforge") / "runs" / run_id / "provider-events.jsonl", run_id),
         metrics,
     )
 )
@@ -120,8 +128,9 @@ print(metrics.get("mock", "generate").to_dict())
 ```
 
 Provider events are log-safe by default. The `target` field keeps endpoint or artifact path context
-but strips URL userinfo, query strings, and fragments; message and metadata fields redact obvious
-bearer tokens, API keys, signatures, passwords, and signed URLs.
+but strips URL userinfo, query strings, and fragments; message, metadata, and sink extra fields
+redact obvious bearer tokens, API keys, signatures, passwords, and signed URLs. `RunJsonLogSink`
+appends one JSON object per line and stamps every record with `run_id` for manifest correlation.
 
 ## Action Scoring
 

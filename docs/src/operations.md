@@ -113,6 +113,7 @@ Attach a provider event handler at `WorldForge(event_handler=...)` or provider c
 Use `compose_event_handlers(...)` to fan out events to:
 
 - `JsonLoggerSink` for structured JSON logs.
+- `RunJsonLogSink` for newline-delimited JSON files tied to one run id.
 - `ProviderMetricsSink` for request, retry, error, and latency aggregates.
 - `InMemoryRecorderSink` for tests and local debugging.
 
@@ -124,6 +125,33 @@ metadata.
 
 Host services should add request or trace IDs through `JsonLoggerSink(extra_fields=...)` and
 include those IDs in surrounding application logs.
+
+For batch jobs, harness runs, and release evidence, attach a file sink owned by the host process:
+
+```python
+from pathlib import Path
+
+from worldforge import WorldForge
+from worldforge.observability import JsonLoggerSink, RunJsonLogSink, compose_event_handlers
+
+run_id = "20260430T120000Z-batch-eval"
+forge = WorldForge(
+    event_handler=compose_event_handlers(
+        JsonLoggerSink(extra_fields={"run_id": run_id}),
+        RunJsonLogSink(
+            Path(".worldforge") / "runs" / run_id / "provider-events.jsonl",
+            run_id=run_id,
+            extra_fields={"host": "batch-eval"},
+        ),
+    )
+)
+```
+
+The file sink creates the parent directory and appends one JSON object per provider event. The
+`run_id` should match the host run manifest so operator bundles can join `manifest.json`,
+`provider-events.jsonl`, benchmark reports, and preserved artifacts without relying on timestamps.
+Extra fields are validated as JSON and redacted with the same observable secret rules as provider
+event messages and metadata.
 
 ## Failure Modes
 

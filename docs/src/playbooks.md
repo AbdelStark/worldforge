@@ -234,6 +234,58 @@ name substring. Every write or unlink goes through `WorldForge` on a
 raised by the framework (`WorldStateError` / `WorldForgeError`) appear as toasts — the
 in-memory edit buffer stays intact so the user can fix and retry.
 
+### 5b. Capture Run-Scoped Provider Logs
+
+Use this when a CLI job, batch host, service request, or TheWorldHarness run needs provider events
+that can be attached to an issue, release bundle, or incident note.
+
+```python
+from pathlib import Path
+
+from worldforge import WorldForge
+from worldforge.observability import JsonLoggerSink, RunJsonLogSink, compose_event_handlers
+
+run_id = "20260430T120000Z-runway-generate"
+log_path = Path(".worldforge") / "runs" / run_id / "provider-events.jsonl"
+
+forge = WorldForge(
+    event_handler=compose_event_handlers(
+        JsonLoggerSink(extra_fields={"run_id": run_id, "host": "service"}),
+        RunJsonLogSink(log_path, run_id=run_id, extra_fields={"host": "service"}),
+    )
+)
+```
+
+Success signal:
+
+- each line in `provider-events.jsonl` is a complete JSON object.
+- every record has `event_type=provider_event` and the same `run_id` as the host run manifest.
+- `target` values keep only route-level context; URL query strings and fragments are removed.
+- `message`, `metadata`, and sink `extra_fields` redact bearer tokens, API keys, signatures,
+  passwords, signed URLs, and token-like assignments.
+- host applications inject sinks into `WorldForge(event_handler=...)` or provider constructors
+  instead of changing global logging configuration inside WorldForge.
+
+First triage queries:
+
+```bash
+jq 'select(.phase=="failure") | {provider, operation, status_code, target, message}' \
+  .worldforge/runs/<run-id>/provider-events.jsonl
+jq 'select(.phase=="retry") | {provider, operation, attempt, max_attempts, status_code, target}' \
+  .worldforge/runs/<run-id>/provider-events.jsonl
+jq -s 'group_by(.provider,.operation)[] | {provider: .[0].provider, operation: .[0].operation, events: length}' \
+  .worldforge/runs/<run-id>/provider-events.jsonl
+```
+
+If it fails:
+
+| Symptom | First check | Likely owner |
+| --- | --- | --- |
+| no file was written | confirm the host passed `RunJsonLogSink` into the active event handler | host app |
+| records have different run IDs | compare sink construction with the run manifest writer | host app |
+| raw credential appears in an exported log | remove the raw value from custom metadata or exception text and add a regression test | contributor |
+| failures have no status code | inspect provider-specific docs; local dependency failures may not have HTTP status | operator |
+
 ## 6. Run Evaluation And Benchmarks
 
 Use evaluation for deterministic behavior checks and benchmarks for adapter latency and event
