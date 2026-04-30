@@ -1169,8 +1169,8 @@ def test_providers_screen_runs_real_mock_predict(tmp_path) -> None:
             await pilot.pause()
             assert isinstance(app.screen, ProvidersScreen)
             table = app.screen.query_one("#providers-table", DataTable)
-            assert table.row_count == 1
-            assert len(table.columns) == len(CAPABILITY_NAMES) + 1
+            assert table.row_count >= 8
+            assert len(table.columns) == len(CAPABILITY_NAMES) + 4
             await pilot.press("p")
             for _ in range(8):
                 await pilot.pause()
@@ -1203,7 +1203,7 @@ def test_providers_register_modal_adds_mock_variant(tmp_path) -> None:
                 await pilot.pause()
             assert isinstance(app.screen, ProvidersScreen)
             table = app.screen.query_one("#providers-table", DataTable)
-            assert table.row_count == 2
+            assert table.row_count >= 9
             assert app.current_provider == "mock-alt"
 
     asyncio.run(scenario())

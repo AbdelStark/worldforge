@@ -972,10 +972,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List available harness flows without launching the TUI.",
     )
     harness.add_argument(
+        "--connectors",
+        action="store_true",
+        help="List provider connector readiness without launching the TUI.",
+    )
+    harness.add_argument(
         "--format",
         choices=("markdown", "json"),
         default="markdown",
-        help="Output format for --list.",
+        help="Output format for --list and --connectors.",
     )
     harness.add_argument("--no-animation", action="store_true", help="Disable step reveal delays.")
 
@@ -1026,6 +1031,7 @@ def _cmd_harness(args: argparse.Namespace) -> int:
         flow_id=args.flow,
         state_dir=args.state_dir,
         list_only=args.list,
+        connectors=args.connectors,
         output_format=args.format,
         animate=not args.no_animation,
     )

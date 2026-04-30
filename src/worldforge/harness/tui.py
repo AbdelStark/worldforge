@@ -57,6 +57,10 @@ from worldforge import (
     list_eval_suites,
 )
 from worldforge.benchmark import BENCHMARKABLE_OPERATIONS
+from worldforge.harness.connectors import (
+    ProviderConnectorSummary,
+    provider_connector_summaries,
+)
 from worldforge.harness.flows import (
     available_flows,
     benchmark_run_artifacts,
@@ -2357,6 +2361,7 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         super().__init__()
         self._forge = forge
         self._provider_names: list[str] = []
+        self._provider_rows: dict[str, ProviderConnectorSummary] = {}
         self._last_call_summary: dict[str, dict[str, Any]] = {}
 
     def compose(self) -> ComposeResult:
@@ -2403,24 +2408,27 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         if table is None:
             return
         table.clear(columns=True)
-        table.add_columns("provider", *CAPABILITY_NAMES)
-        infos = self._forge.list_providers()
-        self._provider_names = [info.name for info in infos]
-        for info in infos:
-            profile = self._forge.provider_profile(info.name)
+        table.add_columns("provider", "status", "credentials", "runtime", *CAPABILITY_NAMES)
+        rows = provider_connector_summaries(self._forge)
+        self._provider_rows = {row.name: row for row in rows}
+        self._provider_names = [row.name for row in rows]
+        for row in rows:
             cells = [
-                self._capability_cell(
-                    info.capabilities.supports(name), profile.implementation_status
-                )
+                self._capability_cell(name in row.capabilities, row.implementation_status)
                 for name in CAPABILITY_NAMES
             ]
-            table.add_row(info.name, *cells, key=info.name)
-        if infos:
+            credentials = "missing" if row.missing_env_vars else "ok"
+            runtime = "deps" if row.status == "missing_dependency" else "ok"
+            if row.status == "scaffold":
+                credentials = "n/a"
+                runtime = "scaffold"
+            table.add_row(row.name, row.status, credentials, runtime, *cells, key=row.name)
+        if rows:
             table.remove_class("hidden")
             if empty is not None:
                 empty.add_class("hidden")
             table.focus()
-            self.current_row_provider = infos[0].name
+            self.current_row_provider = rows[0].name
         else:
             table.add_class("hidden")
             if empty is not None:
@@ -2451,10 +2459,14 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         if provider is None:
             detail.update("No provider selected.")
             return
-        profile = self._forge.provider_profile(provider)
-        health = self._forge.provider_health(provider)
+        row = self._provider_rows.get(provider)
+        if row is None:
+            detail.update("No provider selected.")
+            return
         summary = self._last_call_summary.get(provider, {})
-        env_vars = ", ".join(profile.required_env_vars) if profile.required_env_vars else "none"
+        env_vars = ", ".join(row.required_env_vars) if row.required_env_vars else "none"
+        missing = ", ".join(row.missing_env_vars) if row.missing_env_vars else "none"
+        dependencies = ", ".join(row.optional_dependencies) if row.optional_dependencies else "none"
         last = (
             f"{summary.get('phase')} "
             f"{float(summary.get('latency_ms') or 0.0):.2f} ms "
@@ -2466,11 +2478,14 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
             "\n".join(
                 [
                     f"Provider: {provider}",
-                    f"Status: {profile.implementation_status}",
-                    f"Capabilities: {', '.join(profile.supported_tasks) or 'none'}",
-                    f"Health: {'healthy' if health.healthy else 'unhealthy'} ({health.details})",
-                    f"Latency: {health.latency_ms:.2f} ms",
+                    f"Status: {row.status} ({row.implementation_status})",
+                    f"Capabilities: {', '.join(row.capabilities) or 'none'}",
+                    f"Health: {row.health}",
                     f"Required env vars: {env_vars}",
+                    f"Missing env vars: {missing}",
+                    f"Optional deps: {dependencies}",
+                    f"Next command: {row.smoke_command}",
+                    "Triage: " + " | ".join(row.triage_steps),
                     f"Last call: {last}",
                 ]
             )

@@ -26,6 +26,8 @@ uv run --extra harness worldforge-harness --flow eval
 uv run --extra harness worldforge-harness --flow benchmark
 uv run worldforge harness --list
 uv run worldforge harness --list --format json
+uv run worldforge harness --connectors
+uv run worldforge harness --connectors --format json
 ```
 
 Installed package:
@@ -40,6 +42,7 @@ Without the `harness` extra, metadata commands still work:
 ```bash
 uv run worldforge harness --list
 uv run worldforge harness --list --format json
+uv run worldforge harness --connectors --format json
 uv run worldforge provider workbench mock
 uv run worldforge provider workbench runway --format json
 ```
@@ -54,6 +57,16 @@ dependencies at package import time.
 | `leworldmodel` | `score` | Deterministic LeWorldModel-shaped cost runtime, candidate scoring, score planning, execution, persistence, reload, provider events. |
 | `lerobot` | `policy` plus score provider | Deterministic LeRobot-shaped policy, action translation, policy candidate ranking, execution, persistence, reload, provider events. |
 | `diagnostics` | provider catalog plus benchmark harness | `doctor()` provider scan, registered/unregistered provider status, mock benchmark matrix across predict/reason/generate/transfer/embed, latency/throughput comparison, provider events. |
+
+## Provider Connector Workspace
+
+The Providers screen and `worldforge harness --connectors --format json` use the same
+Textual-free readiness model. Each known provider is grouped as `configured`,
+`missing_credentials`, `missing_dependency`, `unhealthy`, or `scaffold`, with value-free required
+environment names, optional runtime dependency names, a first smoke command, and triage steps.
+
+This surface intentionally reports presence and status only. It does not print environment values,
+tokens, endpoints, checkpoint paths, or constructor-provided secrets.
 
 ## What The Interface Shows
 

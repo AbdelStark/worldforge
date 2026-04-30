@@ -39,6 +39,57 @@ def test_worldforge_harness_console_entry_lists_flows(capsys) -> None:
     assert "TheWorldHarness Flows" in capsys.readouterr().out
 
 
+def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatch, capsys) -> None:
+    for name in (
+        "COSMOS_BASE_URL",
+        "RUNWAYML_API_SECRET",
+        "RUNWAY_API_SECRET",
+        "LEWORLDMODEL_POLICY",
+        "LEWM_POLICY",
+        "GROOT_POLICY_HOST",
+        "LEROBOT_POLICY_PATH",
+        "LEROBOT_POLICY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["worldforge", "harness", "--connectors", "--format", "json"],
+    )
+
+    assert worldforge_main() == 0
+    payload = {row["name"]: row for row in json.loads(capsys.readouterr().out)}
+
+    assert set(payload) >= {
+        "mock",
+        "cosmos",
+        "runway",
+        "leworldmodel",
+        "gr00t",
+        "lerobot",
+        "jepa",
+        "genie",
+    }
+    assert payload["mock"]["status"] == "configured"
+    assert payload["cosmos"]["status"] == "missing_credentials"
+    assert payload["runway"]["missing_env_vars"] == ["RUNWAYML_API_SECRET"]
+    assert payload["jepa"]["status"] == "scaffold"
+    assert payload["genie"]["status"] == "scaffold"
+    assert "--provider-profile runway" in payload["runway"]["smoke_command"]
+
+
+def test_connector_readiness_distinguishes_missing_dependency(monkeypatch, tmp_path) -> None:
+    from worldforge import WorldForge
+    from worldforge.harness.connectors import provider_connector_summaries
+
+    monkeypatch.setenv("LEWORLDMODEL_POLICY", "demo/pusht")
+    rows = {row.name: row for row in provider_connector_summaries(WorldForge(state_dir=tmp_path))}
+
+    assert rows["leworldmodel"].status == "missing_dependency"
+    assert "stable_worldmodel" in rows["leworldmodel"].optional_dependencies
+    assert rows["leworldmodel"].missing_env_vars == ()
+
+
 def test_launch_harness_passes_home_when_no_flow(monkeypatch) -> None:
     """No --flow → initial_screen='home', resolved_flow_id falls back to leworldmodel."""
     pytest.importorskip("rich")

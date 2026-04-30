@@ -7,6 +7,11 @@ import json
 import sys
 from pathlib import Path
 
+from worldforge.framework import WorldForge
+from worldforge.harness.connectors import (
+    provider_connector_summaries,
+    provider_connector_summary_markdown,
+)
 from worldforge.harness.flows import available_flows, flow_to_dicts
 
 
@@ -36,10 +41,15 @@ def _parser() -> argparse.ArgumentParser:
         help="List available harness flows without launching the TUI.",
     )
     parser.add_argument(
+        "--connectors",
+        action="store_true",
+        help="List provider connector readiness without launching the TUI.",
+    )
+    parser.add_argument(
         "--format",
         choices=("markdown", "json"),
         default="markdown",
-        help="Output format for --list.",
+        help="Output format for --list and --connectors.",
     )
     parser.add_argument(
         "--no-animation",
@@ -62,6 +72,21 @@ def print_flow_index(*, output_format: str = "markdown") -> None:
     print("| --- | --- | --- | --- |")
     for flow in available_flows():
         print(f"| `{flow.id}` | {flow.focus} | {flow.provider} | `{flow.command}` |")
+
+
+def print_connector_index(
+    *,
+    state_dir: Path | None = None,
+    output_format: str = "markdown",
+) -> None:
+    """Print provider connector readiness metadata."""
+
+    forge = WorldForge(state_dir=state_dir, auto_register_remote=True)
+    rows = provider_connector_summaries(forge)
+    if output_format == "json":
+        print(json.dumps([row.to_dict() for row in rows], indent=2))
+        return
+    print(provider_connector_summary_markdown(rows))
 
 
 def launch_harness(
@@ -143,6 +168,7 @@ def run_from_args(
     flow_id: str | None,
     state_dir: Path | None,
     list_only: bool,
+    connectors: bool,
     output_format: str,
     animate: bool,
 ) -> int:
@@ -150,6 +176,9 @@ def run_from_args(
 
     if list_only:
         print_flow_index(output_format=output_format)
+        return 0
+    if connectors:
+        print_connector_index(state_dir=state_dir, output_format=output_format)
         return 0
     return launch_harness(flow_id=flow_id, state_dir=state_dir, animate=animate)
 
@@ -160,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
         flow_id=args.flow,
         state_dir=args.state_dir,
         list_only=args.list,
+        connectors=args.connectors,
         output_format=args.format,
         animate=not args.no_animation,
     )

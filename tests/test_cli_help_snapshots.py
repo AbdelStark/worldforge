@@ -80,7 +80,7 @@ options:
 """,
     ("harness", "--help"): """\
 usage: worldforge harness [-h] [--flow {leworldmodel,lerobot,diagnostics}]
-                          [--state-dir STATE_DIR] [--list]
+                          [--state-dir STATE_DIR] [--list] [--connectors]
                           [--format {markdown,json}] [--no-animation]
 
 options:
@@ -92,8 +92,10 @@ options:
                         temporary directory.
   --list                List available harness flows without launching the
                         TUI.
+  --connectors          List provider connector readiness without launching
+                        the TUI.
   --format {markdown,json}
-                        Output format for --list.
+                        Output format for --list and --connectors.
   --no-animation        Disable step reveal delays.
 """,
     ("predict", "--help"): """\
