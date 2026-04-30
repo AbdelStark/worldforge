@@ -42,6 +42,7 @@ from typing import Any
 
 from worldforge.models import JSONDict
 from worldforge.providers import LeRobotPolicyProvider
+from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 
 DEFAULT_DEVICE = "cpu"
 DEFAULT_MODE = "select_action"
@@ -177,6 +178,12 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--health-only", action="store_true")
+    parser.add_argument(
+        "--run-manifest",
+        type=Path,
+        default=None,
+        help="Write a sanitized run_manifest.json evidence file for this live smoke.",
+    )
 
     input_group = parser.add_mutually_exclusive_group()
     input_group.add_argument(
@@ -224,6 +231,7 @@ def main() -> int:
     translator = (
         None if args.translator is None else _load_callable(args.translator, name="translator")
     )
+    provider_events = []
     provider = LeRobotPolicyProvider(
         policy_path=args.policy_path,
         policy_type=args.policy_type,
@@ -231,6 +239,7 @@ def main() -> int:
         cache_dir=args.cache_dir,
         embodiment_tag=args.embodiment_tag,
         action_translator=translator,
+        event_handler=provider_events.append,
     )
     health = provider.health()
     if not health.healthy:
@@ -240,6 +249,27 @@ def main() -> int:
     if not args.health_only:
         result = provider.select_actions(info=_load_policy_info(args))
         output["result"] = result.to_dict()
+    if args.run_manifest is not None:
+        input_fixture = args.policy_info_json or args.observation_json
+        write_run_manifest(
+            args.run_manifest,
+            build_run_manifest(
+                run_id=args.run_manifest.parent.name,
+                provider_profile="lerobot",
+                capability="policy",
+                status="skipped" if args.health_only else "passed",
+                env_vars=(
+                    "LEROBOT_POLICY_PATH",
+                    "LEROBOT_POLICY",
+                    "LEROBOT_POLICY_TYPE",
+                    "LEROBOT_DEVICE",
+                    "LEROBOT_CACHE_DIR",
+                ),
+                event_count=len(provider_events),
+                input_fixture=input_fixture,
+                result=output,
+            ),
+        )
     print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 

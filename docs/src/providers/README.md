@@ -196,6 +196,12 @@ forge = WorldForge(
 `request_count` and `retry_count`. `RunJsonLogSink` writes one redacted JSON record per line and
 keeps `run_id` on every record so provider logs can be joined with host-owned run manifests.
 
+Optional live smoke entrypoints accept `--run-manifest <path>` for a validated
+`run_manifest.json`. The manifest is safe issue evidence: it stores command argv, package version,
+provider profile, capability, value-free env presence, runtime manifest id, input fixture digest,
+event count, result digest, and artifact paths. It does not store credential values, raw signed URL
+query strings, checkpoint bytes, or generated media bytes.
+
 ## Authoring Standard
 
 Before adding or promoting a provider, document:

@@ -426,6 +426,7 @@ def test_main_runs_policy_score_plan_with_fake_real_runtimes(
 ) -> None:
     checkpoint, observation_path, score_info_path = _write_common_inputs(tmp_path)
     bridge_path = _write_candidate_builder(tmp_path)
+    run_manifest = tmp_path / "run_manifest.json"
     _patch_fake_providers(monkeypatch)
     monkeypatch.setattr(
         sys,
@@ -447,6 +448,8 @@ def test_main_runs_policy_score_plan_with_fake_real_runtimes(
             "--expected-horizon",
             "2",
             "--json-only",
+            "--run-manifest",
+            str(run_manifest),
         ],
     )
 
@@ -462,6 +465,13 @@ def test_main_runs_policy_score_plan_with_fake_real_runtimes(
     assert payload["execution"]["actions_applied"] == 2
     assert payload["visualization"]["selected_candidate"] == 1
     assert payload["visualization"]["candidate_targets"][1]["index"] == 1
+    manifest = json.loads(run_manifest.read_text())
+    assert manifest["provider_profile"] == "lerobot-leworldmodel"
+    assert manifest["capability"] == "policy+score"
+    assert manifest["status"] == "passed"
+    assert manifest["event_count"] == len(payload["provider_events"])
+    assert manifest["input_fixture_digest"].startswith("sha256:")
+    assert set(manifest["artifact_paths"]) == {"worldforge_state"}
 
 
 def test_main_visual_static_candidate_path_skips_execution(
@@ -484,6 +494,7 @@ def test_main_visual_static_candidate_path_skips_execution(
         )
     )
     json_output = tmp_path / "summary.json"
+    run_manifest = tmp_path / "run_manifest.json"
     _patch_fake_providers(monkeypatch)
     monkeypatch.setattr(
         sys,
@@ -506,6 +517,8 @@ def test_main_visual_static_candidate_path_skips_execution(
             "2",
             "--json-output",
             str(json_output),
+            "--run-manifest",
+            str(run_manifest),
             "--no-execute",
             "--no-color",
         ],
@@ -525,6 +538,13 @@ def test_main_visual_static_candidate_path_skips_execution(
     payload = json.loads(json_output.read_text())
     assert payload["execution"] is None
     assert payload["visualization"]["candidate_targets"][0]["index"] == 0
+    manifest = json.loads(run_manifest.read_text())
+    assert manifest["artifact_paths"] == {
+        "policy_summary": str(json_output),
+        "score_summary": str(json_output),
+        "report_summary": str(json_output),
+        "worldforge_state": payload["state_dir"],
+    }
 
 
 def test_main_preflight_failure_prints_runtime_command(

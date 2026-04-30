@@ -281,6 +281,9 @@ def test_robotics_showcase_uses_tmp_json_output_by_default(monkeypatch) -> None:
     assert forwarded[forwarded.index("--json-output") + 1] == str(
         robotics_showcase.DEFAULT_JSON_OUTPUT
     )
+    assert forwarded[forwarded.index("--run-manifest") + 1] == str(
+        robotics_showcase.DEFAULT_JSON_OUTPUT.with_name("run_manifest.json")
+    )
 
 
 def test_robotics_showcase_auto_downloads_missing_checkpoint(

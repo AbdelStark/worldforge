@@ -153,6 +153,19 @@ The file sink creates the parent directory and appends one JSON object per provi
 Extra fields are validated as JSON and redacted with the same observable secret rules as provider
 event messages and metadata.
 
+Optional live smoke commands can also write a sanitized `run_manifest.json`:
+
+```bash
+scripts/robotics-showcase \
+  --json-output /tmp/worldforge-robotics-showcase/real-run.json \
+  --run-manifest /tmp/worldforge-robotics-showcase/run_manifest.json
+```
+
+The manifest records command argv, package version, provider profile, capability, value-free
+environment presence, runtime manifest id when available, input fixture digest, event count, result
+digest, and artifact paths. Validation rejects raw secret-like fields and unsanitized signed URLs;
+artifact URLs are stored without query strings or fragments.
+
 ## Failure Modes
 
 - Invalid caller input raises `WorldForgeError`.

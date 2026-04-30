@@ -25,6 +25,7 @@ from time import perf_counter
 from typing import Any
 
 from worldforge.providers import LeWorldModelProvider
+from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 
 DEFAULT_STABLEWM_HOME = "~/.stable-wm"
 ANSI_CODES = {
@@ -409,6 +410,12 @@ def _parser() -> argparse.ArgumentParser:
         help="Write the full inference summary JSON to this path while keeping visual output.",
     )
     parser.add_argument(
+        "--run-manifest",
+        type=Path,
+        default=None,
+        help="Write a sanitized run_manifest.json evidence file for this live smoke.",
+    )
+    parser.add_argument(
         "--color",
         choices=("auto", "always", "never"),
         default="auto",
@@ -517,6 +524,22 @@ def main() -> int:
         }
         if args.json_output is not None:
             _write_json_output(args.json_output, payload)
+        if args.run_manifest is not None:
+            write_run_manifest(
+                args.run_manifest,
+                build_run_manifest(
+                    run_id=args.run_manifest.parent.name,
+                    provider_profile="leworldmodel",
+                    capability="score",
+                    status="failed",
+                    env_vars=("LEWORLDMODEL_CHECKPOINT", "LEWORLDMODEL_POLICY", "STABLEWM_HOME"),
+                    event_count=len(provider_events),
+                    result=payload,
+                    artifact_paths=(
+                        {"summary_json": args.json_output} if args.json_output is not None else {}
+                    ),
+                ),
+            )
         if args.json_only:
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 1
@@ -622,6 +645,23 @@ def main() -> int:
         json_output_path = _write_json_output(args.json_output, payload)
     else:
         json_output_path = None
+    run_manifest_path = None
+    if args.run_manifest is not None:
+        run_manifest_path = write_run_manifest(
+            args.run_manifest,
+            build_run_manifest(
+                run_id=args.run_manifest.parent.name,
+                provider_profile="leworldmodel",
+                capability="score",
+                status="passed",
+                env_vars=("LEWORLDMODEL_CHECKPOINT", "LEWORLDMODEL_POLICY", "STABLEWM_HOME"),
+                event_count=len(provider_events),
+                result=payload,
+                artifact_paths=(
+                    {"summary_json": json_output_path} if json_output_path is not None else {}
+                ),
+            ),
+        )
     if args.json_only:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
@@ -652,6 +692,8 @@ def main() -> int:
         print("\nArtifacts", flush=True)
         print("---------", flush=True)
         print(f"  json summary       {_display_path(json_output_path)}", flush=True)
+        if run_manifest_path is not None:
+            print(f"  run manifest       {_display_path(run_manifest_path)}", flush=True)
     print("\nCompleted real LeWorldModel checkpoint inference.", flush=True)
     print("Use --json-only for the machine-readable summary.", flush=True)
     return 0

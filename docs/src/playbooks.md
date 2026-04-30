@@ -277,6 +277,16 @@ jq -s 'group_by(.provider,.operation)[] | {provider: .[0].provider, operation: .
   .worldforge/runs/<run-id>/provider-events.jsonl
 ```
 
+For optional live smokes, preserve the manifest beside the event log:
+
+```bash
+scripts/robotics-showcase \
+  --json-output .worldforge/runs/<run-id>/real-run.json \
+  --run-manifest .worldforge/runs/<run-id>/run_manifest.json
+jq '{run_id, provider_profile, capability, status, event_count, artifact_paths}' \
+  .worldforge/runs/<run-id>/run_manifest.json
+```
+
 If it fails:
 
 | Symptom | First check | Likely owner |

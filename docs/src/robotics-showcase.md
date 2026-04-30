@@ -229,10 +229,14 @@ Default artifact path:
 
 ```text
 /tmp/worldforge-robotics-showcase/real-run.json
+/tmp/worldforge-robotics-showcase/run_manifest.json
 ```
 
 Use `--json-output <path>` on the lower-level runner when you need to preserve a specific artifact
-location.
+location. Use `--run-manifest <path>` to place the evidence manifest beside the summary in another
+directory. The manifest links the policy, score, replay, and report evidence back to the preserved
+summary JSON and state directory without embedding checkpoint bytes, raw policy inputs, or
+credentials.
 
 ## Customizing The Showcase
 

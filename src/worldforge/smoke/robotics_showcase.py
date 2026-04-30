@@ -96,6 +96,12 @@ def _parser() -> argparse.ArgumentParser:
         help="Write the full summary JSON. Defaults to /tmp to keep the repo clean.",
     )
     parser.add_argument(
+        "--run-manifest",
+        type=Path,
+        default=DEFAULT_JSON_OUTPUT.with_name("run_manifest.json"),
+        help="Write a sanitized run_manifest.json beside the default summary artifact.",
+    )
+    parser.add_argument(
         "--no-json-output",
         action="store_true",
         help="Skip writing the default /tmp JSON artifact.",
@@ -212,6 +218,7 @@ def _forward_args(args: argparse.Namespace) -> list[str]:
     _append_optional_path(forwarded, "--state-dir", args.state_dir)
     if not args.no_json_output:
         _append_optional_path(forwarded, "--json-output", args.json_output)
+        _append_optional_path(forwarded, "--run-manifest", args.run_manifest)
     if args.json_only:
         forwarded.append("--json-only")
     if args.health_only:

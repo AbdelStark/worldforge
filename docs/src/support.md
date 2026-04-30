@@ -22,10 +22,11 @@ uv run worldforge provider info <provider>
 ```
 
 It is safe to attach provider profiles, doctor output, provider health, runtime manifests,
-`config_summary().to_dict()` output, benchmark reports, and preserved JSON inputs after checking
-that host-specific object names are acceptable to share. Do not attach `.env` files, raw provider
-request bodies, bearer tokens, signed artifact URLs with query strings, private checkpoint files,
-robot controller credentials, or logs captured before provider-event redaction.
+`config_summary().to_dict()` output, smoke `run_manifest.json` files, benchmark reports, and
+preserved JSON inputs after checking that host-specific object names are acceptable to share. Do
+not attach `.env` files, raw provider request bodies, bearer tokens, signed artifact URLs with
+query strings, private checkpoint files, robot controller credentials, or logs captured before
+provider-event redaction.
 
 For optional runtimes, include the exact wrapper command, host OS, Python version, checkpoint or
 policy identifier, and the stage that failed: dependency import, checkpoint loading, provider call,

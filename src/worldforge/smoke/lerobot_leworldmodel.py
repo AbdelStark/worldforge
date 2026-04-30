@@ -27,6 +27,7 @@ from worldforge import Action, BBox, Position, SceneObject, StructuredGoal, Worl
 from worldforge.models import ProviderEvent
 from worldforge.providers import LeRobotPolicyProvider, LeWorldModelProvider
 from worldforge.providers._config import env_value as _env_value
+from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 
 from .leworldmodel import (
     DEFAULT_STABLEWM_HOME,
@@ -842,6 +843,12 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Write the full run summary JSON while keeping visual terminal output.",
     )
+    parser.add_argument(
+        "--run-manifest",
+        type=Path,
+        default=None,
+        help="Write a sanitized run_manifest.json evidence file for this live robotics smoke.",
+    )
     parser.add_argument("--json-only", action="store_true")
     parser.add_argument(
         "--color",
@@ -1044,6 +1051,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         if args.json_output is not None:
             _write_json_output(args.json_output, payload)
+        if args.run_manifest is not None:
+            json_artifacts = (
+                {"report_summary": args.json_output} if args.json_output is not None else {}
+            )
+            write_run_manifest(
+                args.run_manifest,
+                build_run_manifest(
+                    run_id=args.run_manifest.parent.name,
+                    provider_profile="lerobot-leworldmodel",
+                    capability="policy+score",
+                    status="skipped" if args.health_only and preflight_ok else "failed",
+                    env_vars=(
+                        "LEROBOT_POLICY_PATH",
+                        "LEROBOT_POLICY",
+                        "LEROBOT_POLICY_TYPE",
+                        "LEROBOT_DEVICE",
+                        "LEROBOT_CACHE_DIR",
+                        "LEWORLDMODEL_CHECKPOINT",
+                        "LEWORLDMODEL_POLICY",
+                        "LEWM_POLICY",
+                        "LEWORLDMODEL_DEVICE",
+                        "STABLEWM_HOME",
+                    ),
+                    event_count=len(provider_events),
+                    result=payload,
+                    artifact_paths=json_artifacts,
+                ),
+            )
         if args.json_only:
             print(json.dumps(payload, indent=2, sort_keys=True))
         elif not preflight_ok:
@@ -1240,6 +1275,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
     }
     json_output_path = _write_json_output(args.json_output, payload) if args.json_output else None
+    run_manifest_path = None
+    if args.run_manifest is not None:
+        artifact_paths: dict[str, Path | str] = {"worldforge_state": state_dir}
+        if json_output_path is not None:
+            artifact_paths.update(
+                {
+                    "policy_summary": json_output_path,
+                    "score_summary": json_output_path,
+                    "report_summary": json_output_path,
+                }
+            )
+            if execution_summary is not None:
+                artifact_paths["replay_summary"] = json_output_path
+        input_fixture = args.policy_info_json or args.observation_json
+        run_manifest_path = write_run_manifest(
+            args.run_manifest,
+            build_run_manifest(
+                run_id=args.run_manifest.parent.name,
+                provider_profile="lerobot-leworldmodel",
+                capability="policy+score",
+                status="passed",
+                env_vars=(
+                    "LEROBOT_POLICY_PATH",
+                    "LEROBOT_POLICY",
+                    "LEROBOT_POLICY_TYPE",
+                    "LEROBOT_DEVICE",
+                    "LEROBOT_CACHE_DIR",
+                    "LEWORLDMODEL_CHECKPOINT",
+                    "LEWORLDMODEL_POLICY",
+                    "LEWM_POLICY",
+                    "LEWORLDMODEL_DEVICE",
+                    "STABLEWM_HOME",
+                ),
+                event_count=len(event_payload),
+                input_fixture=input_fixture,
+                result=payload,
+                artifact_paths=artifact_paths,
+            ),
+        )
     if args.json_only:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
@@ -1284,6 +1358,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("\nArtifacts")
         print("---------")
         print(f"  json summary           {_display_path(json_output_path)}")
+        if run_manifest_path is not None:
+            print(f"  run manifest           {_display_path(run_manifest_path)}")
     print("\nCompleted real LeRobot + LeWorldModel policy+score inference.")
     print("Use --json-only for the machine-readable summary.")
     return 0
