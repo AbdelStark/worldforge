@@ -76,6 +76,26 @@ uv run worldforge benchmark \
 The run workspace stores the manifest, JSON/Markdown/CSV reports, result summary, budget verdict
 when supplied, and event count under `.worldforge/runs/<run-id>/`.
 
+Compare preserved benchmark runs before citing a regression, release claim, or provider change:
+
+```bash
+uv run worldforge runs compare \
+  .worldforge/runs/<baseline-run-id> \
+  .worldforge/runs/<candidate-run-id> \
+  --format markdown
+
+uv run worldforge runs compare \
+  .worldforge/runs/<baseline-run-id> \
+  .worldforge/runs/<candidate-run-id> \
+  --format csv \
+  --output .worldforge/runs/benchmark-comparison.csv
+```
+
+`runs compare` accepts run directories, `run_manifest.json` files, or `reports/report.json` files.
+It refuses mixed eval and benchmark reports. Markdown includes each run command, provider,
+operation, UTC date, report artifact paths, and input or budget provenance references. JSON and CSV
+are stable enough to attach to issues.
+
 Use `--input-file` when a benchmark result needs to be reproducible from preserved inputs. The
 file can contain input fields directly, or an `inputs` object plus metadata. The checked-in
 `examples/benchmark-inputs.json` fixture is checkout-safe for the mock provider's `predict`,

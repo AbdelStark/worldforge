@@ -100,12 +100,15 @@ The CLI can write the same layout for evaluation and benchmark runs:
 uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
 uv run worldforge benchmark --provider mock --operation predict --run-workspace .worldforge
 uv run worldforge runs list
+uv run worldforge runs compare .worldforge/runs/<run-a> .worldforge/runs/<run-b>
 uv run worldforge runs cleanup --keep 20
 ```
 
 Completed eval and benchmark TUI screens still write JSON under `.worldforge/reports/` relative to
 the active state directory for the Home screen and `Ctrl+P` recent-report index. Use the run
 workspace when a full issue attachment needs manifest, reports, logs, and result summaries together.
+Use `runs compare --format json|markdown|csv` to export attachment-safe comparisons across
+preserved eval runs or preserved benchmark runs.
 
 ## Interface Contract
 

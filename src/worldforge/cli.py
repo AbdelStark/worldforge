@@ -751,6 +751,27 @@ def _build_parser() -> argparse.ArgumentParser:
         default="json",
         help="Output format for run summaries.",
     )
+    runs_compare = runs_subparsers.add_parser(
+        "compare",
+        help="Compare preserved eval or benchmark run reports.",
+    )
+    runs_compare.add_argument(
+        "paths",
+        nargs="+",
+        type=Path,
+        help="Run workspace directories, run_manifest.json files, or report JSON files.",
+    )
+    runs_compare.add_argument(
+        "--format",
+        choices=("json", "markdown", "csv"),
+        default="markdown",
+        help="Output format for the comparison summary.",
+    )
+    runs_compare.add_argument(
+        "--output",
+        type=Path,
+        help="Optional path to write the comparison artifact instead of stdout.",
+    )
     runs_cleanup = runs_subparsers.add_parser("cleanup", help="Remove old preserved runs.")
     runs_cleanup.add_argument(
         "--workspace-dir",
@@ -966,6 +987,24 @@ def _cmd_runs(args: argparse.Namespace) -> int:
             _print_run_list_markdown(runs)
         else:
             _print_json(runs)
+        return 0
+
+    if args.runs_command == "compare":
+        from worldforge.harness.report_compare import (
+            compare_preserved_run_reports,
+            comparison_artifact,
+        )
+
+        payload = compare_preserved_run_reports(args.paths)
+        rendered = comparison_artifact(payload, output_format=args.format)
+        if args.output is not None:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(
+                rendered + ("\n" if not rendered.endswith("\n") else ""),
+                encoding="utf-8",
+            )
+            return 0
+        print(rendered)
         return 0
 
     if args.runs_command == "cleanup":
