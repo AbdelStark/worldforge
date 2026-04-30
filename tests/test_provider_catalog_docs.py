@@ -62,5 +62,11 @@ def test_provider_catalog_docs_pages_exist_for_linked_entries() -> None:
 def test_provider_docs_index_points_to_existing_docs() -> None:
     for entry in provider_docs_index():
         assert (ROOT / entry["docs_path"]).exists()
+        assert entry["implementation_status"] in {
+            "scaffold",
+            "experimental",
+            "beta",
+            "stable",
+        }
         assert entry["capabilities"]
         assert entry["registration"]

@@ -162,7 +162,45 @@ Implementation choices:
 - Use `RunnableModel` only when one logical model genuinely groups several protocol
   implementations under one registration call.
 
-## Step 3: Define the Contract Before Code
+## Step 3: Apply the Promotion Gate
+
+`ProviderProfileSpec.implementation_status` is the maturity claim that appears in diagnostics and
+generated provider catalog docs. Change it only when the provider has the evidence for the target
+status.
+
+| Status | Allowed public claim | Required evidence before promotion | Required wording |
+| --- | --- | --- | --- |
+| `scaffold` | Reserved provider name or candidate contract. | Provider docs say it is not real; public capability flags are disabled or the candidate stays outside auto-registration; methods fail closed unless a test-only opt-in is explicit. | "scaffold", "reservation", or "candidate"; never "integration" or "usable provider". |
+| `experimental` | Real upstream path exists, but the contract may change. | Injected-runtime or fixture tests cover the callable boundary, health reports missing runtime/config clearly, and docs list known gaps or blockers. | "experimental", "known gaps", and host-owned runtime limits. |
+| `beta` | Prepared hosts can use the provider for the documented capability. | Capability tests, runtime manifest, generated provider docs, fixture-backed failure modes, redacted events, and a documented smoke command or explicit live-smoke blocker. | "prepared host", supported models/env vars, failure modes, and artifact retention where relevant. |
+| `stable` | Recommended provider path for its capability. | Repeated smoke evidence, release evidence, parser and validation coverage, incident/runbook notes, compatibility expectations, and no unresolved runtime contract blockers. | "stable" only with supported operator use and compatibility limits. |
+
+Promotion checklist:
+
+- [ ] Update `ProviderProfileSpec.implementation_status` and profile metadata in the provider.
+- [ ] Update `runtime_ownership` or `docs_page` in `src/worldforge/providers/catalog.py` when the
+      generated catalog row would otherwise be misleading.
+- [ ] Run `uv run python scripts/generate_provider_docs.py` after catalog/profile changes, then
+      `uv run python scripts/generate_provider_docs.py --check`.
+- [ ] Run provider-specific pytest files plus `uv run pytest tests/test_provider_catalog_docs.py`.
+- [ ] Run `uv run mkdocs build --strict`.
+- [ ] Keep the behavior change separate from promotion wording when either part is large.
+
+Current classifications:
+
+| Provider | Status | Why it is classified this way |
+| --- | --- | --- |
+| `mock` | `stable` | Deterministic in-repo provider with no optional runtime and broad checkout-safe test coverage. |
+| `cosmos` | `beta` | Real remote generate adapter with fixture coverage and runtime manifest; prepared hosts own the Cosmos deployment. |
+| `runway` | `beta` | Real remote generate/transfer adapter with parser and artifact checks; prepared hosts own credentials and artifact retention. |
+| `leworldmodel` | `beta` | Real score adapter for the official LeWM loading path; prepared hosts own torch, `stable_worldmodel`, and checkpoints. |
+| `gr00t` | `experimental` | Real PolicyClient boundary exists, but prepared-host operation and failure coverage still need beta hardening. |
+| `lerobot` | `beta` | Real policy adapter with host-owned LeRobot/checkpoint runtime and documented translator boundary. |
+| `jepa` | `scaffold` | Fail-closed reservation until a real upstream JEPA runtime and single capability are selected. |
+| `genie` | `scaffold` | Fail-closed reservation until a concrete upstream runtime/API contract exists. |
+| `jepa-wms` | `scaffold` | Direct-construction candidate only; not exported or auto-registered until runtime limits and smoke evidence are credible. |
+
+## Step 4: Define the Contract Before Code
 
 Write down the provider contract in the PR description or docs before implementation.
 
@@ -199,7 +237,7 @@ Questions to answer:
 - [ ] What does the provider return when output is partial, expired, missing, malformed, or
       physically implausible?
 
-## Step 4: Use the Standard Adapter Shape
+## Step 5: Use the Standard Adapter Shape
 
 Provider adapters should be small boundary objects. Choose the smallest shape that honestly
 represents the integration.
@@ -295,7 +333,7 @@ forge = WorldForge(auto_register_remote=False)
 forge.register_cost(ExampleCost())
 ```
 
-## Step 5: Boundary Validation Checklist
+## Step 6: Boundary Validation Checklist
 
 Validate at the narrowest boundary. Do not let malformed upstream or caller data leak into public
 models.
@@ -332,7 +370,7 @@ State mutation:
 - [ ] Do not mutate the caller's `World` during comparison workflows.
 - [ ] Preserve history and metadata intentionally.
 
-## Step 6: LeWorldModel-Style Score Provider Checklist
+## Step 7: LeWorldModel-Style Score Provider Checklist
 
 Use this checklist for JEPA and latent cost-model providers.
 
@@ -370,7 +408,7 @@ Do not:
 - [ ] Do not hide score direction in prose only.
 - [ ] Do not infer raw image transforms unless the adapter actually implements and tests them.
 
-## Step 7: Embodied Policy Provider Checklist
+## Step 8: Embodied Policy Provider Checklist
 
 Use this checklist for VLA and robot policy providers such as NVIDIA Isaac GR00T.
 
@@ -403,7 +441,7 @@ Do not:
 - [ ] Do not set `score=True` unless it ranks candidates with explicit score semantics.
 - [ ] Do not hide real-robot safety checks inside WorldForge. Safety interlocks are host-owned.
 
-## Step 8: Predictive Provider Checklist
+## Step 9: Predictive Provider Checklist
 
 Use this checklist for providers that roll a world state forward.
 
@@ -416,7 +454,7 @@ Use this checklist for providers that roll a world state forward.
 - [ ] Tests cover malformed world state, missing scene objects, impossible actions if applicable,
       non-finite metrics, and provider failure propagation.
 
-## Step 9: Generative and Transfer Provider Checklist
+## Step 10: Generative and Transfer Provider Checklist
 
 Use this checklist for video or artifact providers.
 
@@ -431,7 +469,7 @@ Use this checklist for video or artifact providers.
 - [ ] Tests cover bad content types, expired artifacts, missing outputs, task failures, malformed
       JSON, timeout, retry, and provider-specific limits.
 
-## Step 10: Observability and Failure Semantics
+## Step 11: Observability and Failure Semantics
 
 Every real provider should emit useful `ProviderEvent` records.
 
@@ -453,7 +491,7 @@ Checklist:
       "request failed."
 - [ ] Unexpected exceptions are wrapped in `ProviderError` with context.
 
-## Step 11: Test Requirements
+## Step 12: Test Requirements
 
 Provider tests should be fixture-driven and contract-driven.
 
@@ -497,7 +535,7 @@ Local model providers:
 - [ ] A real-model smoke script is optional, documented, and not part of the default unit suite.
 - [ ] Checkpoint paths and cache directories are host-owned.
 
-## Step 12: Documentation Requirements
+## Step 13: Documentation Requirements
 
 A provider PR is incomplete without docs.
 

@@ -10,16 +10,16 @@ Keep this page and the provider pages aligned with that catalog.
 ## Provider Catalog
 
 <!-- provider-catalog:start -->
-| Provider | Capability surface | Registration | Runtime ownership |
-| --- | --- | --- | --- |
-| `mock` | `predict`, `generate`, `transfer`, `reason`, `embed` | always registered | in-repo deterministic local provider |
-| [`cosmos`](./cosmos.md) | `generate` | `COSMOS_BASE_URL` | host supplies a reachable Cosmos deployment and optional `NVIDIA_API_KEY` |
-| [`runway`](./runway.md) | `generate`, `transfer` | `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` | host supplies Runway credentials and persists returned artifacts |
-| [`leworldmodel`](./leworldmodel.md) | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
-| [`gr00t`](./gr00t.md) | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |
-| [`lerobot`](./lerobot.md) | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | host installs LeRobot and compatible policy checkpoints |
-| `jepa` | scaffold | `JEPA_MODEL_PATH` | capability-fail-closed reservation, not a real JEPA runtime |
-| `genie` | scaffold | `GENIE_API_KEY` | capability-fail-closed reservation, not a real Genie runtime |
+| Provider | Maturity | Capability surface | Registration | Runtime ownership |
+| --- | --- | --- | --- | --- |
+| `mock` | `stable` | `predict`, `generate`, `transfer`, `reason`, `embed` | always registered | in-repo deterministic local provider |
+| [`cosmos`](./cosmos.md) | `beta` | `generate` | `COSMOS_BASE_URL` | host supplies a reachable Cosmos deployment and optional `NVIDIA_API_KEY` |
+| [`runway`](./runway.md) | `beta` | `generate`, `transfer` | `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` | host supplies Runway credentials and persists returned artifacts |
+| [`leworldmodel`](./leworldmodel.md) | `beta` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
+| [`gr00t`](./gr00t.md) | `experimental` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |
+| [`lerobot`](./lerobot.md) | `beta` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | host installs LeRobot and compatible policy checkpoints |
+| `jepa` | `scaffold` | scaffold | `JEPA_MODEL_PATH` | capability-fail-closed reservation, not a real JEPA runtime |
+| `genie` | `scaffold` | scaffold | `GENIE_API_KEY` | capability-fail-closed reservation, not a real Genie runtime |
 <!-- provider-catalog:end -->
 
 ## Candidate Scaffolds

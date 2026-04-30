@@ -26,6 +26,7 @@ DOC_CAPABILITY_ORDER = (
     "embed",
     "plan",
 )
+PROVIDER_PROMOTION_STATUSES = ("scaffold", "experimental", "beta", "stable")
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,8 +166,8 @@ def render_provider_catalog_markdown(*, docs_link_prefix: str = "./") -> str:
     """Render the provider catalog table used by the provider documentation index."""
 
     lines = [
-        "| Provider | Capability surface | Registration | Runtime ownership |",
-        "| --- | --- | --- | --- |",
+        "| Provider | Maturity | Capability surface | Registration | Runtime ownership |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for entry in PROVIDER_CATALOG:
         profile = entry.create().profile()
@@ -185,6 +186,7 @@ def render_provider_catalog_markdown(*, docs_link_prefix: str = "./") -> str:
         lines.append(
             "| "
             f"{entry.display_name(docs_link_prefix=docs_link_prefix)} | "
+            f"`{profile.implementation_status}` | "
             f"{capability_surface} | "
             f"{registration} | "
             f"{entry.runtime_ownership} |"
@@ -215,6 +217,7 @@ def provider_docs_index(
             {
                 "name": entry.name,
                 "docs_path": docs_path,
+                "implementation_status": profile.implementation_status,
                 "capabilities": capabilities,
                 "registration": (
                     "always registered"

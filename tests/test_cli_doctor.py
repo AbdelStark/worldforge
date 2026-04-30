@@ -79,6 +79,7 @@ def test_provider_docs_cli_outputs_markdown_and_json(monkeypatch, capsys) -> Non
         {
             "name": "runway",
             "docs_path": "docs/src/providers/runway.md",
+            "implementation_status": "beta",
             "capabilities": "generate, transfer",
             "registration": "RUNWAYML_API_SECRET or RUNWAY_API_SECRET",
             "runtime_ownership": "host supplies Runway credentials and persists returned artifacts",

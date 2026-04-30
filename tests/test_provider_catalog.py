@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 
 from worldforge import WorldForge
-from worldforge.providers.catalog import PROVIDER_CATALOG, create_known_providers
+from worldforge.providers.catalog import (
+    PROVIDER_CATALOG,
+    PROVIDER_PROMOTION_STATUSES,
+    create_known_providers,
+)
 
 
 def test_provider_catalog_names_are_unique_and_explicit() -> None:
@@ -35,6 +39,29 @@ def test_provider_catalog_instantiates_known_provider_profiles() -> None:
     assert profiles["jepa"].capabilities.enabled_names() == []
     assert profiles["genie"].implementation_status == "scaffold"
     assert profiles["genie"].capabilities.enabled_names() == []
+
+
+def test_provider_catalog_statuses_match_promotion_gate() -> None:
+    profiles = {provider.name: provider.profile() for provider in create_known_providers()}
+
+    assert set(PROVIDER_PROMOTION_STATUSES) == {
+        "scaffold",
+        "experimental",
+        "beta",
+        "stable",
+    }
+    assert {name: profile.implementation_status for name, profile in profiles.items()} == {
+        "mock": "stable",
+        "cosmos": "beta",
+        "runway": "beta",
+        "leworldmodel": "beta",
+        "gr00t": "experimental",
+        "lerobot": "beta",
+        "jepa": "scaffold",
+        "genie": "scaffold",
+    }
+    for profile in profiles.values():
+        assert profile.implementation_status in PROVIDER_PROMOTION_STATUSES
 
 
 # Pairs of (canonical_env_var, legacy_alias) that provider auto-registration must continue
