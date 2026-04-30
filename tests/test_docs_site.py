@@ -61,3 +61,28 @@ def test_built_docs_image_sources_resolve_to_site_files() -> None:
                 missing.append(f"{page.relative_to(SITE)} -> {source}")
 
     assert missing == []
+
+
+def test_health_readiness_runbook_documents_required_operational_signals() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+
+    for status in ("ready", "provider_unconfigured", "provider_unhealthy"):
+        assert status in operations
+        assert status in playbooks
+
+    required_header = (
+        "| State | Symptom | Likely cause | First command | Expected signal | Escalation point |"
+    )
+    assert required_header in playbooks
+    for incident in (
+        "process live",
+        "provider unconfigured",
+        "provider unhealthy",
+        "upstream degraded",
+        "workflow failing",
+    ):
+        assert incident in playbooks
+
+    assert "WorldForge does not own upstream SLA" in playbooks
+    assert "Alert routing, paging policy" in playbooks

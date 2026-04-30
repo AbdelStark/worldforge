@@ -157,6 +157,24 @@ If it fails:
 | provider is registered but unhealthy | optional dependency, endpoint, or credential is invalid | run provider-specific docs and health command |
 | provider lacks capability | capability flag is truthful and workflow picked the wrong provider | choose another provider or implement the capability end to end |
 
+### 4a. Map Health And Readiness During Incidents
+
+Use this when a service host, batch job, or operator dashboard needs to decide whether to send
+traffic to a provider-backed workflow. Keep process liveness separate from provider readiness.
+
+| State | Symptom | Likely cause | First command | Expected signal | Escalation point |
+| --- | --- | --- | --- | --- | --- |
+| process live | `GET /healthz` succeeds, but provider workflows may still fail | HTTP process is running; provider path has not been proven | `curl -fsS http://127.0.0.1:8080/healthz` | JSON status is `live`; no provider fields are implied | host service owner if the process is down |
+| provider unconfigured | `/readyz` returns `provider_unconfigured` or `doctor` shows the provider absent from registered providers | missing env vars, missing host injection, or wrong provider name | `uv run worldforge doctor --registered-only` | selected provider is absent; `registered_provider_count` and issues explain the local process | host deployment or credential owner |
+| provider unhealthy | `/readyz` returns `provider_unhealthy` or `provider health` reports `healthy=false` | optional runtime missing, bad credentials, unreachable upstream, or failed provider health parsing | `uv run worldforge provider health <name>` | health details name the missing env var, dependency, endpoint, or sanitized upstream error | host runtime owner first; provider adapter maintainer if details are wrong or unsafe |
+| upstream degraded | provider health is intermittently false, provider events show retries, 5xx, 429, or budget exhaustion | remote provider outage, throttling, expired credentials, or host budget too tight | `jq 'select(.phase=="retry" or .phase=="budget_exceeded") | {provider, operation, status_code, target, message}' .worldforge/runs/<run-id>/provider-events.jsonl` | sanitized targets, retry counts, status class, and `budget_exceeded` events identify the failing operation | upstream provider support or host SRE; WorldForge does not own upstream SLA |
+| workflow failing | `/readyz` stays `ready`, but one request returns a typed error | malformed world state, unsupported capability, invalid input, parser failure, or expired artifact | `uv run worldforge provider info <name>` | profile, capability flags, redacted config summary, and health show whether the request matched the provider contract | application owner for bad input; adapter maintainer for parser/contract bugs |
+
+The stdlib service reference uses the same model: `/healthz` is process-only liveness, while
+`/readyz` returns `ready`, `provider_unconfigured`, or `provider_unhealthy` plus a `traffic`
+decision of `accept` or `drain`. Alert routing, paging policy, retry orchestration outside a single
+provider call, and upstream SLA ownership remain host responsibilities.
+
 ## 5. Operate Local JSON Persistence
 
 Use this for local jobs, demos, tests, and single-writer workflows.

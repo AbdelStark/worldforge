@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from worldforge import WorldForge, WorldForgeError
+from worldforge.providers import BaseProvider, ProviderProfileSpec
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE_APP = ROOT / "examples" / "hosts" / "service" / "app.py"
@@ -49,15 +50,42 @@ def test_service_host_readiness_maps_provider_state(tmp_path, service_app) -> No
 
     ready = service_app.readiness_snapshot(forge, "mock")
     assert ready["status"] == "ready"
+    assert ready["traffic"] == "accept"
     assert ready["checks"]["framework_alive"] is True
     assert ready["checks"]["provider_configured"] is True
     assert ready["checks"]["provider_healthy"] is True
     assert ready["doctor"]["registered_provider_count"] >= 1
 
     degraded = service_app.readiness_snapshot(forge, "missing-provider")
-    assert degraded["status"] == "degraded"
+    assert degraded["status"] == "provider_unconfigured"
+    assert degraded["traffic"] == "drain"
     assert degraded["checks"]["provider_configured"] is False
     assert degraded["checks"]["provider_healthy"] is False
+
+
+def test_service_host_readiness_distinguishes_unhealthy_registered_provider(
+    tmp_path,
+    monkeypatch,
+    service_app,
+) -> None:
+    monkeypatch.delenv("SERVICE_HOST_REQUIRED_TOKEN", raising=False)
+    forge = WorldForge(state_dir=tmp_path)
+    forge.register_provider(
+        BaseProvider(
+            "configured-but-unhealthy",
+            profile=ProviderProfileSpec(
+                required_env_vars=("SERVICE_HOST_REQUIRED_TOKEN",),
+            ),
+        )
+    )
+
+    payload = service_app.readiness_snapshot(forge, "configured-but-unhealthy")
+
+    assert payload["status"] == "provider_unhealthy"
+    assert payload["traffic"] == "drain"
+    assert payload["checks"]["provider_configured"] is True
+    assert payload["checks"]["provider_healthy"] is False
+    assert "SERVICE_HOST_REQUIRED_TOKEN" in payload["checks"]["provider_health"]["details"]
 
 
 def test_service_host_endpoints_exercise_reference_workflows(tmp_path, service_app) -> None:
@@ -81,6 +109,7 @@ def test_service_host_endpoints_exercise_reference_workflows(tmp_path, service_a
 
         _status, _headers, ready = _request_json(f"{base_url}/readyz")
         assert ready["status"] == "ready"
+        assert ready["traffic"] == "accept"
         assert ready["checks"]["provider"] == "mock"
 
         _status, _headers, providers = _request_json(f"{base_url}/providers")

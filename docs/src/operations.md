@@ -40,6 +40,14 @@ The stdlib reference host in `examples/hosts/service/app.py` uses this model:
 | provider healthy | `forge.provider_health(name).healthy` is true | provider's cheap health check passed | `GET /readyz` |
 | workflow failing | provider is configured and health may pass, but a workflow returns a typed error | request input, upstream response, budget, or artifact handling failed | workflow response body |
 
+The reference host returns one of these readiness statuses from `GET /readyz`:
+
+| `/readyz` status | Traffic decision | How to interpret it |
+| --- | --- | --- |
+| `ready` | accept | framework is alive, the selected provider is registered, and provider health passed. |
+| `provider_unconfigured` | drain | framework is alive, but the selected provider is not registered in this process. |
+| `provider_unhealthy` | drain | provider is registered, but its health check reports missing optional runtime, bad credentials, unreachable upstream, or another provider-owned failure detail. |
+
 Map CLI diagnostics the same way during incidents:
 
 | Command | Readiness signal |

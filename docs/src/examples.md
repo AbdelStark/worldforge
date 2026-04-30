@@ -91,10 +91,15 @@ The service host exposes:
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /healthz` | Process liveness only. |
-| `GET /readyz` | Framework alive, configured provider, provider health, and `doctor()` summary. |
+| `GET /readyz` | Framework alive, configured provider, provider health, traffic decision, and `doctor()` summary. |
 | `GET /providers` | Registered-provider diagnostics for the current host process. |
 | `POST /workflows/mock-predict` | Safe deterministic mock prediction smoke. |
 | `POST /workflows/generate` | Configurable provider generate workflow using a JSON body with `provider`, `prompt`, and `duration_seconds`. |
+
+`/readyz` reports `ready`, `provider_unconfigured`, or `provider_unhealthy`. Only `ready`
+means the host should accept provider-backed workflow traffic; the other states tell the host
+load balancer or job runner to drain this process while operators inspect `checks.provider_health`
+and the embedded `doctor` summary.
 
 Every response includes or echoes a request id. Provider events are sent through `JsonLoggerSink`
 with that request id so host logs can correlate HTTP requests with provider calls. Public errors

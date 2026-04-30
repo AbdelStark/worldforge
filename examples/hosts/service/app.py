@@ -40,7 +40,10 @@ def readiness_snapshot(forge: WorldForge, provider: str) -> JSON:
     configured = provider in forge.providers()
     health = forge.provider_health(provider) if configured else None
     provider_healthy = bool(health and health.healthy)
-    readiness = "ready" if configured and provider_healthy else "degraded"
+    readiness = _readiness_state(
+        provider_configured=configured,
+        provider_healthy=provider_healthy,
+    )
     checks: JSON = {
         "framework_alive": True,
         "provider": provider,
@@ -59,6 +62,7 @@ def readiness_snapshot(forge: WorldForge, provider: str) -> JSON:
     return {
         "status": readiness,
         "checks": checks,
+        "traffic": "accept" if readiness == "ready" else "drain",
         "doctor": _doctor_summary(doctor),
     }
 
@@ -188,6 +192,14 @@ def _doctor_summary(report: DoctorReport) -> JSON:
         "issue_count": len(report.issues),
         "issues": list(report.issues),
     }
+
+
+def _readiness_state(*, provider_configured: bool, provider_healthy: bool) -> str:
+    if not provider_configured:
+        return "provider_unconfigured"
+    if not provider_healthy:
+        return "provider_unhealthy"
+    return "ready"
 
 
 def _build_forge(config: ServiceConfig, request_id: str) -> WorldForge:
