@@ -744,6 +744,10 @@ This keeps the library small and makes persistence ownership explicit. A future 
 adapter must preserve the same state validation invariants before it becomes a supported runtime
 surface.
 
+ADR 0001, [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md), names the
+future `WorldPersistenceAdapter` interface and rejects replacing local JSON with an implicit
+database backend.
+
 ## Design Implications
 
 - Capability reporting is part of correctness. A provider that only scores must not be presented

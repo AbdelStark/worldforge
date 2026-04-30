@@ -86,3 +86,36 @@ def test_health_readiness_runbook_documents_required_operational_signals() -> No
 
     assert "WorldForge does not own upstream SLA" in playbooks
     assert "Alert routing, paging policy" in playbooks
+
+
+def test_persistence_adapter_adr_documents_host_owned_boundary() -> None:
+    adr = (ROOT / "docs/src/adr/0001-persistence-adapter-boundary.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs/src/architecture.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+
+    assert "Status: Accepted" in adr
+    assert "WorldPersistenceAdapter" in adr
+    assert "must not add a database dependency to the base package" in adr
+    assert "Current local JSON behavior remains authoritative and unchanged" in adr
+
+    for required_topic in (
+        "Locking",
+        "Migrations",
+        "Backup and restore",
+        "Retention",
+        "Schema versioning",
+        "Failure recovery",
+    ):
+        assert f"**{required_topic}:**" in adr
+
+    for rejected in (
+        "Replace Local JSON With SQLite",
+        "Add Lock Files Around The Current Store",
+        "Add A Generic Database URL Setting",
+        "Move Persistence Entirely Out Of WorldForge",
+    ):
+        assert rejected in adr
+
+    for doc in (operations, architecture, playbooks):
+        assert "0001-persistence-adapter-boundary.md" in doc

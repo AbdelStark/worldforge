@@ -232,8 +232,8 @@ Recovery guidance:
 - if local JSON is corrupted, restore from the host application's backup of exported world JSON.
 - if multiple workers need writes, move persistence into host-owned storage with locking,
   migrations, backups, and recovery drills.
-- do not add a lock file, SQLite store, or service adapter to WorldForge without a separate
-  persistence design.
+- do not add a lock file, SQLite store, or service adapter to WorldForge without the
+  [persistence adapter ADR](./adr/0001-persistence-adapter-boundary.md).
 
 ### 5a. Manage Worlds From TheWorldHarness
 

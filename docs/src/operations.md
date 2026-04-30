@@ -123,6 +123,9 @@ clarity: host applications own deployment topology, durability, locking semantic
 and retention requirements. WorldForge should not imply production durability guarantees that a
 local JSON store cannot enforce.
 
+ADR 0001, [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md), records the
+future `WorldPersistenceAdapter` boundary and the acceptance bar for any durable store.
+
 Supported persistence invariants:
 
 - World IDs are validated as file-safe local storage identifiers before any read or write. Path

@@ -10,6 +10,8 @@
 - [Rerun Integration](./rerun.md)
 - [World Model Taxonomy](./world-model-taxonomy.md)
 - [Architecture](./architecture.md)
+- Decisions
+  - [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md)
 - [User And Operator Playbooks](./playbooks.md)
 - [Providers](./providers/README.md)
   - [Cosmos](./providers/cosmos.md)
