@@ -121,6 +121,41 @@ def test_persistence_adapter_adr_documents_host_owned_boundary() -> None:
         assert "0001-persistence-adapter-boundary.md" in doc
 
 
+def test_observability_roadmap_tracker_records_completion() -> None:
+    roadmap = (ROOT / "docs/src/provider-platform-roadmap.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    service_host = (ROOT / "examples/hosts/service/app.py").read_text(encoding="utf-8")
+
+    assert "Track status: complete for [#51]" in roadmap
+    for child in ("WF-OBS-001", "WF-OBS-002", "WF-OBS-003", "WF-OBS-004", "WF-OBS-005"):
+        assert child in roadmap
+
+    for completed_criterion in (
+        "Event fields are JSON-native and sanitized before sink consumption.",
+        "Importing `worldforge` does not import OpenTelemetry.",
+        "Metrics bridge is optional and has bounded labels.",
+        "Logs can be correlated to run manifests by `run_id`.",
+        "Docs avoid claiming WorldForge owns upstream SLAs.",
+    ):
+        assert f"- [x] {completed_criterion}" in roadmap
+
+    for signal in (
+        "ProviderEvent",
+        "RunJsonLogSink",
+        "ProviderMetricsExporterSink",
+        "OpenTelemetryProviderEventSink",
+        "ready",
+        "provider_unconfigured",
+        "provider_unhealthy",
+    ):
+        assert signal in operations
+
+    assert "WorldForge does not own upstream SLA" in playbooks
+    assert "JsonLoggerSink" in service_host
+    assert "request_id" in service_host
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

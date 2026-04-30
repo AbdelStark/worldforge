@@ -1175,6 +1175,21 @@ uv run mkdocs build --strict
 Observability work must keep the core callback model simple while giving production hosts clean
 integration points.
 
+Track status: complete for [#51](https://github.com/AbdelStark/worldforge/issues/51).
+
+Completion signals:
+
+- `ProviderEvent` carries sanitized correlation fields and normalized phases for run, request,
+  trace, span, artifact, and input-digest joins.
+- `JsonLoggerSink`, `RunJsonLogSink`, `ProviderMetricsSink`, `ProviderMetricsExporterSink`,
+  `OpenTelemetryProviderEventSink`, and `InMemoryRecorderSink` share the same event model without
+  adding base runtime dependencies.
+- Run logs and manifests preserve issue-safe provider evidence under `.worldforge/runs/<run-id>/`.
+- The service host exposes process liveness separately from `ready`, `provider_unconfigured`, and
+  `provider_unhealthy` readiness states.
+- Operations docs and playbooks map `worldforge doctor`, provider health, provider events, and
+  incident runbooks to host-owned escalation paths.
+
 Telemetry layering:
 
 ```text
@@ -1224,10 +1239,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Existing sinks keep working or have documented migration behavior.
-- [ ] Event fields are JSON-native and sanitized before sink consumption.
-- [ ] Provider events can be correlated with run manifests.
-- [ ] Docs include sample JSON log records.
+- [x] Existing sinks keep working or have documented migration behavior.
+- [x] Event fields are JSON-native and sanitized before sink consumption.
+- [x] Provider events can be correlated with run manifests.
+- [x] Docs include sample JSON log records.
 
 Validation:
 
@@ -1255,10 +1270,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Importing `worldforge` does not import OpenTelemetry.
-- [ ] Exporter maps provider, operation, phase, status, duration, attempt, and sanitized target.
-- [ ] Secret-like metadata is redacted before span attributes are created.
-- [ ] Docs show minimal host wiring.
+- [x] Importing `worldforge` does not import OpenTelemetry.
+- [x] Exporter maps provider, operation, phase, status, duration, attempt, and sanitized target.
+- [x] Secret-like metadata is redacted before span attributes are created.
+- [x] Docs show minimal host wiring.
 
 Validation:
 
@@ -1316,10 +1331,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Logs can be correlated to run manifests by `run_id`.
-- [ ] Exported logs contain no bearer tokens, API keys, signatures, or signed URL query strings.
-- [ ] Docs include first triage queries for provider failures and retries.
-- [ ] Host apps demonstrate logger injection rather than global logging side effects.
+- [x] Logs can be correlated to run manifests by `run_id`.
+- [x] Exported logs contain no bearer tokens, API keys, signatures, or signed URL query strings.
+- [x] Docs include first triage queries for provider failures and retries.
+- [x] Host apps demonstrate logger injection rather than global logging side effects.
 
 Validation:
 
@@ -1347,10 +1362,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Runbooks include symptom, likely cause, first command, expected signal, and escalation point.
-- [ ] Host reference app uses the model.
-- [ ] Existing `worldforge doctor` and provider health outputs are mapped to readiness states.
-- [ ] Docs avoid claiming WorldForge owns upstream SLAs.
+- [x] Runbooks include symptom, likely cause, first command, expected signal, and escalation point.
+- [x] Host reference app uses the model.
+- [x] Existing `worldforge doctor` and provider health outputs are mapped to readiness states.
+- [x] Docs avoid claiming WorldForge owns upstream SLAs.
 
 Validation:
 
