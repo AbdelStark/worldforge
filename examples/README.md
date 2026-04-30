@@ -70,6 +70,18 @@ The batch host uses only the base WorldForge package and Python stdlib. It write
 `.worldforge/batch-eval/runs/<run-id>/run_manifest.json`, report exports, and copied benchmark
 input or budget files. A benchmark budget violation exits `1` after preserving the failed run.
 
+## Robotics Operator Host
+
+| Example | Surface | Command |
+| --- | --- | --- |
+| `robotics-operator-host` | offline policy+score review, dry-run approval, replay artifacts | `uv run python examples/hosts/robotics-operator/app.py review --sample-translator` |
+
+The robotics operator host is non-mutating by default and never talks to robot controllers. It
+requires an explicit action translator, records host-owned checklist and dry-run approval state, and
+writes selected action chunks, score rationale, provider events, and a replay artifact under
+`.worldforge/robotics-operator/runs/<run-id>/`. Controller execution is only an application hook:
+WorldForge does not certify robot safety, controller semantics, interlocks, or deployment readiness.
+
 ## Optional Runtime Smoke
 
 | Example | Surface | Command |

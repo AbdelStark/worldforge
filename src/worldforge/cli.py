@@ -124,6 +124,19 @@ EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "task": "Robotics operator host",
+        "name": "robotics-operator-host",
+        "surface": "offline policy+score review, dry-run approval, replay artifacts",
+        "requires": "base WorldForge package; checkout examples directory",
+        "command": (
+            "uv run python examples/hosts/robotics-operator/app.py review --sample-translator"
+        ),
+        "description": (
+            "Run a non-mutating robotics operator review that preserves selected action chunks, "
+            "score rationale, provider events, dry-run approval, and replay artifacts."
+        ),
+    },
+    {
         "task": "Optional runtime smoke",
         "name": "leworldmodel-real-checkpoint-smoke",
         "surface": "optional runtime smoke",

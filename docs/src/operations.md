@@ -330,6 +330,25 @@ Expected success signal: `.worldforge/rerun/worldforge-rerun-showcase.rrd` exist
 prints a byte count, and the recording opens in the Rerun viewer. First triage step: run
 `uv run --extra rerun python -c "import rerun; print(rerun.__version__)"`.
 
+## Robotics Operator Review
+
+The checkout host at `examples/hosts/robotics-operator/app.py` is an offline review loop for
+policy-plus-score robotics runs:
+
+```bash
+uv run python examples/hosts/robotics-operator/app.py review --sample-translator
+```
+
+By default it does not talk to robot controllers. It requires an explicit action translator in the
+host process, records checklist and dry-run approval state, and preserves selected action chunks,
+score rationale, provider events, and a replay artifact under
+`.worldforge/robotics-operator/runs/<run-id>/`.
+
+WorldForge only certifies that its typed provider, event, replay, and manifest artifacts satisfy
+the framework contracts. The lab host remains responsible for embodiment translators, controller
+hooks, workspace safety, operator approval policy, emergency stops, hardware behavior, deployment
+readiness, and safety certification.
+
 ## Failure Modes
 
 - Invalid caller input raises `WorldForgeError`.

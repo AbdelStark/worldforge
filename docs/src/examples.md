@@ -137,6 +137,27 @@ registered, credentials configured, optional runtime dependencies installed, and
 that match that provider's advertised capability. Keep scheduling, retry policy above the process,
 long-term artifact storage, and credential rotation outside the base package.
 
+## Robotics Operator Host
+
+| Example | Command | Runtime boundary |
+| --- | --- | --- |
+| `robotics-operator-host` | `uv run python examples/hosts/robotics-operator/app.py review --sample-translator` | Stdlib offline operator-review host; the lab application owns action translators, checklist policy, approval, controller integration, interlocks, and safety certification. |
+
+The default mode does not call robot controllers. It runs a deterministic LeRobot policy surface and
+score provider through an explicit sample PushT translator, then writes a preserved run workspace
+under `.worldforge/robotics-operator/runs/<run-id>/` with:
+
+- `results/action_chunks.json` for all candidate action chunks and the selected chunk.
+- `results/score_rationale.json` for score values, best index, and score metadata.
+- `logs/provider-events.jsonl` for the provider event stream.
+- `results/approval.json` for host-owned checklist and dry-run approval state.
+- `results/replay.json` for an offline replay artifact.
+
+Controller execution remains disabled unless the embedding host supplies an explicit controller
+hook in code, all checklist items are true, and dry-run approval is recorded. WorldForge only
+produces typed policy, score, event, replay, and run-manifest artifacts; it does not certify robot
+hardware, task safety, emergency stops, workspace readiness, or controller behavior.
+
 ## Optional Runtime Smoke
 
 | Example | Command | Runtime boundary |
