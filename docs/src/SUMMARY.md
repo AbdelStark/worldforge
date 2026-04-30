@@ -19,6 +19,7 @@
   - [LeRobot](./providers/lerobot.md)
   - [Runway](./providers/runway.md)
 - [Provider Authoring Guide](./provider-authoring-guide.md)
+- [Next Provider Selection RFC](./provider-selection-rfc.md)
 - [Python API](./api/python.md)
 - [Evaluation](./evaluation.md)
 - [Benchmarking](./benchmarking.md)

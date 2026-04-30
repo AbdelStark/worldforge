@@ -224,6 +224,10 @@ Current high-priority candidates:
 | GR00T PolicyClient | Valuable robotics policy path, but prepared-host complexity is higher | WF-GROOT-001 |
 | JEPA-WMS | Research-value score candidate, but should remain direct-construction until upstream limits are known | WF-JEPAWMS-001 |
 
+The next expansion batch is recorded in the
+[Next Provider Selection RFC](./provider-selection-rfc.md). Keep provider README/catalog wording
+unchanged until the selected implementation issue starts.
+
 ## Provider Promotion Matrix
 
 Use this matrix before changing `implementation_status`.
