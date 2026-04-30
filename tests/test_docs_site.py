@@ -119,3 +119,19 @@ def test_persistence_adapter_adr_documents_host_owned_boundary() -> None:
 
     for doc in (operations, architecture, playbooks):
         assert "0001-persistence-adapter-boundary.md" in doc
+
+
+def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
+    provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
+    provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+
+    assert "Status: scaffold" in provider_page
+    assert "Decision date: 2026-05-01" in provider_page
+    assert "Project Genie announcement" in provider_page
+    assert "not a supported automation API" in provider_page
+    assert "must not present deterministic local surrogate behavior" in provider_page
+    assert "fixture-backed parser tests" in provider_page
+    assert "sanitized `run_manifest.json`" in provider_page
+    assert "| [`genie`](./genie.md) | `scaffold` | scaffold | `GENIE_API_KEY` |" in provider_index
+    assert "[Genie](./providers/genie.md)" in summary

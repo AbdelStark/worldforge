@@ -149,7 +149,11 @@ PROVIDER_CATALOG: tuple[ProviderCatalogEntry, ...] = (
     ProviderCatalogEntry(
         "genie",
         _genie,
-        runtime_ownership="capability-fail-closed reservation, not a real Genie runtime",
+        docs_page="genie.md",
+        runtime_ownership=(
+            "capability-fail-closed reservation; Project Genie has no supported "
+            "automation API contract"
+        ),
     ),
 )
 

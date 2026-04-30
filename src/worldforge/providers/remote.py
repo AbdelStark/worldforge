@@ -157,6 +157,8 @@ class GenieProvider(StubRemoteProvider):
                 artifact_types=(),
                 notes=(
                     "Capability-fail-closed scaffold adapter; it is not a real Genie runtime.",
+                    "Project Genie is currently documented as an experimental web prototype, "
+                    "not a supported automation API.",
                     "A deterministic local surrogate exists only behind "
                     f"{SCAFFOLD_SURROGATE_ENV_VAR}=1 for adapter testing.",
                 ),

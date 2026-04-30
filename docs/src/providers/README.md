@@ -19,7 +19,7 @@ Keep this page and the provider pages aligned with that catalog.
 | [`gr00t`](./gr00t.md) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |
 | [`lerobot`](./lerobot.md) | `stable` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | host installs LeRobot and compatible policy checkpoints |
 | `jepa` | `scaffold` | scaffold | `JEPA_MODEL_PATH` | capability-fail-closed reservation, not a real JEPA runtime |
-| `genie` | `scaffold` | scaffold | `GENIE_API_KEY` | capability-fail-closed reservation, not a real Genie runtime |
+| [`genie`](./genie.md) | `scaffold` | scaffold | `GENIE_API_KEY` | capability-fail-closed reservation; Project Genie has no supported automation API contract |
 <!-- provider-catalog:end -->
 
 ## Candidate Scaffolds

@@ -363,7 +363,7 @@ observe state
 | [`gr00t`](https://abdelstark.github.io/worldforge/providers/gr00t/) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |
 | [`lerobot`](https://abdelstark.github.io/worldforge/providers/lerobot/) | `stable` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | host installs LeRobot and compatible policy checkpoints |
 | `jepa` | `scaffold` | scaffold | `JEPA_MODEL_PATH` | capability-fail-closed reservation, not a real JEPA runtime |
-| `genie` | `scaffold` | scaffold | `GENIE_API_KEY` | capability-fail-closed reservation, not a real Genie runtime |
+| [`genie`](https://abdelstark.github.io/worldforge/providers/genie/) | `scaffold` | scaffold | `GENIE_API_KEY` | capability-fail-closed reservation; Project Genie has no supported automation API contract |
 <!-- provider-catalog-readme:end -->
 
 `jepa` and `genie` are capability-closed reservations. Executable scaffold candidates stay outside
