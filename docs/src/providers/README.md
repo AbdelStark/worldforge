@@ -103,6 +103,30 @@ uv run worldforge doctor --capability score
 configuration visible before a workflow fails. Use `--registered-only` when a process needs to
 check only the providers enabled for that process.
 
+## Runtime Manifests
+
+Real optional providers also have packaged JSON runtime manifests in
+`src/worldforge/providers/runtime_manifests/`. The manifests are dependency-free records that host
+applications, release checks, and docs can read without installing a live runtime.
+
+Schema version `1` includes:
+
+- `provider`: catalog provider name
+- `capabilities`: callable WorldForge capabilities covered by the runtime
+- `optional_dependencies`: host-owned packages or import paths
+- `required_env_vars` and `optional_env_vars`: configuration surface
+- `default_model`: default model, checkpoint, or host-selected model slot
+- `device_support`: supported device classes such as `cpu`, `cuda`, or `remote`
+- `host_owned_artifacts`: checkpoints, policy servers, generated media, or translators the host
+  must retain
+- `minimum_smoke_command`: smallest live command that proves the runtime is wired
+- `expected_success_signal`: concrete pass condition for smoke evidence
+- `setup_hint`: short remediation hint used by provider health messages
+- `docs_path`: provider page that explains the manifest in context
+
+WorldForge never auto-installs optional provider runtimes from these manifests. Missing optional
+dependencies stay explicit in `health()` output and point back to the manifest-backed smoke path.
+
 ## Runtime Ownership
 
 WorldForge owns:

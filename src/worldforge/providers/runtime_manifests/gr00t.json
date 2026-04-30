@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "provider": "gr00t",
+  "capabilities": ["policy"],
+  "optional_dependencies": ["gr00t.policy.server_client"],
+  "required_env_vars": ["GROOT_POLICY_HOST"],
+  "optional_env_vars": ["GROOT_POLICY_PORT", "GROOT_POLICY_TIMEOUT_MS", "GROOT_POLICY_API_TOKEN", "GROOT_POLICY_STRICT", "GROOT_EMBODIMENT_TAG"],
+  "default_model": "host-selected GR00T policy server",
+  "device_support": ["remote-policy-server", "gpu-host-owned"],
+  "host_owned_artifacts": ["GR00T policy server", "embodiment assets", "action translator"],
+  "minimum_smoke_command": "WORLD_FORGE_RUN_LIVE=1 GROOT_POLICY_HOST=127.0.0.1 uv run pytest tests/test_gr00t_provider.py -m live --provider-profile gr00t",
+  "expected_success_signal": "health() can create PolicyClient and ping the policy server",
+  "setup_hint": "install the host-owned Isaac GR00T client/server runtime before live policy checks",
+  "docs_path": "docs/src/providers/gr00t.md"
+}

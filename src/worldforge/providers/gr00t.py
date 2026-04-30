@@ -19,6 +19,10 @@ from worldforge.models import (
 from ._config import env_value, optional_bool, optional_non_empty, optional_positive_int
 from ._policy import json_compatible, json_object, normalize_policy_action_candidates
 from .base import BaseProvider, ProviderError, ProviderProfileSpec
+from .runtime_manifest import (
+    missing_optional_dependency_detail,
+    missing_runtime_configuration_detail,
+)
 
 GROOT_POLICY_HOST_ENV_VAR = "GROOT_POLICY_HOST"
 GROOT_POLICY_PORT_ENV_VAR = "GROOT_POLICY_PORT"
@@ -134,7 +138,11 @@ class GrootPolicyClientProvider(BaseProvider):
     def health(self) -> ProviderHealth:
         started = perf_counter()
         if not self.configured():
-            return self._health(started, f"missing {GROOT_POLICY_HOST_ENV_VAR}", healthy=False)
+            return self._health(
+                started,
+                missing_runtime_configuration_detail("gr00t"),
+                healthy=False,
+            )
         if self._policy_client is None:
             dependency_error = self._runtime_dependency_error()
             if dependency_error is not None:
@@ -156,7 +164,7 @@ class GrootPolicyClientProvider(BaseProvider):
         try:
             policy_module = importlib.import_module("gr00t.policy.server_client")
         except ImportError:
-            return "missing optional dependency gr00t.policy.server_client"
+            return missing_optional_dependency_detail("gr00t", "gr00t.policy.server_client")
         except Exception as exc:
             message = str(exc).strip()
             suffix = f": {message}" if message else ""

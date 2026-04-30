@@ -37,6 +37,11 @@ WorldForge does not add LeWorldModel, torch, checkpoint archives, or datasets to
 - `LEWORLDMODEL_CACHE_DIR`: optional checkpoint root override.
 - `LEWORLDMODEL_DEVICE`: optional torch device string such as `cpu`, `cuda`, or `cuda:0`.
 
+Runtime manifest:
+`src/worldforge/providers/runtime_manifests/leworldmodel.json` records the policy aliases,
+optional checkpoint/device settings, host-owned checkpoint artifacts, minimum real-checkpoint smoke
+command, and expected finite-cost signal.
+
 Programmatic construction can inject a loader and tensor module for tests or host-owned runtimes:
 
 ```python

@@ -36,6 +36,10 @@ from worldforge.models import (
 from ._config import env_value, first_env_value, optional_non_empty
 from ._policy import json_object, no_grad_context, normalize_policy_action_candidates, prepare_model
 from .base import BaseProvider, ProviderError, ProviderProfileSpec
+from .runtime_manifest import (
+    missing_optional_dependency_detail,
+    missing_runtime_configuration_detail,
+)
 
 LEROBOT_POLICY_PATH_ENV_VAR = "LEROBOT_POLICY_PATH"
 LEROBOT_POLICY_PATH_ENV_ALIASES = (LEROBOT_POLICY_PATH_ENV_VAR, "LEROBOT_POLICY")
@@ -196,7 +200,7 @@ class LeRobotPolicyProvider(BaseProvider):
         if not self.configured():
             return self._health(
                 started,
-                f"missing {LEROBOT_POLICY_PATH_ENV_VAR} (or injected policy)",
+                missing_runtime_configuration_detail("lerobot") + " (or injected policy)",
                 healthy=False,
             )
         if self._policy is None:
@@ -214,7 +218,7 @@ class LeRobotPolicyProvider(BaseProvider):
         try:
             importlib.import_module("lerobot")
         except ImportError:
-            return "missing optional dependency lerobot"
+            return missing_optional_dependency_detail("lerobot", "lerobot")
         except Exception as exc:
             return (
                 "LeRobot optional dependency import failed ("

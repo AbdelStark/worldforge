@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "provider": "leworldmodel",
+  "capabilities": ["score"],
+  "optional_dependencies": ["torch", "stable_worldmodel"],
+  "required_env_vars": ["LEWORLDMODEL_POLICY", "LEWM_POLICY"],
+  "optional_env_vars": ["STABLEWM_HOME", "LEWORLDMODEL_CACHE_DIR", "LEWORLDMODEL_DEVICE"],
+  "default_model": "pusht/lewm",
+  "device_support": ["cpu", "cuda", "mps"],
+  "host_owned_artifacts": ["LeWorldModel checkpoint", "checkpoint cache", "task-shaped tensors"],
+  "minimum_smoke_command": "scripts/lewm-real --checkpoint ~/.stable-wm/pusht/lewm_object.ckpt --device cpu",
+  "expected_success_signal": "AutoCostModel.get_cost(...) returns finite candidate costs",
+  "setup_hint": "install torch plus the official stable_worldmodel loading path in the host runtime",
+  "docs_path": "docs/src/providers/leworldmodel.md"
+}

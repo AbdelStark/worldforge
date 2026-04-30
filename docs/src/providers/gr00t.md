@@ -45,6 +45,11 @@ WorldForge never drives hardware directly.
 The adapter does not add Isaac GR00T, PyTorch, CUDA, TensorRT, checkpoints, or robot runtime
 dependencies to WorldForge's base install.
 
+Runtime manifest:
+`src/worldforge/providers/runtime_manifests/gr00t.json` records the policy-server environment,
+optional client settings, host-owned policy/runtime artifacts, minimum live smoke command, and
+expected policy-client health signal.
+
 ## Runtime Contract
 
 Direct construction with an injected test client or host-owned client:

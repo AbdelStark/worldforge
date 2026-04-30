@@ -45,6 +45,11 @@ WorldForge never drives hardware directly.
 The adapter does not add LeRobot, PyTorch, NumPy, checkpoints, simulation packages, or robot
 runtime dependencies to WorldForge's base install.
 
+Runtime manifest:
+`src/worldforge/providers/runtime_manifests/lerobot.json` records the policy path aliases,
+optional device/cache settings, host-owned checkpoint and translator artifacts, minimum smoke
+command, and expected policy selection signal.
+
 ## Runtime Contract
 
 Direct construction with an injected test policy or host-owned policy:

@@ -21,6 +21,10 @@ from ._config import env_value, first_env_value, optional_non_empty
 from ._policy import no_grad_context, prepare_model
 from ._tensor_validation import _is_sequence, _shape
 from .base import BaseProvider, ProviderError, ProviderProfileSpec
+from .runtime_manifest import (
+    missing_optional_dependency_detail,
+    missing_runtime_configuration_detail,
+)
 
 LEWORLDMODEL_OFFICIAL_REPO_URL = "https://github.com/lucas-maes/le-wm"
 LEWORLDMODEL_RUNTIME_API = "stable_worldmodel.policy.AutoCostModel"
@@ -136,7 +140,7 @@ class LeWorldModelProvider(BaseProvider):
         if not self.configured():
             return self._health(
                 started,
-                "missing LEWORLDMODEL_POLICY or LEWM_POLICY",
+                missing_runtime_configuration_detail("leworldmodel"),
                 healthy=False,
             )
         dependency_error = self._runtime_dependency_error()
@@ -155,7 +159,7 @@ class LeWorldModelProvider(BaseProvider):
             try:
                 importlib.import_module("torch")
             except ImportError:
-                return "missing optional dependency torch"
+                return missing_optional_dependency_detail("leworldmodel", "torch")
             except Exception as exc:
                 return (
                     "LeWorldModel optional dependency torch import failed ("
@@ -166,7 +170,13 @@ class LeWorldModelProvider(BaseProvider):
             try:
                 stable_worldmodel = importlib.import_module("stable_worldmodel")
             except ImportError as exc:
-                return _missing_import_detail("stable_worldmodel", exc)
+                return (
+                    missing_optional_dependency_detail(
+                        "leworldmodel",
+                        "stable_worldmodel",
+                    )
+                    + f" ({_missing_import_detail('stable_worldmodel', exc)})"
+                )
             except Exception as exc:
                 return (
                     "LeWorldModel optional dependency stable_worldmodel import failed ("

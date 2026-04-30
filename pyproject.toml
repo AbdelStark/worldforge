@@ -80,6 +80,9 @@ package = true
 packages = ["src/worldforge"]
 only-packages = true
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/worldforge/providers/runtime_manifests" = "worldforge/providers/runtime_manifests"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "/src",

@@ -40,6 +40,11 @@ The host owns:
 - `RUNWAYML_BASE_URL`: optional API endpoint override; defaults to
   `https://api.dev.runwayml.com`.
 
+Runtime manifest:
+`src/worldforge/providers/runtime_manifests/runway.json` records the credential aliases, optional
+endpoint override, host-owned artifact retention, minimum live smoke command, and expected Runway
+task signal.
+
 Programmatic construction:
 
 ```python

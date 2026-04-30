@@ -36,6 +36,10 @@ The host owns:
 - `COSMOS_BASE_URL`: required for auto-registration. Example: `http://localhost:8000`.
 - `NVIDIA_API_KEY`: optional bearer token sent as `Authorization: Bearer ...`.
 
+Runtime manifest:
+`src/worldforge/providers/runtime_manifests/cosmos.json` records the required endpoint, optional
+bearer token, host-owned artifacts, minimum live smoke command, and expected health signal.
+
 Programmatic construction:
 
 ```python
