@@ -33,9 +33,15 @@ from worldforge.models import (
     require_positive_int,
 )
 
-from ._config import env_value, first_env_value, optional_non_empty
+from ._config import (
+    ProviderConfigSummary,
+    config_source,
+    env_value,
+    first_env_value,
+    optional_non_empty,
+)
 from ._policy import json_object, no_grad_context, normalize_policy_action_candidates, prepare_model
-from .base import BaseProvider, ProviderError, ProviderProfileSpec
+from .base import BaseProvider, ProviderError, ProviderProfileSpec, _field_summary
 from .runtime_manifest import (
     missing_optional_dependency_detail,
     missing_runtime_configuration_detail,
@@ -194,6 +200,63 @@ class LeRobotPolicyProvider(BaseProvider):
 
     def configured(self) -> bool:
         return self._policy is not None or self.policy_path is not None
+
+    def config_summary(self) -> ProviderConfigSummary:
+        policy_source = next(
+            (env_name for env_name in LEROBOT_POLICY_PATH_ENV_ALIASES if env_value(env_name)),
+            None,
+        )
+        return ProviderConfigSummary(
+            provider=self.name,
+            configured=self.configured(),
+            fields=(
+                _field_summary(
+                    LEROBOT_POLICY_PATH_ENV_VAR,
+                    aliases=("LEROBOT_POLICY",),
+                    required=True,
+                    source=f"env:{policy_source}"
+                    if policy_source
+                    else config_source(
+                        LEROBOT_POLICY_PATH_ENV_VAR,
+                        direct=self.policy_path is not None or self._policy is not None,
+                    ),
+                    present=self.policy_path is not None or self._policy is not None,
+                ),
+                _field_summary(
+                    LEROBOT_POLICY_TYPE_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        LEROBOT_POLICY_TYPE_ENV_VAR,
+                        direct=self.policy_type is not None,
+                    ),
+                    present=self.policy_type is not None,
+                ),
+                _field_summary(
+                    LEROBOT_DEVICE_ENV_VAR,
+                    required=False,
+                    source=config_source(LEROBOT_DEVICE_ENV_VAR, direct=self.device is not None),
+                    present=self.device is not None,
+                ),
+                _field_summary(
+                    LEROBOT_CACHE_DIR_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        LEROBOT_CACHE_DIR_ENV_VAR,
+                        direct=self.cache_dir is not None,
+                    ),
+                    present=self.cache_dir is not None,
+                ),
+                _field_summary(
+                    LEROBOT_EMBODIMENT_TAG_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        LEROBOT_EMBODIMENT_TAG_ENV_VAR,
+                        direct=self.embodiment_tag is not None,
+                    ),
+                    present=self.embodiment_tag is not None,
+                ),
+            ),
+        )
 
     def health(self) -> ProviderHealth:
         started = perf_counter()

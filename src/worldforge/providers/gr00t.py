@@ -16,9 +16,16 @@ from worldforge.models import (
     ProviderHealth,
 )
 
-from ._config import env_value, optional_bool, optional_non_empty, optional_positive_int
+from ._config import (
+    ProviderConfigSummary,
+    config_source,
+    env_value,
+    optional_bool,
+    optional_non_empty,
+    optional_positive_int,
+)
 from ._policy import json_compatible, json_object, normalize_policy_action_candidates
-from .base import BaseProvider, ProviderError, ProviderProfileSpec
+from .base import BaseProvider, ProviderError, ProviderProfileSpec, _field_summary
 from .runtime_manifest import (
     missing_optional_dependency_detail,
     missing_runtime_configuration_detail,
@@ -134,6 +141,72 @@ class GrootPolicyClientProvider(BaseProvider):
 
     def configured(self) -> bool:
         return self._policy_client is not None or self.host is not None
+
+    def config_summary(self) -> ProviderConfigSummary:
+        return ProviderConfigSummary(
+            provider=self.name,
+            configured=self.configured(),
+            fields=(
+                _field_summary(
+                    GROOT_POLICY_HOST_ENV_VAR,
+                    required=True,
+                    source=config_source(
+                        GROOT_POLICY_HOST_ENV_VAR,
+                        direct=self.host is not None or self._policy_client is not None,
+                    ),
+                    present=self.host is not None or self._policy_client is not None,
+                ),
+                _field_summary(
+                    GROOT_POLICY_PORT_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        GROOT_POLICY_PORT_ENV_VAR,
+                        direct=self.port != DEFAULT_GROOT_POLICY_PORT,
+                        default=True,
+                    ),
+                    present=self.port != DEFAULT_GROOT_POLICY_PORT,
+                ),
+                _field_summary(
+                    GROOT_POLICY_TIMEOUT_MS_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        GROOT_POLICY_TIMEOUT_MS_ENV_VAR,
+                        direct=self.timeout_ms != DEFAULT_GROOT_POLICY_TIMEOUT_MS,
+                        default=True,
+                    ),
+                    present=self.timeout_ms != DEFAULT_GROOT_POLICY_TIMEOUT_MS,
+                ),
+                _field_summary(
+                    GROOT_POLICY_API_TOKEN_ENV_VAR,
+                    required=False,
+                    secret=True,
+                    source=config_source(
+                        GROOT_POLICY_API_TOKEN_ENV_VAR,
+                        direct=self.api_token is not None,
+                    ),
+                    present=self.api_token is not None,
+                ),
+                _field_summary(
+                    GROOT_POLICY_STRICT_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        GROOT_POLICY_STRICT_ENV_VAR,
+                        direct=self.strict,
+                        default=True,
+                    ),
+                    present=self.strict,
+                ),
+                _field_summary(
+                    GROOT_EMBODIMENT_TAG_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        GROOT_EMBODIMENT_TAG_ENV_VAR,
+                        direct=self.embodiment_tag is not None,
+                    ),
+                    present=self.embodiment_tag is not None,
+                ),
+            ),
+        )
 
     def health(self) -> ProviderHealth:
         started = perf_counter()

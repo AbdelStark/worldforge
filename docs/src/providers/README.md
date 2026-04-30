@@ -103,6 +103,18 @@ uv run worldforge doctor --capability score
 configuration visible before a workflow fails. Use `--registered-only` when a process needs to
 check only the providers enabled for that process.
 
+Providers also expose `config_summary()` for issue evidence and host diagnostics. It reports
+whether documented fields are present, where they came from (`env:<NAME>`, `direct`, `default`, or
+`unset`), whether the field is required, and whether it is secret-like. It never returns raw values,
+tokens, endpoint strings, checkpoint paths, or constructor arguments.
+
+```python
+from worldforge.providers import RunwayProvider
+
+summary = RunwayProvider().config_summary().to_dict()
+print(summary["fields"])
+```
+
 ## Runtime Manifests
 
 Real optional providers also have packaged JSON runtime manifests in
@@ -126,6 +138,8 @@ Schema version `1` includes:
 
 WorldForge never auto-installs optional provider runtimes from these manifests. Missing optional
 dependencies stay explicit in `health()` output and point back to the manifest-backed smoke path.
+Manifests also provide the same value-free `config_summary()` shape for tools that need to inspect
+declared provider env vars without importing or constructing the provider runtime.
 
 ## Runtime Ownership
 

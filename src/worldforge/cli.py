@@ -881,6 +881,7 @@ def _cmd_provider_info(args: argparse.Namespace, forge: WorldForge) -> int:
         "registered": name in forge.providers(),
         "profile": forge.provider_profile(name).to_dict(),
         "health": forge.provider_health(name).to_dict(),
+        "config_summary": forge.provider_config_summary(name).to_dict(),
     }
     if name in forge.providers():
         payload["info"] = forge.provider_info(name).to_dict()

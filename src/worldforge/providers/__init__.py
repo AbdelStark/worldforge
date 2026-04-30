@@ -7,6 +7,7 @@ from worldforge.models import (
     RetryPolicy,
 )
 
+from ._config import ConfigFieldSummary, ProviderConfigSummary
 from .base import (
     BaseProvider,
     PredictionPayload,
@@ -28,6 +29,7 @@ from .runway import RunwayProvider
 __all__ = [
     "PROVIDER_CATALOG",
     "BaseProvider",
+    "ConfigFieldSummary",
     "CosmosProvider",
     "GenieProvider",
     "GrootPolicyClientProvider",
@@ -37,6 +39,7 @@ __all__ = [
     "MockProvider",
     "PredictionPayload",
     "ProviderCatalogEntry",
+    "ProviderConfigSummary",
     "ProviderError",
     "ProviderEvent",
     "ProviderProfileSpec",

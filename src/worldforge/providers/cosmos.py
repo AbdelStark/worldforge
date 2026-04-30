@@ -18,8 +18,14 @@ from worldforge.models import (
     VideoClip,
 )
 
-from ._config import env_value
-from .base import ProviderError, ProviderProfileSpec, RemoteProvider, validate_generation_request
+from ._config import ProviderConfigSummary, config_source, env_value
+from .base import (
+    ProviderError,
+    ProviderProfileSpec,
+    RemoteProvider,
+    _field_summary,
+    validate_generation_request,
+)
 from .http_utils import asset_to_uri, parse_size, request_json_with_policy
 
 
@@ -150,6 +156,28 @@ class CosmosProvider(RemoteProvider):
 
     def configured(self) -> bool:
         return bool(self._resolved_base_url())
+
+    def config_summary(self) -> ProviderConfigSummary:
+        api_key_from_env = env_value("NVIDIA_API_KEY") is not None
+        return ProviderConfigSummary(
+            provider=self.name,
+            configured=self.configured(),
+            fields=(
+                _field_summary(
+                    "COSMOS_BASE_URL",
+                    required=True,
+                    source=config_source("COSMOS_BASE_URL", direct=self._base_url is not None),
+                    present=self._resolved_base_url() is not None,
+                ),
+                _field_summary(
+                    "NVIDIA_API_KEY",
+                    required=False,
+                    secret=True,
+                    source="env:NVIDIA_API_KEY" if api_key_from_env else "unset",
+                    present=api_key_from_env,
+                ),
+            ),
+        )
 
     def _resolved_base_url(self) -> str | None:
         return self._base_url or env_value("COSMOS_BASE_URL")

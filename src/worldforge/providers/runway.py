@@ -19,11 +19,12 @@ from worldforge.models import (
     require_positive_int,
 )
 
-from ._config import env_value, first_env_value
+from ._config import ProviderConfigSummary, config_source, env_value, first_env_value
 from .base import (
     ProviderError,
     ProviderProfileSpec,
     RemoteProvider,
+    _field_summary,
     validate_generation_request,
     validate_transfer_request,
 )
@@ -267,6 +268,37 @@ class RunwayProvider(RemoteProvider):
 
     def configured(self) -> bool:
         return bool(self._api_key())
+
+    def config_summary(self) -> ProviderConfigSummary:
+        api_source = next(
+            (
+                env_name
+                for env_name in ("RUNWAYML_API_SECRET", "RUNWAY_API_SECRET")
+                if env_value(env_name) is not None
+            ),
+            None,
+        )
+        base_url_from_env = env_value("RUNWAYML_BASE_URL") is not None
+        return ProviderConfigSummary(
+            provider=self.name,
+            configured=self.configured(),
+            fields=(
+                _field_summary(
+                    "RUNWAYML_API_SECRET",
+                    aliases=("RUNWAY_API_SECRET",),
+                    required=True,
+                    secret=True,
+                    source=f"env:{api_source}" if api_source else "unset",
+                    present=api_source is not None,
+                ),
+                _field_summary(
+                    "RUNWAYML_BASE_URL",
+                    required=False,
+                    source=config_source("RUNWAYML_BASE_URL", default=True),
+                    present=base_url_from_env,
+                ),
+            ),
+        )
 
     def _api_key(self) -> str | None:
         return first_env_value(("RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"))

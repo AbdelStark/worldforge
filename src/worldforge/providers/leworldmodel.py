@@ -17,10 +17,16 @@ from worldforge.models import (
     require_finite_number,
 )
 
-from ._config import env_value, first_env_value, optional_non_empty
+from ._config import (
+    ProviderConfigSummary,
+    config_source,
+    env_value,
+    first_env_value,
+    optional_non_empty,
+)
 from ._policy import no_grad_context, prepare_model
 from ._tensor_validation import _is_sequence, _shape
-from .base import BaseProvider, ProviderError, ProviderProfileSpec
+from .base import BaseProvider, ProviderError, ProviderProfileSpec, _field_summary
 from .runtime_manifest import (
     missing_optional_dependency_detail,
     missing_runtime_configuration_detail,
@@ -134,6 +140,45 @@ class LeWorldModelProvider(BaseProvider):
 
     def configured(self) -> bool:
         return self.policy is not None
+
+    def config_summary(self) -> ProviderConfigSummary:
+        policy_source = next(
+            (env_name for env_name in LEWORLDMODEL_POLICY_ENV_ALIASES if env_value(env_name)),
+            None,
+        )
+        return ProviderConfigSummary(
+            provider=self.name,
+            configured=self.configured(),
+            fields=(
+                _field_summary(
+                    LEWORLDMODEL_POLICY_ENV_VAR,
+                    aliases=("LEWM_POLICY",),
+                    required=True,
+                    source=f"env:{policy_source}"
+                    if policy_source
+                    else config_source(LEWORLDMODEL_POLICY_ENV_VAR, direct=self.policy is not None),
+                    present=self.policy is not None,
+                ),
+                _field_summary(
+                    LEWORLDMODEL_CACHE_DIR_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        LEWORLDMODEL_CACHE_DIR_ENV_VAR,
+                        direct=self.cache_dir is not None,
+                    ),
+                    present=self.cache_dir is not None,
+                ),
+                _field_summary(
+                    LEWORLDMODEL_DEVICE_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        LEWORLDMODEL_DEVICE_ENV_VAR,
+                        direct=self.device is not None,
+                    ),
+                    present=self.device is not None,
+                ),
+            ),
+        )
 
     def health(self) -> ProviderHealth:
         started = perf_counter()

@@ -29,6 +29,12 @@ from worldforge.models import (
     require_probability,
 )
 
+from ._config import (
+    ConfigFieldSummary,
+    ProviderConfigSummary,
+    config_field_summary,
+)
+
 
 class ProviderError(RuntimeError):
     """Raised when a provider cannot satisfy a request."""
@@ -245,6 +251,29 @@ class BaseProvider:
             return all(bool(os.environ.get(env_var)) for env_var in self.required_env_vars)
         return True
 
+    def config_summary(self) -> ProviderConfigSummary:
+        """Return value-free provider configuration status safe for diagnostics.
+
+        The summary reports names, aliases, source, presence, and validation status only.
+        It never includes raw environment values, endpoints, tokens, checkpoint paths, or
+        constructor-provided values.
+        """
+
+        names = (self.env_var,) if self.env_var is not None else tuple(self.required_env_vars)
+        fields = tuple(
+            config_field_summary(
+                name,
+                required=True,
+                secret=_looks_secret_name(name),
+            )
+            for name in names
+        )
+        return ProviderConfigSummary(
+            provider=self.name,
+            configured=self.configured(),
+            fields=fields,
+        )
+
     def health(self) -> ProviderHealth:
         started = perf_counter()
         healthy = self.configured()
@@ -405,3 +434,35 @@ class RemoteProvider(BaseProvider):
         if self.request_policy is None:
             raise ProviderError(f"Provider '{self.name}' does not define a request policy.")
         return self.request_policy
+
+
+def _looks_secret_name(name: str) -> bool:
+    return any(
+        marker in name.lower()
+        for marker in ("api_key", "api_secret", "secret", "token", "password", "credential")
+    )
+
+
+def _field_summary(
+    name: str,
+    *,
+    aliases: tuple[str, ...] = (),
+    required: bool = True,
+    secret: bool = False,
+    source: str | None = None,
+    present: bool | None = None,
+    valid: bool | None = None,
+    detail: str = "",
+) -> ConfigFieldSummary:
+    """Internal adapter helper kept here so providers can share summary semantics."""
+
+    return config_field_summary(
+        name,
+        aliases=aliases,
+        required=required,
+        secret=secret,
+        source=source,
+        present=present,
+        valid=valid,
+        detail=detail,
+    )

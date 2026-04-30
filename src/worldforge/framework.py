@@ -69,6 +69,7 @@ from worldforge.models import (
 from worldforge.providers import (
     BaseProvider,
     PredictionPayload,
+    ProviderConfigSummary,
     ProviderError,
     validate_generation_request,
     validate_transfer_request,
@@ -1774,6 +1775,17 @@ class WorldForge:
             legacy_provider=legacy_provider,
             wrappers=wrappers,
         )
+
+    def provider_config_summary(self, name: str) -> ProviderConfigSummary:
+        """Return value-free configuration status for a registered or known provider."""
+
+        provider_name = _require_non_empty_text(name, name="Provider name")
+        legacy_provider = self._registered_or_known_provider(provider_name, include_known=True)
+        if legacy_provider is not None:
+            return legacy_provider.config_summary()
+        if self._capability_wrappers_for_name(provider_name):
+            return ProviderConfigSummary(provider=provider_name, configured=True, fields=())
+        raise ProviderError(f"Provider '{provider_name}' is unknown.")
 
     def provider_healths(self, capability: str | None = None) -> list[ProviderHealth]:
         names = self.providers()

@@ -13,5 +13,11 @@ released source distributions. Host-owned optional runtimes, CUDA stacks, robot 
 checkpoints, datasets, credentials, and third-party provider services remain outside the base
 package security boundary.
 
+Provider diagnostics are designed to be value-free. `config_summary()` reports field names,
+presence, source, validation status, and secret classification without returning raw values.
+Provider events and health details redact common bearer/API key/password/signature shapes and strip
+query strings from URLs before serialization. Hosts should still avoid putting raw secrets into
+custom exception messages, artifact metadata, or issue attachments.
+
 For scope, response targets, and supported versions, see the canonical
 [Security Policy](https://github.com/AbdelStark/worldforge/blob/main/SECURITY.md).

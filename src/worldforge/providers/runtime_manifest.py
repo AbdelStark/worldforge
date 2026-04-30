@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import resources
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 from worldforge.models import WorldForgeError
 
 from . import runtime_manifests
+from ._config import ProviderConfigSummary, config_field_summary
 
 MANIFEST_PACKAGE = "worldforge.providers.runtime_manifests"
 _MANIFEST_FILES = resources.files(runtime_manifests)
@@ -98,6 +100,41 @@ class ProviderRuntimeManifest:
         required = " or ".join(self.required_env_vars)
         return f"missing {required}; configure runtime using {self.docs_path}"
 
+    def config_summary(
+        self,
+        *,
+        configured: bool | None = None,
+        environ: Mapping[str, str] | None = None,
+    ) -> ProviderConfigSummary:
+        """Return manifest-declared env presence without exposing values."""
+
+        fields = [
+            config_field_summary(
+                self.required_env_vars[0],
+                aliases=self.required_env_vars[1:],
+                required=True,
+                secret=_looks_secret_name(self.required_env_vars[0]),
+                environ=environ,
+            )
+        ]
+        fields.extend(
+            config_field_summary(
+                env_var,
+                required=False,
+                secret=_looks_secret_name(env_var),
+                environ=environ,
+            )
+            for env_var in self.optional_env_vars
+        )
+        resolved_configured = configured
+        if resolved_configured is None:
+            resolved_configured = fields[0].present and all(field.valid for field in fields)
+        return ProviderConfigSummary(
+            provider=self.provider,
+            configured=resolved_configured,
+            fields=tuple(fields),
+        )
+
 
 def load_runtime_manifest(provider: str) -> ProviderRuntimeManifest:
     """Load one provider runtime manifest by provider name."""
@@ -136,6 +173,13 @@ def missing_runtime_configuration_detail(provider: str) -> str:
     """Return a manifest-backed health detail for missing runtime configuration."""
 
     return load_runtime_manifest(provider).missing_configuration_detail()
+
+
+def _looks_secret_name(name: str) -> bool:
+    return any(
+        marker in name.lower()
+        for marker in ("api_key", "api_secret", "secret", "token", "password", "credential")
+    )
 
 
 def _required_str(payload: dict[str, Any], field: str, *, source: str) -> str:
