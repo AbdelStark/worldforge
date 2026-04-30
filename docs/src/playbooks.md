@@ -589,10 +589,27 @@ uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-
 rm -f "$tmp_req"
 ```
 
+Finally generate the release evidence bundle:
+
+```bash
+uv run python scripts/generate_release_evidence.py \
+  --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
+  --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
+  --artifact dist/worldforge_ai-<version>-py3-none-any.whl
+```
+
+The default report path is `.worldforge/release-evidence/release-evidence.md`. The generator does
+not require provider credentials; absent live smokes are listed explicitly as `not configured` or
+`skipped`, and passed/failed/skipped live runs link back to their preserved `run_manifest.json`
+files and artifact summaries. Use `--known-limitation` for release-scoped caveats that should
+travel with the bundle.
+
 Success signal:
 
 - validation passes from a clean checkout.
 - generated provider docs have no drift and the Pages site builds in strict mode.
+- release evidence links validation expectations, optional live-smoke manifests, benchmark
+  artifacts, distribution artifacts, and known limitations.
 - README, docs, changelog, and `AGENTS.md` reflect public behavior.
 - no optional runtime dependency, checkpoint, credential, generated artifact, or `.env` file is
   committed accidentally.
