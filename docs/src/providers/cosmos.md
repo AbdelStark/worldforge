@@ -111,20 +111,52 @@ type, and base URL.
 - health checks retry with backoff
 - the request timeout defaults to 300 seconds unless overridden
 
+Provider events are emitted for health and generation HTTP calls. `operation`, `phase`,
+`status_code`, `attempt`, and sanitized `target` show whether a failure was an auth response,
+transport timeout, retryable health read, or successful request without exposing bearer tokens or
+response-body secrets.
+
 Pass a custom `request_policy=` when the host needs different timeout or retry behavior.
 
 ## Failure Modes
 
 - Missing `COSMOS_BASE_URL` leaves the provider unregistered.
-- Health checks fail if `/v1/health/ready` is unreachable or returns malformed JSON.
+- Health checks fail if `/v1/health/ready` is unreachable, returns malformed JSON, or omits the
+  required string `status` field. First triage step: verify the endpoint directly with
+  `curl "$COSMOS_BASE_URL/v1/health/ready"` from the same host.
 - Generation fails if duration, size, or FPS inputs are invalid.
 - Generation fails if the upstream response is missing `b64_video` or returns invalid base64.
+- Generation fails with a task-failed message when Cosmos returns a failed/error status payload.
+- Generation fails with an unsupported-artifact message when Cosmos returns artifact URLs instead
+  of inline `b64_video`; this adapter intentionally does not persist or download provider-owned
+  artifact URLs.
 - HTTP transport failures and non-success statuses are raised as `ProviderError`.
+
+## Live Smoke Evidence
+
+Prepared hosts can run a real generate smoke without changing default CI:
+
+```bash
+COSMOS_BASE_URL=http://localhost:8000 \
+  uv run worldforge-smoke-cosmos \
+    --output .worldforge/runs/cosmos-live/artifacts/cosmos.mp4 \
+    --summary-json .worldforge/runs/cosmos-live/results/summary.json \
+    --run-manifest .worldforge/runs/cosmos-live/run_manifest.json
+```
+
+The smoke writes generated video bytes to the requested artifact path and can write a sanitized
+`run_manifest.json` with value-free environment presence, runtime manifest id, event count,
+input shape summary, result digest, and artifact path. Hosts own retention of the generated media;
+copy the artifact out of temporary storage immediately when it is needed for release or issue
+evidence.
 
 ## Tests
 
 - `tests/test_remote_video_providers.py` covers Cosmos health parsing, generation success,
-  malformed health payloads, malformed generation payloads, invalid seeds, and size validation.
+  malformed health payloads, malformed generation payloads, invalid seeds, failed-task payloads,
+  unsupported artifact payloads, auth failures, timeout event metadata, and size validation.
+- `tests/test_cosmos_smoke_script.py` covers the manual live-smoke entry point without making
+  network calls.
 - `tests/fixtures/providers/cosmos_*.json` stores the response fixtures used by parser tests.
 
 ## Primary References

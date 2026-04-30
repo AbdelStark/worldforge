@@ -8,8 +8,8 @@
   "default_model": "Cosmos-Predict1-7B-Text2World",
   "device_support": ["remote"],
   "host_owned_artifacts": ["generated video bytes", "artifact retention path"],
-  "minimum_smoke_command": "WORLD_FORGE_RUN_LIVE=1 COSMOS_BASE_URL=https://cosmos.example uv run pytest tests/test_remote_video_providers.py -m live --provider-profile cosmos",
-  "expected_success_signal": "Cosmos health returns ready and generate() returns a validated VideoClip",
+  "minimum_smoke_command": "COSMOS_BASE_URL=https://cosmos.example uv run worldforge-smoke-cosmos --run-manifest .worldforge/runs/cosmos-live/run_manifest.json",
+  "expected_success_signal": "Cosmos health returns ready, generate() returns a validated VideoClip, and run_manifest.json is written when requested",
   "setup_hint": "run against a host-owned Cosmos endpoint; base package does not install or launch Cosmos",
   "docs_path": "docs/src/providers/cosmos.md"
 }

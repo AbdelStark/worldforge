@@ -452,6 +452,12 @@ COSMOS_BASE_URL=http://localhost:8000 \
   uv run pytest -m "live and network and provider_profile" \
     --run-live --run-network --provider-profile cosmos
 
+COSMOS_BASE_URL=http://localhost:8000 \
+  uv run worldforge-smoke-cosmos \
+    --output .worldforge/runs/cosmos-live/artifacts/cosmos.mp4 \
+    --summary-json .worldforge/runs/cosmos-live/results/summary.json \
+    --run-manifest .worldforge/runs/cosmos-live/run_manifest.json
+
 # Runway: requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET.
 RUNWAYML_API_SECRET=... \
   uv run pytest -m "live and network and credentialed and provider_profile" \

@@ -66,8 +66,25 @@ class CosmosGenerationResponse:
         *,
         provider_name: str,
     ) -> CosmosGenerationResponse:
+        status = payload.get("status")
+        if isinstance(status, str) and status.strip().lower() in {
+            "failed",
+            "failure",
+            "error",
+            "rejected",
+        }:
+            reason = _cosmos_error_detail(payload)
+            raise ProviderError(f"Provider '{provider_name}' generation task failed: {reason}")
+
         b64_video = payload.get("b64_video")
         if not isinstance(b64_video, str) or not b64_video.strip():
+            if _contains_artifact_reference(payload):
+                raise ProviderError(
+                    f"Provider '{provider_name}' generation response returned artifact "
+                    "references instead of inline b64_video. This adapter only accepts "
+                    "inline base64 video payloads; the host must use a compatible Cosmos "
+                    "deployment or add an explicit artifact downloader."
+                )
             raise ProviderError(
                 f"Provider '{provider_name}' generation response field 'b64_video' "
                 "must be a non-empty base64 string."
@@ -100,6 +117,29 @@ class CosmosGenerationResponse:
             raise ProviderError(
                 f"Provider '{provider_name}' returned an invalid base64 video payload."
             ) from exc
+
+
+def _cosmos_error_detail(payload: dict[str, object]) -> str:
+    for key in ("error", "message", "detail", "reason"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            nested_message = value.get("message") or value.get("detail") or value.get("reason")
+            if isinstance(nested_message, str) and nested_message.strip():
+                return nested_message.strip()
+    return "upstream returned failed status"
+
+
+def _contains_artifact_reference(payload: dict[str, object]) -> bool:
+    for key in ("artifact_url", "artifact_uri", "output_url", "video_url"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    artifacts = payload.get("artifacts") or payload.get("outputs")
+    if isinstance(artifacts, list):
+        return any(isinstance(item, str | dict) for item in artifacts)
+    return False
 
 
 class CosmosProvider(RemoteProvider):

@@ -153,6 +153,20 @@ def test_cosmos_provider_health_and_generate() -> None:
     assert clip.metadata["upsampled_prompt"] == "drive through the city, cinematic detail"
 
 
+def test_cosmos_provider_reports_malformed_health_fixture() -> None:
+    provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=_fixture("cosmos_health_malformed.json"))
+        ),
+    )
+
+    health = provider.health()
+
+    assert health.healthy is False
+    assert "healthcheck response field 'status'" in health.details
+
+
 def test_runway_provider_health_generate_and_transfer(monkeypatch) -> None:
     monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
 
@@ -287,6 +301,30 @@ def test_cosmos_provider_rejects_malformed_response_fixtures() -> None:
     with pytest.raises(ProviderError, match="field 'seed'"):
         provider.generate("drive through the city", duration_seconds=2.0)
 
+    def failed_task_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/infer":
+            return httpx.Response(200, json=_fixture("cosmos_generate_failed_task.json"))
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        transport=httpx.MockTransport(failed_task_handler),
+    )
+    with pytest.raises(ProviderError, match="generation task failed: model rejected prompt"):
+        provider.generate("drive through the city", duration_seconds=2.0)
+
+    def unsupported_artifact_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/infer":
+            return httpx.Response(200, json=_fixture("cosmos_generate_unsupported_artifact.json"))
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        transport=httpx.MockTransport(unsupported_artifact_handler),
+    )
+    with pytest.raises(ProviderError, match="returned artifact references"):
+        provider.generate("drive through the city", duration_seconds=2.0)
+
     provider = CosmosProvider(base_url="http://cosmos.test")
     with pytest.raises(ProviderError, match="multiples of 8"):
         provider.generate(
@@ -326,6 +364,49 @@ def test_cosmos_provider_retries_transient_health_failure() -> None:
         ("healthcheck", "retry"),
         ("healthcheck", "success"),
     ]
+
+
+def test_cosmos_provider_events_cover_auth_failures_and_timeouts() -> None:
+    auth_events: list[ProviderEvent] = []
+
+    provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        event_handler=auth_events.append,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                401,
+                text='{"message":"bad token","api_key":"secret-token"}',
+            )
+        ),
+    )
+
+    with pytest.raises(ProviderError, match="generation request failed with status 401"):
+        provider.generate("drive through the city", duration_seconds=2.0)
+
+    assert [(event.operation, event.phase, event.status_code) for event in auth_events] == [
+        ("generation request", "failure", 401)
+    ]
+    assert "secret-token" not in json.dumps([event.to_dict() for event in auth_events])
+
+    timeout_events: list[ProviderEvent] = []
+
+    def timeout_handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("cosmos timed out", request=request)
+
+    provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        event_handler=timeout_events.append,
+        transport=httpx.MockTransport(timeout_handler),
+    )
+
+    with pytest.raises(ProviderError, match="failed after 1 attempt"):
+        provider.generate("drive through the city", duration_seconds=2.0)
+
+    assert [(event.operation, event.phase) for event in timeout_events] == [
+        ("generation request", "failure")
+    ]
+    assert timeout_events[0].method == "POST"
+    assert timeout_events[0].target == "/v1/infer"
 
 
 def test_runway_provider_rejects_invalid_runtime_inputs(monkeypatch) -> None:

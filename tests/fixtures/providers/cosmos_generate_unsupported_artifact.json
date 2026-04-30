@@ -1,0 +1,9 @@
+{
+  "status": "succeeded",
+  "artifacts": [
+    {
+      "type": "video/mp4",
+      "url": "https://cosmos.example/artifacts/video.mp4?signature=secret"
+    }
+  ]
+}

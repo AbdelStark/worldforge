@@ -367,7 +367,9 @@ readiness, and safety certification.
   provider, and continue serving cached/read-only paths without WorldForge owning alert channels
   or upstream SLAs.
 - Cosmos and Runway validate typed upstream response payloads before creating returned media
-  objects.
+  objects. Parser fixtures cover malformed upstream payloads, auth failures, failed-task payloads,
+  timeout event metadata, and unsupported artifact-reference responses so release evidence can cite
+  the exact failure shape.
 - Runway artifact downloads fail explicitly on expired/unavailable URLs, empty downloads, and
   explicit unsupported content types.
 - LeWorldModel scoring fails explicitly when optional dependencies are unavailable, the checkpoint

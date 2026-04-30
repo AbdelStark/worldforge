@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "error": {
+    "message": "model rejected prompt"
+  }
+}
