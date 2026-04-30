@@ -362,15 +362,14 @@ observe state
 | [`leworldmodel`](https://abdelstark.github.io/worldforge/providers/leworldmodel/) | `stable` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
 | [`gr00t`](https://abdelstark.github.io/worldforge/providers/gr00t/) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |
 | [`lerobot`](https://abdelstark.github.io/worldforge/providers/lerobot/) | `stable` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | host installs LeRobot and compatible policy checkpoints |
-| `jepa` | `scaffold` | scaffold | `JEPA_MODEL_PATH` | capability-fail-closed reservation, not a real JEPA runtime |
+| [`jepa`](https://abdelstark.github.io/worldforge/providers/jepa/) | `experimental` | `score` | `JEPA_MODEL_NAME` | host supplies torch, facebookresearch/jepa-wms runtime dependencies, and task preprocessing |
 | [`genie`](https://abdelstark.github.io/worldforge/providers/genie/) | `scaffold` | scaffold | `GENIE_API_KEY` | capability-fail-closed reservation; Project Genie has no supported automation API contract |
 <!-- provider-catalog-readme:end -->
 
-`jepa` and `genie` are capability-closed reservations. Executable scaffold candidates stay outside
+`jepa` is a score-only adapter for host-owned `facebookresearch/jepa-wms` torch-hub runtimes.
+`genie` remains a capability-closed reservation. Executable scaffold candidates stay outside
 package exports and auto-registration until they have a validated runtime path, typed parser
-coverage, request limits, and docs. The active candidate is
-[`jepa-wms`](https://abdelstark.github.io/worldforge/providers/jepa-wms/), a direct-construction scaffold targeting future
-`facebookresearch/jepa-wms` score-provider work.
+coverage, request limits, and docs.
 
 ## Architecture
 
@@ -508,8 +507,9 @@ needs to tighten.
 
 **Known limits**
 
-- `jepa` and `genie` are capability-fail-closed scaffold adapters
-- `jepa-wms` is a direct-construction candidate, not exported or auto-registered
+- `jepa` requires host-owned PyTorch, JEPA-WMS dependencies, checkpoints, and task preprocessing
+- `genie` is a capability-fail-closed scaffold adapter
+- `jepa-wms` remains a direct-construction candidate for host experiments
 - local JSON persistence is single-writer only
 - evaluation scores are contract signals, not physical-fidelity or safety claims
 - optional runtimes, checkpoints, trace export, dashboards, and production telemetry stay

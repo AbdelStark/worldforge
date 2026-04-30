@@ -35,8 +35,8 @@ def test_provider_catalog_instantiates_known_provider_profiles() -> None:
     assert profiles["leworldmodel"].capabilities.score is True
     assert profiles["gr00t"].capabilities.policy is True
     assert profiles["lerobot"].capabilities.policy is True
-    assert profiles["jepa"].implementation_status == "scaffold"
-    assert profiles["jepa"].capabilities.enabled_names() == []
+    assert profiles["jepa"].implementation_status == "experimental"
+    assert profiles["jepa"].capabilities.enabled_names() == ["score"]
     assert profiles["genie"].implementation_status == "scaffold"
     assert profiles["genie"].capabilities.enabled_names() == []
 
@@ -57,7 +57,7 @@ def test_provider_catalog_statuses_match_promotion_gate() -> None:
         "leworldmodel": "stable",
         "gr00t": "beta",
         "lerobot": "stable",
-        "jepa": "scaffold",
+        "jepa": "experimental",
         "genie": "scaffold",
     }
     for profile in profiles.values():

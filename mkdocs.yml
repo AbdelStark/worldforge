@@ -57,6 +57,7 @@ nav:
       - Cosmos: providers/cosmos.md
       - Genie: providers/genie.md
       - GR00T: providers/gr00t.md
+      - JEPA: providers/jepa.md
       - JEPA-WMS: providers/jepa-wms.md
       - LeWorldModel: providers/leworldmodel.md
       - LeRobot: providers/lerobot.md

@@ -49,6 +49,9 @@ def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatc
         "GROOT_POLICY_HOST",
         "LEROBOT_POLICY_PATH",
         "LEROBOT_POLICY",
+        "JEPA_MODEL_NAME",
+        "JEPA_MODEL_PATH",
+        "JEPA_DEVICE",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(
@@ -73,7 +76,9 @@ def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatc
     assert payload["mock"]["status"] == "configured"
     assert payload["cosmos"]["status"] == "missing_credentials"
     assert payload["runway"]["missing_env_vars"] == ["RUNWAYML_API_SECRET"]
-    assert payload["jepa"]["status"] == "scaffold"
+    assert payload["jepa"]["status"] == "missing_credentials"
+    assert payload["jepa"]["capabilities"] == ["score"]
+    assert payload["jepa"]["missing_env_vars"] == ["JEPA_MODEL_NAME"]
     assert payload["genie"]["status"] == "scaffold"
     assert "worldforge-smoke-runway" in payload["runway"]["smoke_command"]
 

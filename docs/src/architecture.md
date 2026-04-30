@@ -274,7 +274,7 @@ WorldForge(auto_register_remote=True)
   |-- runway            if RUNWAYML_API_SECRET or RUNWAY_API_SECRET is set
   |-- leworldmodel      if LEWORLDMODEL_POLICY or LEWM_POLICY is set
   |-- gr00t             if GROOT_POLICY_HOST is set
-  |-- jepa              if JEPA_MODEL_PATH is set
+  |-- jepa              if JEPA_MODEL_NAME is set
   `-- genie             if GENIE_API_KEY is set
 ```
 
@@ -557,7 +557,7 @@ In-repo provider mapping:
 | `lerobot` | optional runtime adapter | policy | host-owned LeRobot policy checkpoint |
 | `cosmos` | HTTP adapter | generate | remote physical-AI video foundation model API |
 | `runway` | HTTP adapter | generate, transfer | remote video generation API |
-| `jepa` | scaffold | capability-fail-closed | reservation for future JEPA provider work |
+| `jepa` | optional runtime adapter | score | host-owned `facebookresearch/jepa-wms` torch-hub runtime |
 | `genie` | scaffold | capability-fail-closed | reservation for future interactive simulator work |
 
 `src/worldforge/providers/catalog.py` owns the in-repo provider factory list and auto-registration

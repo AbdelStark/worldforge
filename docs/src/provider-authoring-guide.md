@@ -212,7 +212,7 @@ Current classifications:
 | `leworldmodel` | `stable` | Recommended score adapter for the official LeWM loading path; prepared hosts own torch, `stable_worldmodel`, checkpoints, and task preprocessing. |
 | `gr00t` | `beta` | Real remote PolicyClient boundary with fixture-backed failure coverage; prepared hosts own the reachable server, credentials, translator, and robot runtime. |
 | `lerobot` | `stable` | Recommended embodied policy adapter for the LeRobot `PreTrainedPolicy` path; prepared hosts own LeRobot, checkpoints, translators, and robot runtime. |
-| `jepa` | `scaffold` | Fail-closed reservation until a real upstream JEPA runtime and single capability are selected. |
+| `jepa` | `experimental` | Score-only adapter for host-owned `facebookresearch/jepa-wms` torch-hub runtimes. |
 | `genie` | `scaffold` | Fail-closed reservation until a concrete upstream runtime/API contract exists. |
 | `jepa-wms` | `scaffold` | Direct-construction candidate only; not exported or auto-registered until runtime limits and smoke evidence are credible. |
 

@@ -48,6 +48,27 @@ Validation path:
 Why now: it extends the JEPA-centered planning path without adding another media generator or
 generic provider name.
 
+### JEPA Public Adapter Addendum
+
+Decision date: 2026-05-01.
+
+Capability: `score`.
+
+Selected upstream: [`facebookresearch/jepa-wms`](https://github.com/facebookresearch/jepa-wms)
+through `torch.hub.load("facebookresearch/jepa-wms", model_name)`.
+
+Decision: promote the public `jepa` catalog entry from a fail-closed reservation to an
+experimental score-only adapter that reuses the JEPA-WMS runtime contract. The adapter requires
+`JEPA_MODEL_NAME`, keeps PyTorch and checkpoints host-owned, and does not expose `predict`,
+`embed`, generation, transfer, or reasoning.
+
+Migration: `JEPA_MODEL_PATH` was the old scaffold reservation variable. It is retained only as
+value-free diagnostic metadata; hosts must set `JEPA_MODEL_NAME` to load a real upstream model.
+
+Why this does not promote every JEPA surface: upstream action-conditioned JEPA-WM planning maps
+cleanly to candidate-action scoring. Latent rollout and embedding APIs need separate contracts
+before WorldForge can advertise `predict` or `embed`.
+
 ### Genie Issue Outline
 
 Capability: `generate`.

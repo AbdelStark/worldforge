@@ -57,7 +57,7 @@ Non-negotiable quality bar:
 | Area | Current state | Constraint |
 | --- | --- | --- |
 | Base package | `httpx` runtime dependency, Python 3.13 only, hatchling/uv packaging | Keep provider and host extras optional. |
-| Provider catalog | `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, plus scaffold `jepa` and `genie` | Do not advertise scaffold providers as real integrations. |
+| Provider catalog | `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, experimental score-only `jepa`, plus scaffold `genie` | Do not advertise scaffold providers as real integrations. |
 | Candidate provider | `jepa-wms` direct-construction score candidate, not exported or auto-registered | Promote only after real upstream limits and runtime behavior are validated. |
 | Planning | `World.plan(...)` composes `predict`, `score`, `policy`, and `policy+score` flows | Do not treat `plan` as a provider badge unless a provider implements planning directly. |
 | Harness | Optional Textual app with worlds, providers, eval, benchmark, run inspector, and robotics report surfaces | Textual remains isolated to `worldforge.harness.tui`. |
@@ -932,7 +932,7 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, scaffold `jepa`, and scaffold
+- [ ] `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, experimental `jepa`, and scaffold
       `genie` render with distinct status.
 - [ ] Missing credentials and missing optional dependencies are visibly different.
 - [ ] Textual remains isolated to `worldforge.harness.tui`.

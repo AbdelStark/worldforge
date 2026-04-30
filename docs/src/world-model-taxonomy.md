@@ -164,9 +164,9 @@ pretraining, then action-conditioned post-training for robotic planning with ima
 because it contains code, data, weights, training loops, shared planning components, and simulation
 planning evaluations for joint-embedding predictive world models.
 
-WorldForge's `jepa` provider is a scaffold. A real JEPA provider should follow the
-LeWorldModel pattern: do not advertise generation or reasoning unless implemented; expose score,
-latent rollout, or prediction capabilities explicitly; document tensor shapes and task contracts.
+WorldForge's public `jepa` provider now follows the LeWorldModel pattern as a score-only adapter:
+it does not advertise generation, reasoning, prediction, or embedding, and it documents tensor
+shapes and host-owned task preprocessing before runtime calls.
 WorldForge also carries a [`jepa-wms` provider candidate scaffold](./providers/jepa-wms.md) with
 injected-runtime and host-owned torch-hub contract tests for future work against
 `facebookresearch/jepa-wms`; it is intentionally not exported or registered.
@@ -314,7 +314,7 @@ flowchart TD
     WF --> Cosmos[cosmos\nvideo generation adapter]
     WF --> Groot[gr00t\nembodied policy adapter]
     WF --> Runway[runway\nvideo generation/transfer adapter]
-    WF --> JEPA[jepa\nscaffold]
+    WF --> JEPA[jepa\nscore adapter]
     WF --> Genie[genie\nscaffold]
 
     LeWM --> Score[score_actions -> ActionScoreResult]

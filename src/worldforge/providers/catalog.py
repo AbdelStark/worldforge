@@ -144,7 +144,11 @@ PROVIDER_CATALOG: tuple[ProviderCatalogEntry, ...] = (
     ProviderCatalogEntry(
         "jepa",
         _jepa,
-        runtime_ownership="capability-fail-closed reservation, not a real JEPA runtime",
+        docs_page="jepa.md",
+        runtime_ownership=(
+            "host supplies torch, facebookresearch/jepa-wms runtime dependencies, and task "
+            "preprocessing"
+        ),
     ),
     ProviderCatalogEntry(
         "genie",

@@ -82,9 +82,12 @@ Configuration comes from constructor arguments and environment variables documen
 - `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` enables the optional LeRobot embodied-policy adapter.
 - `LEROBOT_POLICY_TYPE`, `LEROBOT_DEVICE`, `LEROBOT_CACHE_DIR`, and `LEROBOT_EMBODIMENT_TAG` are
   optional LeRobot settings.
-- `JEPA_MODEL_PATH` and `GENIE_API_KEY` only register capability-closed scaffold reservations.
+- `JEPA_MODEL_NAME` enables the experimental score-only JEPA adapter backed by the upstream
+  `facebookresearch/jepa-wms` torch-hub path.
+- `JEPA_MODEL_PATH` is legacy scaffold metadata only; it does not make the provider runnable.
+- `GENIE_API_KEY` only registers a capability-closed scaffold reservation.
 - `WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES=1` is for local scaffold adapter tests only; it does not
-  make JEPA or Genie real provider integrations.
+  make Genie a real provider integration.
 
 Validate configuration when the host process starts:
 

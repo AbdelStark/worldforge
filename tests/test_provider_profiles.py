@@ -27,7 +27,9 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         "LEROBOT_DEVICE",
         "LEROBOT_CACHE_DIR",
         "LEROBOT_EMBODIMENT_TAG",
+        "JEPA_MODEL_NAME",
         "JEPA_MODEL_PATH",
+        "JEPA_DEVICE",
         "GENIE_API_KEY",
     ):
         monkeypatch.delenv(env_var, raising=False)
@@ -80,7 +82,9 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         "LEROBOT_POLICY_PATH",
         "LEROBOT_POLICY",
     ]
-    assert builtin_profiles["jepa"].capabilities.enabled_names() == []
+    assert builtin_profiles["jepa"].implementation_status == "experimental"
+    assert builtin_profiles["jepa"].capabilities.enabled_names() == ["score"]
+    assert builtin_profiles["jepa"].required_env_vars == ["JEPA_MODEL_NAME"]
     assert builtin_profiles["genie"].capabilities.enabled_names() == []
 
     report = forge.doctor()

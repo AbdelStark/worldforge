@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from worldforge import Action, ProviderEvent, VideoClip, WorldForge
-from worldforge.providers import GenieProvider, JepaProvider, MockProvider
+from worldforge.providers import GenieProvider, MockProvider
 
 
 def test_worldforge_event_handler_propagates_to_builtin_and_manual_providers(tmp_path) -> None:
@@ -30,16 +30,16 @@ def test_worldforge_event_handler_propagates_to_builtin_and_manual_providers(tmp
 
 
 def test_stub_remote_provider_forwards_mock_events(monkeypatch) -> None:
-    monkeypatch.setenv("JEPA_MODEL_PATH", "/tmp/jepa-model")
+    monkeypatch.setenv("GENIE_API_KEY", "genie-test-key")
     monkeypatch.setenv("WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES", "1")
     events: list[ProviderEvent] = []
-    provider = JepaProvider(event_handler=events.append)
+    provider = GenieProvider(event_handler=events.append)
 
     payload = provider.predict(
         {
             "id": "world-test",
             "name": "test",
-            "provider": "jepa",
+            "provider": "genie",
             "step": 0,
             "scene": {"objects": {}},
             "metadata": {},
@@ -50,7 +50,7 @@ def test_stub_remote_provider_forwards_mock_events(monkeypatch) -> None:
 
     assert payload.metadata["mode"] == "stub-remote-adapter"
     assert [(event.provider, event.operation, event.phase) for event in events] == [
-        ("jepa", "predict", "success")
+        ("genie", "predict", "success")
     ]
 
 

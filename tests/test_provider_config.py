@@ -18,6 +18,7 @@ SECRET_VALUES = (
     "gr00t-secret",
     "signed-query-secret",
     "password-secret",
+    "legacy-jepa-secret",
 )
 
 
@@ -35,6 +36,8 @@ def test_provider_config_summaries_are_value_free_json(monkeypatch) -> None:
     monkeypatch.setenv("GROOT_POLICY_API_TOKEN", "gr00t-secret")
     monkeypatch.setenv("LEROBOT_POLICY_PATH", "lerobot/checkpoint")
     monkeypatch.setenv("LEWORLDMODEL_POLICY", "pusht/lewm")
+    monkeypatch.setenv("JEPA_MODEL_NAME", "jepa_wm_pusht")
+    monkeypatch.setenv("JEPA_MODEL_PATH", "legacy-jepa-secret")
 
     summaries = [provider.config_summary().to_dict() for provider in create_known_providers()]
 
@@ -63,6 +66,12 @@ def test_provider_config_summaries_are_value_free_json(monkeypatch) -> None:
             }
             assert "value" not in field
     _assert_no_secret_values(summaries)
+    jepa_summary = next(summary for summary in summaries if summary["provider"] == "jepa")
+    assert [field["name"] for field in jepa_summary["fields"]] == [
+        "JEPA_MODEL_NAME",
+        "JEPA_MODEL_PATH",
+        "JEPA_DEVICE",
+    ]
 
 
 def test_provider_config_summary_reports_alias_source_without_value(monkeypatch) -> None:
