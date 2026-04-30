@@ -6,6 +6,7 @@ import math
 import httpx
 import pytest
 
+import worldforge.providers.http_utils as http_utils
 from worldforge import (
     Action,
     ActionPolicyResult,
@@ -15,11 +16,13 @@ from worldforge import (
     GenerationOptions,
     Pose,
     Position,
+    ProviderBudgetExceededError,
     ProviderCapabilities,
     ProviderEvent,
     ProviderHealth,
     ProviderRequestPolicy,
     ReasoningResult,
+    RequestOperationPolicy,
     RetryPolicy,
     Rotation,
     SceneObject,
@@ -32,7 +35,12 @@ from worldforge import (
 )
 from worldforge.models import HistoryEntry, average, dump_json
 from worldforge.providers import PredictionPayload, ProviderError
-from worldforge.providers.http_utils import asset_to_uri, parse_size, poll_json_task
+from worldforge.providers.http_utils import (
+    asset_to_uri,
+    parse_size,
+    poll_json_task,
+    request_json_with_policy,
+)
 
 
 def test_http_utils_validate_assets_size_and_polling(tmp_path) -> None:
@@ -107,6 +115,18 @@ def test_http_utils_validate_assets_size_and_polling(tmp_path) -> None:
     assert default_request_policy.request.retry.max_attempts == 1
     assert default_request_policy.download.retry.max_attempts == 3
     assert default_request_policy.to_dict()["health"]["timeout_seconds"] == 10.0
+    budgeted_request_policy = ProviderRequestPolicy.remote_defaults(
+        request_timeout_seconds=12.0,
+        health_max_elapsed_seconds=2.0,
+        request_max_elapsed_seconds=3.0,
+        polling_max_elapsed_seconds=4.0,
+        download_max_elapsed_seconds=5.0,
+    )
+    assert budgeted_request_policy.health.max_elapsed_seconds == 2.0
+    assert budgeted_request_policy.to_dict()["request"]["max_elapsed_seconds"] == 3.0
+
+    with pytest.raises(WorldForgeError, match="max_elapsed_seconds"):
+        RequestOperationPolicy(timeout_seconds=1.0, max_elapsed_seconds=0.0)
 
     event = ProviderEvent(
         provider="mock",
@@ -119,6 +139,104 @@ def test_http_utils_validate_assets_size_and_polling(tmp_path) -> None:
 
     with pytest.raises(WorldForgeError, match="duration_ms"):
         ProviderEvent(provider="mock", operation="predict", phase="success", duration_ms=-1.0)
+
+
+def test_http_request_policy_budget_failures_are_observable() -> None:
+    events: list[ProviderEvent] = []
+    attempts = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        return httpx.Response(503, text="warming")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="http://providers.test")
+    with (
+        client,
+        pytest.raises(ProviderBudgetExceededError, match="exceeded budget"),
+    ):
+        request_json_with_policy(
+            client,
+            method="GET",
+            url="/health",
+            provider_name="mock",
+            operation_name="healthcheck",
+            policy=RequestOperationPolicy(
+                timeout_seconds=1.0,
+                retry=RetryPolicy(max_attempts=3, backoff_seconds=2.0),
+                max_elapsed_seconds=1.0,
+            ),
+            emit_event=events.append,
+        )
+
+    assert attempts["count"] == 1
+    assert [(event.operation, event.phase) for event in events] == [
+        ("healthcheck", "budget_exceeded")
+    ]
+    assert events[0].metadata == {"max_elapsed_seconds": 1.0}
+
+
+def test_http_request_policy_budget_can_fail_before_first_attempt(monkeypatch) -> None:
+    events: list[ProviderEvent] = []
+    attempts = {"count": 0}
+    times = iter([0.0, 2.0, 2.0, 2.0])
+
+    monkeypatch.setattr(http_utils, "perf_counter", lambda: next(times))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        return httpx.Response(200, json={"ok": True})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="http://providers.test")
+    with (
+        client,
+        pytest.raises(ProviderBudgetExceededError, match="exceeded budget"),
+    ):
+        request_json_with_policy(
+            client,
+            method="GET",
+            url="/health",
+            provider_name="mock",
+            operation_name="healthcheck",
+            policy=RequestOperationPolicy(timeout_seconds=1.0, max_elapsed_seconds=1.0),
+            emit_event=events.append,
+        )
+
+    assert attempts["count"] == 0
+    assert events[0].phase == "budget_exceeded"
+    assert events[0].duration_ms == 2000.0
+
+
+def test_poll_json_task_budget_blocks_silent_poll_loops() -> None:
+    events: list[ProviderEvent] = []
+    attempts = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        return httpx.Response(200, json={"status": "PROCESSING"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="http://providers.test")
+    with (
+        client,
+        pytest.raises(ProviderBudgetExceededError, match="task poll exceeded budget"),
+    ):
+        poll_json_task(
+            client,
+            path="/tasks/1",
+            success_values={"SUCCEEDED"},
+            failure_values={"FAILED"},
+            poll_interval_seconds=2.0,
+            max_polls=5,
+            provider_name="mock",
+            operation_policy=RequestOperationPolicy(
+                timeout_seconds=1.0,
+                max_elapsed_seconds=1.0,
+            ),
+            emit_event=events.append,
+        )
+
+    assert attempts["count"] == 1
+    assert events[-1].operation == "task poll"
+    assert events[-1].phase == "budget_exceeded"
 
 
 def test_framework_helpers_and_error_paths(tmp_path) -> None:

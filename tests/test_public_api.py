@@ -36,6 +36,7 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.GenerationEvaluationSuite is not None
     assert worldforge.ProviderEvent is not None
     assert worldforge.ProviderBenchmarkHarness is not None
+    assert worldforge.ProviderBudgetExceededError is not None
     assert worldforge.ProviderRequestPolicy is not None
     assert worldforge.RequestOperationPolicy is not None
     assert worldforge.RetryPolicy is not None

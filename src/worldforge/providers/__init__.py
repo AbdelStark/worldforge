@@ -11,6 +11,7 @@ from ._config import ConfigFieldSummary, ProviderConfigSummary
 from .base import (
     BaseProvider,
     PredictionPayload,
+    ProviderBudgetExceededError,
     ProviderError,
     ProviderProfileSpec,
     RemoteProvider,
@@ -38,6 +39,7 @@ __all__ = [
     "LeWorldModelProvider",
     "MockProvider",
     "PredictionPayload",
+    "ProviderBudgetExceededError",
     "ProviderCatalogEntry",
     "ProviderConfigSummary",
     "ProviderError",

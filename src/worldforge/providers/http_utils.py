@@ -19,7 +19,7 @@ from worldforge.models import (
     _redact_observable_text,
 )
 
-from .base import ProviderError
+from .base import ProviderBudgetExceededError, ProviderError
 
 _RETRYABLE_EXCEPTIONS = (httpx.TransportError,)
 
@@ -105,6 +105,83 @@ def _raise_status_error(
     )
 
 
+def _elapsed_seconds(started: float) -> float:
+    return max(0.0, perf_counter() - started)
+
+
+def _budget_exceeded_message(
+    *,
+    provider_name: str,
+    operation_name: str,
+    elapsed_seconds: float,
+    max_elapsed_seconds: float,
+) -> str:
+    return (
+        f"Provider '{provider_name}' {operation_name} exceeded budget "
+        f"{max_elapsed_seconds:.3f}s after {elapsed_seconds:.3f}s."
+    )
+
+
+def _emit_budget_exceeded(
+    *,
+    provider_name: str,
+    operation_name: str,
+    method: str,
+    url: str,
+    attempt: int,
+    max_attempts: int,
+    elapsed_seconds: float,
+    max_elapsed_seconds: float,
+    emit_event: Callable[[ProviderEvent], None] | None,
+    status_code: int | None = None,
+) -> None:
+    if emit_event is None:
+        return
+    emit_event(
+        ProviderEvent(
+            provider=provider_name,
+            operation=operation_name,
+            phase="budget_exceeded",
+            attempt=attempt,
+            max_attempts=max_attempts,
+            method=method,
+            target=url,
+            status_code=status_code,
+            duration_ms=elapsed_seconds * 1000,
+            message=_budget_exceeded_message(
+                provider_name=provider_name,
+                operation_name=operation_name,
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=max_elapsed_seconds,
+            ),
+            metadata={"max_elapsed_seconds": max_elapsed_seconds},
+        )
+    )
+
+
+def _raise_budget_exceeded(
+    *,
+    provider_name: str,
+    operation_name: str,
+    elapsed_seconds: float,
+    max_elapsed_seconds: float,
+) -> None:
+    raise ProviderBudgetExceededError(
+        _budget_exceeded_message(
+            provider_name=provider_name,
+            operation_name=operation_name,
+            elapsed_seconds=elapsed_seconds,
+            max_elapsed_seconds=max_elapsed_seconds,
+        )
+    )
+
+
+def _remaining_budget_seconds(policy: RequestOperationPolicy, *, started: float) -> float | None:
+    if policy.max_elapsed_seconds is None:
+        return None
+    return policy.max_elapsed_seconds - _elapsed_seconds(started)
+
+
 def _content_type_is_allowed(content_type: str, accepted_content_types: tuple[str, ...]) -> bool:
     normalized = content_type.split(";", maxsplit=1)[0].strip().lower()
     for accepted in accepted_content_types:
@@ -129,13 +206,38 @@ def request_with_policy(
 ) -> httpx.Response:
     """Send an HTTP request using the configured timeout and retry policy."""
 
+    operation_started = perf_counter()
     for attempt_number in range(1, policy.retry.max_attempts + 1):
+        remaining_seconds = _remaining_budget_seconds(policy, started=operation_started)
+        if remaining_seconds is not None and remaining_seconds <= 0.0:
+            elapsed_seconds = _elapsed_seconds(operation_started)
+            _emit_budget_exceeded(
+                provider_name=provider_name,
+                operation_name=operation_name,
+                method=method,
+                url=url,
+                attempt=attempt_number,
+                max_attempts=policy.retry.max_attempts,
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=policy.max_elapsed_seconds,
+                emit_event=emit_event,
+            )
+            _raise_budget_exceeded(
+                provider_name=provider_name,
+                operation_name=operation_name,
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=policy.max_elapsed_seconds,
+            )
         started = perf_counter()
         try:
             response = client.request(
                 method,
                 url,
-                timeout=policy.timeout_seconds,
+                timeout=(
+                    policy.timeout_seconds
+                    if remaining_seconds is None
+                    else min(policy.timeout_seconds, max(remaining_seconds, 0.001))
+                ),
                 **kwargs,
             )
         except _RETRYABLE_EXCEPTIONS as exc:
@@ -160,6 +262,29 @@ def request_with_policy(
                     f"{attempt_number} attempt(s): {exc}"
                 ) from exc
             delay = policy.retry.delay_for_attempt(attempt_number + 1)
+            elapsed_after_delay = _elapsed_seconds(operation_started) + delay
+            if (
+                policy.max_elapsed_seconds is not None
+                and elapsed_after_delay > policy.max_elapsed_seconds
+            ):
+                elapsed_seconds = _elapsed_seconds(operation_started)
+                _emit_budget_exceeded(
+                    provider_name=provider_name,
+                    operation_name=operation_name,
+                    method=method,
+                    url=url,
+                    attempt=attempt_number,
+                    max_attempts=policy.retry.max_attempts,
+                    elapsed_seconds=elapsed_seconds,
+                    max_elapsed_seconds=policy.max_elapsed_seconds,
+                    emit_event=emit_event,
+                )
+                _raise_budget_exceeded(
+                    provider_name=provider_name,
+                    operation_name=operation_name,
+                    elapsed_seconds=elapsed_seconds,
+                    max_elapsed_seconds=policy.max_elapsed_seconds,
+                )
             if emit_event is not None:
                 emit_event(
                     ProviderEvent(
@@ -222,6 +347,31 @@ def request_with_policy(
                     response=response,
                 )
             delay = policy.retry.delay_for_attempt(attempt_number + 1)
+            elapsed_after_delay = _elapsed_seconds(operation_started) + delay
+            if (
+                policy.max_elapsed_seconds is not None
+                and elapsed_after_delay > policy.max_elapsed_seconds
+            ):
+                elapsed_seconds = _elapsed_seconds(operation_started)
+                _emit_budget_exceeded(
+                    provider_name=provider_name,
+                    operation_name=operation_name,
+                    method=method,
+                    url=url,
+                    attempt=attempt_number,
+                    max_attempts=policy.retry.max_attempts,
+                    elapsed_seconds=elapsed_seconds,
+                    max_elapsed_seconds=policy.max_elapsed_seconds,
+                    emit_event=emit_event,
+                    status_code=response.status_code,
+                )
+                response.close()
+                _raise_budget_exceeded(
+                    provider_name=provider_name,
+                    operation_name=operation_name,
+                    elapsed_seconds=elapsed_seconds,
+                    max_elapsed_seconds=policy.max_elapsed_seconds,
+                )
             if emit_event is not None:
                 emit_event(
                     ProviderEvent(
@@ -375,7 +525,28 @@ def poll_json_task(
 ) -> dict[str, object]:
     """Poll an HTTP task endpoint until it completes or fails."""
 
-    for _ in range(max_polls):
+    operation_started = perf_counter()
+    for poll_number in range(1, max_polls + 1):
+        remaining_seconds = _remaining_budget_seconds(operation_policy, started=operation_started)
+        if remaining_seconds is not None and remaining_seconds <= 0.0:
+            elapsed_seconds = _elapsed_seconds(operation_started)
+            _emit_budget_exceeded(
+                provider_name=provider_name,
+                operation_name="task poll",
+                method="GET",
+                url=path,
+                attempt=min(poll_number, operation_policy.retry.max_attempts),
+                max_attempts=operation_policy.retry.max_attempts,
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=operation_policy.max_elapsed_seconds,
+                emit_event=emit_event,
+            )
+            _raise_budget_exceeded(
+                provider_name=provider_name,
+                operation_name="task poll",
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=operation_policy.max_elapsed_seconds,
+            )
         payload = request_json_with_policy(
             client,
             method="GET",
@@ -390,5 +561,28 @@ def poll_json_task(
             return dict(payload)
         if status in failure_values:
             raise ProviderError(f"Provider '{provider_name}' task failed with status {status}.")
+        elapsed_after_delay = _elapsed_seconds(operation_started) + poll_interval_seconds
+        if (
+            operation_policy.max_elapsed_seconds is not None
+            and elapsed_after_delay > operation_policy.max_elapsed_seconds
+        ):
+            elapsed_seconds = _elapsed_seconds(operation_started)
+            _emit_budget_exceeded(
+                provider_name=provider_name,
+                operation_name="task poll",
+                method="GET",
+                url=path,
+                attempt=operation_policy.retry.max_attempts,
+                max_attempts=operation_policy.retry.max_attempts,
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=operation_policy.max_elapsed_seconds,
+                emit_event=emit_event,
+            )
+            _raise_budget_exceeded(
+                provider_name=provider_name,
+                operation_name="task poll",
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=operation_policy.max_elapsed_seconds,
+            )
         sleep(poll_interval_seconds)
     raise ProviderError(f"Provider '{provider_name}' task did not complete before timeout.")

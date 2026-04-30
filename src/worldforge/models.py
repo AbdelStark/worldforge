@@ -1124,6 +1124,7 @@ class RequestOperationPolicy:
 
     timeout_seconds: float
     retry: RetryPolicy = field(default_factory=RetryPolicy)
+    max_elapsed_seconds: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1136,11 +1137,25 @@ class RequestOperationPolicy:
         )
         if self.timeout_seconds <= 0.0:
             raise WorldForgeError("RequestOperationPolicy timeout_seconds must be greater than 0.")
+        if self.max_elapsed_seconds is not None:
+            object.__setattr__(
+                self,
+                "max_elapsed_seconds",
+                require_finite_number(
+                    self.max_elapsed_seconds,
+                    name="RequestOperationPolicy max_elapsed_seconds",
+                ),
+            )
+            if self.max_elapsed_seconds <= 0.0:
+                raise WorldForgeError(
+                    "RequestOperationPolicy max_elapsed_seconds must be greater than 0."
+                )
 
     def to_dict(self) -> JSONDict:
         return {
             "timeout_seconds": self.timeout_seconds,
             "retry": self.retry.to_dict(),
+            "max_elapsed_seconds": self.max_elapsed_seconds,
         }
 
 
@@ -1161,6 +1176,10 @@ class ProviderRequestPolicy:
         health_timeout_seconds: float | None = None,
         polling_timeout_seconds: float | None = None,
         download_timeout_seconds: float | None = None,
+        health_max_elapsed_seconds: float | None = None,
+        request_max_elapsed_seconds: float | None = None,
+        polling_max_elapsed_seconds: float | None = None,
+        download_max_elapsed_seconds: float | None = None,
         read_retry_attempts: int = 3,
         read_backoff_seconds: float = 0.25,
         read_backoff_multiplier: float = 2.0,
@@ -1197,18 +1216,22 @@ class ProviderRequestPolicy:
             health=RequestOperationPolicy(
                 timeout_seconds=resolved_health_timeout,
                 retry=read_retry,
+                max_elapsed_seconds=health_max_elapsed_seconds,
             ),
             request=RequestOperationPolicy(
                 timeout_seconds=resolved_request_timeout,
                 retry=no_retry,
+                max_elapsed_seconds=request_max_elapsed_seconds,
             ),
             polling=RequestOperationPolicy(
                 timeout_seconds=resolved_polling_timeout,
                 retry=read_retry,
+                max_elapsed_seconds=polling_max_elapsed_seconds,
             ),
             download=RequestOperationPolicy(
                 timeout_seconds=resolved_download_timeout,
                 retry=read_retry,
+                max_elapsed_seconds=download_max_elapsed_seconds,
             ),
         )
 

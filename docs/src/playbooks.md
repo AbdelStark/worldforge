@@ -364,6 +364,10 @@ Operational rules:
 
 - create-style requests are single-attempt unless the provider contract is idempotent.
 - health, polling, and downloads can retry through `ProviderRequestPolicy`.
+- `timeout_seconds` is a per-attempt request timeout; `max_elapsed_seconds` is the host's
+  workflow budget for the operation, including retries, backoff, and poll intervals.
+- budget failures raise `ProviderBudgetExceededError` and emit `phase=="budget_exceeded"` so
+  alerts can distinguish an exhausted host budget from an upstream HTTP failure.
 - returned artifacts are validated before `VideoClip` is returned.
 - signed URLs and temporary artifact URLs are not durable storage. Download or persist them in
   host-owned storage immediately after completion.

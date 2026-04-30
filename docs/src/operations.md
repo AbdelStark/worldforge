@@ -127,8 +127,8 @@ Host services can attach correlation IDs directly to a `ProviderEvent` when the 
 knows them, or through `JsonLoggerSink(extra_fields=...)` when the host owns them outside the
 adapter. Optional event fields are `run_id`, `request_id`, `trace_id`, `span_id`, `artifact_id`,
 and `input_digest`; they are strings, omitted when unset, and sanitized before sink consumption.
-The event `phase` is normalized to lowercase so hosts can filter stable `success`, `failure`, and
-`retry` values.
+The event `phase` is normalized to lowercase so hosts can filter stable `success`, `failure`,
+`retry`, and `budget_exceeded` values.
 
 Example JSON log record:
 
@@ -205,6 +205,14 @@ artifact URLs are stored without query strings or fragments.
   `doctor()`.
 - Remote create-style requests are single-attempt by default; health checks, polling, and
   downloads retry according to `ProviderRequestPolicy`.
+- Provider request budgets are per operation. `timeout_seconds` limits one HTTP attempt;
+  optional `max_elapsed_seconds` limits the whole operation including retries, backoff, and task
+  polling. Budget violations raise `ProviderBudgetExceededError` and emit a `budget_exceeded`
+  provider event when an event handler is attached.
+- Circuit breakers stay host-owned. A service can count recent `failure`, `retry`, and
+  `budget_exceeded` events from `ProviderMetricsSink`, stop routing new work to a degraded
+  provider, and continue serving cached/read-only paths without WorldForge owning alert channels
+  or upstream SLAs.
 - Cosmos and Runway validate typed upstream response payloads before creating returned media
   objects.
 - Runway artifact downloads fail explicitly on expired/unavailable URLs, empty downloads, and

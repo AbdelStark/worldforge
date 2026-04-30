@@ -40,6 +40,10 @@ class ProviderError(RuntimeError):
     """Raised when a provider cannot satisfy a request."""
 
 
+class ProviderBudgetExceededError(ProviderError):
+    """Raised when a provider operation exceeds its configured host budget."""
+
+
 def validate_generation_request(
     prompt: object,
     duration_seconds: object,

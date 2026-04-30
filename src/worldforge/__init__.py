@@ -67,6 +67,7 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "WorldForge": "worldforge.framework",
     "list_eval_suites": "worldforge.framework",
     "run_eval": "worldforge.framework",
+    "ProviderBudgetExceededError": "worldforge.providers",
     "CAPABILITY_NAMES": "worldforge.models",
     "Action": "worldforge.models",
     "ActionPolicyResult": "worldforge.models",

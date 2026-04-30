@@ -232,7 +232,7 @@ def test_robotics_arm_pane_advances_frame(tmp_path) -> None:
             summary=_robotics_summary(),
             summary_path=tmp_path / "summary.json",
             stage_delay=0.0,
-            animate_arm=True,
+            animate_arm=False,
         )
         async with app.run_test(size=(150, 48)) as pilot:
             await pilot.pause()
