@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from worldforge.models import (
@@ -13,6 +13,7 @@ from worldforge.models import (
     EmbeddingResult,
     JSONDict,
     Position,
+    ProviderEvent,
     ProviderHealth,
     ProviderProfile,
     ReasoningResult,
@@ -236,6 +237,148 @@ def _validate_action_policy(provider: str, result: ActionPolicyResult) -> None:
     )
 
 
+def assert_predict_conformance(
+    provider: BaseProvider,
+    *,
+    world_state: JSONDict | None = None,
+    action: Action | None = None,
+    steps: int = 2,
+) -> PredictionPayload:
+    """Assert that a provider's predict capability returns a valid payload."""
+
+    if not provider.profile().capabilities.predict:
+        raise AssertionError("Provider does not declare the predict capability.")
+    sample_state = world_state or sample_contract_world_state()
+    sample_action = action or sample_contract_action()
+    prediction = provider.predict(sample_state, sample_action, steps)
+    _validate_prediction(provider.name, prediction)
+    return prediction
+
+
+def assert_reason_conformance(
+    provider: BaseProvider,
+    *,
+    query: str = "How many objects are in the scene?",
+    world_state: JSONDict | None = None,
+) -> ReasoningResult:
+    """Assert that a provider's reason capability returns a valid result."""
+
+    if not provider.profile().capabilities.reason:
+        raise AssertionError("Provider does not declare the reason capability.")
+    result = provider.reason(query, world_state=world_state or sample_contract_world_state())
+    _validate_reasoning(provider.name, result)
+    return result
+
+
+def assert_embed_conformance(
+    provider: BaseProvider,
+    *,
+    text: str = "contract vector",
+) -> EmbeddingResult:
+    """Assert that a provider's embed capability returns a valid result."""
+
+    if not provider.profile().capabilities.embed:
+        raise AssertionError("Provider does not declare the embed capability.")
+    result = provider.embed(text=text)
+    _validate_embedding(provider.name, result)
+    return result
+
+
+def assert_generate_conformance(
+    provider: BaseProvider,
+    *,
+    prompt: str = "contract prompt",
+    duration_seconds: float = 1.0,
+) -> VideoClip:
+    """Assert that a provider's generate capability returns a valid clip."""
+
+    if not provider.profile().capabilities.generate:
+        raise AssertionError("Provider does not declare the generate capability.")
+    clip = provider.generate(prompt, duration_seconds=duration_seconds)
+    _validate_clip(clip)
+    return clip
+
+
+def assert_transfer_conformance(
+    provider: BaseProvider,
+    *,
+    clip: VideoClip | None = None,
+    width: int = 48,
+    height: int = 48,
+    fps: float = 12.0,
+) -> VideoClip:
+    """Assert that a provider's transfer capability returns a valid clip."""
+
+    if not provider.profile().capabilities.transfer:
+        raise AssertionError("Provider does not declare the transfer capability.")
+    transfer_input = clip or VideoClip(
+        frames=[b"contract-frame"],
+        fps=8.0,
+        resolution=(64, 64),
+        duration_seconds=0.125,
+        metadata={"provider": provider.name},
+    )
+    result = provider.transfer(transfer_input, width=width, height=height, fps=fps)
+    _validate_clip(result)
+    return result
+
+
+def assert_score_conformance(
+    provider: BaseProvider,
+    *,
+    info: JSONDict,
+    action_candidates: object,
+) -> ActionScoreResult:
+    """Assert that a provider's score capability returns valid finite scores."""
+
+    if not provider.profile().capabilities.score:
+        raise AssertionError("Provider does not declare the score capability.")
+    result = provider.score_actions(info=info, action_candidates=action_candidates)
+    _validate_action_scores(provider.name, result)
+    return result
+
+
+def assert_policy_conformance(
+    provider: BaseProvider,
+    *,
+    info: JSONDict | None = None,
+) -> ActionPolicyResult:
+    """Assert that a provider's policy capability returns executable actions."""
+
+    if not provider.profile().capabilities.policy:
+        raise AssertionError("Provider does not declare the policy capability.")
+    result = provider.select_actions(info=info or sample_contract_policy_info())
+    _validate_action_policy(provider.name, result)
+    return result
+
+
+def assert_provider_events_conform(
+    events: Sequence[ProviderEvent],
+    *,
+    provider: str | None = None,
+) -> None:
+    """Assert that captured provider events are JSON-native and redaction-safe."""
+
+    for index, event in enumerate(events):
+        _contract_check(
+            isinstance(event, ProviderEvent),
+            f"provider event {index} must be a ProviderEvent.",
+        )
+        payload = event.to_dict()
+        _contract_json(payload, f"provider event {index} must be JSON serializable.")
+        if provider is not None:
+            _contract_check(
+                payload["provider"] == provider,
+                f"provider event {index} provider must match {provider}.",
+            )
+        rendered = dump_json(payload).lower()
+        for forbidden in ("api-secret", "api_secret", "raw-secret", "bearer-secret"):
+            _contract_check(
+                forbidden not in rendered,
+                f"provider event {index} appears to expose secret material.",
+            )
+
+
 def assert_provider_contract(
     provider: BaseProvider,
     *,
@@ -297,8 +440,12 @@ def assert_provider_contract(
 
     if profile.capabilities.predict:
         if can_invoke:
-            prediction = provider.predict(sample_state, sample_action, 2)
-            _validate_prediction(provider.name, prediction)
+            assert_predict_conformance(
+                provider,
+                world_state=sample_state,
+                action=sample_action,
+                steps=2,
+            )
             report.exercised_operations.append("predict")
         else:
             _expect_provider_error(
@@ -308,10 +455,11 @@ def assert_provider_contract(
 
     if profile.capabilities.reason:
         if can_invoke:
-            reasoning = provider.reason(
-                "How many objects are in the scene?", world_state=sample_state
+            assert_reason_conformance(
+                provider,
+                query="How many objects are in the scene?",
+                world_state=sample_state,
             )
-            _validate_reasoning(provider.name, reasoning)
             report.exercised_operations.append("reason")
         else:
             _expect_provider_error(
@@ -324,8 +472,7 @@ def assert_provider_contract(
 
     if profile.capabilities.embed:
         if can_invoke:
-            embedding = provider.embed(text="contract vector")
-            _validate_embedding(provider.name, embedding)
+            assert_embed_conformance(provider, text="contract vector")
             report.exercised_operations.append("embed")
         else:
             _expect_provider_error("embed", lambda: provider.embed(text="contract vector"))
@@ -333,8 +480,7 @@ def assert_provider_contract(
     generated_clip: VideoClip | None = None
     if profile.capabilities.generate:
         if can_invoke:
-            generated_clip = provider.generate("contract prompt", duration_seconds=1.0)
-            _validate_clip(generated_clip)
+            generated_clip = assert_generate_conformance(provider)
             report.exercised_operations.append("generate")
         else:
             _expect_provider_error(
@@ -343,18 +489,17 @@ def assert_provider_contract(
             )
 
     if profile.capabilities.transfer:
-        transfer_input = generated_clip or VideoClip(
-            frames=[b"contract-frame"],
-            fps=8.0,
-            resolution=(64, 64),
-            duration_seconds=0.125,
-            metadata={"provider": provider.name},
-        )
         if can_invoke:
-            transferred = provider.transfer(transfer_input, width=48, height=48, fps=12.0)
-            _validate_clip(transferred)
+            assert_transfer_conformance(provider, clip=generated_clip)
             report.exercised_operations.append("transfer")
         else:
+            transfer_input = generated_clip or VideoClip(
+                frames=[b"contract-frame"],
+                fps=8.0,
+                resolution=(64, 64),
+                duration_seconds=0.125,
+                metadata={"provider": provider.name},
+            )
             _expect_provider_error(
                 "transfer",
                 lambda: provider.transfer(transfer_input, width=48, height=48, fps=12.0),
@@ -367,11 +512,11 @@ def assert_provider_contract(
                     "Provider contract requires score_info and score_action_candidates for "
                     "configured score providers."
                 )
-            scores = provider.score_actions(
+            assert_score_conformance(
+                provider,
                 info=score_info,
                 action_candidates=score_action_candidates,
             )
-            _validate_action_scores(provider.name, scores)
             report.exercised_operations.append("score")
         else:
             _expect_provider_error(
@@ -386,8 +531,7 @@ def assert_provider_contract(
 
     if profile.capabilities.policy:
         if can_invoke:
-            policy = provider.select_actions(info=policy_info or sample_contract_policy_info())
-            _validate_action_policy(provider.name, policy)
+            assert_policy_conformance(provider, info=policy_info or sample_contract_policy_info())
             report.exercised_operations.append("policy")
         else:
             _expect_provider_error(

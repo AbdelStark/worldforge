@@ -7,8 +7,17 @@ from typing import Any
 
 _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov by plugins
     "ProviderContractReport": "worldforge.testing.providers",
+    "assert_embed_conformance": "worldforge.testing.providers",
+    "assert_generate_conformance": "worldforge.testing.providers",
+    "assert_policy_conformance": "worldforge.testing.providers",
+    "assert_predict_conformance": "worldforge.testing.providers",
     "assert_provider_contract": "worldforge.testing.providers",
+    "assert_provider_events_conform": "worldforge.testing.providers",
+    "assert_reason_conformance": "worldforge.testing.providers",
+    "assert_score_conformance": "worldforge.testing.providers",
+    "assert_transfer_conformance": "worldforge.testing.providers",
     "sample_contract_action": "worldforge.testing.providers",
+    "sample_contract_policy_info": "worldforge.testing.providers",
     "sample_contract_world_state": "worldforge.testing.providers",
     "PROVIDER_RUNTIME_PROFILES": "worldforge.testing.runtime_profiles",
     "PROVIDER_RUNTIME_PROFILES_BY_NAME": "worldforge.testing.runtime_profiles",

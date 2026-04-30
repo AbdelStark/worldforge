@@ -523,6 +523,23 @@ Required tests:
 - [ ] Event emission is tested for success and failure.
 - [ ] `worldforge.testing.assert_provider_contract(...)` passes for the provider where applicable.
 
+Reusable conformance helpers are available for narrow provider tests:
+
+| Helper | Capability covered |
+| --- | --- |
+| `assert_predict_conformance(...)` | `predict -> PredictionPayload` |
+| `assert_generate_conformance(...)` | `generate -> VideoClip` |
+| `assert_transfer_conformance(...)` | `transfer -> VideoClip` |
+| `assert_reason_conformance(...)` | `reason -> ReasoningResult` |
+| `assert_embed_conformance(...)` | `embed -> EmbeddingResult` |
+| `assert_score_conformance(...)` | `score_actions -> ActionScoreResult` |
+| `assert_policy_conformance(...)` | `select_actions -> ActionPolicyResult` |
+| `assert_provider_events_conform(...)` | JSON-native, redaction-safe provider events |
+
+Use the capability-specific helper when a fixture or injected runtime exercises one operation.
+Use `assert_provider_contract(...)` when the test can safely exercise every declared capability for
+the provider.
+
 Remote providers:
 
 - [ ] No tests require live credentials.
