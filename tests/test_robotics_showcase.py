@@ -235,7 +235,7 @@ def test_robotics_showcase_forwards_packaged_pusht_defaults(
     )
     assert (
         forwarded[forwarded.index("--translator") + 1]
-        == "worldforge.smoke.pusht_showcase_inputs:translate_candidates"
+        == "worldforge.smoke.pusht_showcase_inputs:translate_candidates_contract"
     )
     assert (
         forwarded[forwarded.index("--candidate-builder") + 1]
@@ -264,6 +264,25 @@ def test_packaged_pusht_bridge_builds_candidates_without_optional_import_at_modu
     assert len(plans) == 3
     assert plans[0][0].parameters["object_id"] == "block-1"
     assert plans[0][0].parameters["target"] == {"x": 0.7, "y": 0.25, "z": 0.0}
+
+    contracted = pusht_showcase_inputs.translate_candidates_contract(
+        [0.8, -2.0],
+        {"embodiment_tag": "pusht", "score_bridge": {"object_id": "block-1"}},
+        {},
+    )
+    assert len(contracted) == 3
+    assert pusht_showcase_inputs.translate_candidates_contract.contract_summary() == {
+        "embodiment_tag": "pusht",
+        "action_dim": 2,
+        "action_horizon": None,
+        "raw_action_shape": [2],
+        "metadata": {
+            "task": "pusht",
+            "raw_policy_space": "xy",
+            "worldforge_action": "move_to",
+            "score_action_dim": 10,
+        },
+    }
 
 
 def test_robotics_showcase_uses_tmp_json_output_by_default(monkeypatch) -> None:

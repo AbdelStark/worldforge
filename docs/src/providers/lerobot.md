@@ -132,6 +132,39 @@ The translator may return:
 
 Multiple candidates are useful for policy-plus-score planning.
 
+Use `EmbodimentTranslatorContract` and `EmbodimentActionTranslator` when a translator has a known
+robot or task boundary:
+
+```python
+from worldforge import Action
+from worldforge.providers import EmbodimentActionTranslator, EmbodimentTranslatorContract
+
+contract = EmbodimentTranslatorContract(
+    embodiment_tag="aloha",
+    action_dim=3,
+    action_horizon=16,
+    metadata={"controller": "host-owned", "units": "meters"},
+)
+
+def translate_actions(raw_actions, info, provider_info):
+    tensor = raw_actions.tolist() if hasattr(raw_actions, "tolist") else raw_actions
+    return [Action.move_to(float(x), float(y), float(z)) for (x, y, z) in tensor]
+
+translator = EmbodimentActionTranslator(contract, translate_actions)
+```
+
+The contract validates the incoming `embodiment_tag`, rectangular numeric raw actions, finite
+values, optional action dimension, optional horizon, JSON-native metadata, and returned candidate
+cardinality. It fails before planning on unknown embodiment tags or shape mismatches instead of
+padding, projecting, or silently dropping policy outputs. The provider stores a
+`translator_contract` summary in `ActionPolicyResult.metadata` so run artifacts can cite the
+validated translation boundary without including robot credentials or controller state.
+
+The packaged PushT robotics showcase uses this wrapper for its visual `x, y` translator while the
+separate LeWorldModel candidate builder owns the checkpoint-native 10-dimensional score tensor.
+Hosts should follow the same split: WorldForge validates the boundary and preserves provenance;
+host code owns preprocessing, controller semantics, safety interlocks, and any hardware execution.
+
 ## Planning
 
 Policy-only planning:
@@ -203,6 +236,8 @@ showcase. Full runnable context lives in [CLI Reference](../cli.md),
 - Missing `lerobot` or `PreTrainedPolicy` is reported by `health()`.
 - Policy class resolution or checkpoint loading failures are wrapped in `ProviderError`.
 - Missing `action_translator` fails with `ProviderError`.
+- Contracted translators fail on unknown embodiment tags, non-finite raw action values, raw action
+  shape mismatches, and candidate cardinality mismatches.
 - Malformed observations, options, or modes fail before invoking the policy.
 - Requesting `mode="predict_chunk"` against a policy without `predict_action_chunk` fails
   explicitly.
@@ -213,7 +248,8 @@ showcase. Full runnable context lives in [CLI Reference](../cli.md),
 
 - `tests/test_lerobot_provider.py` covers injected-policy contract checks, event emission, malformed
   inputs, missing translator, unconfigured health, env configuration, lazy import,
-  select/predict_chunk modes, reset delegation, auto-registration, and policy-plus-score planning.
+  select/predict_chunk modes, reset delegation, auto-registration, translator contracts, and
+  policy-plus-score planning.
 - `tests/test_lerobot_e2e_demo.py` covers the full checkout-safe demo.
 - `tests/test_lerobot_smoke_script.py` covers smoke-script input loading, callable resolution, and
   validation without requiring LeRobot or a GPU.

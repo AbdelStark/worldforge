@@ -12,6 +12,8 @@ from worldforge import Action, ActionPolicyResult, ActionScoreResult, WorldForge
 from worldforge.models import JSONDict, ProviderCapabilities, ProviderEvent, ProviderHealth
 from worldforge.providers import (
     BaseProvider,
+    EmbodimentActionTranslator,
+    EmbodimentTranslatorContract,
     LeRobotPolicyProvider,
     MockProvider,
     ProviderError,
@@ -185,6 +187,91 @@ def test_lerobot_policy_provider_passes_contract_and_emits_events() -> None:
     assert policy.select_action_calls[-1] == _policy_info()["observation"]
     assert events[-1].operation == "policy"
     assert events[-1].phase == "success"
+
+
+def test_lerobot_contract_translator_records_safe_metadata() -> None:
+    contract = EmbodimentTranslatorContract(
+        embodiment_tag="aloha",
+        action_dim=3,
+        action_horizon=2,
+        metadata={"controller": "sim", "preview": {"units": "meters"}},
+    )
+
+    translator = EmbodimentActionTranslator(
+        contract,
+        lambda *_args: [
+            Action.move_to(0.1, 0.5, 0.0),
+            Action.move_to(0.2, 0.5, 0.0),
+        ],
+    )
+    provider = LeRobotPolicyProvider(
+        policy=FakeLeRobotPolicy(response=FakeTensor([[0.1, 0.5, 0.0], [0.2, 0.5, 0.0]])),
+        embodiment_tag="aloha",
+        action_translator=translator,
+    )
+
+    result = provider.select_actions(info=_policy_info())
+
+    summary = result.metadata["translator_contract"]
+    assert summary == {
+        "embodiment_tag": "aloha",
+        "action_dim": 3,
+        "action_horizon": 2,
+        "raw_action_shape": [2, 3],
+        "metadata": {"controller": "sim", "preview": {"units": "meters"}},
+    }
+    assert contract.preview_summary(raw_shape=(2, 3)) == summary
+
+
+def test_lerobot_contract_translator_rejects_wrong_embodiment_tag() -> None:
+    translator = EmbodimentActionTranslator(
+        EmbodimentTranslatorContract(embodiment_tag="aloha", action_dim=3),
+        lambda *_args: [Action.move_to(0.1, 0.5, 0.0)],
+    )
+    provider = LeRobotPolicyProvider(
+        policy=FakeLeRobotPolicy(response=FakeTensor([[0.1, 0.5, 0.0]])),
+        action_translator=translator,
+    )
+
+    with pytest.raises(ProviderError, match="cannot translate actions tagged 'so100'"):
+        provider.select_actions(info={**_policy_info(), "embodiment_tag": "so100"})
+
+
+def test_lerobot_contract_translator_rejects_shape_and_cardinality_mismatches() -> None:
+    wrong_dim = EmbodimentActionTranslator(
+        EmbodimentTranslatorContract(embodiment_tag="aloha", action_dim=3),
+        lambda *_args: [Action.move_to(0.1, 0.5, 0.0)],
+    )
+    provider = LeRobotPolicyProvider(
+        policy=FakeLeRobotPolicy(response=FakeTensor([[0.1, 0.5]])),
+        action_translator=wrong_dim,
+    )
+    with pytest.raises(ProviderError, match="action_dim=3"):
+        provider.select_actions(info=_policy_info())
+
+    wrong_count = EmbodimentActionTranslator(
+        EmbodimentTranslatorContract(embodiment_tag="aloha", action_dim=3, action_horizon=2),
+        lambda *_args: [Action.move_to(0.1, 0.5, 0.0)],
+    )
+    provider = LeRobotPolicyProvider(
+        policy=FakeLeRobotPolicy(response=FakeTensor([[0.1, 0.5, 0.0], [0.2, 0.5, 0.0]])),
+        action_translator=wrong_count,
+    )
+    with pytest.raises(ProviderError, match="expected 2"):
+        provider.select_actions(info=_policy_info())
+
+
+def test_lerobot_contract_translator_rejects_nonfinite_values_and_metadata() -> None:
+    contract = EmbodimentTranslatorContract(embodiment_tag="aloha", action_dim=3)
+    with pytest.raises(ProviderError, match="finite action values"):
+        contract.validate_raw_actions(
+            [[math.inf, 0.5, 0.0]],
+            {"embodiment_tag": "aloha"},
+            {},
+        )
+
+    with pytest.raises(ProviderError, match="translator metadata"):
+        EmbodimentTranslatorContract(embodiment_tag="aloha", metadata={"bad": object()})
 
 
 def test_lerobot_provider_supports_predict_action_chunk_mode() -> None:

@@ -481,6 +481,13 @@ class LeRobotPolicyProvider(BaseProvider):
                 info=info,
                 provider_info=normalized_provider_info,
             )
+            translator_contract = None
+            contract_summary = getattr(self._action_translator, "contract_summary", None)
+            if callable(contract_summary):
+                translator_contract = json_object(
+                    contract_summary(),
+                    name="LeRobot translator_contract",
+                )
             action_horizon_value = info.get("action_horizon")
             if action_horizon_value is None:
                 action_horizon = len(candidate_plans[0])
@@ -510,6 +517,7 @@ class LeRobotPolicyProvider(BaseProvider):
                     "mode": mode,
                     "provider_info": normalized_provider_info,
                     "candidate_count": len(candidate_plans),
+                    "translator_contract": translator_contract,
                 },
                 action_candidates=candidate_plans,
             )

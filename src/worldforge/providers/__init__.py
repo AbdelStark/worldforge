@@ -20,6 +20,7 @@ from .base import (
 )
 from .catalog import PROVIDER_CATALOG, ProviderCatalogEntry, create_known_providers
 from .cosmos import CosmosProvider
+from .embodiment import EmbodimentActionTranslator, EmbodimentTranslatorContract
 from .gr00t import GrootPolicyClientProvider
 from .lerobot import LeRobotPolicyProvider
 from .leworldmodel import LeWorldModelProvider
@@ -32,6 +33,8 @@ __all__ = [
     "BaseProvider",
     "ConfigFieldSummary",
     "CosmosProvider",
+    "EmbodimentActionTranslator",
+    "EmbodimentTranslatorContract",
     "GenieProvider",
     "GrootPolicyClientProvider",
     "JepaProvider",

@@ -21,6 +21,23 @@ DEFAULT_ACTION_DIM = 10
 DEFAULT_ACTION_BLOCK = 5
 
 
+def pusht_translator_contract() -> object:
+    """Return the checkout-safe PushT translator contract without importing optional runtimes."""
+
+    from worldforge.providers import EmbodimentTranslatorContract
+
+    return EmbodimentTranslatorContract(
+        embodiment_tag="pusht",
+        action_dim=2,
+        metadata={
+            "task": "pusht",
+            "raw_policy_space": "xy",
+            "worldforge_action": "move_to",
+            "score_action_dim": DEFAULT_ACTION_DIM,
+        },
+    )
+
+
 def _materialize(value: object) -> object:
     current = value
     for method_name in ("detach", "cpu"):
@@ -145,3 +162,14 @@ def translate_candidates(
         y = 0.5 + float(xy[1]) * 0.25
         plans.append([Action.move_to(x, y, 0.0, object_id=object_id)])
     return plans
+
+
+def translate_candidates_with_contract() -> object:
+    """Return a PushT translator callable that validates embodiment and raw shape."""
+
+    from worldforge.providers import EmbodimentActionTranslator
+
+    return EmbodimentActionTranslator(pusht_translator_contract(), translate_candidates)
+
+
+translate_candidates_contract = translate_candidates_with_contract()

@@ -229,7 +229,7 @@ def _forward_args(args: argparse.Namespace) -> list[str]:
         "--score-info-module",
         f"{PUSHT_INPUT_MODULE}:build_score_info",
         "--translator",
-        f"{PUSHT_INPUT_MODULE}:translate_candidates",
+        f"{PUSHT_INPUT_MODULE}:translate_candidates_contract",
         "--candidate-builder",
         f"{PUSHT_INPUT_MODULE}:build_action_candidates",
         "--expected-action-dim",
