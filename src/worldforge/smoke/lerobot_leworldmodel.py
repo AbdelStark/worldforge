@@ -27,6 +27,7 @@ from worldforge import Action, BBox, Position, SceneObject, StructuredGoal, Worl
 from worldforge.models import ProviderEvent
 from worldforge.providers import LeRobotPolicyProvider, LeWorldModelProvider
 from worldforge.providers._config import env_value as _env_value
+from worldforge.smoke.leworldmodel_bridges import bridge_names, get_bridge
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 
 from .leworldmodel import (
@@ -46,6 +47,7 @@ DEFAULT_LEROBOT_POLICY = "lerobot/diffusion_pusht"
 DEFAULT_LEWORLDMODEL_POLICY = "pusht/lewm"
 DEFAULT_DEVICE = "cpu"
 DEFAULT_MODE = "select_action"
+DEFAULT_TRANSLATOR = "worldforge.smoke.lerobot_leworldmodel:translate_pusht_xy_actions"
 DEFAULT_TASK = (
     "PushT tabletop manipulation: use a LeRobot policy to propose an action chunk, "
     "then rank policy-compatible candidates with a LeWorldModel cost checkpoint."
@@ -830,11 +832,44 @@ def _runtime_command(*, checkpoint: Path, policy_path: str, device: str) -> str:
         f"  --checkpoint {checkpoint_text} \\\n"
         f"  --device {device} \\\n"
         "  --mode select_action \\\n"
-        "  --observation-module /path/to/pusht_obs.py:build_observation \\\n"
-        "  --score-info-npz /path/to/lewm_score_tensors.npz \\\n"
-        "  --translator worldforge.smoke.lerobot_leworldmodel:translate_pusht_xy_actions \\\n"
-        "  --candidate-builder /path/to/pusht_lewm_bridge.py:build_action_candidates"
+        "  --bridge pusht"
     )
+
+
+def _apply_bridge_defaults(args: argparse.Namespace) -> dict[str, Any] | None:
+    if args.bridge is None:
+        return None
+    try:
+        bridge = get_bridge(args.bridge)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if (
+        args.observation_module is None
+        and args.observation_json is None
+        and args.policy_info_json is None
+    ):
+        args.observation_module = bridge.observation_module
+    if (
+        args.score_info_module is None
+        and args.score_info_json is None
+        and args.score_info_npz is None
+    ):
+        args.score_info_module = bridge.score_info_module
+    if (
+        args.candidate_builder is None
+        and args.action_candidates_json is None
+        and args.action_candidates_npz is None
+    ):
+        args.candidate_builder = bridge.candidate_builder
+    if args.translator == DEFAULT_TRANSLATOR:
+        args.translator = bridge.translator
+    if args.expected_action_dim is None:
+        args.expected_action_dim = bridge.expected_action_dim
+    if args.expected_horizon is None:
+        args.expected_horizon = bridge.expected_horizon
+    if args.task == DEFAULT_TASK:
+        args.task = bridge.task
+    return bridge.to_dict()
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -898,6 +933,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--lerobot-cache-dir", default=_env_value("LEROBOT_CACHE_DIR"))
     parser.add_argument("--embodiment-tag", default=_env_value("LEROBOT_EMBODIMENT_TAG") or "pusht")
     parser.add_argument("--mode", choices=("select_action", "predict_chunk"), default=DEFAULT_MODE)
+    parser.add_argument(
+        "--bridge",
+        choices=bridge_names(),
+        default=None,
+        help=(
+            "Use a registered task bridge for observation, score tensors, translator, "
+            "candidate builder, and expected LeWorldModel tensor dimensions."
+        ),
+    )
     parser.add_argument("--action-horizon", type=int, default=None)
     parser.add_argument("--expected-action-dim", type=int, default=None)
     parser.add_argument("--expected-horizon", type=int, default=None)
@@ -992,7 +1036,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--action-candidates-key", default="action_candidates")
     parser.add_argument(
         "--translator",
-        default="worldforge.smoke.lerobot_leworldmodel:translate_pusht_xy_actions",
+        default=DEFAULT_TRANSLATOR,
         help=(
             "Callable module_or_file:function receiving (raw_actions, info, provider_info) "
             "and returning WorldForge Action candidates."
@@ -1004,6 +1048,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    bridge_summary = _apply_bridge_defaults(args)
     if not args.policy_path:
         parser.error(
             "real LeRobot+LeWorldModel flow requires --policy-path or LEROBOT_POLICY_PATH."
@@ -1153,6 +1198,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.health_only or not preflight_ok:
         payload = {
             "mode": "real_lerobot_policy_plus_real_leworldmodel_score",
+            "bridge": bridge_summary,
             "checkpoint": str(object_path),
             "checkpoint_display": _display_path(object_path),
             "checkpoint_exists": checkpoint_exists,
@@ -1192,6 +1238,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "STABLEWM_HOME",
                     ),
                     event_count=len(provider_events),
+                    input_summary={"bridge": bridge_summary} if bridge_summary is not None else {},
                     result=payload,
                     artifact_paths=json_artifacts,
                 ),
@@ -1372,6 +1419,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload = {
         "mode": "real_lerobot_policy_plus_real_leworldmodel_score",
         "task": args.task,
+        "bridge": bridge_summary,
         "checkpoint": str(object_path),
         "checkpoint_display": _display_path(object_path),
         "state_dir": str(state_dir),
@@ -1443,6 +1491,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "STABLEWM_HOME",
                 ),
                 event_count=len(event_payload),
+                input_summary={
+                    "bridge": bridge_summary,
+                    "score_shapes": score_shape_payload,
+                    "score_action_candidates_shape": list(
+                        _shape_tuple(score_action_candidates) or []
+                    ),
+                },
                 input_fixture=input_fixture,
                 result=payload,
                 artifact_paths=artifact_paths,

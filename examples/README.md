@@ -126,10 +126,19 @@ scripts/lewm-lerobot-real \
   --checkpoint ~/.stable-wm/pusht/lewm_object.ckpt \
   --device cpu \
   --mode select_action \
-  --observation-module /path/to/pusht_obs.py:build_observation \
+  --bridge pusht
+```
+
+For non-PushT tasks, pass explicit host-owned hooks instead of the packaged bridge:
+
+```bash
+scripts/lewm-lerobot-real \
+  --policy-path /path/to/task-policy \
+  --checkpoint /path/to/task/lewm_object.ckpt \
+  --observation-module /path/to/task_obs.py:build_observation \
   --score-info-npz /path/to/lewm_score_tensors.npz \
-  --translator worldforge.smoke.lerobot_leworldmodel:translate_pusht_xy_actions \
-  --candidate-builder /path/to/pusht_lewm_bridge.py:build_action_candidates
+  --translator /path/to/task_translator.py:translate_actions \
+  --candidate-builder /path/to/task_lewm_bridge.py:build_action_candidates
 ```
 
 Use custom hooks only with task-aligned inputs: the LeRobot policy, observation, LeWorldModel score

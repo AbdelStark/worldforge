@@ -38,6 +38,7 @@ class LiveSmokeRunManifest:
     env_summary: tuple[JSONDict, ...]
     artifact_paths: Mapping[str, str] = field(default_factory=dict)
     event_count: int = 0
+    input_summary: Mapping[str, Any] = field(default_factory=dict)
     input_fixture_digest: str | None = None
     result_digest: str | None = None
     runtime_manifest_id: str | None = None
@@ -71,6 +72,7 @@ class LiveSmokeRunManifest:
             "status": self.status,
             "runtime_manifest_id": self.runtime_manifest_id,
             "env_summary": [dict(item) for item in self.env_summary],
+            "input_summary": _json_native(dict(self.input_summary)),
             "input_fixture_digest": self.input_fixture_digest,
             "event_count": self.event_count,
             "result_digest": self.result_digest,
@@ -89,6 +91,7 @@ def build_run_manifest(
     artifact_paths: Mapping[str, Path | str] | None = None,
     command_argv: Sequence[str] | None = None,
     event_count: int = 0,
+    input_summary: Mapping[str, Any] | None = None,
     input_fixture: Path | str | None = None,
     result: Mapping[str, Any] | None = None,
     result_digest: str | None = None,
@@ -118,6 +121,7 @@ def build_run_manifest(
         status=status,
         runtime_manifest_id=runtime_manifest_id,
         env_summary=tuple(env_summary(env_vars, environ=environ)),
+        input_summary=input_summary or {},
         input_fixture_digest=digest_file(input_fixture) if input_fixture is not None else None,
         event_count=event_count,
         result_digest=resolved_result_digest,
@@ -205,6 +209,9 @@ def validate_run_manifest(payload: Mapping[str, Any]) -> JSONDict:
         raise WorldForgeError("Run manifest env_summary must be a list.")
     if not isinstance(manifest.get("artifact_paths"), dict):
         raise WorldForgeError("Run manifest artifact_paths must be an object.")
+    manifest.setdefault("input_summary", {})
+    if not isinstance(manifest.get("input_summary"), dict):
+        raise WorldForgeError("Run manifest input_summary must be an object.")
     _reject_secret_like_values(manifest)
     _reject_unsafe_strings(manifest)
     return manifest

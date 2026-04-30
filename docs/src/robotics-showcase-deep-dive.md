@@ -272,6 +272,11 @@ The packaged PushT bridge builds them from two deterministic PushT resets:
 | `goal` | `1 x 1 x 3 x 3 x 224 x 224` | Goal PushT RGB frame repeated across the same history window. |
 | `action` | `1 x 1 x 3 x 10` | Zero action history for the 3-step history window and 10-dimensional PushT action block. |
 
+The smoke commands resolve this through the checkout-safe `--bridge pusht` registry entry. That
+entry names the observation factory, score-info factory, translator, candidate builder, expected
+horizon, expected score action dimension, and static shape summary. The registry does not infer
+task tensors for other robots; a host bringing another task must provide an equivalent bridge.
+
 The score provider also receives action candidates. The default `build_action_candidates(...)`
 bridge converts the LeRobot raw action into:
 

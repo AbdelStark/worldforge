@@ -22,11 +22,11 @@ from .lerobot_leworldmodel import (
     DEFAULT_MODE,
 )
 from .leworldmodel import DEFAULT_STABLEWM_HOME, _checkpoint_path
-from .pusht_showcase_inputs import DEFAULT_ACTION_DIM, DEFAULT_HORIZON
+from .leworldmodel_bridges import get_bridge
 
 DEFAULT_JSON_OUTPUT = Path("/tmp/worldforge-robotics-showcase/real-run.json")
 DEFAULT_RERUN_OUTPUT = Path("/tmp/worldforge-robotics-showcase/real-run.rrd")
-PUSHT_INPUT_MODULE = "worldforge.smoke.pusht_showcase_inputs"
+DEFAULT_BRIDGE = "pusht"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -224,20 +224,10 @@ def _forward_args(args: argparse.Namespace) -> list[str]:
         args.device,
         "--mode",
         args.mode,
-        "--observation-module",
-        f"{PUSHT_INPUT_MODULE}:build_observation",
-        "--score-info-module",
-        f"{PUSHT_INPUT_MODULE}:build_score_info",
-        "--translator",
-        f"{PUSHT_INPUT_MODULE}:translate_candidates_contract",
-        "--candidate-builder",
-        f"{PUSHT_INPUT_MODULE}:build_action_candidates",
-        "--expected-action-dim",
-        str(DEFAULT_ACTION_DIM),
-        "--expected-horizon",
-        str(DEFAULT_HORIZON),
+        "--bridge",
+        DEFAULT_BRIDGE,
         "--task",
-        "PushT real LeRobot policy plus LeWorldModel score planning",
+        get_bridge(DEFAULT_BRIDGE).task,
         "--goal",
         "rank PushT policy action candidates with a LeWorldModel checkpoint",
         "--color",

@@ -78,6 +78,26 @@ def test_write_run_manifest_validates_before_writing(tmp_path: Path) -> None:
     assert json.loads(path.read_text(encoding="utf-8"))["provider_profile"] == "cosmos"
 
 
+def test_run_manifest_preserves_safe_input_summary() -> None:
+    manifest = build_run_manifest(
+        run_id="run-1",
+        provider_profile="leworldmodel",
+        capability="score",
+        status="passed",
+        env_vars=("LEWORLDMODEL_POLICY",),
+        command_argv=("lewm-real",),
+        input_summary={
+            "bridge": "pusht",
+            "score_shapes": {"action_candidates": [1, 3, 4, 10]},
+        },
+    ).to_dict()
+
+    assert manifest["input_summary"] == {
+        "bridge": "pusht",
+        "score_shapes": {"action_candidates": [1, 3, 4, 10]},
+    }
+
+
 def test_run_manifest_rejects_secret_like_values_and_signed_urls(tmp_path: Path) -> None:
     manifest = build_run_manifest(
         run_id="run-1",

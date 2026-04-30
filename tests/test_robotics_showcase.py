@@ -224,25 +224,13 @@ def test_robotics_showcase_forwards_packaged_pusht_defaults(
 
     forwarded = captured["argv"]
     assert forwarded[:2] == ["--policy-path", "lerobot/diffusion_pusht"]
-    assert "--observation-module" in forwarded
-    assert (
-        forwarded[forwarded.index("--observation-module") + 1]
-        == "worldforge.smoke.pusht_showcase_inputs:build_observation"
-    )
-    assert (
-        forwarded[forwarded.index("--score-info-module") + 1]
-        == "worldforge.smoke.pusht_showcase_inputs:build_score_info"
-    )
-    assert (
-        forwarded[forwarded.index("--translator") + 1]
-        == "worldforge.smoke.pusht_showcase_inputs:translate_candidates_contract"
-    )
-    assert (
-        forwarded[forwarded.index("--candidate-builder") + 1]
-        == "worldforge.smoke.pusht_showcase_inputs:build_action_candidates"
-    )
-    assert forwarded[forwarded.index("--expected-action-dim") + 1] == "10"
-    assert forwarded[forwarded.index("--expected-horizon") + 1] == "4"
+    assert forwarded[forwarded.index("--bridge") + 1] == "pusht"
+    assert "--observation-module" not in forwarded
+    assert "--score-info-module" not in forwarded
+    assert "--translator" not in forwarded
+    assert "--candidate-builder" not in forwarded
+    assert "--expected-action-dim" not in forwarded
+    assert "--expected-horizon" not in forwarded
     assert "--json-output" not in forwarded
 
 

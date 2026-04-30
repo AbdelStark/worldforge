@@ -11,6 +11,7 @@ import pytest
 
 from worldforge.providers import LeRobotPolicyProvider, LeWorldModelProvider
 from worldforge.smoke import lerobot_leworldmodel
+from worldforge.smoke.leworldmodel_bridges import get_bridge
 
 
 class FakeTensor:
@@ -226,6 +227,46 @@ def test_builtin_pusht_translator_returns_worldforge_actions() -> None:
             {},
             {},
         )
+
+
+def test_leworldmodel_bridge_registry_exposes_checkout_safe_pusht_metadata() -> None:
+    bridge = get_bridge("pusht")
+
+    assert bridge.observation_module == "worldforge.smoke.pusht_showcase_inputs:build_observation"
+    assert bridge.score_info_module == "worldforge.smoke.pusht_showcase_inputs:build_score_info"
+    assert bridge.expected_action_dim == 10
+    assert bridge.expected_horizon == 4
+    assert bridge.shape_summary["action_candidates"] == [1, 3, 4, 10]
+
+    with pytest.raises(ValueError, match="Unknown LeWorldModel task bridge"):
+        get_bridge("unknown")
+
+
+def test_bridge_defaults_fill_smoke_inputs_without_optional_imports() -> None:
+    args = _args(
+        bridge="pusht",
+        score_info_json=None,
+        score_info_npz=None,
+        score_info_module=None,
+        action_candidates_json=None,
+        action_candidates_npz=None,
+        candidate_builder=None,
+        translator=lerobot_leworldmodel.DEFAULT_TRANSLATOR,
+        task=lerobot_leworldmodel.DEFAULT_TASK,
+    )
+
+    summary = lerobot_leworldmodel._apply_bridge_defaults(args)
+
+    assert summary is not None
+    assert summary["name"] == "pusht"
+    assert args.observation_module == "worldforge.smoke.pusht_showcase_inputs:build_observation"
+    assert args.score_info_module == "worldforge.smoke.pusht_showcase_inputs:build_score_info"
+    assert (
+        args.candidate_builder == "worldforge.smoke.pusht_showcase_inputs:build_action_candidates"
+    )
+    assert args.translator == "worldforge.smoke.pusht_showcase_inputs:translate_candidates_contract"
+    assert args.expected_action_dim == 10
+    assert args.expected_horizon == 4
 
 
 def test_helper_loaders_and_error_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -471,6 +512,7 @@ def test_main_runs_policy_score_plan_with_fake_real_runtimes(
     assert manifest["status"] == "passed"
     assert manifest["event_count"] == len(payload["provider_events"])
     assert manifest["input_fixture_digest"].startswith("sha256:")
+    assert manifest["input_summary"]["score_shapes"]["action_candidates"] == [1, 2, 2, 2]
     assert set(manifest["artifact_paths"]) == {"worldforge_state"}
 
 

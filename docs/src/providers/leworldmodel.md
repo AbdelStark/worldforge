@@ -119,6 +119,30 @@ The selected `Plan.actions` come from `candidate_actions[best_index]`. `Plan.pre
 stays empty because a score provider ranks candidate futures without returning a WorldForge state
 rollout. Use `execute_plan(...)` with an execution provider that supports `predict`.
 
+## Task Bridges
+
+WorldForge ships a small bridge registry for smoke commands, not a generic tensor preprocessor.
+The first registered bridge is `pusht`; it wires:
+
+- `build_observation()` for the LeRobot PushT policy input
+- `build_score_info()` for LeWorldModel `pixels`, `goal`, and `action`
+- `translate_candidates_contract` for WorldForge replay actions
+- `build_action_candidates()` for `1 x 3 x 4 x 10` PushT score tensors
+
+Use it from the lower-level runner with:
+
+```bash
+scripts/lewm-lerobot-real \
+  --policy-path lerobot/diffusion_pusht \
+  --checkpoint ~/.stable-wm/pusht/lewm_object.ckpt \
+  --bridge pusht
+```
+
+The bridge registry records expected policy, score, and candidate tensor shapes. Run manifests copy
+that shape summary plus the observed score tensor shapes so issue evidence can show whether a host
+used the intended task contract. WorldForge validates shape consistency and fails on mismatched
+action dimensions before planning; the host still owns task preprocessing and any non-PushT bridge.
+
 ## Runtime Checks
 
 Checkout-safe provider/planner demo:
