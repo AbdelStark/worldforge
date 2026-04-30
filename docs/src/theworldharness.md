@@ -77,11 +77,19 @@ The harness now exposes the main WorldForge surfaces directly:
 - Providers: registered-provider capability matrix, health details, and cancellable `mock.predict`.
 - Eval: built-in deterministic suites with capability errors surfaced as hard toasts.
 - Benchmark: provider-operation latency, retry, and throughput runs with live samples.
-- Run Inspector: timeline, metrics, transcript, and export preview for flows and reports.
+- Run Inspector: timeline, metrics, sanitized provider-event table, validation errors, transcript,
+  and export preview for flows and reports.
 
 Flow and report views are rendered from the same structured `HarnessRun` object used in tests.
 The provider, eval, and benchmark screens call the same Python APIs as the CLI; report artifacts
 use the canonical JSON / Markdown / CSV renderers.
+
+Every harness flow preserves the final inspector state under
+`.worldforge/runs/<run-id>/results/inspector.json`, writes sanitized provider events to
+`logs/provider-events.jsonl`, and links both artifacts from `run_manifest.json`. If a flow fails
+before provider work completes, the manifest status is `failed` rather than left as `running`; the
+inspector still records the command, redacted validation error, and failure event needed to
+reproduce the run.
 
 The diagnostics, eval, and benchmark screens map directly to non-TUI commands:
 

@@ -37,7 +37,14 @@ def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
     assert run.summary["selected_candidate_index"] == 1
     assert run.summary["saved_worlds"] == [run.summary["saved_world_id"]]
     assert run.summary["event_phases"] == ["success", "success"]
+    assert [event["phase"] for event in run.provider_events] == ["success", "success"]
     assert "final_position: (0.55, 0.50, 0.00)" in run.transcript
+    assert run.workspace_path is not None
+    event_log = run.workspace_path / "logs" / "provider-events.jsonl"
+    events = [json.loads(line) for line in event_log.read_text(encoding="utf-8").splitlines()]
+    assert [event["phase"] for event in events] == ["success", "success"]
+    inspector = json.loads((run.workspace_path / "results" / "inspector.json").read_text())
+    assert inspector["provider_events"] == events
 
 
 def test_harness_runs_lerobot_flow(tmp_path) -> None:
@@ -49,6 +56,32 @@ def test_harness_runs_lerobot_flow(tmp_path) -> None:
     assert run.summary["selected_candidate_index"] == 1
     assert run.summary["policy_select_calls"] == 2
     assert "policy_select_calls: 2" in run.transcript
+
+
+def test_harness_failed_flow_preserves_manifest_and_inspector(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from worldforge.harness import flows
+
+    def broken_runner(**_kwargs) -> dict[str, object]:
+        raise RuntimeError("api_key=secret-value failed")
+
+    monkeypatch.setitem(flows._RUNNERS, "leworldmodel", broken_runner)
+
+    run = flows.run_flow("leworldmodel", state_dir=tmp_path)
+
+    assert run.validation_errors == ("api_key=[redacted] failed",)
+    assert run.provider_events[0]["phase"] == "failure"
+    assert run.provider_events[0]["message"] == "api_key=[redacted] failed"
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["event_count"] == 1
+    assert manifest["artifact_paths"]["inspector"] == "results/inspector.json"
+    inspector = json.loads((run.workspace_path / "results" / "inspector.json").read_text())
+    assert inspector["status"] == "failed"
+    assert inspector["validation_errors"] == ["api_key=[redacted] failed"]
 
 
 def test_harness_runs_diagnostics_flow(tmp_path) -> None:

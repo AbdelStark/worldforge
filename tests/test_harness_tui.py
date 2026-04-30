@@ -420,6 +420,41 @@ def test_the_world_harness_app_switches_to_diagnostics_flow(tmp_path) -> None:
     asyncio.run(scenario())
 
 
+def test_run_inspector_renders_failed_flow_without_credentials(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness import flows
+    from worldforge.harness.tui import RunInspectorScreen, TheWorldHarnessApp
+
+    def broken_runner(**_kwargs) -> dict[str, object]:
+        raise RuntimeError("RUNWAYML_API_SECRET=secret-value unavailable")
+
+    monkeypatch.setitem(flows._RUNNERS, "leworldmodel", broken_runner)
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(
+            initial_flow_id="leworldmodel",
+            initial_screen="run-inspector",
+            state_dir=tmp_path,
+            step_delay=0.0,
+        )
+        async with app.run_test(size=(130, 42)) as pilot:
+            await pilot.press("r")
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, RunInspectorScreen)
+            assert screen.last_run is not None
+            assert screen.last_run.validation_errors == (
+                "RUNWAYML_API_SECRET=[redacted] unavailable",
+            )
+            assert screen.last_run.provider_events[0]["phase"] == "failure"
+
+    asyncio.run(scenario())
+
+
 # ---------------------------------------------------------------------------
 # M1 — Screen architecture tests
 # ---------------------------------------------------------------------------

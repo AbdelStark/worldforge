@@ -85,6 +85,8 @@ class HarnessRun:
     report_path: Path | None = None
     workspace_path: Path | None = None
     artifacts: dict[str, str] | None = None
+    provider_events: tuple[JSONDict, ...] = ()
+    validation_errors: tuple[str, ...] = ()
 
     def to_dict(self) -> JSONDict:
         return {
@@ -98,6 +100,8 @@ class HarnessRun:
             "report_path": str(self.report_path) if self.report_path is not None else None,
             "workspace_path": str(self.workspace_path) if self.workspace_path is not None else None,
             "artifacts": dict(self.artifacts or {}),
+            "provider_events": [dict(event) for event in self.provider_events],
+            "validation_errors": list(self.validation_errors),
         }
 
     @property

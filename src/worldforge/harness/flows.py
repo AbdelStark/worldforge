@@ -19,7 +19,7 @@ from worldforge.harness.workspace import (
     workspace_root_for_state_dir,
     write_run_manifest,
 )
-from worldforge.models import JSONDict
+from worldforge.models import JSONDict, ProviderEvent
 
 FlowRunner = Callable[..., JSONDict]
 
@@ -184,7 +184,23 @@ def run_flow(flow_id: str, *, state_dir: Path | None = None) -> HarnessRun:
         provider=flow.provider,
         operation=flow.id,
     )
-    summary = _RUNNERS[flow_id](state_dir=resolved_state_dir, emit=False)
+    try:
+        summary = _RUNNERS[flow_id](state_dir=resolved_state_dir, emit=False)
+    except Exception as exc:
+        summary = _failed_flow_summary(flow_id, resolved_state_dir, exc)
+        run = HarnessRun(
+            flow=flow,
+            state_dir=resolved_state_dir,
+            summary=summary,
+            steps=_steps_for(flow_id, summary),
+            metrics=_metrics_for(flow_id, summary),
+            transcript=_transcript_for(flow_id, summary),
+            workspace_path=workspace.path,
+            provider_events=_provider_events_for(flow_id, summary),
+            validation_errors=tuple(str(error) for error in summary.get("validation_errors", [])),
+        )
+        _write_flow_workspace(workspace, run)
+        return run
     run = HarnessRun(
         flow=flow,
         state_dir=resolved_state_dir,
@@ -193,9 +209,27 @@ def run_flow(flow_id: str, *, state_dir: Path | None = None) -> HarnessRun:
         metrics=_metrics_for(flow_id, summary),
         transcript=_transcript_for(flow_id, summary),
         workspace_path=workspace.path,
+        provider_events=_provider_events_for(flow_id, summary),
     )
     _write_flow_workspace(workspace, run)
     return run
+
+
+def _failed_flow_summary(flow_id: str, state_dir: Path, exc: Exception) -> JSONDict:
+    event = ProviderEvent(
+        provider=flow_index()[flow_id].provider,
+        operation=flow_id,
+        phase="failure",
+        message=str(exc),
+    )
+    return {
+        "demo_kind": "harness_flow",
+        "state_dir": str(state_dir),
+        "status": "failed",
+        "event_phases": [event.phase],
+        "provider_events": [event.to_dict()],
+        "validation_errors": [event.message],
+    }
 
 
 def eval_run_artifacts(
@@ -540,30 +574,23 @@ def _write_flow_workspace(workspace: RunWorkspace, run: HarnessRun) -> None:
         [metric.to_dict() for metric in run.metrics],
     )
     transcript_path = workspace.write_text("logs/transcript.txt", "\n".join(run.transcript))
-    event_count = 0
-    event_phases = run.summary.get("event_phases")
-    if isinstance(event_phases, list):
-        event_count = len(event_phases)
+    inspector_path = workspace.write_json(
+        "results/inspector.json",
+        _inspector_payload(run),
+    )
+    provider_events = run.provider_events
+    event_count = len(provider_events)
+    if provider_events:
         workspace.write_text(
             "logs/provider-events.jsonl",
-            "\n".join(
-                json.dumps(
-                    {
-                        "event_type": "provider_event_summary",
-                        "provider": run.flow.provider,
-                        "operation": run.flow.id,
-                        "phase": str(phase),
-                    },
-                    sort_keys=True,
-                )
-                for phase in event_phases
-            ),
+            "\n".join(json.dumps(event, sort_keys=True) for event in provider_events),
         )
     artifact_paths = {
         "summary": str(summary_path.relative_to(workspace.path)),
         "steps": str(steps_path.relative_to(workspace.path)),
         "metrics": str(metrics_path.relative_to(workspace.path)),
         "transcript": str(transcript_path.relative_to(workspace.path)),
+        "inspector": str(inspector_path.relative_to(workspace.path)),
     }
     write_run_manifest(
         workspace,
@@ -571,16 +598,29 @@ def _write_flow_workspace(workspace: RunWorkspace, run: HarnessRun) -> None:
         command=run.flow.command,
         provider=run.flow.provider,
         operation=run.flow.id,
-        status="completed",
+        status="failed" if run.validation_errors else "completed",
         input_summary={"flow_id": run.flow.id, "state_dir": str(run.state_dir)},
         result_summary={
             "step_count": len(run.steps),
             "metric_count": len(run.metrics),
             "summary_keys": sorted(run.summary),
+            "validation_error_count": len(run.validation_errors),
         },
         artifact_paths=artifact_paths,
         event_count=event_count,
     )
+
+
+def _inspector_payload(run: HarnessRun) -> JSONDict:
+    return {
+        "flow": run.flow.to_dict(),
+        "status": "failed" if run.validation_errors else "completed",
+        "metrics": [metric.to_dict() for metric in run.metrics],
+        "steps": [step.to_dict() for step in run.steps],
+        "provider_events": [dict(event) for event in run.provider_events],
+        "validation_errors": list(run.validation_errors),
+        "workspace_path": str(run.workspace_path) if run.workspace_path is not None else None,
+    }
 
 
 def _write_report_artifacts(workspace: RunWorkspace, artifacts: dict[str, str]) -> dict[str, str]:
@@ -593,6 +633,22 @@ def _write_report_artifacts(workspace: RunWorkspace, artifacts: dict[str, str]) 
 
 
 def _steps_for(flow_id: str, summary: JSONDict) -> tuple[HarnessStep, ...]:
+    validation_errors = summary.get("validation_errors")
+    if isinstance(validation_errors, list) and validation_errors:
+        return (
+            HarnessStep(
+                "Start flow",
+                "Create a run workspace and record the command before invoking providers.",
+                "Run workspace preserved.",
+                f"state_dir={Path(str(summary.get('state_dir', ''))).name}",
+            ),
+            HarnessStep(
+                "Capture failure",
+                "Persist sanitized provider events and validation errors for triage.",
+                str(validation_errors[0]),
+                "artifact=run_manifest.json results/inspector.json",
+            ),
+        )
     if flow_id == "leworldmodel":
         return (
             HarnessStep(
@@ -741,6 +797,13 @@ def _steps_for(flow_id: str, summary: JSONDict) -> tuple[HarnessStep, ...]:
 
 
 def _metrics_for(flow_id: str, summary: JSONDict) -> tuple[HarnessMetric, ...]:
+    validation_errors = summary.get("validation_errors")
+    if isinstance(validation_errors, list) and validation_errors:
+        return (
+            HarnessMetric("Status", "failed", "run manifest preserved for reproduction"),
+            HarnessMetric("Events", str(len(summary.get("event_phases", []))), "failure"),
+            HarnessMetric("Errors", str(len(validation_errors)), str(validation_errors[0])),
+        )
     if flow_id == "diagnostics":
         return (
             HarnessMetric(
@@ -787,6 +850,15 @@ def _metrics_for(flow_id: str, summary: JSONDict) -> tuple[HarnessMetric, ...]:
 
 
 def _transcript_for(flow_id: str, summary: JSONDict) -> tuple[str, ...]:
+    validation_errors = summary.get("validation_errors")
+    if isinstance(validation_errors, list) and validation_errors:
+        return (
+            f"flow: {flow_id}",
+            "status: failed",
+            f"state_dir: {summary.get('state_dir', '')}",
+            f"validation_errors: {' | '.join(str(error) for error in validation_errors)}",
+            f"events: {', '.join(str(phase) for phase in summary.get('event_phases', []))}",
+        )
     if flow_id == "diagnostics":
         return (
             "flow: diagnostics",
@@ -843,6 +915,55 @@ def _final_position_result(summary: JSONDict) -> str:
 
 def _event_result(summary: JSONDict) -> str:
     return f"Provider phases: {', '.join(summary['event_phases'])}."
+
+
+def _provider_events_for(flow_id: str, summary: JSONDict) -> tuple[JSONDict, ...]:
+    events = summary.get("provider_events")
+    if isinstance(events, list):
+        return tuple(dict(event) for event in events if isinstance(event, dict))
+    benchmark_results = summary.get("benchmark_results")
+    if isinstance(benchmark_results, list):
+        synthesized: list[JSONDict] = []
+        for result in benchmark_results:
+            if not isinstance(result, dict):
+                continue
+            metrics = result.get("operation_metrics")
+            if not isinstance(metrics, dict):
+                continue
+            for metric_event in metrics.get("events", []):
+                if not isinstance(metric_event, dict):
+                    continue
+                request_count = int(metric_event.get("request_count", 0) or 0)
+                retry_count = int(metric_event.get("retry_count", 0) or 0)
+                error_count = int(metric_event.get("error_count", 0) or 0)
+                phase = "failure" if error_count else "retry" if retry_count else "success"
+                synthesized.append(
+                    ProviderEvent(
+                        provider=str(metric_event.get("provider", result.get("provider", "mock"))),
+                        operation=str(
+                            metric_event.get("operation", result.get("operation", flow_id))
+                        ),
+                        phase=phase,
+                        metadata={
+                            "request_count": request_count,
+                            "retry_count": retry_count,
+                            "error_count": error_count,
+                        },
+                    ).to_dict()
+                )
+        return tuple(synthesized)
+    phases = summary.get("event_phases")
+    if not isinstance(phases, list):
+        return ()
+    flow = flow_index()[flow_id]
+    return tuple(
+        ProviderEvent(
+            provider=flow.provider,
+            operation=flow.id,
+            phase=str(phase),
+        ).to_dict()
+        for phase in phases
+    )
 
 
 def _position(summary: JSONDict) -> str:

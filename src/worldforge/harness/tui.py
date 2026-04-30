@@ -330,6 +330,8 @@ class InspectorPane(Static, _ThemedRenderer):
     def render_run(self, run: HarnessRun) -> None:
         accent = self._color("accent")
         success = self._color("success")
+        warning = self._color("warning")
+        error = self._color("error")
         table = Table.grid(expand=True)
         table.add_column(justify="left", ratio=1)
         table.add_column(justify="right", ratio=1)
@@ -339,6 +341,36 @@ class InspectorPane(Static, _ThemedRenderer):
             )
             if metric.detail:
                 table.add_row("", Text(metric.detail, style=success))
+        if run.provider_events:
+            table.add_row(Text(""), Text(""))
+            table.add_row(Text("Provider events", style="dim"), Text(str(len(run.provider_events))))
+            for provider_event in run.provider_events[:6]:
+                phase = str(provider_event.get("phase", "event"))
+                phase_style = {
+                    "success": success,
+                    "retry": warning,
+                    "failure": error,
+                    "cancelled": warning,
+                    "budget_exceeded": error,
+                }.get(phase, accent)
+                provider = str(provider_event.get("provider", "provider"))
+                operation = str(provider_event.get("operation", "operation"))
+                attempt = provider_event.get("attempt")
+                duration = provider_event.get("duration_ms")
+                suffix = []
+                if attempt is not None:
+                    suffix.append(f"attempt={attempt}")
+                if duration is not None:
+                    suffix.append(f"{float(duration):.1f} ms")
+                table.add_row(
+                    Text(phase, style=f"bold {phase_style}"),
+                    Text(f"{provider}.{operation} {' '.join(suffix)}".strip()),
+                )
+        if run.validation_errors:
+            table.add_row(Text(""), Text(""))
+            table.add_row(Text("Validation errors", style=f"bold {error}"), Text(""))
+            for validation_error in run.validation_errors[:3]:
+                table.add_row("", Text(validation_error, style=error))
         self.update(Panel(table, title="Inspector", border_style=accent))
 
 

@@ -214,6 +214,7 @@ def run_demo(
         "saved_world_id": saved_world_id,
         "saved_worlds": forge.list_worlds(),
         "event_phases": [event.phase for event in events],
+        "provider_events": [event.to_dict() for event in events],
         "runtime_eval_called": runtime.eval_called,
         "runtime_grad_disabled": runtime.requires_grad_disabled,
     }

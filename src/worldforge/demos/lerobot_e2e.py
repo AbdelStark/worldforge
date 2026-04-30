@@ -247,6 +247,7 @@ def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
         "saved_world_id": saved_world_id,
         "saved_worlds": forge.list_worlds(),
         "event_phases": [event.phase for event in events],
+        "provider_events": [event.to_dict() for event in events],
         "policy_reset_calls": policy.reset_calls,
         "policy_eval_called": policy.eval_called,
         "policy_requires_grad_disabled": policy.requires_grad_disabled,

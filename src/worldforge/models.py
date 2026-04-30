@@ -54,12 +54,12 @@ _SENSITIVE_FIELD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SENSITIVE_ASSIGNMENT_PATTERN = re.compile(
-    r"\b(api[_-]?key|authorization|credential|password|secret|signature|signed[_-]?url|token)=([^&\s,;]+)",
+    r"\b([A-Za-z0-9_-]*(?:api[_-]?key|authorization|credential|password|secret|signature|signed[_-]?url|token)[A-Za-z0-9_-]*)=([^&\s,;]+)",
     re.IGNORECASE,
 )
 _SENSITIVE_COLON_PATTERN = re.compile(
     r"(?P<key_quote>[\"']?)"
-    r"(?P<key>api[_-]?key|authorization|bearer|credential|password|secret|signature|signed[_-]?url|token)"
+    r"(?P<key>[A-Za-z0-9_-]*(?:api[_-]?key|authorization|bearer|credential|password|secret|signature|signed[_-]?url|token)[A-Za-z0-9_-]*)"
     r"(?P=key_quote)\s*:\s*"
     r"(?P<value>\"[^\"]*\"|'[^']*'|[^,\s;}]+)",
     re.IGNORECASE,
