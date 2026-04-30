@@ -77,8 +77,35 @@ uv run worldforge benchmark --provider mock --iterations 2 --format json
 uv run worldforge eval --suite planning --provider mock --format json
 ```
 
-Completed eval and benchmark runs write JSON under `.worldforge/reports/` relative to the active
-state directory. The Home screen and `Ctrl+P` index those files as recent runs.
+Completed checkout-safe flows also preserve a sanitized run workspace:
+
+```text
+.worldforge/runs/<run-id>/
+|-- run_manifest.json
+|-- inputs/
+|-- results/
+|-- reports/
+|-- artifacts/
+`-- logs/
+```
+
+Run IDs are UTC-sortable and file-safe (`YYYYMMDDTHHMMSSZ-xxxxxxxx`). The manifest records the
+command, provider surface, status, input summary, result summary, event count, and relative artifact
+paths. It intentionally stores summaries and report renderings, not credentials, raw signed URLs, or
+provider-owned private data.
+
+The CLI can write the same layout for evaluation and benchmark runs:
+
+```bash
+uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
+uv run worldforge benchmark --provider mock --operation predict --run-workspace .worldforge
+uv run worldforge runs list
+uv run worldforge runs cleanup --keep 20
+```
+
+Completed eval and benchmark TUI screens still write JSON under `.worldforge/reports/` relative to
+the active state directory for the Home screen and `Ctrl+P` recent-report index. Use the run
+workspace when a full issue attachment needs manifest, reports, logs, and result summaries together.
 
 ## Interface Contract
 

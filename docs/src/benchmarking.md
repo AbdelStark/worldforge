@@ -63,6 +63,19 @@ uv run worldforge benchmark --provider mock --operation embed --format markdown
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
 ```
 
+Use `--run-workspace` when benchmark numbers need manifest-backed provenance:
+
+```bash
+uv run worldforge benchmark \
+  --provider mock \
+  --operation predict \
+  --iterations 5 \
+  --run-workspace .worldforge
+```
+
+The run workspace stores the manifest, JSON/Markdown/CSV reports, result summary, budget verdict
+when supplied, and event count under `.worldforge/runs/<run-id>/`.
+
 Use `--input-file` when a benchmark result needs to be reproducible from preserved inputs. The
 file can contain input fields directly, or an `inputs` object plus metadata. The checked-in
 `examples/benchmark-inputs.json` fixture is checkout-safe for the mock provider's `predict`,

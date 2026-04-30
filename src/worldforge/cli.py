@@ -52,6 +52,7 @@ CLI_EPILOG = """Common commands:
   worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
   worldforge eval --suite planning --provider mock --format json
   worldforge benchmark --provider mock --iterations 5 --format json
+  worldforge runs list
 """
 
 EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
@@ -210,6 +211,24 @@ def _parse_bool(value: str) -> bool:
     raise WorldForgeError("Boolean values must be 'true' or 'false'.")
 
 
+def _provider_args(providers: list[str]) -> list[str]:
+    args: list[str] = []
+    for provider in providers:
+        args.extend(["--provider", provider])
+    return args
+
+
+def _operation_args(operations: list[str]) -> list[str]:
+    args: list[str] = []
+    for operation in operations:
+        args.extend(["--operation", operation])
+    return args
+
+
+def _command_string(args: list[str]) -> str:
+    return "worldforge " + " ".join(args)
+
+
 def _world_history_payload(world) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     for entry in world.history():
@@ -325,6 +344,33 @@ def _print_examples_markdown() -> None:
             f"{example['requires']} | "
             f"`{example['command']}` |"
         )
+
+
+def _print_run_list_markdown(runs: tuple[dict[str, object], ...]) -> None:
+    print("# WorldForge Runs")
+    print()
+    print("| run_id | kind | status | provider | operation | path |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    for run in runs:
+        print(
+            "| "
+            f"`{run.get('run_id', '')}` | "
+            f"{run.get('kind', '')} | "
+            f"{run.get('status', '')} | "
+            f"{run.get('provider', '')} | "
+            f"{run.get('operation', '')} | "
+            f"`{run.get('path', '')}` |"
+        )
+
+
+def _print_run_cleanup_markdown(paths: tuple[Path, ...], *, dry_run: bool) -> None:
+    title = "WorldForge Run Cleanup Preview" if dry_run else "WorldForge Run Cleanup"
+    print(f"# {title}")
+    print()
+    print(f"- removed_count: {0 if dry_run else len(paths)}")
+    print(f"- selected_count: {len(paths)}")
+    for path in paths:
+        print(f"- `{path}`")
 
 
 def _provider_docs_entries(name: str | None = None) -> tuple[dict[str, str], ...]:
@@ -690,6 +736,46 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for the forked world summary.",
     )
 
+    runs = subparsers.add_parser("runs", help="List and clean preserved run workspaces.")
+    runs_subparsers = runs.add_subparsers(dest="runs_command", required=True, metavar="command")
+    runs_list = runs_subparsers.add_parser("list", help="List preserved run manifests.")
+    runs_list.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path(".worldforge"),
+        help="WorldForge workspace directory containing runs/.",
+    )
+    runs_list.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for run summaries.",
+    )
+    runs_cleanup = runs_subparsers.add_parser("cleanup", help="Remove old preserved runs.")
+    runs_cleanup.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path(".worldforge"),
+        help="WorldForge workspace directory containing runs/.",
+    )
+    runs_cleanup.add_argument(
+        "--keep",
+        type=int,
+        default=10,
+        help="Number of newest runs to keep.",
+    )
+    runs_cleanup.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show selected run directories without deleting them.",
+    )
+    runs_cleanup.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for cleanup results.",
+    )
+
     doctor = subparsers.add_parser("doctor", help="Inspect the local WorldForge environment.")
     doctor.add_argument("--state-dir", default=".worldforge/worlds", help="World state directory.")
     doctor.add_argument(
@@ -759,6 +845,11 @@ def _build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument(
         "--state-dir", default=".worldforge/worlds", help="World state directory."
     )
+    evaluate.add_argument(
+        "--run-workspace",
+        type=Path,
+        help="Preserve sanitized eval artifacts under RUN_WORKSPACE/runs/<run-id>/.",
+    )
 
     benchmark = subparsers.add_parser(
         "benchmark",
@@ -799,6 +890,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     benchmark.add_argument(
         "--state-dir", default=".worldforge/worlds", help="World state directory."
+    )
+    benchmark.add_argument(
+        "--run-workspace",
+        type=Path,
+        help="Preserve sanitized benchmark artifacts under RUN_WORKSPACE/runs/<run-id>/.",
     )
 
     harness = subparsers.add_parser("harness", help="Launch TheWorldHarness TUI.")
@@ -859,6 +955,39 @@ def _cmd_harness(args: argparse.Namespace) -> int:
         output_format=args.format,
         animate=not args.no_animation,
     )
+
+
+def _cmd_runs(args: argparse.Namespace) -> int:
+    from worldforge.harness.workspace import cleanup_run_workspaces, list_run_workspaces
+
+    if args.runs_command == "list":
+        runs = list_run_workspaces(args.workspace_dir)
+        if args.format == "markdown":
+            _print_run_list_markdown(runs)
+        else:
+            _print_json(runs)
+        return 0
+
+    if args.runs_command == "cleanup":
+        removed = cleanup_run_workspaces(
+            args.workspace_dir,
+            keep=args.keep,
+            dry_run=args.dry_run,
+        )
+        if args.format == "markdown":
+            _print_run_cleanup_markdown(removed, dry_run=args.dry_run)
+        else:
+            _print_json(
+                {
+                    "dry_run": args.dry_run,
+                    "selected_count": len(removed),
+                    "removed_count": 0 if args.dry_run else len(removed),
+                    "paths": [str(path) for path in removed],
+                }
+            )
+        return 0
+
+    return 2
 
 
 def _cmd_providers(args: argparse.Namespace, forge: WorldForge) -> int:
@@ -1233,12 +1362,24 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
     suite = EvaluationSuite.from_builtin(args.suite)
     providers = args.providers or ["mock"]
     report = suite.run_report(providers, forge=forge)
+    artifacts = report.artifacts()
+    if args.run_workspace is not None:
+        from worldforge.harness.flows import preserve_eval_run_workspace
+
+        preserve_eval_run_workspace(
+            args.run_workspace,
+            suite_id=args.suite,
+            providers=providers,
+            artifacts=artifacts,
+            report=report,
+            command=_command_string(["eval", "--suite", args.suite, *_provider_args(providers)]),
+        )
     if args.format == "json":
-        print(report.to_json())
+        print(artifacts["json"])
     elif args.format == "csv":
-        print(report.to_csv())
+        print(artifacts["csv"])
     else:
-        print(report.to_markdown())
+        print(artifacts["markdown"])
     return 0
 
 
@@ -1305,6 +1446,29 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
         }
         gate_report = report.evaluate_budgets(load_benchmark_budgets(budget_payload))
 
+    if args.run_workspace is not None:
+        from worldforge.harness.flows import preserve_benchmark_run_workspace
+
+        preserve_benchmark_run_workspace(
+            args.run_workspace,
+            providers=providers,
+            operations=args.operations,
+            artifacts=report.artifacts(),
+            report=report,
+            command=_command_string(
+                [
+                    "benchmark",
+                    *_provider_args(providers),
+                    *_operation_args(args.operations or []),
+                    "--iterations",
+                    str(args.iterations),
+                    "--concurrency",
+                    str(args.concurrency),
+                ]
+            ),
+            budget_passed=None if gate_report is None else gate_report.passed,
+        )
+
     if args.format == "json":
         if gate_report is None:
             print(report.to_json())
@@ -1358,6 +1522,12 @@ def main() -> int:
 
     if args.command == "harness":
         return _cmd_harness(args)
+
+    if args.command == "runs":
+        try:
+            return _cmd_runs(args)
+        except (WorldForgeError, ValueError) as exc:
+            parser.exit(2, f"{exc}\n")
 
     forge = WorldForge(state_dir=args.state_dir)
 

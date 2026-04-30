@@ -118,7 +118,7 @@ options:
 usage: worldforge eval [-h]
                        [--suite {generation,physics,planning,reasoning,transfer}]
                        [--provider PROVIDERS] [--format {markdown,json,csv}]
-                       [--state-dir STATE_DIR]
+                       [--state-dir STATE_DIR] [--run-workspace RUN_WORKSPACE]
 
 options:
   -h, --help            show this help message and exit
@@ -129,6 +129,9 @@ options:
                         Evaluation report format.
   --state-dir STATE_DIR
                         World state directory.
+  --run-workspace RUN_WORKSPACE
+                        Preserve sanitized eval artifacts under
+                        RUN_WORKSPACE/runs/<run-id>/.
 """,
     ("benchmark", "--help"): """\
 usage: worldforge benchmark [-h] [--provider PROVIDERS]
@@ -139,6 +142,7 @@ usage: worldforge benchmark [-h] [--provider PROVIDERS]
                             [--input-file INPUT_FILE]
                             [--budget-file BUDGET_FILE]
                             [--state-dir STATE_DIR]
+                            [--run-workspace RUN_WORKSPACE]
 
 options:
   -h, --help            show this help message and exit
@@ -159,6 +163,9 @@ options:
                         after printing the report.
   --state-dir STATE_DIR
                         World state directory.
+  --run-workspace RUN_WORKSPACE
+                        Preserve sanitized benchmark artifacts under
+                        RUN_WORKSPACE/runs/<run-id>/.
 """,
 }
 
@@ -207,6 +214,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "eval",
         "benchmark",
         "harness",
+        "runs",
     ):
         assert command in output
     for common_command in (
@@ -218,6 +226,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "worldforge provider info mock",
         "worldforge harness --list",
         "worldforge eval --suite planning --provider mock --format json",
+        "worldforge runs list",
     ):
         assert common_command in output
 

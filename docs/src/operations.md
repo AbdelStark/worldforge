@@ -144,6 +144,28 @@ Supported persistence invariants:
 - Any future built-in persistence backend must be introduced as an explicit adapter with its own
   locking, migration, and recovery documentation.
 
+## Run Workspaces
+
+Evaluation, benchmark, and harness jobs can preserve checkout-safe run evidence under
+`.worldforge/runs/<run-id>/`. This is separate from local JSON world persistence: run workspaces are
+operator evidence bundles, not a database.
+
+```bash
+uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
+uv run worldforge benchmark --provider mock --operation predict --run-workspace .worldforge
+uv run worldforge runs list
+uv run worldforge runs cleanup --keep 20
+```
+
+Each run directory contains `run_manifest.json`, `inputs/`, `results/`, `reports/`, `artifacts/`,
+and `logs/`. The manifest stores a sortable file-safe run ID, command, provider, operation, status,
+input summary, result summary, event count, and relative artifact paths.
+
+Retention is host-owned. `worldforge runs cleanup --keep <n>` keeps the newest run IDs and removes
+older directories; use `--dry-run` before deleting evidence attached to an incident or release gate.
+For public issues, attach the manifest plus report files and redact any host-created artifacts that
+contain private paths, prompts, credentials, signed URLs, or provider-native payloads.
+
 ## Observability
 
 Attach a provider event handler at `WorldForge(event_handler=...)` or provider construction time.

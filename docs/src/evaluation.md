@@ -32,6 +32,15 @@ uv run worldforge eval --suite transfer --provider mock
 
 Repeat `--provider` to compare multiple registered providers in one report.
 
+Use `--run-workspace` when an evaluation should leave a manifest-backed evidence bundle:
+
+```bash
+uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
+```
+
+The run workspace stores `run_manifest.json`, JSON/Markdown/CSV reports, and a result summary under
+`.worldforge/runs/<run-id>/`.
+
 The same built-in suites are available from TheWorldHarness. Launch
 `uv run --extra harness worldforge-harness --flow eval`, pick a suite and provider, and the TUI
 writes the canonical JSON report under `.worldforge/reports/` before opening the Run Inspector.

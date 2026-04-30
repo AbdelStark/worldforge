@@ -83,6 +83,7 @@ class HarnessRun:
     transcript: tuple[str, ...]
     kind: Literal["flow", "eval", "benchmark"] = "flow"
     report_path: Path | None = None
+    workspace_path: Path | None = None
     artifacts: dict[str, str] | None = None
 
     def to_dict(self) -> JSONDict:
@@ -95,6 +96,7 @@ class HarnessRun:
             "transcript": list(self.transcript),
             "kind": self.kind,
             "report_path": str(self.report_path) if self.report_path is not None else None,
+            "workspace_path": str(self.workspace_path) if self.workspace_path is not None else None,
             "artifacts": dict(self.artifacts or {}),
         }
 

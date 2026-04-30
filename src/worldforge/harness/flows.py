@@ -13,6 +13,12 @@ from worldforge.benchmark import BenchmarkReport, BenchmarkResult, ProviderBench
 from worldforge.evaluation import EvaluationReport, EvaluationResult, EvaluationSuite
 from worldforge.framework import WorldForge
 from worldforge.harness.models import HarnessFlow, HarnessMetric, HarnessRun, HarnessStep
+from worldforge.harness.workspace import (
+    RunWorkspace,
+    create_run_workspace,
+    workspace_root_for_state_dir,
+    write_run_manifest,
+)
 from worldforge.models import JSONDict
 
 FlowRunner = Callable[..., JSONDict]
@@ -171,15 +177,25 @@ def run_flow(flow_id: str, *, state_dir: Path | None = None) -> HarnessRun:
     resolved_state_dir = state_dir or Path(
         tempfile.mkdtemp(prefix=f"worldforge-harness-{flow_id}-")
     )
+    workspace = create_run_workspace(
+        workspace_root_for_state_dir(resolved_state_dir),
+        kind="flow",
+        command=flow.command,
+        provider=flow.provider,
+        operation=flow.id,
+    )
     summary = _RUNNERS[flow_id](state_dir=resolved_state_dir, emit=False)
-    return HarnessRun(
+    run = HarnessRun(
         flow=flow,
         state_dir=resolved_state_dir,
         summary=summary,
         steps=_steps_for(flow_id, summary),
         metrics=_metrics_for(flow_id, summary),
         transcript=_transcript_for(flow_id, summary),
+        workspace_path=workspace.path,
     )
+    _write_flow_workspace(workspace, run)
+    return run
 
 
 def eval_run_artifacts(
@@ -242,6 +258,97 @@ def write_report(forge: WorldForge, kind: str, artifacts: dict[str, str]) -> Pat
     path = reports_dir / f"{safe_kind}-{timestamp}-{run_id}.json"
     path.write_text(artifacts["json"], encoding="utf-8")
     return path.resolve()
+
+
+def preserve_eval_run_workspace(
+    workspace_dir: Path,
+    *,
+    suite_id: str,
+    providers: Sequence[str],
+    artifacts: dict[str, str],
+    report: EvaluationReport,
+    command: str,
+) -> RunWorkspace:
+    """Preserve an evaluation report in the shared run workspace layout."""
+
+    workspace = create_run_workspace(
+        workspace_dir,
+        kind="eval",
+        command=command,
+        provider=", ".join(providers),
+        operation=suite_id,
+        input_summary={"suite_id": suite_id, "providers": list(providers)},
+    )
+    paths = _write_report_artifacts(workspace, artifacts)
+    result_summary = {
+        "suite_id": report.suite_id,
+        "suite": report.suite,
+        "result_count": len(report.results),
+        "passed_count": sum(1 for result in report.results if result.passed),
+    }
+    workspace.write_json("results/summary.json", result_summary)
+    write_run_manifest(
+        workspace,
+        kind="eval",
+        command=command,
+        provider=", ".join(providers),
+        operation=suite_id,
+        status="completed",
+        input_summary={"suite_id": suite_id, "providers": list(providers)},
+        result_summary=result_summary,
+        artifact_paths=paths,
+    )
+    return workspace
+
+
+def preserve_benchmark_run_workspace(
+    workspace_dir: Path,
+    *,
+    providers: Sequence[str],
+    operations: Sequence[str] | None,
+    artifacts: dict[str, str],
+    report: BenchmarkReport,
+    command: str,
+    budget_passed: bool | None = None,
+) -> RunWorkspace:
+    """Preserve a benchmark report in the shared run workspace layout."""
+
+    operation_label = ", ".join(operations or ProviderBenchmarkHarness.benchmarkable_operations)
+    input_summary = {"providers": list(providers), "operations": list(operations or [])}
+    workspace = create_run_workspace(
+        workspace_dir,
+        kind="benchmark",
+        command=command,
+        provider=", ".join(providers),
+        operation=operation_label,
+        input_summary=input_summary,
+    )
+    paths = _write_report_artifacts(workspace, artifacts)
+    result_summary = {
+        "result_count": len(report.results),
+        "error_count": sum(result.error_count for result in report.results),
+        "retry_count": sum(result.retry_count for result in report.results),
+        "budget_passed": budget_passed,
+    }
+    workspace.write_json("results/summary.json", result_summary)
+    write_run_manifest(
+        workspace,
+        kind="benchmark",
+        command=command,
+        provider=", ".join(providers),
+        operation=operation_label,
+        status="completed" if budget_passed is not False else "failed",
+        input_summary=input_summary,
+        result_summary=result_summary,
+        artifact_paths=paths,
+        event_count=sum(
+            int(event.get("request_count", 0))
+            for result in report.results
+            for event in result.operation_metrics.get("events", [])
+            if isinstance(event, dict)
+        ),
+    )
+    return workspace
 
 
 def report_run_from_path(path: Path, *, state_dir: Path) -> HarnessRun:
@@ -423,6 +530,66 @@ def _benchmark_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
         run_metadata=dict(payload.get("run_metadata", {})),
     )
     return report.artifacts()
+
+
+def _write_flow_workspace(workspace: RunWorkspace, run: HarnessRun) -> None:
+    summary_path = workspace.write_json("results/summary.json", run.summary)
+    steps_path = workspace.write_json("results/steps.json", [step.to_dict() for step in run.steps])
+    metrics_path = workspace.write_json(
+        "results/metrics.json",
+        [metric.to_dict() for metric in run.metrics],
+    )
+    transcript_path = workspace.write_text("logs/transcript.txt", "\n".join(run.transcript))
+    event_count = 0
+    event_phases = run.summary.get("event_phases")
+    if isinstance(event_phases, list):
+        event_count = len(event_phases)
+        workspace.write_text(
+            "logs/provider-events.jsonl",
+            "\n".join(
+                json.dumps(
+                    {
+                        "event_type": "provider_event_summary",
+                        "provider": run.flow.provider,
+                        "operation": run.flow.id,
+                        "phase": str(phase),
+                    },
+                    sort_keys=True,
+                )
+                for phase in event_phases
+            ),
+        )
+    artifact_paths = {
+        "summary": str(summary_path.relative_to(workspace.path)),
+        "steps": str(steps_path.relative_to(workspace.path)),
+        "metrics": str(metrics_path.relative_to(workspace.path)),
+        "transcript": str(transcript_path.relative_to(workspace.path)),
+    }
+    write_run_manifest(
+        workspace,
+        kind="flow",
+        command=run.flow.command,
+        provider=run.flow.provider,
+        operation=run.flow.id,
+        status="completed",
+        input_summary={"flow_id": run.flow.id, "state_dir": str(run.state_dir)},
+        result_summary={
+            "step_count": len(run.steps),
+            "metric_count": len(run.metrics),
+            "summary_keys": sorted(run.summary),
+        },
+        artifact_paths=artifact_paths,
+        event_count=event_count,
+    )
+
+
+def _write_report_artifacts(workspace: RunWorkspace, artifacts: dict[str, str]) -> dict[str, str]:
+    paths: dict[str, str] = {}
+    for name, content in artifacts.items():
+        suffix = "md" if name == "markdown" else name
+        path = workspace.write_text(f"reports/report.{suffix}", content)
+        paths[name] = str(path.relative_to(workspace.path))
+    return paths
 
 
 def _steps_for(flow_id: str, summary: JSONDict) -> tuple[HarnessStep, ...]:
