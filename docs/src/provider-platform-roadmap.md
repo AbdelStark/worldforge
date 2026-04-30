@@ -1265,10 +1265,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Metrics bridge is optional and has bounded labels.
-- [ ] Retry events increment retry metrics distinctly from logical operation count.
-- [ ] Docs explain metric meanings and alert examples.
-- [ ] Base package dependency set remains unchanged.
+- [x] Metrics bridge is optional and has bounded labels.
+- [x] Retry events increment retry metrics distinctly from logical operation count.
+- [x] Docs explain metric meanings and alert examples.
+- [x] Base package dependency set remains unchanged.
 
 Validation:
 

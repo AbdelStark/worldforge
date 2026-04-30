@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
+from typing import Protocol
 
 from worldforge.models import (
+    CAPABILITY_NAMES,
     JSONDict,
     ProviderEvent,
     WorldForgeError,
@@ -23,6 +25,27 @@ from worldforge.observability_opentelemetry import (
 )
 
 ProviderEventHandler = Callable[[ProviderEvent], None]
+MetricLabels = dict[str, str]
+
+
+class ProviderMetricsExporter(Protocol):
+    """Host-owned metrics backend used by :class:`ProviderMetricsExporterSink`."""
+
+    def increment_counter(
+        self,
+        name: str,
+        *,
+        value: float = 1.0,
+        labels: Mapping[str, str],
+    ) -> None: ...
+
+    def observe_histogram(
+        self,
+        name: str,
+        value: float,
+        *,
+        labels: Mapping[str, str],
+    ) -> None: ...
 
 
 def _copy_event(event: ProviderEvent) -> ProviderEvent:
@@ -300,15 +323,164 @@ class ProviderMetricsSink:
         return payload
 
 
+def _status_class(status_code: int | None) -> str:
+    if status_code is None:
+        return "none"
+    return f"{status_code // 100}xx"
+
+
+def _capability_label(event: ProviderEvent) -> str:
+    capability = event.metadata.get("capability")
+    if isinstance(capability, str) and capability in CAPABILITY_NAMES:
+        return capability
+    return "unknown"
+
+
+def provider_event_metric_labels(event: ProviderEvent) -> MetricLabels:
+    """Return bounded metric labels for a provider event."""
+
+    return {
+        "provider": event.provider,
+        "operation": event.operation,
+        "phase": event.phase,
+        "status_class": _status_class(event.status_code),
+        "capability": _capability_label(event),
+    }
+
+
+@dataclass(slots=True, frozen=True)
+class MetricSample:
+    """One exported metric observation captured by the in-memory exporter."""
+
+    name: str
+    labels: MetricLabels
+    value: float
+
+    def to_dict(self) -> JSONDict:
+        return {"name": self.name, "labels": dict(self.labels), "value": self.value}
+
+
+@dataclass(slots=True)
+class InMemoryMetricsExporter:
+    """Dependency-free metrics exporter useful for tests and local host wiring."""
+
+    _counters: dict[tuple[str, tuple[tuple[str, str], ...]], float] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _histograms: list[MetricSample] = field(default_factory=list, init=False, repr=False)
+    _lock: Lock = field(default_factory=Lock, init=False, repr=False)
+
+    def increment_counter(
+        self,
+        name: str,
+        *,
+        value: float = 1.0,
+        labels: Mapping[str, str],
+    ) -> None:
+        label_tuple = tuple(sorted(dict(labels).items()))
+        with self._lock:
+            counter_key = (name, label_tuple)
+            self._counters[counter_key] = self._counters.get(counter_key, 0.0) + value
+
+    def observe_histogram(
+        self,
+        name: str,
+        value: float,
+        *,
+        labels: Mapping[str, str],
+    ) -> None:
+        with self._lock:
+            self._histograms.append(MetricSample(name=name, labels=dict(labels), value=value))
+
+    def clear(self) -> None:
+        with self._lock:
+            self._counters.clear()
+            self._histograms.clear()
+
+    def counter_value(self, name: str, *, labels: Mapping[str, str]) -> float:
+        label_tuple = tuple(sorted(dict(labels).items()))
+        with self._lock:
+            return self._counters.get((name, label_tuple), 0.0)
+
+    def counter_samples(self) -> list[MetricSample]:
+        with self._lock:
+            return [
+                MetricSample(
+                    name=name,
+                    labels=dict(label_tuple),
+                    value=value,
+                )
+                for (name, label_tuple), value in sorted(self._counters.items())
+            ]
+
+    def histogram_samples(self) -> list[MetricSample]:
+        with self._lock:
+            return [
+                MetricSample(name=sample.name, labels=dict(sample.labels), value=sample.value)
+                for sample in self._histograms
+            ]
+
+
+@dataclass(slots=True)
+class ProviderMetricsExporterSink:
+    """Export provider event counters and latency histograms to a host metrics backend."""
+
+    exporter: ProviderMetricsExporter
+    metric_prefix: str = "worldforge_provider"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.metric_prefix, str) or not self.metric_prefix.strip():
+            raise WorldForgeError(
+                "ProviderMetricsExporterSink metric_prefix must be a non-empty string."
+            )
+        self.metric_prefix = self.metric_prefix.strip()
+
+    def __call__(self, event: ProviderEvent) -> None:
+        labels = provider_event_metric_labels(event)
+        self.exporter.increment_counter(
+            f"{self.metric_prefix}_events_total",
+            labels=labels,
+        )
+        if event.phase == "retry":
+            self.exporter.increment_counter(
+                f"{self.metric_prefix}_retries_total",
+                labels=labels,
+            )
+        else:
+            self.exporter.increment_counter(
+                f"{self.metric_prefix}_operations_total",
+                labels=labels,
+            )
+        if event.phase in {"failure", "budget_exceeded"}:
+            self.exporter.increment_counter(
+                f"{self.metric_prefix}_errors_total",
+                labels=labels,
+            )
+        if event.duration_ms is not None:
+            self.exporter.observe_histogram(
+                f"{self.metric_prefix}_latency_ms",
+                event.duration_ms,
+                labels=labels,
+            )
+
+
 __all__ = [
+    "InMemoryMetricsExporter",
     "InMemoryRecorderSink",
     "JsonLoggerSink",
     "LatencySummary",
+    "MetricLabels",
+    "MetricSample",
     "OpenTelemetryProviderEventSink",
     "ProviderEventHandler",
+    "ProviderMetricsExporter",
+    "ProviderMetricsExporterSink",
     "ProviderMetricsSink",
     "ProviderOperationMetrics",
     "RunJsonLogSink",
     "compose_event_handlers",
+    "provider_event_metric_labels",
     "provider_event_span_attributes",
 ]

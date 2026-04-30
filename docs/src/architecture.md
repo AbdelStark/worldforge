@@ -675,6 +675,7 @@ Provider operation
         |-- RunJsonLogSink
         |-- InMemoryRecorderSink
         |-- ProviderMetricsSink
+        |-- ProviderMetricsExporterSink
         `-- RerunEventSink
 ```
 
@@ -692,8 +693,9 @@ from pathlib import Path
 from worldforge import WorldForge
 from worldforge.observability import (
     JsonLoggerSink,
-    ProviderMetricsSink,
     OpenTelemetryProviderEventSink,
+    ProviderMetricsExporterSink,
+    ProviderMetricsSink,
     RunJsonLogSink,
     compose_event_handlers,
 )
@@ -701,12 +703,14 @@ from worldforge.rerun import RerunEventSink, RerunRecordingConfig, RerunSession
 
 run_id = "demo-run"
 metrics = ProviderMetricsSink()
+host_metrics_exporter = ...  # supplied by your service
 rerun_session = RerunSession(RerunRecordingConfig(save_path=".worldforge/rerun/events.rrd"))
 forge = WorldForge(
     event_handler=compose_event_handlers(
         JsonLoggerSink(logger=logging.getLogger("demo.worldforge"), extra_fields={"run_id": run_id}),
         RunJsonLogSink(Path(".worldforge") / "runs" / run_id / "provider-events.jsonl", run_id),
         RerunEventSink(session=rerun_session),
+        ProviderMetricsExporterSink(host_metrics_exporter),
         metrics,
     )
 )

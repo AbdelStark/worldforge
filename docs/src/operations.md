@@ -115,6 +115,7 @@ Use `compose_event_handlers(...)` to fan out events to:
 - `JsonLoggerSink` for structured JSON logs.
 - `RunJsonLogSink` for newline-delimited JSON files tied to one run id.
 - `ProviderMetricsSink` for request, retry, error, and latency aggregates.
+- `ProviderMetricsExporterSink` for optional host-owned counters and latency histograms.
 - `OpenTelemetryProviderEventSink` for optional host-owned tracing spans.
 - `InMemoryRecorderSink` for tests and local debugging.
 - `RerunEventSink` for optional Rerun recordings of provider events.
@@ -155,6 +156,40 @@ operation, phase, attempt, max attempts, optional duration, optional correlation
 HTTP status code, sanitized target, status class, capability, redacted message, and redacted
 metadata JSON. Hosts should not add raw prompts, world IDs, target URLs with query strings, or
 high-cardinality business metadata as trace attributes.
+
+Metrics export is also optional and dependency-free. `ProviderMetricsExporterSink` accepts any
+host exporter with `increment_counter(...)` and `observe_histogram(...)` methods, so production
+services can bridge provider events to Prometheus, OpenTelemetry Metrics, StatsD, or an internal
+collector without adding dependencies to the base package.
+
+```python
+from worldforge import WorldForge
+from worldforge.observability import ProviderMetricsExporterSink, compose_event_handlers
+
+host_metrics_exporter = ...  # supplied by your service
+forge = WorldForge(
+    event_handler=compose_event_handlers(
+        ProviderMetricsExporterSink(host_metrics_exporter),
+    )
+)
+```
+
+The sink emits:
+
+| Metric | Meaning |
+| --- | --- |
+| `worldforge_provider_events_total` | Every provider event, including retries. |
+| `worldforge_provider_operations_total` | Logical non-retry outcomes such as `success`, `failure`, and `budget_exceeded`. |
+| `worldforge_provider_retries_total` | Retry events only, separate from logical operation totals. |
+| `worldforge_provider_errors_total` | Failed or budget-exceeded operation outcomes. |
+| `worldforge_provider_latency_ms` | Event `duration_ms` values when providers include them. |
+
+Labels are bounded to `provider`, `operation`, `phase`, `status_class`, and `capability`.
+`capability` is exported only when it matches a known WorldForge capability; otherwise it becomes
+`unknown`. Do not add raw target URLs, prompts, metadata keys, world IDs, artifact IDs, request IDs,
+or user/business identifiers as metric labels. Those values have high cardinality, and some can
+carry secrets. Good first alerts are retry-rate or error-rate thresholds by provider/operation, and
+latency percentile alerts on `worldforge_provider_latency_ms` grouped by provider/operation.
 
 Example JSON log record:
 

@@ -108,6 +108,7 @@ from pathlib import Path
 from worldforge import WorldForge
 from worldforge.observability import (
     JsonLoggerSink,
+    ProviderMetricsExporterSink,
     OpenTelemetryProviderEventSink,
     ProviderMetricsSink,
     RunJsonLogSink,
@@ -117,10 +118,12 @@ from worldforge.rerun import RerunArtifactLogger, RerunEventSink, RerunRecording
 
 run_id = "demo-run"
 metrics = ProviderMetricsSink()
+host_metrics_exporter = ...  # supplied by your service
 forge = WorldForge(
     event_handler=compose_event_handlers(
         JsonLoggerSink(logger=logging.getLogger("demo.worldforge"), extra_fields={"run_id": run_id}),
         RunJsonLogSink(Path(".worldforge") / "runs" / run_id / "provider-events.jsonl", run_id),
+        ProviderMetricsExporterSink(host_metrics_exporter),
         metrics,
     )
 )
@@ -135,6 +138,8 @@ redact obvious bearer tokens, API keys, signatures, passwords, and signed URLs. 
 appends one JSON object per line and stamps every record with `run_id` for manifest correlation.
 `OpenTelemetryProviderEventSink` is optional and accepts an injected host tracer, so the base
 package does not import OpenTelemetry or configure collectors.
+`ProviderMetricsExporterSink` is also optional and accepts a host-owned metrics exporter with
+bounded labels for provider, operation, phase, status class, and capability.
 
 Rerun is available as an optional observability and artifact layer:
 
