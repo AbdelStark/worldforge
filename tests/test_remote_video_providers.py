@@ -489,6 +489,8 @@ def test_runway_provider_retries_polling_and_download_reads(monkeypatch) -> None
         options=GenerationOptions(fps=24.0),
     )
     assert generated.blob() == generated_bytes
+    assert generated.metadata["artifact_url"] == "https://downloads.example.com/generated.mp4"
+    assert "output_url" not in generated.metadata
     assert attempts["poll"] == 2
     assert attempts["download"] == 2
     assert [(event.operation, event.phase) for event in events] == [
@@ -504,6 +506,45 @@ def test_runway_provider_retries_polling_and_download_reads(monkeypatch) -> None
         "https://downloads.example.com/generated.mp4",
     ]
     assert "download-secret" not in json.dumps([event.to_dict() for event in events])
+    assert "download-secret" not in json.dumps(generated.metadata)
+
+
+def test_runway_provider_sanitizes_signed_artifact_metadata(monkeypatch) -> None:
+    monkeypatch.setenv("RUNWAY_API_SECRET", "legacy-runway-test-key")
+    generated_bytes = b"signed-url-generated"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json={"id": "task_generate"})
+        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "task_generate",
+                    "status": "SUCCEEDED",
+                    "output": [
+                        "https://downloads.example.com/generated.mp4"
+                        "?X-Amz-Signature=download-secret#fragment"
+                    ],
+                },
+            )
+        if request.method == "GET" and request.url.host == "downloads.example.com":
+            return httpx.Response(200, content=generated_bytes)
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = RunwayProvider(
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+    )
+
+    generated = provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+    assert generated.blob() == generated_bytes
+    assert generated.metadata["artifact_url"] == "https://downloads.example.com/generated.mp4"
+    exported = json.dumps(generated.to_dict())
+    assert "download-secret" not in exported
+    assert "X-Amz-Signature" not in exported
 
 
 def test_runway_provider_does_not_retry_generation_post(monkeypatch) -> None:

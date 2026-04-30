@@ -289,6 +289,23 @@ def test_documented_benchmark_fixtures_load_and_pass_gate(tmp_path) -> None:
     assert gate.passed is True
 
 
+def test_runway_benchmark_input_fixtures_are_separate_and_valid() -> None:
+    generate_file = ROOT / "examples" / "runway-generate-benchmark-inputs.json"
+    transfer_file = ROOT / "examples" / "runway-transfer-benchmark-inputs.json"
+
+    generate_payload = json.loads(generate_file.read_text(encoding="utf-8"))
+    transfer_payload = json.loads(transfer_file.read_text(encoding="utf-8"))
+    generate_inputs = load_benchmark_inputs(generate_payload, base_path=generate_file.parent)
+    transfer_inputs = load_benchmark_inputs(transfer_payload, base_path=transfer_file.parent)
+
+    assert generate_payload["metadata"]["operation"] == "generate"
+    assert transfer_payload["metadata"]["operation"] == "transfer"
+    assert generate_inputs.generation_prompt.startswith("a calibrated robot arm")
+    assert generate_inputs.generation_duration_seconds == 5.0
+    assert transfer_inputs.transfer_prompt.startswith("rerender the clip")
+    assert transfer_inputs.transfer_clip.content_type() == "video/mp4"
+
+
 def test_load_benchmark_budgets_accepts_list_or_object_payload() -> None:
     loaded = load_benchmark_budgets(
         {

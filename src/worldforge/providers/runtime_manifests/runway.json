@@ -8,8 +8,8 @@
   "default_model": "gen4.5",
   "device_support": ["remote"],
   "host_owned_artifacts": ["Runway task ids", "downloaded video artifacts", "artifact retention path"],
-  "minimum_smoke_command": "WORLD_FORGE_RUN_LIVE=1 RUNWAYML_API_SECRET=<secret> uv run pytest tests/test_remote_video_providers.py -m live --provider-profile runway",
-  "expected_success_signal": "Runway organization health succeeds and task output downloads as video bytes",
-  "setup_hint": "configure Runway credentials and persist returned task artifacts before URLs expire",
+  "minimum_smoke_command": "RUNWAYML_API_SECRET=<secret> uv run worldforge-smoke-runway --run-manifest .worldforge/runs/runway-live/run_manifest.json",
+  "expected_success_signal": "Runway organization health succeeds, task output downloads as video bytes, and run_manifest.json contains only sanitized artifact URLs",
+  "setup_hint": "configure Runway credentials, choose generate or transfer, and persist downloaded task artifacts before signed URLs expire",
   "docs_path": "docs/src/providers/runway.md"
 }

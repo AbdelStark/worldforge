@@ -58,6 +58,20 @@ provider = RunwayProvider(
 )
 ```
 
+Live smoke evidence:
+
+```bash
+RUNWAYML_API_SECRET=<secret> \
+  uv run worldforge-smoke-runway \
+    --capability generate \
+    --output .worldforge/runs/runway-live/artifacts/runway.mp4 \
+    --run-manifest .worldforge/runs/runway-live/run_manifest.json
+```
+
+Use `--capability transfer` with `--input-video` to exercise video-to-video separately. The smoke
+summary and manifest store task presence, local artifact paths, and artifact URLs with query strings
+and fragments removed.
+
 ## Generate Contract
 
 ```python
@@ -80,6 +94,8 @@ Generation rules:
 
 - `duration_seconds` must be greater than 0.
 - Duration is mapped into Runway's 2-10 second request range.
+- The default model is `gen4.5`; the catalog currently documents `gen4.5`, `gen4_turbo`,
+  `veo3.1`, `veo3.1_fast`, and `gen4_aleph` as known selectable model names.
 - `GenerationOptions.ratio` must use `WIDTH:HEIGHT` with positive integer dimensions.
 - `options.video` is rejected for `generate(...)`; use `transfer(...)` for video inputs.
 - `image`, when supplied, becomes `promptImage`.
@@ -106,6 +122,8 @@ Transfer rules:
   `VideoClip`.
 - `reference_images` become Runway references.
 - The default transfer model is `gen4_aleph` unless `options.model` is supplied.
+- Runway model/version limits can change upstream; keep benchmark inputs and smoke evidence tied to
+  the exact model used in the result summary.
 
 ## Task And Artifact Contract
 
@@ -127,6 +145,21 @@ Artifact downloads accept video content types and `application/octet-stream`. Ex
 content types such as `text/html` are rejected. Empty downloads fail explicitly. Expired or
 unavailable artifact URLs are surfaced as provider errors.
 
+Runway output URLs can be temporary signed URLs. WorldForge uses the raw URL only for the immediate
+download request, then records `artifact_url` metadata without query strings or fragments. Persist
+the downloaded bytes immediately if the media is needed for issue evidence, benchmark comparisons,
+or release notes. If an artifact has expired, rerun the task rather than attempting to reconstruct a
+signed URL from logs or manifests.
+
+Separate benchmark input fixtures are provided for the two capabilities:
+
+```bash
+uv run worldforge benchmark --provider runway --operation generate \
+  --input-file examples/runway-generate-benchmark-inputs.json
+uv run worldforge benchmark --provider runway --operation transfer \
+  --input-file examples/runway-transfer-benchmark-inputs.json
+```
+
 ## Request Policy
 
 `RunwayProvider` uses `ProviderRequestPolicy.remote_defaults(...)`:
@@ -147,6 +180,8 @@ Pass a custom `request_policy=` when the host needs different timeout or retry b
   task.
 - Completed tasks without output URLs fail explicitly.
 - Expired, unavailable, empty, or wrong-content-type artifacts fail before returning `VideoClip`.
+- Result metadata and run manifests keep only sanitized artifact URLs; signed query strings and
+  fragments are not retained.
 - Invalid ratios, durations, dimensions, FPS, polling intervals, or poll counts fail before or
   during request construction.
 

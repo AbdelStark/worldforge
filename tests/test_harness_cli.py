@@ -75,7 +75,7 @@ def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatc
     assert payload["runway"]["missing_env_vars"] == ["RUNWAYML_API_SECRET"]
     assert payload["jepa"]["status"] == "scaffold"
     assert payload["genie"]["status"] == "scaffold"
-    assert "--provider-profile runway" in payload["runway"]["smoke_command"]
+    assert "worldforge-smoke-runway" in payload["runway"]["smoke_command"]
 
 
 def test_connector_readiness_distinguishes_missing_dependency(monkeypatch, tmp_path) -> None:

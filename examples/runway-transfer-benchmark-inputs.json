@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "purpose": "Runway transfer benchmark inputs",
+    "provider": "runway",
+    "operation": "transfer",
+    "artifact_policy": "downloaded output must be persisted by the host before signed URLs expire"
+  },
+  "inputs": {
+    "transfer_prompt": "rerender the clip with brighter lab lighting while preserving motion",
+    "transfer_width": 1280,
+    "transfer_height": 720,
+    "transfer_fps": 24.0,
+    "transfer_clip": {
+      "frames_base64": [
+        "d29ybGRmb3JnZS1ydW53YXktdHJhbnNmZXItc2VlZA=="
+      ],
+      "fps": 24.0,
+      "resolution": [
+        1280,
+        720
+      ],
+      "duration_seconds": 1.0,
+      "metadata": {
+        "content_type": "video/mp4",
+        "mode": "runway-transfer-benchmark-seed"
+      }
+    }
+  }
+}

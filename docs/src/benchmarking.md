@@ -152,6 +152,17 @@ Omitted fields keep deterministic defaults. A `transfer_clip.path` is resolved r
 input JSON file; use `frames_base64` instead of `path` when the clip bytes must be contained
 inside the JSON fixture.
 
+Remote media providers can need capability-specific fixtures because generate and transfer exercise
+different upstream surfaces. Runway includes separate examples so a host can benchmark each surface
+without accidentally reusing a transfer seed for generation:
+
+```bash
+uv run worldforge benchmark --provider runway --operation generate \
+  --input-file examples/runway-generate-benchmark-inputs.json
+uv run worldforge benchmark --provider runway --operation transfer \
+  --input-file examples/runway-transfer-benchmark-inputs.json
+```
+
 The same provider-operation runner is available from TheWorldHarness:
 
 ```bash

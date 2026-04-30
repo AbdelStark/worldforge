@@ -15,6 +15,7 @@ from worldforge.models import (
     ProviderHealth,
     ProviderRequestPolicy,
     VideoClip,
+    _sanitize_observable_target,
     require_finite_number,
     require_positive_int,
 )
@@ -62,6 +63,13 @@ def _payload_message(payload: dict[str, object]) -> str:
             if isinstance(nested_message, str) and nested_message.strip():
                 return nested_message.strip()
     return "no failure detail returned"
+
+
+def _artifact_url_summary(url: str) -> str:
+    sanitized = _sanitize_observable_target(url)
+    if sanitized is None:
+        raise ProviderError("Runway task output URL must be a non-empty string.")
+    return sanitized
 
 
 @dataclass(slots=True, frozen=True)
@@ -474,6 +482,7 @@ class RunwayProvider(RemoteProvider):
 
         output_url = task.outputs[0]
         clip_bytes = self._download_output(output_url)
+        artifact_url = _artifact_url_summary(output_url)
         return VideoClip(
             frames=[clip_bytes],
             fps=options.fps if options and options.fps is not None else 24.0,
@@ -483,7 +492,7 @@ class RunwayProvider(RemoteProvider):
                 "provider": self.name,
                 "prompt": prompt,
                 "task_id": task_id,
-                "output_url": output_url,
+                "artifact_url": artifact_url,
                 "content_type": "video/mp4",
                 "model": model,
                 "mode": "image_to_video" if prompt_image else "text_to_video",
@@ -553,6 +562,7 @@ class RunwayProvider(RemoteProvider):
 
         output_url = task.outputs[0]
         clip_bytes = self._download_output(output_url)
+        artifact_url = _artifact_url_summary(output_url)
         return VideoClip(
             frames=[clip_bytes],
             fps=fps,
@@ -562,7 +572,7 @@ class RunwayProvider(RemoteProvider):
                 "provider": self.name,
                 "prompt": prompt,
                 "task_id": task_id,
-                "output_url": output_url,
+                "artifact_url": artifact_url,
                 "content_type": "video/mp4",
                 "model": model,
                 "mode": "video_to_video",
