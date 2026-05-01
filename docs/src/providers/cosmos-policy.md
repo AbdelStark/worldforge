@@ -68,6 +68,7 @@ from worldforge.providers import CosmosPolicyProvider
 
 provider = CosmosPolicyProvider(
     base_url="http://127.0.0.1:8777",
+    allow_local_base_url=True,
     action_translator=translate_actions,
 )
 ```

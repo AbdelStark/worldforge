@@ -108,6 +108,55 @@ def test_cosmos_policy_smoke_health_only_skips_policy_request(tmp_path: Path) ->
     assert manifest["event_count"] == 0
 
 
+def test_cosmos_policy_smoke_writes_failed_manifest_on_unhealthy_provider(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "runs" / "cosmos-policy-health-failed" / "run_manifest.json"
+
+    with pytest.raises(SystemExit, match="local/private destination"):
+        cosmos_policy.main(
+            [
+                "--base-url",
+                "http://127.0.0.1:8777",
+                "--health-only",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["provider_profile"] == "cosmos-policy"
+    assert manifest["status"] == "failed"
+    assert manifest["event_count"] == 0
+
+
+def test_cosmos_policy_smoke_writes_failed_manifest_on_translator_error(
+    tmp_path: Path,
+) -> None:
+    policy_path = tmp_path / "policy_info.json"
+    policy_path.write_text(json.dumps(_policy_info()), encoding="utf-8")
+    manifest_path = tmp_path / "runs" / "cosmos-policy-translator-failed" / "run_manifest.json"
+
+    with pytest.raises(SystemExit, match="Python module file does not exist"):
+        cosmos_policy.main(
+            [
+                "--base-url",
+                PUBLIC_BASE_URL,
+                "--policy-info-json",
+                str(policy_path),
+                "--translator",
+                f"{tmp_path / 'missing_translator.py'}:translate_actions",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["provider_profile"] == "cosmos-policy"
+    assert manifest["status"] == "failed"
+    assert manifest["event_count"] == 0
+
+
 def test_cosmos_policy_smoke_requires_explicit_base_url(monkeypatch) -> None:
     monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
 

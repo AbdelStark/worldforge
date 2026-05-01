@@ -13,7 +13,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from worldforge.models import JSONDict
+from worldforge.models import JSONDict, _redact_observable_text
 from worldforge.providers import CosmosPolicyProvider
 from worldforge.providers.cosmos_policy import DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
@@ -139,7 +139,8 @@ def _parser() -> argparse.ArgumentParser:
         "--translator",
         help=(
             "Python action translator formatted as module_or_file:function. The callable receives "
-            "(raw_actions, info, provider_info) and returns WorldForge Action objects."
+            "(raw_actions, info, provider_info) and returns WorldForge Action objects. "
+            "This imports and executes local Python; use only trusted translator code."
         ),
     )
     return parser
@@ -160,58 +161,87 @@ def _parse_timeout_seconds(value: str | None) -> float:
     return parsed
 
 
+def _write_manifest_if_requested(
+    args: argparse.Namespace,
+    *,
+    provider_events: list[object],
+    output: JSONDict,
+    status: str,
+) -> None:
+    if args.run_manifest is None:
+        return
+    input_fixture = args.policy_info_json or args.observation_json
+    if input_fixture is not None and not input_fixture.expanduser().exists():
+        input_fixture = None
+    write_run_manifest(
+        args.run_manifest,
+        build_run_manifest(
+            run_id=args.run_manifest.parent.name,
+            provider_profile="cosmos-policy",
+            capability="policy",
+            status=status,
+            env_vars=(
+                "COSMOS_POLICY_BASE_URL",
+                "COSMOS_POLICY_API_TOKEN",
+                "COSMOS_POLICY_TIMEOUT_SECONDS",
+                "COSMOS_POLICY_EMBODIMENT_TAG",
+                "COSMOS_POLICY_MODEL",
+                "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
+                "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
+            ),
+            event_count=len(provider_events),
+            input_fixture=input_fixture,
+            result=output,
+        ),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    timeout_seconds = _parse_timeout_seconds(args.timeout_seconds)
-    if args.action_horizon is not None and args.action_horizon <= 0:
-        raise SystemExit("--action-horizon must be greater than 0.")
-    if not args.health_only and args.translator is None:
-        raise SystemExit("--translator is required unless --health-only is set.")
-
-    translator = (
-        None if args.translator is None else _load_callable(args.translator, name="translator")
-    )
     provider_events = []
-    provider = CosmosPolicyProvider(
-        base_url=args.base_url,
-        api_token=args.api_token,
-        timeout_seconds=timeout_seconds,
-        embodiment_tag=args.embodiment_tag,
-        model=args.model,
-        return_all_query_results=args.return_all_query_results,
-        action_translator=translator,
-        event_handler=provider_events.append,
-    )
-    health = provider.health()
-    output: JSONDict = {"health": health.to_dict()}
-    if not health.healthy:
-        raise SystemExit(f"Cosmos-Policy provider is not healthy: {health.details}")
-    if not args.health_only:
-        result = provider.select_actions(info=_load_policy_info(args))
-        output["result"] = result.to_dict()
-    if args.run_manifest is not None:
-        input_fixture = args.policy_info_json or args.observation_json
-        write_run_manifest(
-            args.run_manifest,
-            build_run_manifest(
-                run_id=args.run_manifest.parent.name,
-                provider_profile="cosmos-policy",
-                capability="policy",
-                status="skipped" if args.health_only else "passed",
-                env_vars=(
-                    "COSMOS_POLICY_BASE_URL",
-                    "COSMOS_POLICY_API_TOKEN",
-                    "COSMOS_POLICY_TIMEOUT_SECONDS",
-                    "COSMOS_POLICY_EMBODIMENT_TAG",
-                    "COSMOS_POLICY_MODEL",
-                    "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
-                    "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
-                ),
-                event_count=len(provider_events),
-                input_fixture=input_fixture,
-                result=output,
-            ),
+    output: JSONDict = {}
+    try:
+        timeout_seconds = _parse_timeout_seconds(args.timeout_seconds)
+        if args.action_horizon is not None and args.action_horizon <= 0:
+            raise SystemExit("--action-horizon must be greater than 0.")
+        if not args.health_only and args.translator is None:
+            raise SystemExit("--translator is required unless --health-only is set.")
+
+        translator = (
+            None if args.translator is None else _load_callable(args.translator, name="translator")
         )
+        provider = CosmosPolicyProvider(
+            base_url=args.base_url,
+            api_token=args.api_token,
+            timeout_seconds=timeout_seconds,
+            embodiment_tag=args.embodiment_tag,
+            model=args.model,
+            return_all_query_results=args.return_all_query_results,
+            action_translator=translator,
+            event_handler=provider_events.append,
+        )
+        health = provider.health()
+        output["health"] = health.to_dict()
+        if not health.healthy:
+            raise SystemExit(f"Cosmos-Policy provider is not healthy: {health.details}")
+        if not args.health_only:
+            result = provider.select_actions(info=_load_policy_info(args))
+            output["result"] = result.to_dict()
+        _write_manifest_if_requested(
+            args,
+            provider_events=provider_events,
+            output=output,
+            status="skipped" if args.health_only else "passed",
+        )
+    except (Exception, SystemExit) as exc:
+        output.setdefault("error", _redact_observable_text(str(exc)))
+        _write_manifest_if_requested(
+            args,
+            provider_events=provider_events,
+            output=output,
+            status="failed",
+        )
+        raise
     print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 

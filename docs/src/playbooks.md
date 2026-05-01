@@ -621,6 +621,15 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
 COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
   uv run worldforge-smoke-cosmos-policy \
+    --health-only \
+    --run-manifest .worldforge/runs/cosmos-policy-health/run_manifest.json
+# Expected success: run_manifest.json records capability=policy with status=skipped.
+# First triage: run `uv run worldforge provider health cosmos-policy` to confirm
+# configuration only, then use the full `/act` smoke below for endpoint behavior.
+
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
+  uv run worldforge-smoke-cosmos-policy \
     --policy-info-json /path/to/policy_info.json \
     --translator /path/to/translator.py:translate_actions \
     --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json
