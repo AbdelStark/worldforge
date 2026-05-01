@@ -210,6 +210,7 @@ class CosmosPolicyProvider(RemoteProvider):
         self._action_translator = action_translator
         self._transport = transport
         self._validated_base_url: str | None = None
+        supports_policy = self._action_translator is not None
 
         resolved_request_policy = request_policy or ProviderRequestPolicy.remote_defaults(
             request_timeout_seconds=self.timeout_seconds
@@ -224,7 +225,7 @@ class CosmosPolicyProvider(RemoteProvider):
                 plan=False,
                 transfer=False,
                 score=False,
-                policy=True,
+                policy=supports_policy,
             ),
             profile=ProviderProfileSpec(
                 description=(

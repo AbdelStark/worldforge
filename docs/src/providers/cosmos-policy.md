@@ -1,6 +1,7 @@
 # Cosmos-Policy Provider
 
-Capability: `policy`
+Runtime capability: `policy` when the provider is constructed with a host
+`action_translator`
 
 Maturity: `beta`
 
@@ -50,6 +51,10 @@ WorldForge never starts Cosmos-Policy, installs CUDA dependencies, or drives har
   from servers that support that Cosmos-Policy flag.
 - `COSMOS_POLICY_ALLOW_LOCAL_BASE_URL`: optional boolean. Set to `1` only for trusted localhost,
   SSH tunnel, or lab-network servers.
+
+`COSMOS_POLICY_BASE_URL` is enough for endpoint readiness checks. It is not enough for policy
+routing: a provider instance without `action_translator` advertises no executable `policy`
+capability.
 
 Runtime manifest:
 `src/worldforge/providers/runtime_manifests/cosmos-policy.json` records the required endpoint,

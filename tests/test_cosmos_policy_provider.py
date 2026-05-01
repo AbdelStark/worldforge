@@ -124,6 +124,20 @@ def test_cosmos_policy_provider_contract_unconfigured(monkeypatch) -> None:
     assert report.exercised_operations == []
 
 
+def test_cosmos_policy_policy_capability_requires_action_translator() -> None:
+    provider = CosmosPolicyProvider(base_url=PUBLIC_BASE_URL)
+    translated_provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        action_translator=_translator,
+    )
+
+    assert provider.configured() is True
+    assert provider.profile().capabilities.policy is False
+    assert provider.profile().capabilities.enabled_names() == []
+    assert translated_provider.profile().capabilities.policy is True
+    assert translated_provider.profile().capabilities.enabled_names() == ["policy"]
+
+
 def test_cosmos_policy_select_actions_preserves_values_candidates_and_events() -> None:
     events: list[ProviderEvent] = []
     candidate_a = _actions(0.1)
@@ -372,6 +386,7 @@ def test_cosmos_policy_requires_translator() -> None:
         ),
     )
 
+    assert provider.profile().capabilities.policy is False
     with pytest.raises(ProviderError, match="provide action_translator"):
         provider.select_actions(info=_policy_info())
 

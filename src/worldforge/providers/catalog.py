@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from worldforge.models import ProviderEvent
+from worldforge.models import ProviderEvent, ProviderProfile
 
 from .base import BaseProvider
 
@@ -182,6 +182,25 @@ def create_known_providers(
     return tuple(entry.create(event_handler=event_handler) for entry in PROVIDER_CATALOG)
 
 
+def _requires_host_action_translator(profile: ProviderProfile) -> bool:
+    notes = " ".join(profile.notes).lower()
+    artifacts = " ".join(profile.artifact_types).lower()
+    return "action_translator" in notes and "action_policy" in artifacts
+
+
+def _capability_surface(profile: ProviderProfile, *, markdown: bool) -> str:
+    if profile.implementation_status == "scaffold":
+        return "scaffold"
+    names = [task for task in DOC_CAPABILITY_ORDER if profile.capabilities.supports(task)]
+    if names:
+        return ", ".join(f"`{name}`" if markdown else name for name in names)
+    if _requires_host_action_translator(profile):
+        policy = "`policy`" if markdown else "policy"
+        translator = "`action_translator`" if markdown else "action_translator"
+        return f"none ({policy} requires host {translator})"
+    return "none"
+
+
 def render_provider_catalog_markdown(*, docs_link_prefix: str = "./") -> str:
     """Render the provider catalog table used by the provider documentation index."""
 
@@ -191,12 +210,7 @@ def render_provider_catalog_markdown(*, docs_link_prefix: str = "./") -> str:
     ]
     for entry in PROVIDER_CATALOG:
         profile = entry.create().profile()
-        if profile.implementation_status == "scaffold":
-            capability_surface = "scaffold"
-        else:
-            capability_surface = ", ".join(
-                f"`{task}`" for task in DOC_CAPABILITY_ORDER if profile.capabilities.supports(task)
-            )
+        capability_surface = _capability_surface(profile, markdown=True)
         if entry.always_register:
             registration = "always registered"
         elif profile.required_env_vars:
@@ -227,18 +241,12 @@ def provider_docs_index(
             if entry.docs_page
             else f"{docs_path_prefix}README.md"
         )
-        if profile.implementation_status == "scaffold":
-            capabilities = "scaffold"
-        else:
-            capabilities = ", ".join(
-                task for task in DOC_CAPABILITY_ORDER if profile.capabilities.supports(task)
-            )
         docs.append(
             {
                 "name": entry.name,
                 "docs_path": docs_path,
                 "implementation_status": profile.implementation_status,
-                "capabilities": capabilities,
+                "capabilities": _capability_surface(profile, markdown=False),
                 "registration": (
                     "always registered"
                     if entry.always_register

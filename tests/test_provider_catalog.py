@@ -33,7 +33,7 @@ def test_provider_catalog_instantiates_known_provider_profiles() -> None:
     profiles = {provider.name: provider.profile() for provider in providers}
 
     assert profiles["mock"].implementation_status == "stable"
-    assert profiles["cosmos-policy"].capabilities.policy is True
+    assert profiles["cosmos-policy"].capabilities.enabled_names() == []
     assert profiles["leworldmodel"].capabilities.score is True
     assert profiles["gr00t"].capabilities.policy is True
     assert profiles["lerobot"].capabilities.policy is True

@@ -43,7 +43,15 @@ def test_runtime_manifests_cover_real_optional_providers() -> None:
             assert manifest.capabilities == ("score",)
         else:
             profile = catalog[manifest.provider]
-            assert set(manifest.capabilities) <= set(profile.capabilities.enabled_names())
+            missing_profile_capabilities = set(manifest.capabilities) - set(
+                profile.capabilities.enabled_names()
+            )
+            if missing_profile_capabilities:
+                assert missing_profile_capabilities == {"policy"}
+                assert any(
+                    "action translator" in artifact.lower()
+                    for artifact in manifest.host_owned_artifacts
+                )
         assert manifest.docs_path == f"docs/src/providers/{manifest.provider}.md"
         assert manifest.minimum_smoke_command
         assert manifest.expected_success_signal

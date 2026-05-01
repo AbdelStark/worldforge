@@ -67,7 +67,7 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert builtin_profiles["cosmos"].request_policy.request.retry.max_attempts == 1
     assert builtin_profiles["cosmos"].request_policy.health.retry.max_attempts == 3
     assert builtin_profiles["cosmos-policy"].implementation_status == "beta"
-    assert builtin_profiles["cosmos-policy"].capabilities.policy is True
+    assert builtin_profiles["cosmos-policy"].capabilities.enabled_names() == []
     assert builtin_profiles["cosmos-policy"].capabilities.predict is False
     assert builtin_profiles["cosmos-policy"].required_env_vars == ["COSMOS_POLICY_BASE_URL"]
     assert builtin_profiles["cosmos-policy"].request_policy is not None

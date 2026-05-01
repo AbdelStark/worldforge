@@ -331,6 +331,8 @@ generated documentation surfaces.
 - Cosmos-Policy returns ALOHA-shaped, embodiment-specific raw action arrays from a host-owned
   `/act` server. WorldForge preserves those raw actions but requires a host-supplied
   `action_translator` before it can return executable `Action` objects.
+- A catalog/default `CosmosPolicyProvider` created without `action_translator` must not advertise
+  `policy`; direct construction with the translator is required before policy routing.
 - Policy+score planning uses `policy_provider="cosmos-policy"`, `policy_provider="gr00t"`, or
   `policy_provider="lerobot"` plus `score_provider="leworldmodel"` or another score provider;
   score tensors remain host-preprocessed and provider-native.
