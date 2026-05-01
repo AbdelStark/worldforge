@@ -283,9 +283,10 @@ def test_cosmos_policy_validates_dns_even_with_mock_transport(monkeypatch) -> No
     assert called is False
 
 
-def test_cosmos_policy_caches_validated_base_url(monkeypatch) -> None:
+def test_cosmos_policy_revalidates_base_url_before_each_request(monkeypatch) -> None:
     resolve_calls = 0
     request_calls = 0
+    resolved_addresses = iter((["93.184.216.34"], ["127.0.0.1"]))
 
     def fake_getaddrinfo(
         _host: str,
@@ -295,7 +296,7 @@ def test_cosmos_policy_caches_validated_base_url(monkeypatch) -> None:
     ) -> list[str]:
         nonlocal resolve_calls
         resolve_calls += 1
-        return ["93.184.216.34"]
+        return next(resolved_addresses)
 
     def handler(_request: httpx.Request) -> httpx.Response:
         nonlocal request_calls
@@ -310,10 +311,11 @@ def test_cosmos_policy_caches_validated_base_url(monkeypatch) -> None:
     )
 
     provider.select_actions(info=_policy_info())
-    provider.select_actions(info=_policy_info())
+    with pytest.raises(ProviderError, match="local/private destination"):
+        provider.select_actions(info=_policy_info())
 
-    assert resolve_calls == 1
-    assert request_calls == 2
+    assert resolve_calls == 2
+    assert request_calls == 1
 
 
 def test_cosmos_policy_only_planning_uses_selected_actions(tmp_path) -> None:
