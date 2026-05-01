@@ -615,8 +615,8 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
   uv run pytest -m "live and network and robotics and provider_profile" \
     --run-live --run-network --run-robotics --provider-profile cosmos-policy
 # Expected success: pytest completes the selected live profile without failures.
-# First triage: run `uv run worldforge provider health cosmos-policy` and confirm
-# `COSMOS_POLICY_BASE_URL` is present and reachable from this host.
+# First triage: run `uv run worldforge provider health cosmos-policy` to confirm
+# configuration only; use the smoke command below to verify `/act` reachability.
 
 COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
