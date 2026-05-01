@@ -1059,6 +1059,23 @@ uv run --extra harness pytest tests/test_harness_tui.py
 Reference host apps are examples of ownership boundaries. They should be complete enough to copy
 from, but they should not become required runtime paths for the library.
 
+Track status: complete for [#50](https://github.com/AbdelStark/worldforge/issues/50).
+
+Completion signals:
+
+- `examples/hosts/batch-eval/` runs clean-checkout eval and benchmark jobs with preserved
+  `.worldforge/batch-eval/runs/<run-id>/` artifacts, copied benchmark inputs and budgets, and
+  non-zero exits for budget violations.
+- `examples/hosts/service/` exposes stdlib HTTP liveness, readiness, provider diagnostics, typed
+  public error payloads, request-id correlation, and JSON provider-event logging without moving
+  deployment or alerting into WorldForge.
+- `examples/hosts/robotics-operator/` keeps operator review non-mutating by default, requires an
+  explicit action translator, records approval/replay/evidence artifacts, and leaves controller
+  execution behind a host-supplied hook.
+- [Examples docs](./examples.md) present all three host apps as optional references and repeat the
+  host-owned boundaries for scheduling, durable storage, telemetry, credentials, controller
+  integration, interlocks, and safety certification.
+
 Host app packaging rules:
 
 - Put reference hosts under `examples/hosts/<name>/`.
@@ -1095,10 +1112,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Host can run `mock` eval and benchmark jobs in a clean checkout.
-- [ ] Host writes run workspace artifacts and exits non-zero on budget violations.
-- [ ] Docs explain how to swap in a real provider on a prepared host.
-- [ ] Package contract remains base-dependency clean.
+- [x] Host can run `mock` eval and benchmark jobs in a clean checkout.
+- [x] Host writes run workspace artifacts and exits non-zero on budget violations.
+- [x] Docs explain how to swap in a real provider on a prepared host.
+- [x] Package contract remains base-dependency clean.
 
 Validation:
 
@@ -1158,10 +1175,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] The default mode is non-mutating and does not talk to robot controllers.
-- [ ] Controller execution hook is disabled unless the host supplies an explicit implementation.
-- [ ] Operator approval and dry-run artifacts are recorded.
-- [ ] Docs state what WorldForge does and does not certify.
+- [x] The default mode is non-mutating and does not talk to robot controllers.
+- [x] Controller execution hook is disabled unless the host supplies an explicit implementation.
+- [x] Operator approval and dry-run artifacts are recorded.
+- [x] Docs state what WorldForge does and does not certify.
 
 Validation:
 

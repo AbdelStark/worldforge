@@ -156,6 +156,50 @@ def test_observability_roadmap_tracker_records_completion() -> None:
     assert "request_id" in service_host
 
 
+def test_reference_host_roadmap_tracker_records_completion() -> None:
+    roadmap = (ROOT / "docs/src/provider-platform-roadmap.md").read_text(encoding="utf-8")
+    examples = (ROOT / "docs/src/examples.md").read_text(encoding="utf-8")
+
+    host_paths = (
+        ROOT / "examples/hosts/batch-eval/app.py",
+        ROOT / "examples/hosts/service/app.py",
+        ROOT / "examples/hosts/robotics-operator/app.py",
+    )
+    for host_path in host_paths:
+        assert host_path.exists()
+
+    assert "Track status: complete for [#50]" in roadmap
+    for child in ("WF-HOST-001", "WF-HOST-002", "WF-HOST-003"):
+        assert child in roadmap
+
+    for completed_criterion in (
+        "Host can run `mock` eval and benchmark jobs in a clean checkout.",
+        "Host writes run workspace artifacts and exits non-zero on budget violations.",
+        "Service host runs with only optional example dependencies.",
+        "Health/readiness distinguish framework alive, provider configured, and provider healthy.",
+        "The default mode is non-mutating and does not talk to robot controllers.",
+        (
+            "Controller execution hook is disabled unless the host supplies an explicit "
+            "implementation."
+        ),
+        "Operator approval and dry-run artifacts are recorded.",
+    ):
+        assert f"- [x] {completed_criterion}" in roadmap
+
+    for signal in (
+        "batch-eval-host",
+        ".worldforge/batch-eval/runs/<run-id>/",
+        "service-host",
+        "GET /readyz",
+        "request id",
+        "robotics-operator-host",
+        "Controller execution remains disabled",
+        "WorldForge only",
+        "does not certify robot",
+    ):
+        assert signal in examples
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
