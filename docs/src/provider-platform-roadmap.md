@@ -899,6 +899,27 @@ Harness anti-goals:
 - Do not execute robot-controller actions from a default harness flow.
 - Do not render raw secret-bearing provider metadata.
 
+Track status: complete for [#49](https://github.com/AbdelStark/worldforge/issues/49).
+
+Completion signals:
+
+- Shared run workspaces use `.worldforge/runs/<run-id>/` with sanitized manifests, provider
+  events, result summaries, report exports, logs, sortable file-safe run IDs, retention commands,
+  and issue-safe artifact paths.
+- Provider connector readiness is exposed through both TheWorldHarness and
+  `worldforge harness --connectors`, separating configured, missing credentials, missing optional
+  dependencies, unhealthy, and scaffold states without printing secret values.
+- Live run inspection persists `results/inspector.json`, sanitized `logs/provider-events.jsonl`,
+  failed-run manifests, validation errors, and final artifact links for successful and failed
+  flows.
+- Preserved eval and benchmark runs can be compared with `worldforge runs compare` and exported as
+  Markdown, JSON, or CSV with provenance references.
+- `worldforge provider workbench <provider>` gives adapter authors a checkout-safe loop for
+  capability conformance helpers, fixture validation, health checks, docs/catalog drift, and
+  redaction-safe event checks.
+- [TheWorldHarness docs](./theworldharness.md) describe the matching non-TUI commands and artifact
+  layout so production harness behavior is testable without importing Textual.
+
 ### WF-HARNESS-001: Harness Run Workspace
 
 Type: harness  
@@ -918,10 +939,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Harness and CLI flows write the same run layout.
-- [ ] Run IDs are file-safe and sortable.
-- [ ] Exported artifacts can be attached to issues without leaking secrets.
-- [ ] Docs include cleanup and recovery steps.
+- [x] Harness and CLI flows write the same run layout.
+- [x] Run IDs are file-safe and sortable.
+- [x] Exported artifacts can be attached to issues without leaking secrets.
+- [x] Docs include cleanup and recovery steps.
 
 Validation:
 
@@ -949,11 +970,11 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, experimental `jepa`, and scaffold
+- [x] `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, experimental `jepa`, and scaffold
       `genie` render with distinct status.
-- [ ] Missing credentials and missing optional dependencies are visibly different.
-- [ ] Textual remains isolated to `worldforge.harness.tui`.
-- [ ] Non-TUI metadata command exposes the same provider readiness data as JSON.
+- [x] Missing credentials and missing optional dependencies are visibly different.
+- [x] Textual remains isolated to `worldforge.harness.tui`.
+- [x] Non-TUI metadata command exposes the same provider readiness data as JSON.
 
 Validation:
 
@@ -981,10 +1002,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Success, retry, failure, and cancellation states are distinct.
-- [ ] Provider event metadata is redacted in TUI and exported reports.
-- [ ] A failed run still writes enough manifest data to reproduce the command.
-- [ ] Tests cover failure rendering without real provider credentials.
+- [x] Success, retry, failure, and cancellation states are distinct.
+- [x] Provider event metadata is redacted in TUI and exported reports.
+- [x] A failed run still writes enough manifest data to reproduce the command.
+- [x] Tests cover failure rendering without real provider credentials.
 
 Validation:
 
@@ -1012,10 +1033,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Comparison refuses incompatible report types with a clear error.
-- [ ] Exported Markdown includes command, provider, operation, date, and artifact references.
-- [ ] CSV and JSON exports are stable enough for issue attachments.
-- [ ] Docs explain how to cite benchmark artifacts.
+- [x] Comparison refuses incompatible report types with a clear error.
+- [x] Exported Markdown includes command, provider, operation, date, and artifact references.
+- [x] CSV and JSON exports are stable enough for issue attachments.
+- [x] Docs explain how to cite benchmark artifacts.
 
 Validation:
 
@@ -1042,10 +1063,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Workbench can run against `mock` in a clean checkout.
-- [ ] Workbench lists required tests for each advertised capability.
-- [ ] Workbench links to provider authoring docs and generated catalog check.
-- [ ] Failures are actionable enough to paste into GitHub issues.
+- [x] Workbench can run against `mock` in a clean checkout.
+- [x] Workbench lists required tests for each advertised capability.
+- [x] Workbench links to provider authoring docs and generated catalog check.
+- [x] Failures are actionable enough to paste into GitHub issues.
 
 Validation:
 

@@ -200,6 +200,45 @@ def test_reference_host_roadmap_tracker_records_completion() -> None:
         assert signal in examples
 
 
+def test_production_harness_roadmap_tracker_records_completion() -> None:
+    roadmap = (ROOT / "docs/src/provider-platform-roadmap.md").read_text(encoding="utf-8")
+    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+
+    assert "Track status: complete for [#49]" in roadmap
+    for child in (
+        "WF-HARNESS-001",
+        "WF-HARNESS-002",
+        "WF-HARNESS-003",
+        "WF-HARNESS-004",
+        "WF-HARNESS-005",
+    ):
+        assert child in roadmap
+
+    for completed_criterion in (
+        "Harness and CLI flows write the same run layout.",
+        "Run IDs are file-safe and sortable.",
+        "Exported artifacts can be attached to issues without leaking secrets.",
+        "Non-TUI metadata command exposes the same provider readiness data as JSON.",
+        "A failed run still writes enough manifest data to reproduce the command.",
+        "Comparison refuses incompatible report types with a clear error.",
+        "Workbench can run against `mock` in a clean checkout.",
+        "Failures are actionable enough to paste into GitHub issues.",
+    ):
+        assert f"- [x] {completed_criterion}" in roadmap
+
+    for signal in (
+        ".worldforge/runs/<run-id>/",
+        "run_manifest.json",
+        "logs/provider-events.jsonl",
+        "results/inspector.json",
+        "worldforge harness --connectors --format json",
+        "worldforge provider workbench mock",
+        "worldforge runs compare",
+        "worldforge runs cleanup --keep 20",
+    ):
+        assert signal in harness
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
