@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from worldforge.models import WorldStateError
 from worldforge.smoke import pusht_showcase_inputs, robotics_showcase
 
 
@@ -381,6 +382,36 @@ def test_robotics_showcase_auto_downloads_missing_checkpoint(
     assert build_calls["repo_id"] == robotics_showcase.leworldmodel_checkpoint.DEFAULT_REPO_ID
     assert build_calls["revision"] == "abc123"
     assert build_calls["allow_unsafe_pickle"] is True
+
+
+def test_robotics_showcase_reports_checkpoint_validation_errors(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_build_checkpoint(**_kwargs: Any) -> dict[str, Any]:
+        raise WorldStateError("LeWorldModel Hugging Face revision must be pinned.")
+
+    monkeypatch.setattr(
+        robotics_showcase.leworldmodel_checkpoint,
+        "build_checkpoint",
+        fake_build_checkpoint,
+    )
+
+    try:
+        robotics_showcase.main(
+            [
+                "--stablewm-home",
+                str(tmp_path),
+                "--lewm-revision",
+                "branch-name",
+                "--no-json-output",
+                "--no-tui",
+            ]
+        )
+    except SystemExit as exc:
+        assert str(exc) == "LeWorldModel Hugging Face revision must be pinned."
+    else:
+        raise AssertionError("robotics_showcase.main() should exit on checkpoint validation")
 
 
 def test_robotics_showcase_health_only_does_not_auto_download_missing_checkpoint(

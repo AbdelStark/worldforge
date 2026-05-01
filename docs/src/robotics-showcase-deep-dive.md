@@ -416,18 +416,21 @@ For the default policy, that is:
 ```
 
 If the default checkpoint is missing, the polished runner builds it from Hugging Face assets using
-`worldforge.smoke.leworldmodel_checkpoint`. That builder downloads `config.json` and `weights.pt`
-from `quentinll/lewm-pusht`, instantiates the upstream model, loads the weights, freezes the
-module, and saves the object checkpoint where `AutoCostModel` expects it.
+`worldforge.smoke.leworldmodel_checkpoint`. That builder downloads `config.json` from
+`quentinll/lewm-pusht` at the pinned commit
+`22b330c28c27ead4bfd1888615af1340e3fe9052`, validates every Hydra `_target_` and the known PushT
+ViT backbone parameters against the audited allowlist, downloads `weights.pt`, instantiates the
+upstream model from the sanitized config, loads the weights, freezes the module, and saves the
+object checkpoint where `AutoCostModel` expects it.
 
 This auto-build step runs only for normal showcase execution. With `--health-only`, the runner
 reports whether the checkpoint path exists and exits without downloading assets or writing to the
 cache.
 
-For reproducible artifact resolution, pass `--lewm-revision <tag-or-commit>` or set
-`LEWORLDMODEL_REVISION`; the same revision is passed to both Hugging Face downloads. The builder
-loads the downloaded `weights.pt` with `torch.load(..., weights_only=True)` by default. The
-`--allow-unsafe-pickle` flag is intentionally explicit and should be limited to trusted legacy
+For a different reproducible artifact, pass `--lewm-revision <40-char-commit-sha>` or set
+`LEWORLDMODEL_REVISION`; the same immutable revision is passed to both Hugging Face downloads. The
+builder loads the downloaded `weights.pt` with `torch.load(..., weights_only=True)` by default.
+The `--allow-unsafe-pickle` flag is intentionally explicit and should be limited to trusted legacy
 weights or older torch environments that cannot perform safe weights-only deserialization.
 
 ### 3. The Runner Forwards Packaged PushT Hooks

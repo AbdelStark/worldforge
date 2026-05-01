@@ -60,7 +60,7 @@ scripts/robotics-showcase --no-rerun          # skip the default Rerun .rrd arti
 scripts/robotics-showcase --rerun-output /tmp/pusht.rrd
 scripts/robotics-showcase --tui-stage-delay 0.1
 scripts/robotics-showcase --no-tui-animation
-scripts/robotics-showcase --lewm-revision <tag-or-commit>
+scripts/robotics-showcase --lewm-revision 22b330c28c27ead4bfd1888615af1340e3fe9052
 ```
 
 Open the Rerun artifact from the TUI with `o`, or from the shell with:
@@ -274,11 +274,14 @@ For non-PushT tasks, the host must provide:
 - a candidate builder that preserves the model's expected action dimension and horizon.
 
 When the default LeWorldModel object checkpoint is missing, the polished command can build it from
-Hugging Face assets. Use `--lewm-revision <tag-or-commit>` or `LEWORLDMODEL_REVISION` for a pinned
-asset revision. The builder loads `weights.pt` with `torch.load(..., weights_only=True)` by default;
-the `--allow-unsafe-pickle` flag is an explicit trusted-artifact escape hatch for legacy weights.
-This auto-build path is skipped for `--health-only`, which only reports whether the checkpoint is
-present.
+Hugging Face assets. By default it uses the pinned Hugging Face commit
+`22b330c28c27ead4bfd1888615af1340e3fe9052`; use
+`--lewm-revision <40-char-commit-sha>` or `LEWORLDMODEL_REVISION` for a different audited immutable
+asset revision. The builder validates the downloaded Hydra config against the official PushT LeWM
+target and parameter allowlist before instantiating the model or downloading weights. It then loads
+`weights.pt` with `torch.load(..., weights_only=True)` by default; the `--allow-unsafe-pickle` flag
+is an explicit trusted-artifact escape hatch for legacy weights. This auto-build path is skipped
+for `--health-only`, which only reports whether the checkpoint is present.
 
 WorldForge fails instead of padding, projecting, or silently reinterpreting mismatched action
 spaces.

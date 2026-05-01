@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from worldforge.models import WorldStateError
 from worldforge.providers._config import env_value as _env_value
 
 from . import lerobot_leworldmodel, leworldmodel_checkpoint
@@ -82,7 +83,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--lewm-revision",
         default=os.environ.get("LEWORLDMODEL_REVISION"),
-        help="Optional Hugging Face revision, tag, or commit for auto-built LeWorldModel assets.",
+        help=(
+            "Optional pinned 40-character Hugging Face commit SHA for auto-built "
+            "LeWorldModel assets."
+        ),
     )
     parser.add_argument("--device", default=DEFAULT_DEVICE)
     parser.add_argument("--lerobot-device", default=_env_value("LEROBOT_DEVICE"))
@@ -201,13 +205,16 @@ def _ensure_checkpoint(args: argparse.Namespace) -> None:
         file=sys.stderr,
         flush=True,
     )
-    leworldmodel_checkpoint.build_checkpoint(
-        repo_id=leworldmodel_checkpoint.DEFAULT_REPO_ID,
-        policy=args.lewm_policy,
-        stablewm_home=cache_dir,
-        revision=args.lewm_revision,
-        allow_unsafe_pickle=args.allow_unsafe_pickle,
-    )
+    try:
+        leworldmodel_checkpoint.build_checkpoint(
+            repo_id=leworldmodel_checkpoint.DEFAULT_REPO_ID,
+            policy=args.lewm_policy,
+            stablewm_home=cache_dir,
+            revision=args.lewm_revision,
+            allow_unsafe_pickle=args.allow_unsafe_pickle,
+        )
+    except WorldStateError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def _forward_args(args: argparse.Namespace) -> list[str]:

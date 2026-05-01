@@ -6,9 +6,10 @@ Run with the same upstream runtime used by the real smoke:
       --with huggingface_hub --with hydra-core --with omegaconf --with transformers
       --with "opencv-python" --with "imageio" worldforge-build-leworldmodel-checkpoint
 
-The command downloads ``config.json`` and ``weights.pt`` from the model repo,
-instantiates the LeWM module, loads the weights, and saves the object checkpoint
-where ``stable_worldmodel.policy.AutoCostModel`` expects it.
+The command downloads ``config.json`` from the model repo, validates that every
+Hydra target is one of the known official PushT LeWM constructors, downloads
+``weights.pt``, instantiates the LeWM module, loads the weights, and saves the
+object checkpoint where ``stable_worldmodel.policy.AutoCostModel`` expects it.
 """
 
 from __future__ import annotations
@@ -16,24 +17,40 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import math
 import os
+import re
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from worldforge.models import WorldStateError
 from worldforge.smoke.leworldmodel import DEFAULT_STABLEWM_HOME, _checkpoint_path
 
 DEFAULT_REPO_ID = "quentinll/lewm-pusht"
+LEWORLDMODEL_HF_DEFAULT_REVISION = "22b330c28c27ead4bfd1888615af1340e3fe9052"
 LEWORLDMODEL_OFFICIAL_REPO_URL = "https://github.com/lucas-maes/le-wm"
 LEWORLDMODEL_RUNTIME_API = "stable_worldmodel.policy.AutoCostModel"
-LEWORLDMODEL_HF_CONFIG_TARGET = "stable_worldmodel.wm.lewm"
+LEWORLDMODEL_HF_CONFIG_TARGET = "stable_worldmodel.wm.lewm.LeWM"
 LEWORLDMODEL_HF_BACKBONE_TARGET = "stable_pretraining.backbone.utils.vit_hf"
+# Hydra instantiates nested `_target_` values recursively, so this list must stay exact and narrow.
+LEWORLDMODEL_HF_ALLOWED_CONFIG_TARGETS = frozenset(
+    {
+        LEWORLDMODEL_HF_CONFIG_TARGET,
+        LEWORLDMODEL_HF_BACKBONE_TARGET,
+        "stable_worldmodel.wm.lewm.module.Embedder",
+        "stable_worldmodel.wm.lewm.module.MLP",
+        "stable_worldmodel.wm.lewm.module.Predictor",
+        "torch.nn.BatchNorm1d",
+    }
+)
 
 
 def _vit_hf_backbone(
     size: str = "tiny",
-    patch_size: int = 16,
+    patch_size: int = 14,
     image_size: int = 224,
     pretrained: bool = False,
     use_mask_token: bool = True,
@@ -43,36 +60,29 @@ def _vit_hf_backbone(
 
     from transformers import ViTConfig, ViTModel
 
-    size_configs: dict[str, dict[str, int]] = {
-        "tiny": {"hidden_size": 192, "num_hidden_layers": 12, "num_attention_heads": 3},
-        "small": {"hidden_size": 384, "num_hidden_layers": 12, "num_attention_heads": 6},
-        "base": {"hidden_size": 768, "num_hidden_layers": 12, "num_attention_heads": 12},
-        "large": {"hidden_size": 1024, "num_hidden_layers": 24, "num_attention_heads": 16},
-        "huge": {"hidden_size": 1280, "num_hidden_layers": 32, "num_attention_heads": 16},
-    }
-    if size not in size_configs:
-        raise ValueError(f"Invalid ViT size {size!r}; expected one of {sorted(size_configs)}.")
+    if kwargs:
+        unsupported = ", ".join(sorted(kwargs))
+        raise ValueError(f"Unsupported LeWM PushT ViT parameters: {unsupported}.")
+    if pretrained is not False:
+        raise ValueError("LeWM PushT ViT checkpoint builder requires pretrained=False.")
+    if size != "tiny" or patch_size != 14 or image_size != 224:
+        raise ValueError(
+            "LeWM PushT ViT checkpoint builder only supports "
+            "size='tiny', patch_size=14, image_size=224."
+        )
 
+    size_config = {"hidden_size": 192, "num_hidden_layers": 12, "num_attention_heads": 3}
     config_params = {
-        **size_configs[size],
-        "intermediate_size": size_configs[size]["hidden_size"] * 4,
+        **size_config,
+        "intermediate_size": size_config["hidden_size"] * 4,
         "image_size": image_size,
         "patch_size": patch_size,
-        **kwargs,
     }
-    if pretrained:
-        model_name = f"google/vit-{size}-patch{patch_size}-{image_size}"
-        model = ViTModel.from_pretrained(
-            model_name,
-            add_pooling_layer=False,
-            use_mask_token=use_mask_token,
-        )
-    else:
-        model = ViTModel(
-            ViTConfig(**config_params),
-            add_pooling_layer=False,
-            use_mask_token=use_mask_token,
-        )
+    model = ViTModel(
+        ViTConfig(**config_params),
+        add_pooling_layer=False,
+        use_mask_token=use_mask_token,
+    )
     model.config.interpolate_pos_encoding = True
     return model
 
@@ -175,19 +185,156 @@ def _load_weights(torch: object, weights_path: Path, *, allow_unsafe_pickle: boo
 
 
 def _config_target(config: object) -> str:
-    getter = getattr(config, "get", None)
-    target = getter("_target_") if callable(getter) else None
+    if not isinstance(config, Mapping):
+        raise WorldStateError("LeWorldModel config.json must contain a JSON object.")
+    target = config.get("_target_")
     if not isinstance(target, str) or not target.strip():
-        raise SystemExit("LeWorldModel config.json must contain a non-empty _target_ field.")
+        raise WorldStateError("LeWorldModel config.json must contain a non-empty _target_ field.")
     return target.strip()
 
 
 def _ensure_leworldmodel_target(target: str) -> None:
-    normalized = target.lower()
-    if "lewm" not in normalized and "jepa" not in normalized:
-        raise SystemExit(
-            f"LeWorldModel config.json did not describe a LeWM/JEPA model target: {target!r}."
+    if target != LEWORLDMODEL_HF_CONFIG_TARGET:
+        raise WorldStateError(
+            "LeWorldModel config.json root _target_ must be "
+            f"{LEWORLDMODEL_HF_CONFIG_TARGET!r}; got {target!r}."
         )
+
+
+def _config_to_container(omega_conf: object, config: object) -> object:
+    to_container = getattr(omega_conf, "to_container", None)
+    if callable(to_container):
+        return to_container(config, resolve=False)
+    return config
+
+
+def _target_path(path: str) -> str:
+    return f"{path}._target_" if path != "$" else "$._target_"
+
+
+def _child_path(path: str, key: object) -> str:
+    if isinstance(key, int):
+        return f"{path}[{key}]"
+    key_text = str(key)
+    return key_text if path == "$" else f"{path}.{key_text}"
+
+
+def _ensure_allowed_hydra_target(target: object, path: str) -> str:
+    target_path = _target_path(path)
+    if not isinstance(target, str) or not target.strip():
+        raise WorldStateError(f"LeWorldModel config {target_path} must be a non-empty string.")
+    normalized = target.strip()
+    if "${" in normalized:
+        raise WorldStateError(f"LeWorldModel config {target_path} must not use interpolation.")
+    if normalized not in LEWORLDMODEL_HF_ALLOWED_CONFIG_TARGETS:
+        allowed = ", ".join(sorted(LEWORLDMODEL_HF_ALLOWED_CONFIG_TARGETS))
+        raise WorldStateError(
+            "LeWorldModel config contains disallowed Hydra _target_ "
+            f"at {target_path}: {normalized!r}. Allowed targets: {allowed}."
+        )
+    return normalized
+
+
+def _walk_hydra_targets(node: object, path: str = "$") -> None:
+    if isinstance(node, Mapping):
+        if "_target_" in node:
+            _ensure_allowed_hydra_target(node["_target_"], path)
+        for key, value in node.items():
+            _walk_hydra_targets(value, _child_path(path, key))
+        return
+    if isinstance(node, Sequence) and not isinstance(node, str | bytes | bytearray):
+        for index, value in enumerate(node):
+            _walk_hydra_targets(value, _child_path(path, index))
+
+
+def _walk_safe_config_values(node: object, path: str = "$") -> None:
+    if isinstance(node, Mapping):
+        for key, value in node.items():
+            if not isinstance(key, str) or not key:
+                raise WorldStateError(f"LeWorldModel config {path} contains an invalid key.")
+            _walk_safe_config_values(value, _child_path(path, key))
+        return
+    if isinstance(node, Sequence) and not isinstance(node, str | bytes | bytearray):
+        for index, value in enumerate(node):
+            _walk_safe_config_values(value, _child_path(path, index))
+        return
+    if isinstance(node, str):
+        if "${" in node:
+            raise WorldStateError(f"LeWorldModel config {path} must not use interpolation.")
+        return
+    if isinstance(node, bool) or node is None or isinstance(node, int):
+        return
+    if isinstance(node, float) and math.isfinite(node):
+        return
+    raise WorldStateError(
+        f"LeWorldModel config {path} must contain only JSON-native finite values."
+    )
+
+
+def _require_mapping_field(config: Mapping[str, object], key: str) -> Mapping[str, object]:
+    value = config.get(key)
+    if not isinstance(value, Mapping):
+        raise WorldStateError(f"LeWorldModel config field {key!r} must be a JSON object.")
+    return value
+
+
+def _require_exact_mapping(
+    mapping: Mapping[str, object],
+    *,
+    path: str,
+    expected: Mapping[str, object],
+) -> None:
+    extra = sorted(set(mapping) - set(expected))
+    missing = sorted(set(expected) - set(mapping))
+    if extra or missing:
+        raise WorldStateError(
+            f"LeWorldModel config {path} does not match the audited PushT shape: "
+            f"missing={missing}, extra={extra}."
+        )
+    for key, expected_value in expected.items():
+        if mapping.get(key) != expected_value:
+            raise WorldStateError(
+                f"LeWorldModel config {path}.{key} must be {expected_value!r}; "
+                f"got {mapping.get(key)!r}."
+            )
+
+
+def _validate_known_pusht_parameters(config: Mapping[str, object]) -> None:
+    encoder = _require_mapping_field(config, "encoder")
+    _require_exact_mapping(
+        encoder,
+        path="$.encoder",
+        expected={
+            "_target_": LEWORLDMODEL_HF_BACKBONE_TARGET,
+            "size": "tiny",
+            "patch_size": 14,
+            "image_size": 224,
+            "pretrained": False,
+            "use_mask_token": False,
+        },
+    )
+
+
+def _validate_leworldmodel_config(
+    omega_conf: object, config: object
+) -> tuple[str, Mapping[str, object]]:
+    plain_config = _config_to_container(omega_conf, config)
+    target = _config_target(plain_config)
+    _walk_hydra_targets(plain_config)
+    _walk_safe_config_values(plain_config)
+    _ensure_leworldmodel_target(target)
+    _validate_known_pusht_parameters(plain_config)
+    return target, plain_config
+
+
+def _resolve_hf_revision(revision: str | None) -> str:
+    resolved = (revision or LEWORLDMODEL_HF_DEFAULT_REVISION).strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", resolved):
+        raise WorldStateError(
+            "LeWorldModel Hugging Face revision must be a pinned 40-character "
+            f"commit SHA; got {revision!r}."
+        )
+    return resolved
 
 
 def _checkpoint_provenance() -> dict[str, object]:
@@ -221,6 +368,7 @@ def build_checkpoint(
             **_checkpoint_provenance(),
         }
 
+    resolved_revision = _resolve_hf_revision(revision)
     torch, hf_hub_download, instantiate, omega_conf = _load_optional_build_dependencies()
     asset_dir = (cache_dir or _repo_cache_dir(repo_id)).expanduser()
     config_path = Path(
@@ -228,22 +376,21 @@ def build_checkpoint(
             repo_id=repo_id,
             filename="config.json",
             local_dir=str(asset_dir),
-            revision=revision,
+            revision=resolved_revision,
         )
     )
+
+    config = omega_conf.load(config_path)
+    target, safe_config = _validate_leworldmodel_config(omega_conf, config)
     weights_path = Path(
         hf_hub_download(
             repo_id=repo_id,
             filename="weights.pt",
             local_dir=str(asset_dir),
-            revision=revision,
+            revision=resolved_revision,
         )
     )
-
-    config = omega_conf.load(config_path)
-    target = _config_target(config)
-    _ensure_leworldmodel_target(target)
-    model = instantiate(config)
+    model = instantiate(safe_config)
     weights = _load_weights(torch, weights_path, allow_unsafe_pickle=allow_unsafe_pickle)
     incompatible = model.load_state_dict(weights, strict=False)
     missing, unexpected = _incompatible_keys(incompatible)
@@ -265,12 +412,11 @@ def build_checkpoint(
         "output": str(output_path),
         "policy": policy,
         "repo_id": repo_id,
+        "revision": resolved_revision,
         "weights": str(weights_path),
         "config_target": target,
         **_checkpoint_provenance(),
     }
-    if revision is not None:
-        summary["revision"] = revision
     return summary
 
 
@@ -282,8 +428,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo-id", default=DEFAULT_REPO_ID)
     parser.add_argument(
         "--revision",
-        default=os.environ.get("LEWORLDMODEL_REVISION"),
-        help="Optional Hugging Face git revision, tag, or commit for config.json and weights.pt.",
+        default=os.environ.get("LEWORLDMODEL_REVISION") or LEWORLDMODEL_HF_DEFAULT_REVISION,
+        help=(
+            "Pinned Hugging Face commit SHA for config.json and weights.pt. Defaults to the "
+            f"audited PushT LeWM revision {LEWORLDMODEL_HF_DEFAULT_REVISION}."
+        ),
     )
     parser.add_argument("--policy", default=os.environ.get("LEWORLDMODEL_POLICY", "pusht/lewm"))
     parser.add_argument(
@@ -317,15 +466,18 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
-    summary = build_checkpoint(
-        repo_id=args.repo_id,
-        policy=args.policy,
-        stablewm_home=args.stablewm_home,
-        cache_dir=args.asset_cache_dir.expanduser() if args.asset_cache_dir else None,
-        revision=args.revision,
-        allow_unsafe_pickle=args.allow_unsafe_pickle,
-        force=args.force,
-    )
+    try:
+        summary = build_checkpoint(
+            repo_id=args.repo_id,
+            policy=args.policy,
+            stablewm_home=args.stablewm_home,
+            cache_dir=args.asset_cache_dir.expanduser() if args.asset_cache_dir else None,
+            revision=args.revision,
+            allow_unsafe_pickle=args.allow_unsafe_pickle,
+            force=args.force,
+        )
+    except WorldStateError as exc:
+        raise SystemExit(str(exc)) from exc
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 
