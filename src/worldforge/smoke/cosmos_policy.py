@@ -161,6 +161,22 @@ def _parse_timeout_seconds(value: str | None) -> float:
     return parsed
 
 
+def _manifest_run_id(path: Path) -> str:
+    expanded = path.expanduser()
+    return expanded.parent.name.strip() or expanded.stem.strip() or "cosmos-policy-smoke"
+
+
+def _redacted_exit_message(exc: BaseException) -> str:
+    if isinstance(exc, SystemExit):
+        code = exc.code
+        if code is None:
+            return "Cosmos-Policy smoke failed."
+        if isinstance(code, int):
+            return f"Cosmos-Policy smoke failed with exit code {code}."
+        return _redact_observable_text(str(code))
+    return _redact_observable_text(str(exc))
+
+
 def _write_manifest_if_requested(
     args: argparse.Namespace,
     *,
@@ -176,7 +192,7 @@ def _write_manifest_if_requested(
     write_run_manifest(
         args.run_manifest,
         build_run_manifest(
-            run_id=args.run_manifest.parent.name,
+            run_id=_manifest_run_id(args.run_manifest),
             provider_profile="cosmos-policy",
             capability="policy",
             status=status,
@@ -234,14 +250,15 @@ def main(argv: list[str] | None = None) -> int:
             status="skipped" if args.health_only else "passed",
         )
     except (Exception, SystemExit) as exc:
-        output.setdefault("error", _redact_observable_text(str(exc)))
+        redacted_error = _redacted_exit_message(exc)
+        output.setdefault("error", redacted_error)
         _write_manifest_if_requested(
             args,
             provider_events=provider_events,
             output=output,
             status="failed",
         )
-        raise
+        raise SystemExit(redacted_error) from None
     print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 
