@@ -11,6 +11,8 @@ from worldforge.providers.http_utils import _getaddrinfo_with_timeout, validate_
 class _FakeQueue:
     def __init__(self, *, empty: bool = True) -> None:
         self._empty = empty
+        self.closed = False
+        self.joined = False
 
     def empty(self) -> bool:
         return self._empty
@@ -19,10 +21,10 @@ class _FakeQueue:
         raise AssertionError("empty queue should not be read")
 
     def close(self) -> None:
-        pass
+        self.closed = True
 
     def join_thread(self) -> None:
-        pass
+        self.joined = True
 
 
 class _HangingProcess:
@@ -50,9 +52,11 @@ class _HangingProcess:
 class _HangingContext:
     def __init__(self) -> None:
         self.process: _HangingProcess | None = None
+        self.queue: _FakeQueue | None = None
 
     def Queue(self, *args: object, **kwargs: object) -> _FakeQueue:
-        return _FakeQueue()
+        self.queue = _FakeQueue()
+        return self.queue
 
     def Process(self, *args: object, **kwargs: object) -> _HangingProcess:
         self.process = _HangingProcess(*args, **kwargs)
@@ -86,3 +90,6 @@ def test_getaddrinfo_timeout_terminates_resolver_process(monkeypatch) -> None:
     assert context.process is not None
     assert context.process.terminated is True
     assert context.process.joined_after_terminate is True
+    assert context.queue is not None
+    assert context.queue.closed is True
+    assert context.queue.joined is True

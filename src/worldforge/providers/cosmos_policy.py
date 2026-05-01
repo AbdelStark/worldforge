@@ -209,6 +209,7 @@ class CosmosPolicyProvider(RemoteProvider):
         self.expected_action_dim = expected_action_dim
         self._action_translator = action_translator
         self._transport = transport
+        self._validated_base_url: str | None = None
 
         resolved_request_policy = request_policy or ProviderRequestPolicy.remote_defaults(
             request_timeout_seconds=self.timeout_seconds
@@ -354,14 +355,15 @@ class CosmosPolicyProvider(RemoteProvider):
             raise ProviderError(
                 f"Provider '{self.name}' is unavailable: missing {COSMOS_POLICY_BASE_URL_ENV_VAR}."
             )
-        validated_base_url = validate_remote_base_url(
-            base_url,
-            provider_name=self.name,
-            env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
-            allow_local_network=self.allow_local_base_url,
-        )
+        if self._validated_base_url is None:
+            self._validated_base_url = validate_remote_base_url(
+                base_url,
+                provider_name=self.name,
+                env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
+                allow_local_network=self.allow_local_base_url,
+            )
         return httpx.Client(
-            base_url=validated_base_url,
+            base_url=self._validated_base_url,
             headers=self._headers(),
             transport=self._transport,
         )

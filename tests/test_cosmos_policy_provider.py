@@ -269,6 +269,39 @@ def test_cosmos_policy_validates_dns_even_with_mock_transport(monkeypatch) -> No
     assert called is False
 
 
+def test_cosmos_policy_caches_validated_base_url(monkeypatch) -> None:
+    resolve_calls = 0
+    request_calls = 0
+
+    def fake_getaddrinfo(
+        _host: str,
+        _port: int,
+        *,
+        timeout_seconds: float,
+    ) -> list[str]:
+        nonlocal resolve_calls
+        resolve_calls += 1
+        return ["93.184.216.34"]
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal request_calls
+        request_calls += 1
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
+    monkeypatch.setattr(http_utils, "_getaddrinfo_with_timeout", fake_getaddrinfo)
+    provider = CosmosPolicyProvider(
+        base_url="http://cosmos-policy.example",
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+
+    provider.select_actions(info=_policy_info())
+    provider.select_actions(info=_policy_info())
+
+    assert resolve_calls == 1
+    assert request_calls == 2
+
+
 def test_cosmos_policy_only_planning_uses_selected_actions(tmp_path) -> None:
     provider = CosmosPolicyProvider(
         base_url=PUBLIC_BASE_URL,
