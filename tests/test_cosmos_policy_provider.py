@@ -235,6 +235,18 @@ def test_cosmos_policy_blocks_local_base_url_without_opt_in() -> None:
     assert called is False
 
 
+def test_cosmos_policy_health_reports_rejected_base_url() -> None:
+    provider = CosmosPolicyProvider(
+        base_url="http://127.0.0.1:8777",
+        action_translator=_translator,
+    )
+
+    health = provider.health()
+
+    assert health.healthy is False
+    assert "local/private destination" in health.details
+
+
 def test_cosmos_policy_allows_local_base_url_with_explicit_opt_in() -> None:
     provider = CosmosPolicyProvider(
         base_url="http://127.0.0.1:8777",
@@ -442,6 +454,28 @@ def test_cosmos_policy_rejects_translator_candidate_mismatch() -> None:
         provider.select_actions(info=_policy_info())
 
 
+def test_cosmos_policy_rejects_unknown_selected_action_candidate() -> None:
+    candidate_a = _actions(0.1)
+    candidate_b = _actions(2.0)
+    unknown_selection = _actions(4.0)
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(
+                200,
+                json={
+                    "actions": unknown_selection,
+                    "all_actions": [candidate_a, candidate_b],
+                },
+            )
+        ),
+        action_translator=_candidate_translator,
+    )
+
+    with pytest.raises(ProviderError, match="must match one entry in 'all_actions'"):
+        provider.select_actions(info=_policy_info())
+
+
 def test_cosmos_policy_validates_observation_before_request() -> None:
     called = False
 
@@ -498,6 +532,7 @@ def test_cosmos_policy_config_summary_is_value_free(monkeypatch) -> None:
     provider = CosmosPolicyProvider(
         base_url=PUBLIC_BASE_URL,
         api_token="secret-token",
+        return_all_query_results=True,
     )
 
     summary = provider.config_summary().to_dict()
@@ -507,3 +542,5 @@ def test_cosmos_policy_config_summary_is_value_free(monkeypatch) -> None:
     assert "secret-token" not in json.dumps(summary)
     assert summary["fields"][0]["source"] == "direct"
     assert summary["fields"][1]["secret"] is True
+    fields = {field["name"]: field for field in summary["fields"]}
+    assert fields["COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS"]["source"] == "direct"

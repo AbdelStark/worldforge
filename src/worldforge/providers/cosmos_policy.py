@@ -198,6 +198,7 @@ class CosmosPolicyProvider(RemoteProvider):
             else env_value(COSMOS_POLICY_RETURN_ALL_ENV_VAR),
             name="Cosmos-Policy return_all_query_results",
         )
+        self._return_all_query_results_direct = return_all_query_results is not None
         self._allow_local_base_url_direct = allow_local_base_url is not None
         parsed_allow_local = optional_bool(
             allow_local_base_url
@@ -319,8 +320,12 @@ class CosmosPolicyProvider(RemoteProvider):
                 _field_summary(
                     COSMOS_POLICY_RETURN_ALL_ENV_VAR,
                     required=False,
-                    source=config_source(COSMOS_POLICY_RETURN_ALL_ENV_VAR),
-                    present=self.return_all_query_results is not None,
+                    source=config_source(
+                        COSMOS_POLICY_RETURN_ALL_ENV_VAR,
+                        direct=self._return_all_query_results_direct,
+                    ),
+                    present=self._return_all_query_results_direct
+                    or env_value(COSMOS_POLICY_RETURN_ALL_ENV_VAR) is not None,
                 ),
                 _field_summary(
                     COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR,
@@ -375,6 +380,17 @@ class CosmosPolicyProvider(RemoteProvider):
                 f"missing {COSMOS_POLICY_BASE_URL_ENV_VAR}",
                 healthy=False,
             )
+        base_url = self._resolved_base_url()
+        if base_url is not None:
+            try:
+                validate_remote_base_url(
+                    base_url,
+                    provider_name=self.name,
+                    env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
+                    allow_local_network=self.allow_local_base_url,
+                )
+            except ProviderError as exc:
+                return self._health(started, str(exc), healthy=False)
         return self._health(
             started,
             "configured for Cosmos-Policy /act; upstream exposes no non-mutating health endpoint",
@@ -662,10 +678,14 @@ def _selected_action_index(
     actions: list[list[float]],
     all_actions: list[list[list[float]]],
 ) -> int:
+    if not all_actions:
+        return 0
     for index, candidate in enumerate(all_actions):
         if candidate == actions:
             return index
-    return 0
+    raise ProviderError(
+        "Cosmos-Policy response field 'actions' must match one entry in 'all_actions'."
+    )
 
 
 def _bounded_shape(value: object, *, depth: int = 0, max_depth: int = 8) -> list[int] | None:
