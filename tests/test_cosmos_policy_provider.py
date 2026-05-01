@@ -12,9 +12,7 @@ from worldforge.providers import (
     CosmosPolicyProvider,
     ProviderError,
     ProviderProfileSpec,
-)
-from worldforge.providers import (
-    http_utils as http_utils_module,
+    http_utils,
 )
 from worldforge.testing import assert_provider_contract
 
@@ -256,7 +254,7 @@ def test_cosmos_policy_validates_dns_even_with_mock_transport(monkeypatch) -> No
         return httpx.Response(200, json={"actions": _actions(0.1)})
 
     monkeypatch.setattr(
-        http_utils_module,
+        http_utils,
         "_getaddrinfo_with_timeout",
         fake_getaddrinfo_with_timeout,
     )
