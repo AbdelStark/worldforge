@@ -348,6 +348,25 @@ explicitly marks them safe for local-only use.
 
 ## Workstream A: Provider Platform Foundation
 
+Track status: complete for [#47](https://github.com/AbdelStark/worldforge/issues/47).
+
+Completion signals:
+
+- Provider promotion rules cover `scaffold`, `experimental`, `beta`, and `stable` in the
+  [Provider Authoring Guide](./provider-authoring-guide.md), including profile metadata,
+  generated catalog updates, validation commands, and the current provider classification table.
+- Runtime manifests are packaged under `src/worldforge/providers/runtime_manifests/`, validated by
+  tests, linked from provider docs, and used by health/configuration summaries without installing
+  optional runtimes.
+- Capability conformance helpers exist for `predict`, `generate`, `transfer`, `reason`, `embed`,
+  `score`, and `policy`, plus provider-event redaction checks for safe fixture and injected-runtime
+  coverage.
+- Optional live-smoke commands can write sanitized `run_manifest.json` evidence with command,
+  package, provider profile, capability, runtime manifest, input digest, event count, result digest,
+  and artifact-path summaries.
+- Runtime pytest profiles keep default checkout validation deterministic while prepared hosts can
+  opt into `live`, `network`, `credentialed`, `gpu`, `robotics`, and provider-specific test runs.
+
 ### WF-PROV-001: Provider Promotion Gate
 
 Type: provider platform  
@@ -368,10 +387,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Promotion rules cover all current statuses: `scaffold`, `experimental`, `beta`, `stable`.
-- [ ] Rules explain when to change provider profile metadata and generated catalog docs.
-- [ ] Rules include exact local validation commands.
-- [ ] Existing providers are classified against the new checklist without changing behavior.
+- [x] Promotion rules cover all current statuses: `scaffold`, `experimental`, `beta`, `stable`.
+- [x] Rules explain when to change provider profile metadata and generated catalog docs.
+- [x] Rules include exact local validation commands.
+- [x] Existing providers are classified against the new checklist without changing behavior.
 
 Validation:
 
@@ -400,10 +419,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Manifest schema is documented and validated by tests.
-- [ ] Manifests exist for `leworldmodel`, `lerobot`, `gr00t`, `cosmos`, and `runway`.
-- [ ] Missing optional dependencies produce actionable health messages using manifest data.
-- [ ] Docs link from provider pages to the relevant manifest.
+- [x] Manifest schema is documented and validated by tests.
+- [x] Manifests exist for `leworldmodel`, `lerobot`, `gr00t`, `cosmos`, and `runway`.
+- [x] Missing optional dependencies produce actionable health messages using manifest data.
+- [x] Docs link from provider pages to the relevant manifest.
 
 Validation:
 
@@ -431,10 +450,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Each capability has a reusable conformance helper.
-- [ ] Current provider tests call the helpers where applicable.
-- [ ] The helpers can run against injected runtimes without credentials.
-- [ ] The helpers do not use bare Python `assert` statements.
+- [x] Each capability has a reusable conformance helper.
+- [x] Current provider tests call the helpers where applicable.
+- [x] The helpers can run against injected runtimes without credentials.
+- [x] The helpers do not use bare Python `assert` statements.
 
 Validation:
 
@@ -462,10 +481,10 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Live smoke commands can emit `run_manifest.json`.
-- [ ] Manifest validation rejects secret-like metadata.
-- [ ] Robotics showcase manifest links policy, score, replay, and report artifacts.
-- [ ] Docs explain which artifacts are safe to attach to GitHub issues.
+- [x] Live smoke commands can emit `run_manifest.json`.
+- [x] Manifest validation rejects secret-like metadata.
+- [x] Robotics showcase manifest links policy, score, replay, and report artifacts.
+- [x] Docs explain which artifacts are safe to attach to GitHub issues.
 
 Validation:
 
@@ -493,11 +512,11 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] Live tests skip with clear reasons when runtime/env is missing.
-- [ ] Prepared-host commands are documented for each real provider.
-- [ ] Default CI remains deterministic and does not require credentials, network calls, GPUs, or
+- [x] Live tests skip with clear reasons when runtime/env is missing.
+- [x] Prepared-host commands are documented for each real provider.
+- [x] Default CI remains deterministic and does not require credentials, network calls, GPUs, or
       downloaded checkpoints.
-- [ ] Live-smoke evidence can be attached to release notes or provider issues.
+- [x] Live-smoke evidence can be attached to release notes or provider issues.
 
 Validation:
 

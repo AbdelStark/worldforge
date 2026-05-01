@@ -156,6 +156,60 @@ def test_observability_roadmap_tracker_records_completion() -> None:
     assert "request_id" in service_host
 
 
+def test_provider_platform_foundation_roadmap_tracker_records_completion() -> None:
+    roadmap = (ROOT / "docs/src/provider-platform-roadmap.md").read_text(encoding="utf-8")
+    authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
+    provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+
+    runtime_manifests = {
+        path.stem for path in (ROOT / "src/worldforge/providers/runtime_manifests").glob("*.json")
+    }
+
+    assert "Track status: complete for [#47]" in roadmap
+    for child in ("WF-PROV-001", "WF-PROV-002", "WF-PROV-003", "WF-PROV-004", "WF-PROV-005"):
+        assert child in roadmap
+
+    for completed_criterion in (
+        "Promotion rules cover all current statuses: `scaffold`, `experimental`, `beta`, `stable`.",
+        "Rules explain when to change provider profile metadata and generated catalog docs.",
+        "Manifest schema is documented and validated by tests.",
+        "Manifests exist for `leworldmodel`, `lerobot`, `gr00t`, `cosmos`, and `runway`.",
+        "Each capability has a reusable conformance helper.",
+        "The helpers do not use bare Python `assert` statements.",
+        "Live smoke commands can emit `run_manifest.json`.",
+        "Manifest validation rejects secret-like metadata.",
+        "Live tests skip with clear reasons when runtime/env is missing.",
+        "Prepared-host commands are documented for each real provider.",
+        "Live-smoke evidence can be attached to release notes or provider issues.",
+    ):
+        assert f"- [x] {completed_criterion}" in roadmap
+
+    for status in ("`scaffold`", "`experimental`", "`beta`", "`stable`"):
+        assert status in authoring
+
+    for helper in (
+        "assert_predict_conformance",
+        "assert_generate_conformance",
+        "assert_transfer_conformance",
+        "assert_reason_conformance",
+        "assert_embed_conformance",
+        "assert_score_conformance",
+        "assert_policy_conformance",
+        "assert_provider_events_conform",
+    ):
+        assert helper in authoring
+
+    assert {"leworldmodel", "lerobot", "gr00t", "cosmos", "runway"} <= runtime_manifests
+    assert "`src/worldforge/providers/runtime_manifests/`" in provider_index
+    assert "Optional live smoke entrypoints accept `--run-manifest <path>`" in provider_index
+
+    for marker in ("live", "network", "credentialed", "gpu", "robotics", "provider_profile"):
+        assert marker in operations
+        assert marker in playbooks
+
+
 def test_reference_host_roadmap_tracker_records_completion() -> None:
     roadmap = (ROOT / "docs/src/provider-platform-roadmap.md").read_text(encoding="utf-8")
     examples = (ROOT / "docs/src/examples.md").read_text(encoding="utf-8")
