@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import base64
+import fnmatch
 import ipaddress
 import mimetypes
 import multiprocessing
 import queue
 import socket
+from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter, sleep
@@ -30,6 +32,9 @@ _RETRYABLE_EXCEPTIONS = (httpx.TransportError,)
 _LOCAL_HOST_NAMES = frozenset({"localhost", "localhost.localdomain"})
 _DNS_RESOLUTION_TIMEOUT_SECONDS = 2.0
 _DNS_RESULT_QUEUE_TIMEOUT_SECONDS = 1.0
+_DNS_RESOLUTION_CACHE_SECONDS = 5.0
+_DNS_RESOLUTION_CACHE_MAX_ENTRIES = 256
+_DNS_RESOLUTION_CACHE: OrderedDict[tuple[str, int], tuple[float, tuple[str, ...]]] = OrderedDict()
 _ERROR_SUMMARY_BYTES = 512
 
 
@@ -59,36 +64,111 @@ def validate_remote_url(
 
     host = parsed.hostname.strip().lower()
     if not allow_local_network:
-        _reject_local_hostname(host, provider_name=provider_name, url_name=url_name)
+        _reject_local_hostname(host, provider_name=provider_name, env_var=url_name)
         is_ip_literal = _reject_local_ip_literal(
             host,
             provider_name=provider_name,
-            url_name=url_name,
+            env_var=url_name,
         )
         if resolve_dns and not is_ip_literal:
             _reject_local_resolved_addresses(
                 host,
                 port=parsed.port or (443 if parsed.scheme.lower() == "https" else 80),
                 provider_name=provider_name,
-                url_name=url_name,
+                env_var=url_name,
                 timeout_seconds=dns_resolution_timeout_seconds,
             )
     return normalized_url
 
 
-def _reject_local_hostname(host: str, *, provider_name: str, url_name: str) -> None:
+def validate_remote_base_url(
+    base_url: str,
+    *,
+    provider_name: str,
+    env_var: str,
+    allow_local_network: bool = False,
+    resolve_dns: bool = True,
+    allowed_hosts: tuple[str, ...] | None = None,
+    dns_resolution_timeout_seconds: float = _DNS_RESOLUTION_TIMEOUT_SECONDS,
+) -> str:
+    """Return a normalized HTTP base URL after preflight destination checks."""
+
+    parsed = urlparse(base_url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ProviderError(f"Provider '{provider_name}' {env_var} must use an http or https URL.")
+    if not parsed.hostname:
+        raise ProviderError(f"Provider '{provider_name}' {env_var} must include a hostname.")
+    if parsed.username or parsed.password:
+        raise ProviderError(
+            f"Provider '{provider_name}' {env_var} must not include embedded credentials."
+        )
+    if parsed.query or parsed.fragment:
+        raise ProviderError(
+            f"Provider '{provider_name}' {env_var} must not include query parameters or fragments."
+        )
+
+    host = parsed.hostname.strip().lower()
+    _reject_unlisted_host(
+        host,
+        allowed_hosts=allowed_hosts,
+        provider_name=provider_name,
+        env_var=env_var,
+    )
+    if not allow_local_network:
+        _reject_local_hostname(host, provider_name=provider_name, env_var=env_var)
+        is_ip_literal = _reject_local_ip_literal(
+            host,
+            provider_name=provider_name,
+            env_var=env_var,
+        )
+        if resolve_dns and not is_ip_literal:
+            _reject_local_resolved_addresses(
+                host,
+                port=parsed.port or (443 if parsed.scheme.lower() == "https" else 80),
+                provider_name=provider_name,
+                env_var=env_var,
+                timeout_seconds=dns_resolution_timeout_seconds,
+            )
+    return base_url.rstrip("/")
+
+
+def _reject_unlisted_host(
+    host: str,
+    *,
+    allowed_hosts: tuple[str, ...] | None,
+    provider_name: str,
+    env_var: str,
+) -> None:
+    if allowed_hosts is None:
+        return
+    normalized_patterns = tuple(
+        pattern.strip().lower() for pattern in allowed_hosts if pattern.strip()
+    )
+    if not normalized_patterns:
+        raise ProviderError(
+            f"Provider '{provider_name}' {env_var} allowed hosts must not be empty."
+        )
+    if any(fnmatch.fnmatchcase(host, pattern) for pattern in normalized_patterns):
+        return
+    raise ProviderError(
+        f"Provider '{provider_name}' {env_var} host '{host}' is not in the allowed host list."
+    )
+
+
+def _reject_local_hostname(host: str, *, provider_name: str, env_var: str) -> None:
     if host in _LOCAL_HOST_NAMES or host.endswith(".localhost"):
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} resolves to a local/private destination."
+            f"Provider '{provider_name}' {env_var} resolves to a local/private destination. "
+            "Set the provider's explicit local-network opt-in only for trusted local servers."
         )
 
 
-def _reject_local_ip_literal(host: str, *, provider_name: str, url_name: str) -> bool:
+def _reject_local_ip_literal(host: str, *, provider_name: str, env_var: str) -> bool:
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
         return False
-    _reject_local_address(address, provider_name=provider_name, url_name=url_name)
+    _reject_local_address(address, provider_name=provider_name, env_var=env_var)
     return True
 
 
@@ -97,7 +177,7 @@ def _reject_local_resolved_addresses(
     *,
     port: int,
     provider_name: str,
-    url_name: str,
+    env_var: str,
     timeout_seconds: float,
 ) -> None:
     try:
@@ -111,21 +191,21 @@ def _reject_local_resolved_addresses(
         ]
     except TimeoutError as exc:
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} host resolution timed out: {host}."
+            f"Provider '{provider_name}' {env_var} host resolution timed out: {host}."
         ) from exc
     except socket.gaierror as exc:
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} host could not be resolved: {host}."
+            f"Provider '{provider_name}' {env_var} host could not be resolved: {host}."
         ) from exc
     except (OSError, RuntimeError, ValueError) as exc:
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} host resolution failed: {host}."
+            f"Provider '{provider_name}' {env_var} host resolution failed: {host}."
         ) from exc
     for address in addresses:
         _reject_local_address(
             address,
             provider_name=provider_name,
-            url_name=url_name,
+            env_var=env_var,
         )
 
 
@@ -150,6 +230,16 @@ def _getaddrinfo_with_timeout(
 ) -> list[str]:
     if timeout_seconds <= 0:
         raise TimeoutError("DNS resolution timeout must be greater than 0.")
+
+    cache_key = (host, port)
+    cached = _DNS_RESOLUTION_CACHE.get(cache_key)
+    now = perf_counter()
+    if cached is not None:
+        cached_at, cached_addresses = cached
+        if now - cached_at <= _DNS_RESOLUTION_CACHE_SECONDS:
+            _DNS_RESOLUTION_CACHE.move_to_end(cache_key)
+            return list(cached_addresses)
+        del _DNS_RESOLUTION_CACHE[cache_key]
 
     context = multiprocessing.get_context("spawn")
     result_queue = context.Queue(maxsize=1)
@@ -192,7 +282,9 @@ def _getaddrinfo_with_timeout(
             raise socket.gaierror(error_number, error_text)
         if status != "ok":
             raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned an invalid result")
-        return list(value)
+        addresses = tuple(value)
+        _cache_dns_resolution(cache_key, addresses)
+        return list(addresses)
     finally:
         if resolver_started and resolver.is_alive():
             resolver.terminate()
@@ -201,11 +293,18 @@ def _getaddrinfo_with_timeout(
         result_queue.join_thread()
 
 
+def _cache_dns_resolution(cache_key: tuple[str, int], addresses: tuple[str, ...]) -> None:
+    _DNS_RESOLUTION_CACHE[cache_key] = (perf_counter(), addresses)
+    _DNS_RESOLUTION_CACHE.move_to_end(cache_key)
+    while len(_DNS_RESOLUTION_CACHE) > _DNS_RESOLUTION_CACHE_MAX_ENTRIES:
+        _DNS_RESOLUTION_CACHE.popitem(last=False)
+
+
 def _reject_local_address(
     address: ipaddress.IPv4Address | ipaddress.IPv6Address,
     *,
     provider_name: str,
-    url_name: str,
+    env_var: str,
 ) -> None:
     if (
         address.is_loopback
@@ -216,7 +315,8 @@ def _reject_local_address(
         or address.is_multicast
     ):
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} resolves to a local/private destination."
+            f"Provider '{provider_name}' {env_var} resolves to a local/private destination. "
+            "Set the provider's explicit local-network opt-in only for trusted local servers."
         )
 
 

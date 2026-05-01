@@ -17,6 +17,7 @@ from worldforge.models import (
     ProviderHealth,
     ProviderRequestPolicy,
     WorldForgeError,
+    _redact_observable_text,
     require_finite_number,
     require_positive_int,
 )
@@ -30,7 +31,7 @@ from ._config import (
 )
 from ._policy import json_object, normalize_policy_action_candidates
 from .base import ProviderError, ProviderProfileSpec, RemoteProvider, _field_summary
-from .http_utils import request_json_with_policy
+from .http_utils import request_json_with_policy, validate_remote_base_url
 
 COSMOS_POLICY_BASE_URL_ENV_VAR = "COSMOS_POLICY_BASE_URL"
 COSMOS_POLICY_API_TOKEN_ENV_VAR = "COSMOS_POLICY_API_TOKEN"
@@ -38,6 +39,7 @@ COSMOS_POLICY_TIMEOUT_SECONDS_ENV_VAR = "COSMOS_POLICY_TIMEOUT_SECONDS"
 COSMOS_POLICY_EMBODIMENT_TAG_ENV_VAR = "COSMOS_POLICY_EMBODIMENT_TAG"
 COSMOS_POLICY_MODEL_ENV_VAR = "COSMOS_POLICY_MODEL"
 COSMOS_POLICY_RETURN_ALL_ENV_VAR = "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS"
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR = "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL"
 DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS = 600.0
 DEFAULT_COSMOS_POLICY_ACTION_DIM = 14
 DEFAULT_COSMOS_POLICY_EMBODIMENT_TAG = "aloha"
@@ -143,6 +145,7 @@ class CosmosPolicyProvider(RemoteProvider):
         model: str | None = None,
         expected_action_dim: int | None = DEFAULT_COSMOS_POLICY_ACTION_DIM,
         return_all_query_results: bool | str | None = None,
+        allow_local_base_url: bool | str | None = None,
         action_translator: ActionTranslator | None = None,
         request_policy: ProviderRequestPolicy | None = None,
         event_handler: Callable[[ProviderEvent], None] | None = None,
@@ -195,6 +198,14 @@ class CosmosPolicyProvider(RemoteProvider):
             else env_value(COSMOS_POLICY_RETURN_ALL_ENV_VAR),
             name="Cosmos-Policy return_all_query_results",
         )
+        self._allow_local_base_url_direct = allow_local_base_url is not None
+        parsed_allow_local = optional_bool(
+            allow_local_base_url
+            if allow_local_base_url is not None
+            else env_value(COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR),
+            name="Cosmos-Policy allow_local_base_url",
+        )
+        self.allow_local_base_url = bool(parsed_allow_local)
         self.expected_action_dim = expected_action_dim
         self._action_translator = action_translator
         self._transport = transport
@@ -231,6 +242,8 @@ class CosmosPolicyProvider(RemoteProvider):
                     "dependencies.",
                     "Requires a host-supplied action_translator to map raw 14D bimanual "
                     "actions to WorldForge Action objects.",
+                    "Blocks localhost, private, and link-local base URLs unless "
+                    f"{COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR}=1 is explicitly set.",
                     "Cosmos-Policy is an embodied policy/planning runtime, not the existing "
                     "Cosmos media-generation NIM adapter.",
                 ),
@@ -308,6 +321,18 @@ class CosmosPolicyProvider(RemoteProvider):
                     source=config_source(COSMOS_POLICY_RETURN_ALL_ENV_VAR),
                     present=self.return_all_query_results is not None,
                 ),
+                _field_summary(
+                    COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR,
+                        direct=self._allow_local_base_url_direct,
+                        default=not self._allow_local_base_url_direct
+                        and env_value(COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR) is None,
+                    ),
+                    present=self._allow_local_base_url_direct
+                    or env_value(COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR) is not None,
+                ),
             ),
         )
 
@@ -329,8 +354,15 @@ class CosmosPolicyProvider(RemoteProvider):
             raise ProviderError(
                 f"Provider '{self.name}' is unavailable: missing {COSMOS_POLICY_BASE_URL_ENV_VAR}."
             )
+        validated_base_url = validate_remote_base_url(
+            base_url,
+            provider_name=self.name,
+            env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
+            allow_local_network=self.allow_local_base_url,
+            resolve_dns=self._transport is None,
+        )
         return httpx.Client(
-            base_url=base_url.rstrip("/"),
+            base_url=validated_base_url,
             headers=self._headers(),
             transport=self._transport,
         )
@@ -415,7 +447,7 @@ class CosmosPolicyProvider(RemoteProvider):
         try:
             translated = self._action_translator(raw_actions, info, provider_info)
         except Exception as exc:
-            raise ProviderError(f"Cosmos-Policy action translation failed: {exc}") from exc
+            raise ProviderError("Cosmos-Policy action translation failed.") from exc
         return normalize_policy_action_candidates(
             translated,
             provider_label="Cosmos-Policy",
@@ -451,11 +483,19 @@ class CosmosPolicyProvider(RemoteProvider):
                 provider_info=parsed.provider_info,
             )
             selected_index = _selected_action_index(parsed.actions, parsed.all_actions)
-            selected_actions = (
-                candidate_plans[selected_index]
-                if selected_index < len(candidate_plans)
-                else candidate_plans[0]
-            )
+            if parsed.all_actions and len(candidate_plans) != len(parsed.all_actions):
+                raise ProviderError(
+                    "Cosmos-Policy action translator returned "
+                    f"{len(candidate_plans)} candidate(s) for "
+                    f"{len(parsed.all_actions)} raw candidate(s)."
+                )
+            if selected_index >= len(candidate_plans):
+                raise ProviderError(
+                    "Cosmos-Policy selected candidate index "
+                    f"{selected_index} is outside the translated candidate count "
+                    f"{len(candidate_plans)}."
+                )
+            selected_actions = candidate_plans[selected_index]
             embodiment_tag = str(info.get("embodiment_tag") or self.embodiment_tag or "").strip()
             action_horizon = action_horizon_override or len(parsed.actions)
             return ActionPolicyResult(
@@ -499,7 +539,9 @@ class CosmosPolicyProvider(RemoteProvider):
             )
             raise
         except Exception as exc:
-            error = ProviderError(f"Cosmos-Policy action selection failed: {exc}")
+            error = ProviderError(
+                f"Cosmos-Policy action selection failed: {_redact_observable_text(str(exc))}"
+            )
             self._emit_event(
                 ProviderEvent(
                     provider=self.name,

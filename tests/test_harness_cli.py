@@ -55,6 +55,7 @@ def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatc
         "COSMOS_POLICY_EMBODIMENT_TAG",
         "COSMOS_POLICY_MODEL",
         "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
+        "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",

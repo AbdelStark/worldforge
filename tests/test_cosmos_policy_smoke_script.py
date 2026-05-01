@@ -111,3 +111,10 @@ def test_cosmos_policy_smoke_requires_explicit_base_url(monkeypatch) -> None:
 
     with pytest.raises(SystemExit, match="COSMOS_POLICY_BASE_URL"):
         cosmos_policy.main(["--health-only"])
+
+
+def test_cosmos_policy_smoke_rejects_invalid_timeout_env(monkeypatch) -> None:
+    monkeypatch.setenv("COSMOS_POLICY_TIMEOUT_SECONDS", "not-a-number")
+
+    with pytest.raises(SystemExit, match="COSMOS_POLICY_TIMEOUT_SECONDS"):
+        cosmos_policy.main(["--base-url", "http://cosmos-policy.test", "--health-only"])

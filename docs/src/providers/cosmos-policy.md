@@ -39,7 +39,8 @@ WorldForge never starts Cosmos-Policy, installs CUDA dependencies, or drives har
 
 ## Configuration
 
-- `COSMOS_POLICY_BASE_URL`: required for auto-registration. Example: `http://127.0.0.1:8777`.
+- `COSMOS_POLICY_BASE_URL`: required for auto-registration. Example:
+  `https://cosmos-policy.example.com`. Localhost/private endpoints are blocked by default.
 - `COSMOS_POLICY_API_TOKEN`: optional bearer token sent as `Authorization: Bearer ...`.
 - `COSMOS_POLICY_TIMEOUT_SECONDS`: optional policy request timeout. Defaults to `600`.
 - `COSMOS_POLICY_EMBODIMENT_TAG`: optional result metadata. Defaults to `aloha`.
@@ -47,6 +48,8 @@ WorldForge never starts Cosmos-Policy, installs CUDA dependencies, or drives har
   `nvidia/Cosmos-Policy-ALOHA-Predict2-2B`.
 - `COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS`: optional boolean. When set, request all query results
   from servers that support that Cosmos-Policy flag.
+- `COSMOS_POLICY_ALLOW_LOCAL_BASE_URL`: optional boolean. Set to `1` only for trusted localhost,
+  SSH tunnel, or lab-network servers.
 
 Runtime manifest:
 `src/worldforge/providers/runtime_manifests/cosmos-policy.json` records the required endpoint,
@@ -178,6 +181,7 @@ Connect to a running Cosmos-Policy ALOHA server:
 
 ```bash
 COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
   uv run worldforge-smoke-cosmos-policy \
     --policy-info-json /path/to/policy_info.json \
     --translator /path/to/translator.py:translate_actions \

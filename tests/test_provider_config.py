@@ -97,6 +97,7 @@ def test_provider_config_summary_reports_alias_source_without_value(monkeypatch)
 def test_direct_provider_config_summary_reports_source_not_value(monkeypatch) -> None:
     monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
     monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_ALLOW_LOCAL_BASE_URL", raising=False)
     monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
     monkeypatch.delenv("RUNWAY_API_SECRET", raising=False)
     monkeypatch.delenv("GROOT_POLICY_HOST", raising=False)

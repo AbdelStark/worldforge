@@ -15,6 +15,7 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         "COSMOS_POLICY_EMBODIMENT_TAG",
         "COSMOS_POLICY_MODEL",
         "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
+        "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",

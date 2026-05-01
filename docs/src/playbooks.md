@@ -611,10 +611,12 @@ COSMOS_BASE_URL=http://localhost:8000 \
 
 # Cosmos-Policy: requires COSMOS_POLICY_BASE_URL and a reachable ALOHA /act server.
 COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
   uv run pytest -m "live and network and robotics and provider_profile" \
     --run-live --run-network --run-robotics --provider-profile cosmos-policy
 
 COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
   uv run worldforge-smoke-cosmos-policy \
     --policy-info-json /path/to/policy_info.json \
     --translator /path/to/translator.py:translate_actions \

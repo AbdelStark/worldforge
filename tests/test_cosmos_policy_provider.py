@@ -113,6 +113,7 @@ def test_cosmos_policy_provider_contract() -> None:
 
 def test_cosmos_policy_provider_contract_unconfigured(monkeypatch) -> None:
     monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_ALLOW_LOCAL_BASE_URL", raising=False)
 
     report = assert_provider_contract(CosmosPolicyProvider())
 
@@ -172,6 +173,40 @@ def test_cosmos_policy_select_actions_preserves_values_candidates_and_events() -
     assert events[-1].phase == "success"
     assert events[-1].method == "POST"
     assert events[-1].target == "/act"
+
+
+def test_cosmos_policy_blocks_local_base_url_without_opt_in() -> None:
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
+    provider = CosmosPolicyProvider(
+        base_url="http://127.0.0.1:8777",
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+
+    with pytest.raises(ProviderError, match="local/private destination"):
+        provider.select_actions(info=_policy_info())
+    assert called is False
+
+
+def test_cosmos_policy_allows_local_base_url_with_explicit_opt_in() -> None:
+    provider = CosmosPolicyProvider(
+        base_url="http://127.0.0.1:8777",
+        allow_local_base_url=True,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"actions": _actions(0.3)})
+        ),
+        action_translator=_translator,
+    )
+
+    result = provider.select_actions(info=_policy_info())
+
+    assert result.provider == "cosmos-policy"
 
 
 def test_cosmos_policy_only_planning_uses_selected_actions(tmp_path) -> None:
@@ -248,6 +283,55 @@ def test_cosmos_policy_requires_translator() -> None:
         provider.select_actions(info=_policy_info())
 
 
+def test_cosmos_policy_redacts_translator_exception_text() -> None:
+    events: list[ProviderEvent] = []
+
+    def leaking_translator(
+        _raw_actions: object,
+        _info: JSONDict,
+        _provider_info: JSONDict,
+    ):
+        raise RuntimeError("token=cosmos-policy-secret")
+
+    provider = CosmosPolicyProvider(
+        base_url="http://cosmos-policy.test",
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"actions": _actions(0.1)})
+        ),
+        action_translator=leaking_translator,
+        event_handler=events.append,
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        provider.select_actions(info=_policy_info())
+
+    error_text = str(exc_info.value)
+    event_text = events[-1].message
+    assert "cosmos-policy-secret" not in error_text
+    assert "token=" not in error_text
+    assert "Cosmos-Policy action translation failed." in error_text
+    assert "cosmos-policy-secret" not in event_text
+    assert "token=" not in event_text
+
+
+def test_cosmos_policy_rejects_translator_candidate_mismatch() -> None:
+    candidate_a = _actions(0.1)
+    candidate_b = _actions(2.0)
+    provider = CosmosPolicyProvider(
+        base_url="http://cosmos-policy.test",
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(
+                200,
+                json={"actions": candidate_b, "all_actions": [candidate_a, candidate_b]},
+            )
+        ),
+        action_translator=_translator,
+    )
+
+    with pytest.raises(ProviderError, match="returned 1 candidate\\(s\\) for 2 raw candidate"):
+        provider.select_actions(info=_policy_info())
+
+
 def test_cosmos_policy_validates_observation_before_request() -> None:
     called = False
 
@@ -300,6 +384,7 @@ def test_cosmos_policy_rejects_malformed_responses(payload: JSONDict, match: str
 def test_cosmos_policy_config_summary_is_value_free(monkeypatch) -> None:
     monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
     monkeypatch.delenv("COSMOS_POLICY_API_TOKEN", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_ALLOW_LOCAL_BASE_URL", raising=False)
     provider = CosmosPolicyProvider(
         base_url="http://cosmos-policy.test",
         api_token="secret-token",

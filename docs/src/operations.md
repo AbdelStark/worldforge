@@ -84,7 +84,8 @@ Configuration comes from constructor arguments and environment variables documen
 - `NVIDIA_API_KEY` is optional bearer auth for Cosmos.
 - `COSMOS_POLICY_BASE_URL` enables the optional Cosmos-Policy embodied-policy adapter.
 - `COSMOS_POLICY_API_TOKEN`, `COSMOS_POLICY_TIMEOUT_SECONDS`, `COSMOS_POLICY_EMBODIMENT_TAG`,
-  `COSMOS_POLICY_MODEL`, and `COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS` are optional
+  `COSMOS_POLICY_MODEL`, `COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS`, and
+  `COSMOS_POLICY_ALLOW_LOCAL_BASE_URL` are optional
   Cosmos-Policy `/act` settings.
 - `RUNWAYML_API_SECRET` enables the Runway adapter.
 - `RUNWAY_API_SECRET` remains supported as the legacy Runway alias.
@@ -545,7 +546,7 @@ readiness, and safety certification.
   policy server.
 - To smoke-test a real Cosmos-Policy ALOHA server, run the upstream server on a compatible
   Linux/NVIDIA host, prepare ALOHA policy info and an action translator, then run
-  `COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 uv run worldforge-smoke-cosmos-policy --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions`.
+  `COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 uv run worldforge-smoke-cosmos-policy --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions`.
   `--health-only` validates WorldForge configuration only because the targeted upstream server has
   no non-mutating health endpoint.
 - Pytest live runtime coverage is opt-in. Use `uv run pytest` or `uv run pytest -m "not live"` for

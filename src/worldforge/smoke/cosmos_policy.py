@@ -6,6 +6,7 @@ import argparse
 import importlib
 import importlib.util
 import json
+import math
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any
 
 from worldforge.models import JSONDict
 from worldforge.providers import CosmosPolicyProvider
+from worldforge.providers.cosmos_policy import DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 
 
@@ -97,8 +99,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-token", default=os.environ.get("COSMOS_POLICY_API_TOKEN"))
     parser.add_argument(
         "--timeout-seconds",
-        type=float,
-        default=float(os.environ.get("COSMOS_POLICY_TIMEOUT_SECONDS", "600")),
+        default=os.environ.get("COSMOS_POLICY_TIMEOUT_SECONDS"),
     )
     parser.add_argument("--model", default=os.environ.get("COSMOS_POLICY_MODEL"))
     parser.add_argument(
@@ -144,10 +145,24 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _parse_timeout_seconds(value: str | None) -> float:
+    raw_value = value if value is not None else str(DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS)
+    try:
+        parsed = float(raw_value)
+    except ValueError:
+        raise SystemExit(
+            "COSMOS_POLICY_TIMEOUT_SECONDS/--timeout-seconds must be a number greater than 0."
+        ) from None
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        raise SystemExit(
+            "COSMOS_POLICY_TIMEOUT_SECONDS/--timeout-seconds must be a number greater than 0."
+        )
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    if args.timeout_seconds <= 0.0:
-        raise SystemExit("--timeout-seconds must be greater than 0.")
+    timeout_seconds = _parse_timeout_seconds(args.timeout_seconds)
     if args.action_horizon is not None and args.action_horizon <= 0:
         raise SystemExit("--action-horizon must be greater than 0.")
     if not args.health_only and args.translator is None:
@@ -160,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     provider = CosmosPolicyProvider(
         base_url=args.base_url,
         api_token=args.api_token,
-        timeout_seconds=args.timeout_seconds,
+        timeout_seconds=timeout_seconds,
         embodiment_tag=args.embodiment_tag,
         model=args.model,
         return_all_query_results=args.return_all_query_results,
@@ -190,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
                     "COSMOS_POLICY_EMBODIMENT_TAG",
                     "COSMOS_POLICY_MODEL",
                     "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
+                    "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
                 ),
                 event_count=len(provider_events),
                 input_fixture=input_fixture,
