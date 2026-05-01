@@ -8,6 +8,8 @@ import pytest
 
 from worldforge.smoke import cosmos_policy
 
+PUBLIC_BASE_URL = "http://93.184.216.34"
+
 
 def _policy_info() -> dict[str, object]:
     return {
@@ -63,7 +65,7 @@ def test_cosmos_policy_smoke_writes_sanitized_manifest(
         cosmos_policy.main(
             [
                 "--base-url",
-                "http://cosmos-policy.test",
+                PUBLIC_BASE_URL,
                 "--policy-info-json",
                 str(policy_path),
                 "--translator",
@@ -91,7 +93,7 @@ def test_cosmos_policy_smoke_health_only_skips_policy_request(tmp_path: Path) ->
         cosmos_policy.main(
             [
                 "--base-url",
-                "http://cosmos-policy.test",
+                PUBLIC_BASE_URL,
                 "--health-only",
                 "--run-manifest",
                 str(manifest_path),
@@ -117,4 +119,4 @@ def test_cosmos_policy_smoke_rejects_invalid_timeout_env(monkeypatch) -> None:
     monkeypatch.setenv("COSMOS_POLICY_TIMEOUT_SECONDS", "not-a-number")
 
     with pytest.raises(SystemExit, match="COSMOS_POLICY_TIMEOUT_SECONDS"):
-        cosmos_policy.main(["--base-url", "http://cosmos-policy.test", "--health-only"])
+        cosmos_policy.main(["--base-url", PUBLIC_BASE_URL, "--health-only"])

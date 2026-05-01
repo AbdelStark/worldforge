@@ -359,7 +359,6 @@ class CosmosPolicyProvider(RemoteProvider):
             provider_name=self.name,
             env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
             allow_local_network=self.allow_local_base_url,
-            resolve_dns=self._transport is None,
         )
         return httpx.Client(
             base_url=validated_base_url,
@@ -401,7 +400,7 @@ class CosmosPolicyProvider(RemoteProvider):
         options = normalized_info.get("options")
         if options is not None and not isinstance(options, dict):
             raise ProviderError("Cosmos-Policy policy info.options must be a JSON object.")
-        payload = dict(observation)
+        payload: JSONDict = dict(observation)
         payload["task_description"] = task_description.strip()
         if options:
             for key, value in options.items():
@@ -497,7 +496,7 @@ class CosmosPolicyProvider(RemoteProvider):
                 )
             selected_actions = candidate_plans[selected_index]
             embodiment_tag = str(info.get("embodiment_tag") or self.embodiment_tag or "").strip()
-            action_horizon = action_horizon_override or len(parsed.actions)
+            action_horizon = action_horizon_override or len(selected_actions)
             return ActionPolicyResult(
                 provider=self.name,
                 actions=list(selected_actions),

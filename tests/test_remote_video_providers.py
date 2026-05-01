@@ -1023,7 +1023,7 @@ def test_getaddrinfo_caps_result_queue_timeout_to_remaining_budget(monkeypatch) 
         return context
 
     monkeypatch.setattr(http_utils_module.multiprocessing, "get_context", fake_get_context)
-    perf_counter_values = iter([100.0, 101.75])
+    perf_counter_values = iter([99.0, 100.0, 101.75, 101.8])
     monkeypatch.setattr(
         http_utils_module,
         "perf_counter",
