@@ -509,6 +509,32 @@ uv run mkdocs build --strict
 
 ## Workstream B: Real Provider Implementations
 
+Track status: complete for [#48](https://github.com/AbdelStark/worldforge/issues/48).
+
+Completion signals:
+
+- `leworldmodel` is a stable score provider over `stable_worldmodel.policy.AutoCostModel`, with
+  CPU fallback, score direction metadata, runtime manifests, real-checkpoint smoke commands, and
+  the PushT bridge registry preserving shape summaries in run manifests.
+- `lerobot` is a stable policy provider with explicit loader validation, bounded raw-action
+  previews, translator-contract evidence, and host-owned checkpoint, runtime, and controller
+  boundaries.
+- `gr00t` is a beta remote PolicyClient provider with sanitized target metadata, timeout/auth
+  handling, unreachable-server health signals, and docs that keep CUDA, TensorRT, Isaac-GR00T,
+  and policy-server operation host-owned.
+- `cosmos` and `runway` keep remote media generation/transfer production-shaped through parser
+  fixtures, retry/timeout event metadata, optional live smoke manifests, benchmark inputs, and
+  artifact-retention guidance that excludes signed URL query strings from observable records.
+- `jepa` now advertises only the selected experimental `score` surface through the
+  `facebookresearch/jepa-wms` torch-hub contract, while `jepa-wms` remains a direct-construction
+  candidate with prepared-host smoke evidence rather than auto-registration.
+- `genie` remains a fail-closed scaffold with a documented defer decision until a credible
+  upstream automation API or runtime contract exists.
+- [Provider docs](./providers/README.md), [provider-selection records](./provider-selection-rfc.md),
+  [robotics showcase docs](./robotics-showcase.md), runtime manifests, fixtures, and conformance
+  tests now agree on which provider capabilities are executable and which runtime responsibilities
+  remain with hosts.
+
 ### WF-LWM-001: LeWorldModel Stable Score Provider
 
 Type: provider promotion  

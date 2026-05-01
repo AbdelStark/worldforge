@@ -239,6 +239,81 @@ def test_production_harness_roadmap_tracker_records_completion() -> None:
         assert signal in harness
 
 
+def test_real_provider_roadmap_tracker_records_completion() -> None:
+    roadmap = (ROOT / "docs/src/provider-platform-roadmap.md").read_text(encoding="utf-8")
+    provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
+    selection = (ROOT / "docs/src/provider-selection-rfc.md").read_text(encoding="utf-8")
+    showcase = (ROOT / "docs/src/robotics-showcase.md").read_text(encoding="utf-8")
+
+    provider_pages = {
+        name: (ROOT / f"docs/src/providers/{name}.md").read_text(encoding="utf-8")
+        for name in (
+            "leworldmodel",
+            "lerobot",
+            "gr00t",
+            "cosmos",
+            "runway",
+            "jepa",
+            "jepa-wms",
+            "genie",
+        )
+    }
+    runtime_manifests = {
+        path.stem for path in (ROOT / "src/worldforge/providers/runtime_manifests").glob("*.json")
+    }
+
+    assert "Track status: complete for [#48]" in roadmap
+    for child in (
+        "WF-LWM-001",
+        "WF-LWM-002",
+        "WF-LEROBOT-001",
+        "WF-LEROBOT-002",
+        "WF-GROOT-001",
+        "WF-COSMOS-001",
+        "WF-RUNWAY-001",
+        "WF-JEPAWMS-001",
+        "WF-JEPA-001",
+        "WF-GENIE-001",
+        "WF-PROVIDER-SELECT-001",
+    ):
+        assert child in roadmap
+
+    for status_row in (
+        "| [`leworldmodel`](./leworldmodel.md) | `stable` | `score` |",
+        "| [`lerobot`](./lerobot.md) | `stable` | `policy` |",
+        "| [`gr00t`](./gr00t.md) | `beta` | `policy` |",
+        "| [`jepa`](./jepa.md) | `experimental` | `score` |",
+        "| [`genie`](./genie.md) | `scaffold` | scaffold |",
+    ):
+        assert status_row in provider_index
+
+    assert {"leworldmodel", "lerobot", "gr00t", "cosmos", "runway", "jepa"} <= runtime_manifests
+
+    for signal in (
+        "stable_worldmodel.policy.AutoCostModel",
+        "CPU fallback",
+        "score direction",
+        "PushT",
+        "translator_contract",
+        "remote PolicyClient",
+        "unreachable policy server",
+        "failed tasks",
+        "signed URL",
+        "facebookresearch/jepa-wms",
+        "Status: scaffold",
+        "Decision date: 2026-05-01",
+    ):
+        assert signal in roadmap or any(signal in page for page in provider_pages.values())
+
+    for provider_name in provider_pages:
+        assert f"[`{provider_name}`]" in provider_index
+
+    assert 'torch.hub.load("facebookresearch/jepa-wms", model_name)' in selection
+    assert "Genie Issue Outline" in selection
+    assert "worldforge.smoke.pusht_showcase_inputs" in showcase
+    assert "host must provide" in showcase
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
