@@ -20,6 +20,7 @@ from .base import (
 )
 from .catalog import PROVIDER_CATALOG, ProviderCatalogEntry, create_known_providers
 from .cosmos import CosmosProvider
+from .cosmos_policy import CosmosPolicyProvider
 from .embodiment import EmbodimentActionTranslator, EmbodimentTranslatorContract
 from .entry_points import (
     ENTRY_POINT_DISABLE_ENV_VAR,
@@ -41,6 +42,7 @@ __all__ = [
     "PROVIDER_CATALOG",
     "BaseProvider",
     "ConfigFieldSummary",
+    "CosmosPolicyProvider",
     "CosmosProvider",
     "EmbodimentActionTranslator",
     "EmbodimentTranslatorContract",

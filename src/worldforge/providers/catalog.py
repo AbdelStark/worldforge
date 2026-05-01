@@ -63,6 +63,12 @@ def _cosmos(event_handler: ProviderEventHandler = None) -> BaseProvider:
     return CosmosProvider(event_handler=event_handler)
 
 
+def _cosmos_policy(event_handler: ProviderEventHandler = None) -> BaseProvider:
+    from .cosmos_policy import CosmosPolicyProvider
+
+    return CosmosPolicyProvider(event_handler=event_handler)
+
+
 def _runway(event_handler: ProviderEventHandler = None) -> BaseProvider:
     from .runway import RunwayProvider
 
@@ -113,6 +119,12 @@ PROVIDER_CATALOG: tuple[ProviderCatalogEntry, ...] = (
         runtime_ownership=(
             "host supplies a reachable Cosmos deployment and optional `NVIDIA_API_KEY`"
         ),
+    ),
+    ProviderCatalogEntry(
+        "cosmos-policy",
+        _cosmos_policy,
+        docs_page="cosmos-policy.md",
+        runtime_ownership=("host runs or reaches a NVIDIA Cosmos-Policy ALOHA `/act` server"),
     ),
     ProviderCatalogEntry(
         "runway",

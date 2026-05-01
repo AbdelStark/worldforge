@@ -9,6 +9,12 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     for env_var in (
         "COSMOS_BASE_URL",
         "NVIDIA_API_KEY",
+        "COSMOS_POLICY_BASE_URL",
+        "COSMOS_POLICY_API_TOKEN",
+        "COSMOS_POLICY_TIMEOUT_SECONDS",
+        "COSMOS_POLICY_EMBODIMENT_TAG",
+        "COSMOS_POLICY_MODEL",
+        "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",
@@ -46,6 +52,7 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert {
         "mock",
         "cosmos",
+        "cosmos-policy",
         "runway",
         "leworldmodel",
         "gr00t",
@@ -58,6 +65,12 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert builtin_profiles["cosmos"].request_policy is not None
     assert builtin_profiles["cosmos"].request_policy.request.retry.max_attempts == 1
     assert builtin_profiles["cosmos"].request_policy.health.retry.max_attempts == 3
+    assert builtin_profiles["cosmos-policy"].implementation_status == "beta"
+    assert builtin_profiles["cosmos-policy"].capabilities.policy is True
+    assert builtin_profiles["cosmos-policy"].capabilities.predict is False
+    assert builtin_profiles["cosmos-policy"].required_env_vars == ["COSMOS_POLICY_BASE_URL"]
+    assert builtin_profiles["cosmos-policy"].request_policy is not None
+    assert builtin_profiles["cosmos-policy"].request_policy.request.retry.max_attempts == 1
     assert builtin_profiles["runway"].required_env_vars == [
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",

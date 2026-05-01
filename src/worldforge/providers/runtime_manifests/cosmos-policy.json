@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "provider": "cosmos-policy",
+  "capabilities": ["policy"],
+  "optional_dependencies": ["nvidia/cosmos-policy server"],
+  "required_env_vars": ["COSMOS_POLICY_BASE_URL"],
+  "optional_env_vars": ["COSMOS_POLICY_API_TOKEN", "COSMOS_POLICY_TIMEOUT_SECONDS", "COSMOS_POLICY_EMBODIMENT_TAG", "COSMOS_POLICY_MODEL", "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS"],
+  "default_model": "nvidia/Cosmos-Policy-ALOHA-Predict2-2B",
+  "device_support": ["remote-policy-server", "gpu-host-owned", "cuda-host-owned"],
+  "host_owned_artifacts": ["Cosmos-Policy Docker/runtime environment", "ALOHA policy server", "model checkpoints", "observation builder", "action translator"],
+  "minimum_smoke_command": "COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 uv run worldforge-smoke-cosmos-policy --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions",
+  "expected_success_signal": "select_actions() returns validated WorldForge Action candidates from the Cosmos-Policy /act server",
+  "setup_hint": "run NVIDIA Cosmos-Policy on a Linux CUDA host and expose the ALOHA /act server",
+  "docs_path": "docs/src/providers/cosmos-policy.md"
+}

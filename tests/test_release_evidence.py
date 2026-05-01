@@ -29,6 +29,7 @@ def test_release_evidence_renders_without_credentials(
 ) -> None:
     for name in (
         "COSMOS_BASE_URL",
+        "COSMOS_POLICY_BASE_URL",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",

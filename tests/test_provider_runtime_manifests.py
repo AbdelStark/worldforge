@@ -18,6 +18,7 @@ from worldforge.providers.runtime_manifest import (
 )
 
 EXPECTED_MANIFEST_PROVIDERS = (
+    "cosmos-policy",
     "cosmos",
     "gr00t",
     "jepa-wms",

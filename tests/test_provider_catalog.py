@@ -17,6 +17,7 @@ def test_provider_catalog_names_are_unique_and_explicit() -> None:
     assert names == [
         "mock",
         "cosmos",
+        "cosmos-policy",
         "runway",
         "leworldmodel",
         "gr00t",
@@ -32,6 +33,7 @@ def test_provider_catalog_instantiates_known_provider_profiles() -> None:
     profiles = {provider.name: provider.profile() for provider in providers}
 
     assert profiles["mock"].implementation_status == "stable"
+    assert profiles["cosmos-policy"].capabilities.policy is True
     assert profiles["leworldmodel"].capabilities.score is True
     assert profiles["gr00t"].capabilities.policy is True
     assert profiles["lerobot"].capabilities.policy is True
@@ -53,6 +55,7 @@ def test_provider_catalog_statuses_match_promotion_gate() -> None:
     assert {name: profile.implementation_status for name, profile in profiles.items()} == {
         "mock": "stable",
         "cosmos": "beta",
+        "cosmos-policy": "beta",
         "runway": "beta",
         "leworldmodel": "stable",
         "gr00t": "beta",

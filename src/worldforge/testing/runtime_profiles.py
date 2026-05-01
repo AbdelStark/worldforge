@@ -76,6 +76,10 @@ RUNTIME_MARKERS: tuple[RuntimeMarker, ...] = (
 PROVIDER_RUNTIME_PROFILES: tuple[ProviderRuntimeProfile, ...] = (
     ProviderRuntimeProfile(name="cosmos", required_env_vars=("COSMOS_BASE_URL",)),
     ProviderRuntimeProfile(
+        name="cosmos-policy",
+        required_env_vars=("COSMOS_POLICY_BASE_URL",),
+    ),
+    ProviderRuntimeProfile(
         name="runway",
         required_env_vars=(),
         required_any_env_vars=("RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"),

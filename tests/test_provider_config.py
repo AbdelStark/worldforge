@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from worldforge.providers import (
+    CosmosPolicyProvider,
     CosmosProvider,
     GrootPolicyClientProvider,
     LeRobotPolicyProvider,
@@ -14,6 +15,7 @@ from worldforge.providers.runtime_manifest import load_runtime_manifest, load_ru
 
 SECRET_VALUES = (
     "cosmos-secret",
+    "cosmos-policy-secret",
     "runway-secret",
     "gr00t-secret",
     "signed-query-secret",
@@ -31,6 +33,8 @@ def _assert_no_secret_values(payload: object) -> None:
 def test_provider_config_summaries_are_value_free_json(monkeypatch) -> None:
     monkeypatch.setenv("COSMOS_BASE_URL", "https://cosmos.example.test")
     monkeypatch.setenv("NVIDIA_API_KEY", "cosmos-secret")
+    monkeypatch.setenv("COSMOS_POLICY_BASE_URL", "https://cosmos-policy.example.test")
+    monkeypatch.setenv("COSMOS_POLICY_API_TOKEN", "cosmos-policy-secret")
     monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-secret")
     monkeypatch.setenv("GROOT_POLICY_HOST", "127.0.0.1")
     monkeypatch.setenv("GROOT_POLICY_API_TOKEN", "gr00t-secret")
@@ -44,6 +48,7 @@ def test_provider_config_summaries_are_value_free_json(monkeypatch) -> None:
     assert {summary["provider"] for summary in summaries} == {
         "mock",
         "cosmos",
+        "cosmos-policy",
         "runway",
         "leworldmodel",
         "gr00t",
@@ -91,6 +96,7 @@ def test_provider_config_summary_reports_alias_source_without_value(monkeypatch)
 
 def test_direct_provider_config_summary_reports_source_not_value(monkeypatch) -> None:
     monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
     monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
     monkeypatch.delenv("RUNWAY_API_SECRET", raising=False)
     monkeypatch.delenv("GROOT_POLICY_HOST", raising=False)
@@ -99,6 +105,12 @@ def test_direct_provider_config_summary_reports_source_not_value(monkeypatch) ->
 
     summaries = [
         CosmosProvider(base_url="https://cosmos.example.test").config_summary().to_dict(),
+        CosmosPolicyProvider(
+            base_url="https://cosmos-policy.example.test",
+            api_token="cosmos-policy-secret",
+        )
+        .config_summary()
+        .to_dict(),
         GrootPolicyClientProvider(host="127.0.0.1", api_token="gr00t-secret")
         .config_summary()
         .to_dict(),

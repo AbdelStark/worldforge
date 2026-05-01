@@ -305,6 +305,7 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
             "leworldmodel",
             "lerobot",
             "gr00t",
+            "cosmos-policy",
             "cosmos",
             "runway",
             "jepa",
@@ -336,12 +337,21 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
         "| [`leworldmodel`](./leworldmodel.md) | `stable` | `score` |",
         "| [`lerobot`](./lerobot.md) | `stable` | `policy` |",
         "| [`gr00t`](./gr00t.md) | `beta` | `policy` |",
+        "| [`cosmos-policy`](./cosmos-policy.md) | `beta` | `policy` |",
         "| [`jepa`](./jepa.md) | `experimental` | `score` |",
         "| [`genie`](./genie.md) | `scaffold` | scaffold |",
     ):
         assert status_row in provider_index
 
-    assert {"leworldmodel", "lerobot", "gr00t", "cosmos", "runway", "jepa"} <= runtime_manifests
+    assert {
+        "leworldmodel",
+        "lerobot",
+        "gr00t",
+        "cosmos-policy",
+        "cosmos",
+        "runway",
+        "jepa",
+    } <= runtime_manifests
 
     for signal in (
         "stable_worldmodel.policy.AutoCostModel",
@@ -349,6 +359,7 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
         "score direction",
         "PushT",
         "translator_contract",
+        "Cosmos-Policy /act",
         "remote PolicyClient",
         "unreachable policy server",
         "failed tasks",

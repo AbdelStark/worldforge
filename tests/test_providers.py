@@ -5,6 +5,7 @@ import pytest
 from worldforge import Action, BBox, Position, ProviderCapabilities, SceneObject, WorldForge
 from worldforge.providers import (
     BaseProvider,
+    CosmosPolicyProvider,
     CosmosProvider,
     GenieProvider,
     JepaProvider,
@@ -17,6 +18,7 @@ from worldforge.providers.base import ProviderProfileSpec
 
 
 def test_provider_submodule_exports_provider_classes() -> None:
+    assert CosmosPolicyProvider is not None
     assert CosmosProvider is not None
     assert GenieProvider is not None
     assert JepaProvider is not None

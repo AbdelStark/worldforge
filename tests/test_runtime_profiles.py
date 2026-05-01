@@ -84,6 +84,7 @@ def test_marker_definitions_cover_runtime_profiles() -> None:
     assert "provider_profile(name)" in definitions
     assert set(PROVIDER_RUNTIME_PROFILES_BY_NAME) == {
         "cosmos",
+        "cosmos-policy",
         "runway",
         "leworldmodel",
         "gr00t",

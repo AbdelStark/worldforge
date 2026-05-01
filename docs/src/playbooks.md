@@ -609,6 +609,17 @@ COSMOS_BASE_URL=http://localhost:8000 \
     --summary-json .worldforge/runs/cosmos-live/results/summary.json \
     --run-manifest .worldforge/runs/cosmos-live/run_manifest.json
 
+# Cosmos-Policy: requires COSMOS_POLICY_BASE_URL and a reachable ALOHA /act server.
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+  uv run pytest -m "live and network and robotics and provider_profile" \
+    --run-live --run-network --run-robotics --provider-profile cosmos-policy
+
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+  uv run worldforge-smoke-cosmos-policy \
+    --policy-info-json /path/to/policy_info.json \
+    --translator /path/to/translator.py:translate_actions \
+    --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json
+
 # Runway: requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET.
 RUNWAYML_API_SECRET=... \
   uv run pytest -m "live and network and credentialed and provider_profile" \
