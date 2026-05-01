@@ -1,0 +1,42 @@
+pr_compliances:
+  - title: "Provider capability truthfulness"
+    compliance_label: true
+    objective: "Providers must advertise only capabilities implemented end to end."
+    success_criteria: "Capability flags, public methods, docs, examples, tests, and provider metadata all describe the same implemented behavior."
+    failure_criteria: "A provider claims predict, score, policy, generate, reason, embed, transfer, or plan support without a complete typed implementation and tests."
+
+  - title: "Remote provider network safety"
+    compliance_label: true
+    objective: "Provider-controlled URLs and remote responses must not create SSRF, internal network access, unsafe redirects, or resource exhaustion."
+    success_criteria: "Remote fetches validate scheme and host, reject private or link-local destinations by default, enforce timeout/retry policy, and bound artifact downloads before buffering."
+    failure_criteria: "The PR fetches arbitrary provider-controlled URLs, follows unchecked redirects, buffers unbounded content, or lacks tests for unsafe URL and oversized artifact cases."
+
+  - title: "Optional runtime and checkpoint safety"
+    compliance_label: true
+    objective: "Host-owned optional runtimes and checkpoint tooling must not execute untrusted remote model content by default."
+    success_criteria: "Checkpoint/model loading pins revisions where appropriate, avoids arbitrary config instantiation or unsafe deserialization, and documents every code-execution surface before weights are loaded."
+    failure_criteria: "The PR executes remote configs, pickles, dynamic imports, or constructors from caller-selected repositories without a narrow allowlist and explicit operator opt-in."
+
+  - title: "Secrets and signed artifact URL redaction"
+    compliance_label: true
+    objective: "Credentials and temporary artifact URLs must not leak through events, logs, exceptions, transcripts, persisted worlds, or returned metadata."
+    success_criteria: "All log-facing and caller-facing records redact bearer tokens, API keys, signed URL query strings, credentials, and secret-like metadata while preserving non-secret debugging context."
+    failure_criteria: "Sanitization happens only in one surface, or raw signed URLs/secrets remain in result metadata, provider events, error messages, saved state, or UI transcripts."
+
+  - title: "JSON-native public state"
+    compliance_label: true
+    objective: "Public models, provider metadata, planning outputs, benchmark metrics, and persisted worlds must stay JSON-native and coherent."
+    success_criteria: "Boundary validation accepts only string keys, finite numbers, lists, dictionaries, booleans, strings, and null, with tests for rejected non-native values."
+    failure_criteria: "The PR allows object instances, tuples, bytes, NaN, infinity, or internally inconsistent metrics/actions into public data or persistence."
+
+  - title: "Optional dependency isolation"
+    compliance_label: true
+    objective: "Base installs must remain lightweight and independent of torch, CUDA, robotics stacks, Textual, Rerun, credentials, and checkpoints."
+    success_criteria: "Optional integrations are behind extras, smoke commands, or host-owned setup, and import paths fail gracefully when optional dependencies are absent."
+    failure_criteria: "The PR adds optional runtime dependencies to the base package or imports optional packages from core modules, CLI root paths, or non-optional provider surfaces."
+
+  - title: "Regression tests and operator documentation"
+    compliance_label: true
+    objective: "Behavior changes must be testable and operationally clear."
+    success_criteria: "Bug fixes and documented failure modes include focused tests, and public runtime/provider changes update README/docs/playbooks with commands, success signals, and first triage steps."
+    failure_criteria: "The PR changes public behavior, provider contracts, runtime setup, persistence, CI, or docs navigation without tests or operator-facing documentation updates."
