@@ -614,6 +614,9 @@ COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
   uv run pytest -m "live and network and robotics and provider_profile" \
     --run-live --run-network --run-robotics --provider-profile cosmos-policy
+# Expected success: pytest completes the selected live profile without failures.
+# First triage: run `uv run worldforge provider health cosmos-policy` and confirm
+# `COSMOS_POLICY_BASE_URL` is present and reachable from this host.
 
 COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
@@ -621,6 +624,9 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
     --policy-info-json /path/to/policy_info.json \
     --translator /path/to/translator.py:translate_actions \
     --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json
+# Expected success: run_manifest.json records capability=policy with status=passed.
+# First triage: verify the `/act` server is reachable and recheck the translator path plus
+# policy_info.json shape.
 
 # Runway: requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET.
 RUNWAYML_API_SECRET=... \

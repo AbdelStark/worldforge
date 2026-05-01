@@ -549,6 +549,9 @@ readiness, and safety certification.
   `COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 uv run worldforge-smoke-cosmos-policy --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions`.
   `--health-only` validates WorldForge configuration only because the targeted upstream server has
   no non-mutating health endpoint.
+  Expected success: the process exits 0 and the run manifest records `capability=policy` with
+  `status=passed`. First triage: run `uv run worldforge provider health cosmos-policy`, confirm
+  `COSMOS_POLICY_BASE_URL` is present, and verify the host can reach the `/act` server.
 - Pytest live runtime coverage is opt-in. Use `uv run pytest` or `uv run pytest -m "not live"` for
   deterministic checkout validation. Prepared hosts can select one live provider profile at a time
   with markers such as `live`, `network`, `credentialed`, `gpu`, `robotics`, and
