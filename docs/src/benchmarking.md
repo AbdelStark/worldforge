@@ -221,3 +221,38 @@ Every JSON and Markdown report includes `claim_boundary` and `metric_semantics` 
 benchmark harness is synthetic. It measures operation latency, retries, and throughput for the
 selected provider adapter path; it does not score media quality, physical fidelity, safety, or
 production load capacity.
+
+## Provenance envelope
+
+Reports built through `ProviderBenchmarkHarness.run()` and the `worldforge benchmark` CLI carry
+a `provenance` envelope (`schema_version: 2`) so a claim can be reproduced, audited, or cited
+without console logs:
+
+| Field | Description |
+| --- | --- |
+| `schema_version` | Envelope schema version (currently `2`). |
+| `kind` | `"benchmark"`. |
+| `suite_id`, `suite_version` | `"benchmark"` and the contract version (e.g. `benchmark:1`). |
+| `worldforge_version` | Package version that produced the report. |
+| `created_at` | UTC ISO timestamp. |
+| `command` | The command argv vector when produced through the CLI. |
+| `providers`, `capabilities` | Providers exercised and operations they covered. |
+| `runtime_manifests` | Provider runtime manifest references when available. |
+| `input_digest`, `result_digest` | Deterministic `sha256:<hex>` digests of inputs and results. |
+| `budget_file` | `path`, `sha256:<hex>`, and `metadata` summary when a budget gate ran. |
+| `event_count` | Sum of `request_count` across emitted `ProviderEvent` records. |
+| `claim_boundary`, `metric_semantics` | Mirrors the report-level claim text. |
+| `notes` | Optional free-form note. |
+
+Cite a benchmark number by attaching the envelope (paste the JSON `provenance` block or the
+Markdown provenance section) alongside the report in any issue, release note, or evidence
+bundle. The envelope intentionally duplicates `claim_boundary` and `metric_semantics` so a
+single block carries the full provenance for a claim.
+
+### Migration
+
+Previous reports omitted `provenance`. The CSV renderer, `claim_boundary`, `metric_semantics`,
+`run_metadata`, and `results` fields are unchanged; `run_metadata.input_file` and
+`run_metadata.budget_file` continue to expose the raw hex digest used by earlier tooling. New
+consumers should prefer the envelope `input_digest`, `result_digest`, and `budget_file` fields,
+which carry `sha256:<hex>` digests and the `runtime_manifests` map.

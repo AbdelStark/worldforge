@@ -1473,6 +1473,11 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
     suite = EvaluationSuite.from_builtin(args.suite)
     providers = args.providers or ["mock"]
     report = suite.run_report(providers, forge=forge)
+    eval_command = _command_string(["eval", "--suite", args.suite, *_provider_args(providers)])
+    if report.provenance is not None:
+        report.provenance = report.provenance.with_overrides(
+            command=tuple(eval_command.split()),
+        )
     artifacts = report.artifacts()
     if args.run_workspace is not None:
         from worldforge.harness.flows import preserve_eval_run_workspace
@@ -1483,7 +1488,7 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
             providers=providers,
             artifacts=artifacts,
             report=report,
-            command=_command_string(["eval", "--suite", args.suite, *_provider_args(providers)]),
+            command=eval_command,
         )
     if args.format == "json":
         print(artifacts["json"])
@@ -1534,6 +1539,7 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
     if input_file_metadata is not None:
         report.run_metadata["input_file"] = input_file_metadata
     gate_report = None
+    budget_file_summary: dict[str, object] | None = None
     if args.budget_file:
         budget_path = args.budget_file.expanduser()
         try:
@@ -1550,12 +1556,36 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
             if isinstance(budget_payload, dict) and isinstance(budget_payload.get("metadata"), dict)
             else {}
         )
-        report.run_metadata["budget_file"] = {
+        budget_file_summary = {
             "path": str(budget_path.resolve()),
+            "sha256": f"sha256:{sha256(budget_text.encode('utf-8')).hexdigest()}",
+            "metadata": budget_metadata,
+        }
+        report.run_metadata["budget_file"] = {
+            "path": budget_file_summary["path"],
             "sha256": sha256(budget_text.encode("utf-8")).hexdigest(),
             "metadata": budget_metadata,
         }
         gate_report = report.evaluate_budgets(load_benchmark_budgets(budget_payload))
+
+    benchmark_command = _command_string(
+        [
+            "benchmark",
+            *_provider_args(providers),
+            *_operation_args(args.operations or []),
+            "--iterations",
+            str(args.iterations),
+            "--concurrency",
+            str(args.concurrency),
+        ]
+    )
+    if report.provenance is not None:
+        envelope_overrides: dict[str, object] = {
+            "command": tuple(benchmark_command.split()),
+        }
+        if budget_file_summary is not None:
+            envelope_overrides["budget_file"] = budget_file_summary
+        report.provenance = report.provenance.with_overrides(**envelope_overrides)
 
     if args.run_workspace is not None:
         from worldforge.harness.flows import preserve_benchmark_run_workspace
@@ -1566,17 +1596,7 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
             operations=args.operations,
             artifacts=report.artifacts(),
             report=report,
-            command=_command_string(
-                [
-                    "benchmark",
-                    *_provider_args(providers),
-                    *_operation_args(args.operations or []),
-                    "--iterations",
-                    str(args.iterations),
-                    "--concurrency",
-                    str(args.concurrency),
-                ]
-            ),
+            command=benchmark_command,
             budget_passed=None if gate_report is None else gate_report.passed,
         )
 

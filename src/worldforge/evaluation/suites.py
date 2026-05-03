@@ -27,6 +27,12 @@ from worldforge.models import (
     require_non_negative_int,
     require_probability,
 )
+from worldforge.provenance import (
+    EVALUATION_SUITE_CONTRACT_VERSION,
+    ProvenanceEnvelope,
+    collect_runtime_manifests,
+    digest_payload,
+)
 
 if TYPE_CHECKING:
     from worldforge.framework import World, WorldForge
@@ -40,6 +46,39 @@ EVALUATION_METRIC_SEMANTICS = (
     "Scenario scores and pass rates measure whether a provider satisfied the suite's typed "
     "contract under preserved inputs."
 )
+
+
+def _provenance_markdown_lines(provenance: ProvenanceEnvelope | None) -> list[str]:
+    """Render the report-level provenance section for Markdown artifacts."""
+
+    if provenance is None:
+        return []
+    lines = [
+        "## Provenance",
+        "",
+        f"- WorldForge version: {provenance.worldforge_version}",
+        f"- Suite version: {provenance.suite_version}",
+        f"- Created at: {provenance.created_at}",
+        f"- Providers: {', '.join(provenance.providers) or '-'}",
+        f"- Capabilities: {', '.join(provenance.capabilities) or '-'}",
+        f"- Event count: {provenance.event_count}",
+        f"- Input digest: {provenance.input_digest or '-'}",
+        f"- Result digest: {provenance.result_digest or '-'}",
+    ]
+    if provenance.runtime_manifests:
+        manifests = ", ".join(
+            f"{provider}={manifest_id}"
+            for provider, manifest_id in sorted(provenance.runtime_manifests.items())
+        )
+        lines.append(f"- Runtime manifests: {manifests}")
+    if provenance.budget_file is not None:
+        lines.append(f"- Budget file: {provenance.budget_file['path']}")
+    if provenance.command:
+        lines.append(f"- Command: `{' '.join(provenance.command)}`")
+    if provenance.notes:
+        lines.append(f"- Notes: {provenance.notes}")
+    lines.append("")
+    return lines
 
 
 def _clamp_score(value: float) -> float:
@@ -263,13 +302,38 @@ class EvaluationReport:
         suite_id: str,
         suite: str,
         results: Sequence[EvaluationResult],
+        *,
+        provenance: ProvenanceEnvelope | None = None,
     ) -> None:
         self.suite_id = _required_text(suite_id, name="EvaluationReport suite_id")
         self.suite = _required_text(suite, name="EvaluationReport suite")
         self.results = list(results)
         if not all(isinstance(result, EvaluationResult) for result in self.results):
             raise WorldForgeError("EvaluationReport results must contain only EvaluationResult.")
+        for result in self.results:
+            if result.suite_id != self.suite_id:
+                raise WorldForgeError(
+                    "EvaluationReport results must share the report's suite_id "
+                    f"(got '{result.suite_id}', expected '{self.suite_id}')."
+                )
+            if result.suite != self.suite:
+                raise WorldForgeError(
+                    "EvaluationReport results must share the report's suite name "
+                    f"(got '{result.suite}', expected '{self.suite}')."
+                )
         self.provider_summaries = self._build_provider_summaries()
+        if provenance is not None:
+            if not isinstance(provenance, ProvenanceEnvelope):
+                raise WorldForgeError(
+                    "EvaluationReport provenance must be a ProvenanceEnvelope or None."
+                )
+            if provenance.kind != "evaluation":
+                raise WorldForgeError("EvaluationReport provenance must have kind='evaluation'.")
+            if provenance.suite_id != self.suite_id:
+                raise WorldForgeError(
+                    "EvaluationReport provenance suite_id must match the report's suite_id."
+                )
+        self.provenance = provenance
 
     def _build_provider_summaries(self) -> list[ProviderSummary]:
         provider_names = sorted({result.provider for result in self.results})
@@ -289,7 +353,7 @@ class EvaluationReport:
         return summaries
 
     def to_dict(self) -> JSONDict:
-        return {
+        payload: JSONDict = {
             "suite_id": self.suite_id,
             "suite": self.suite,
             "claim_boundary": EVALUATION_CLAIM_BOUNDARY,
@@ -297,6 +361,9 @@ class EvaluationReport:
             "provider_summaries": [summary.to_dict() for summary in self.provider_summaries],
             "results": [result.to_dict() for result in self.results],
         }
+        if self.provenance is not None:
+            payload["provenance"] = self.provenance.to_dict()
+        return payload
 
     def to_markdown(self) -> str:
         lines = [
@@ -307,9 +374,14 @@ class EvaluationReport:
             f"Claim boundary: {EVALUATION_CLAIM_BOUNDARY}",
             f"Metric semantics: {EVALUATION_METRIC_SEMANTICS}",
             "",
-            "| provider | average_score | passed | scenarios |",
-            "| --- | ---: | ---: | ---: |",
         ]
+        lines.extend(_provenance_markdown_lines(self.provenance))
+        lines.extend(
+            [
+                "| provider | average_score | passed | scenarios |",
+                "| --- | ---: | ---: | ---: |",
+            ]
+        )
         lines.extend(
             (
                 f"| {summary.provider} | {summary.average_score:.2f} | "
@@ -559,7 +631,47 @@ class EvaluationSuite:
             with ThreadPoolExecutor(max_workers=min(8, len(provider_names))) as pool:
                 for provider_results in pool.map(_run_one, provider_names):
                     results.extend(provider_results)
-        return EvaluationReport(self.suite_id, self.name, results)
+        provenance = self._build_provenance(provider_names, results)
+        return EvaluationReport(
+            self.suite_id,
+            self.name,
+            results,
+            provenance=provenance,
+        )
+
+    def _build_provenance(
+        self,
+        provider_names: Sequence[str],
+        results: Sequence[EvaluationResult],
+    ) -> ProvenanceEnvelope:
+        result_payload = [result.to_dict() for result in results]
+        return ProvenanceEnvelope(
+            kind="evaluation",
+            suite_id=self.suite_id,
+            suite_version=f"evaluation:{EVALUATION_SUITE_CONTRACT_VERSION}",
+            providers=tuple(provider_names),
+            capabilities=self._required_capabilities(),
+            runtime_manifests=collect_runtime_manifests(provider_names),
+            input_digest=digest_payload(
+                {
+                    "suite_id": self.suite_id,
+                    "suite": self.name,
+                    "scenarios": [
+                        {
+                            "name": scenario.name,
+                            "description": scenario.description,
+                            "required_capabilities": list(scenario.required_capabilities),
+                        }
+                        for scenario in self.scenarios
+                    ],
+                    "providers": list(provider_names),
+                }
+            ),
+            result_digest=digest_payload(result_payload),
+            event_count=0,
+            claim_boundary=EVALUATION_CLAIM_BOUNDARY,
+            metric_semantics=EVALUATION_METRIC_SEMANTICS,
+        )
 
     def run_report_artifacts(
         self,

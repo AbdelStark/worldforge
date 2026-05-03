@@ -49,14 +49,47 @@ silently skipping the suite.
 
 ## Report formats
 
-- Markdown: provider summary table plus scenario-level detail table
-- JSON: `suite_id`, `suite`, `claim_boundary`, `metric_semantics`, `provider_summaries`, and
-  scenario `results`
-- CSV: one row per provider/scenario pair with serialized metrics payloads
+- Markdown: provenance section, provider summary table, scenario-level detail table
+- JSON: `suite_id`, `suite`, `claim_boundary`, `metric_semantics`, `provider_summaries`,
+  scenario `results`, and a `provenance` envelope
+- CSV: one row per provider/scenario pair with serialized metrics payloads (envelope omitted
+  to keep the table import-compatible with prior releases)
 
 Every JSON and Markdown report carries an explicit claim boundary. Built-in suites are
 deterministic adapter contract checks; their scores are not physical-fidelity, media-quality,
 safety, or real robot performance claims.
+
+## Provenance envelope
+
+Reports built through `EvaluationSuite.run_report()` and the `worldforge eval` CLI carry a
+`provenance` envelope (`schema_version: 2`) so claims, regressions, and release evidence can be
+audited without console logs:
+
+| Field | Description |
+| --- | --- |
+| `schema_version` | Envelope schema version (currently `2`). |
+| `kind` | `"evaluation"`. |
+| `suite_id`, `suite_version` | Suite identifier and contract version (e.g. `evaluation:1`). |
+| `worldforge_version` | Package version that produced the report. |
+| `created_at` | UTC ISO timestamp. |
+| `command` | The command argv vector when produced through the CLI. |
+| `providers`, `capabilities` | Providers exercised and capabilities they covered. |
+| `runtime_manifests` | Provider runtime manifest references when available. |
+| `input_digest`, `result_digest` | Deterministic `sha256:<hex>` digests of inputs and results. |
+| `event_count` | Emitted `ProviderEvent` count. |
+| `claim_boundary`, `metric_semantics` | Mirrors the report-level claim text. |
+| `notes` | Optional free-form note. |
+
+To cite a result in an issue or release evidence, paste the `provenance` block from the JSON
+report (or the bullet list from Markdown). It carries every field a reviewer needs to map the
+claim back to the WorldForge version, suite contract, and input fixture.
+
+### Migration
+
+Previous reports omitted `provenance`. The CSV renderer and the existing `suite_id`, `suite`,
+`claim_boundary`, `metric_semantics`, `provider_summaries`, and `results` keys are unchanged.
+Tools that consume the JSON output should treat `provenance` as optional and fall back to the
+existing fields when re-rendering historical reports.
 
 ## Capability checks
 

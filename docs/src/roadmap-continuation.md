@@ -391,16 +391,16 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Evaluation and benchmark reports include a provenance envelope.
-- [ ] Invalid metrics, missing suite names, non-finite values, and mismatched counts fail before
+- [x] Evaluation and benchmark reports include a provenance envelope.
+- [x] Invalid metrics, missing suite names, non-finite values, and mismatched counts fail before
       report rendering.
-- [ ] Existing CLI report formats remain stable or have documented migrations.
-- [ ] Docs explain how provenance should be cited in issues and release evidence.
+- [x] Existing CLI report formats remain stable or have documented migrations.
+- [x] Docs explain how provenance should be cited in issues and release evidence.
 
 Validation:
 
 ```bash
-uv run pytest tests/test_evaluation_suites.py tests/test_benchmark.py tests/test_report_renderers.py
+uv run pytest tests/test_provenance.py tests/test_evaluation_and_planning.py tests/test_benchmark.py
 uv run mkdocs build --strict
 ```
 
