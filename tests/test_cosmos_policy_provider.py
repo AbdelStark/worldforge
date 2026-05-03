@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import struct
 
 import httpx
 import pytest
@@ -25,6 +27,32 @@ def _row(seed: float) -> list[float]:
 
 def _actions(seed: float) -> list[list[float]]:
     return [_row(seed), _row(seed + 1.0)]
+
+
+def _json_numpy_row(seed: float, *, dtype: str = "<f8") -> JSONDict:
+    values = _row(seed)
+    if dtype == "<f8":
+        raw = struct.pack("<14d", *values)
+    elif dtype == "<f4":
+        raw = struct.pack("<14f", *values)
+    else:
+        raw = b"invalid"
+    return {
+        "__numpy__": base64.b64encode(raw).decode("ascii"),
+        "dtype": dtype,
+        "shape": [14],
+    }
+
+
+def _json_numpy_uint8_payload(shape: list[int]) -> JSONDict:
+    item_count = 1
+    for dimension in shape:
+        item_count *= dimension
+    return {
+        "__numpy__": base64.b64encode(bytes([0 for _ in range(item_count)])).decode("ascii"),
+        "dtype": "|u1",
+        "shape": shape,
+    }
 
 
 def _policy_info() -> JSONDict:
@@ -190,6 +218,34 @@ def test_cosmos_policy_select_actions_preserves_values_candidates_and_events() -
     assert events[-1].phase == "success"
     assert events[-1].method == "POST"
     assert events[-1].target == "/act"
+
+
+def test_cosmos_policy_accepts_live_json_numpy_action_rows() -> None:
+    actions = [_json_numpy_row(0.1), _json_numpy_row(1.1)]
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "actions": actions,
+                "value_prediction": 0.91,
+                "future_image_predictions": {"future_image": _json_numpy_uint8_payload([1, 2, 3])},
+            },
+        )
+
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+
+    result = provider.select_actions(info=_policy_info())
+
+    assert result.raw_actions == {"actions": _actions(0.1)}
+    assert result.metadata["raw_action_summary"]["actions_shape"] == [2, 14]
+    assert result.metadata["provider_info"]["future_prediction_summary"][
+        "future_image_predictions"
+    ]["future_image"] == {"shape": [1, 2, 3]}
 
 
 def test_cosmos_policy_action_horizon_uses_translated_selected_actions() -> None:
@@ -505,6 +561,18 @@ def test_cosmos_policy_validates_observation_before_request() -> None:
         ({"actions": [_row(0.1), [0.0]]}, "rectangular"),
         ({"actions": [_row(0.1)], "value_prediction": float("nan")}, "finite number"),
         ({"actions": [_row(0.1)], "all_actions": []}, "all_actions"),
+        (
+            {"actions": [{"__numpy__": "not-base64", "dtype": "<f8", "shape": [14]}]},
+            "__numpy__ is not valid base64",
+        ),
+        (
+            {
+                "actions": [
+                    {"__numpy__": _json_numpy_row(0.1)["__numpy__"], "dtype": "|u1", "shape": [14]}
+                ]
+            },
+            "dtype must be float32 or float64",
+        ),
     ],
 )
 def test_cosmos_policy_rejects_malformed_responses(payload: JSONDict, match: str) -> None:

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import struct
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from time import perf_counter
@@ -56,6 +59,7 @@ _OBSERVATION_FIELDS = (
     "right_wrist_image",
     "proprio",
 )
+_JSON_NUMPY_DATA_FIELD = "__numpy__"
 
 
 @dataclass(slots=True, frozen=True)
@@ -630,6 +634,7 @@ def _normalize_action_matrix(
     rows: list[list[float]] = []
     width: int | None = None
     for row_index, row in enumerate(value):
+        row = _decode_json_numpy_action_row(row, name=f"{name}[{row_index}]")
         if not isinstance(row, list) or not row:
             raise ProviderError(f"{name}[{row_index}] must be a non-empty action row.")
         if width is None:
@@ -647,6 +652,81 @@ def _normalize_action_matrix(
             ]
         )
     return rows
+
+
+def _decode_json_numpy_action_row(value: object, *, name: str) -> object:
+    if not _is_json_numpy_payload(value):
+        return value
+    array_shape = _json_numpy_shape(value, name=name)
+    if len(array_shape) != 1:
+        raise ProviderError(f"{name} must be a 1-D encoded numpy action row.")
+    return _decode_json_numpy_numeric_array(value, name=name)
+
+
+def _is_json_numpy_payload(value: object) -> bool:
+    return isinstance(value, dict) and _JSON_NUMPY_DATA_FIELD in value
+
+
+def _json_numpy_shape(value: object, *, name: str) -> list[int]:
+    if not isinstance(value, dict):
+        raise ProviderError(f"{name} must be an encoded numpy object.")
+    shape = value.get("shape")
+    if not isinstance(shape, list):
+        raise ProviderError(f"{name}.shape must be a list of non-negative integers.")
+    normalized_shape: list[int] = []
+    for index, item in enumerate(shape):
+        if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+            raise ProviderError(f"{name}.shape[{index}] must be a non-negative integer.")
+        normalized_shape.append(item)
+    return normalized_shape
+
+
+def _decode_json_numpy_numeric_array(value: object, *, name: str) -> list[float]:
+    if not isinstance(value, dict):
+        raise ProviderError(f"{name} must be an encoded numpy object.")
+    dtype = value.get("dtype")
+    if not isinstance(dtype, str) or not dtype.strip():
+        raise ProviderError(f"{name}.dtype must be a non-empty string.")
+    array_shape = _json_numpy_shape(value, name=name)
+    item_count = 1
+    for dimension in array_shape:
+        item_count *= dimension
+    if item_count <= 0:
+        raise ProviderError(f"{name} must encode a non-empty action row.")
+    raw_payload = value.get(_JSON_NUMPY_DATA_FIELD)
+    if not isinstance(raw_payload, str) or not raw_payload:
+        raise ProviderError(f"{name}.{_JSON_NUMPY_DATA_FIELD} must be a non-empty string.")
+    try:
+        raw_bytes = base64.b64decode(raw_payload, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ProviderError(f"{name}.{_JSON_NUMPY_DATA_FIELD} is not valid base64.") from exc
+    endian_prefix, item_format, item_size = _json_numpy_float_format(dtype, name=name)
+    expected_bytes = item_count * item_size
+    if len(raw_bytes) != expected_bytes:
+        raise ProviderError(
+            f"{name} byte length must match shape and dtype; expected {expected_bytes}, "
+            f"got {len(raw_bytes)}."
+        )
+    try:
+        decoded = struct.unpack(f"{endian_prefix}{item_count}{item_format}", raw_bytes)
+    except struct.error as exc:
+        raise ProviderError(f"{name} could not be decoded as numeric action data.") from exc
+    return [
+        require_finite_number(item, name=f"{name}[{index}]") for index, item in enumerate(decoded)
+    ]
+
+
+def _json_numpy_float_format(dtype: str, *, name: str) -> tuple[str, str, int]:
+    normalized = dtype.strip().lower()
+    endian_prefix = "<"
+    if normalized[0] in ("<", ">", "=", "|"):
+        endian_prefix = "=" if normalized[0] == "|" else normalized[0]
+        normalized = normalized[1:]
+    if normalized in ("f8", "float64"):
+        return endian_prefix, "d", 8
+    if normalized in ("f4", "float32"):
+        return endian_prefix, "f", 4
+    raise ProviderError(f"{name}.dtype must be float32 or float64 encoded numpy data.")
 
 
 def _normalize_all_actions(
@@ -691,6 +771,8 @@ def _selected_action_index(
 def _bounded_shape(value: object, *, depth: int = 0, max_depth: int = 8) -> list[int] | None:
     if depth >= max_depth:
         return []
+    if _is_json_numpy_payload(value):
+        return _json_numpy_shape(value, name="encoded numpy payload")
     if not isinstance(value, list):
         return []
     if not value:
@@ -713,6 +795,8 @@ def _future_prediction_summary(payload: JSONDict) -> JSONDict:
 
 
 def _summarize_prediction_payload(value: object) -> JSONDict:
+    if _is_json_numpy_payload(value):
+        return {"shape": _bounded_shape(value)}
     if isinstance(value, dict):
         return {
             key: _summarize_prediction_payload(child)
