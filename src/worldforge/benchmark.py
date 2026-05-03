@@ -30,6 +30,12 @@ from worldforge.models import (
     require_probability,
 )
 from worldforge.observability import ProviderMetricsSink, compose_event_handlers
+from worldforge.provenance import (
+    BENCHMARK_SUITE_CONTRACT_VERSION,
+    ProvenanceEnvelope,
+    collect_runtime_manifests,
+    digest_payload,
+)
 from worldforge.providers.base import ProviderError
 
 BENCHMARKABLE_OPERATIONS = (
@@ -89,6 +95,39 @@ _BENCHMARK_BUDGET_KEYS = {
     "min_throughput_per_second",
 }
 _BENCHMARK_BUDGET_WRAPPER_KEYS = {"budgets", "metadata"}
+
+
+def _benchmark_provenance_markdown_lines(provenance: ProvenanceEnvelope | None) -> list[str]:
+    """Render the report-level provenance section for Markdown artifacts."""
+
+    if provenance is None:
+        return []
+    lines = [
+        "## Provenance",
+        "",
+        f"- WorldForge version: {provenance.worldforge_version}",
+        f"- Suite version: {provenance.suite_version}",
+        f"- Created at: {provenance.created_at}",
+        f"- Providers: {', '.join(provenance.providers) or '-'}",
+        f"- Capabilities: {', '.join(provenance.capabilities) or '-'}",
+        f"- Event count: {provenance.event_count}",
+        f"- Input digest: {provenance.input_digest or '-'}",
+        f"- Result digest: {provenance.result_digest or '-'}",
+    ]
+    if provenance.runtime_manifests:
+        manifests = ", ".join(
+            f"{provider}={manifest_id}"
+            for provider, manifest_id in sorted(provenance.runtime_manifests.items())
+        )
+        lines.append(f"- Runtime manifests: {manifests}")
+    if provenance.budget_file is not None:
+        lines.append(f"- Budget file: {provenance.budget_file['path']}")
+    if provenance.command:
+        lines.append(f"- Command: `{' '.join(provenance.command)}`")
+    if provenance.notes:
+        lines.append(f"- Notes: {provenance.notes}")
+    lines.append("")
+    return lines
 
 
 def _sample_transfer_clip() -> VideoClip:
@@ -1024,20 +1063,35 @@ class BenchmarkReport:
 
     results: list[BenchmarkResult]
     run_metadata: JSONDict = field(default_factory=dict)
+    provenance: ProvenanceEnvelope | None = None
 
     def __post_init__(self) -> None:
         self.run_metadata = require_json_dict(
             self.run_metadata,
             name="BenchmarkReport run_metadata",
         )
+        if not isinstance(self.results, list) or not all(
+            isinstance(result, BenchmarkResult) for result in self.results
+        ):
+            raise WorldForgeError("BenchmarkReport results must contain only BenchmarkResult.")
+        if self.provenance is not None:
+            if not isinstance(self.provenance, ProvenanceEnvelope):
+                raise WorldForgeError(
+                    "BenchmarkReport provenance must be a ProvenanceEnvelope or None."
+                )
+            if self.provenance.kind != "benchmark":
+                raise WorldForgeError("BenchmarkReport provenance must have kind='benchmark'.")
 
     def to_dict(self) -> JSONDict:
-        return {
+        payload: JSONDict = {
             "claim_boundary": BENCHMARK_CLAIM_BOUNDARY,
             "metric_semantics": BENCHMARK_METRIC_SEMANTICS,
             "run_metadata": dict(self.run_metadata),
             "results": [result.to_dict() for result in self.results],
         }
+        if self.provenance is not None:
+            payload["provenance"] = self.provenance.to_dict()
+        return payload
 
     def to_json(self) -> str:
         return dump_json(self.to_dict())
@@ -1049,9 +1103,14 @@ class BenchmarkReport:
             f"Claim boundary: {BENCHMARK_CLAIM_BOUNDARY}",
             f"Metric semantics: {BENCHMARK_METRIC_SEMANTICS}",
             "",
-            "| provider | operation | ok | retries | avg_ms | p95_ms | throughput/s |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
         ]
+        lines.extend(_benchmark_provenance_markdown_lines(self.provenance))
+        lines.extend(
+            [
+                "| provider | operation | ok | retries | avg_ms | p95_ms | throughput/s |",
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
         lines.extend(
             (
                 f"| {result.provider} | {result.operation} | "
@@ -1487,6 +1546,32 @@ class ProviderBenchmarkHarness:
             with ThreadPoolExecutor(max_workers=min(8, len(provider_plan))) as pool:
                 for provider_results in pool.map(_run_provider, provider_plan):
                     results.extend(provider_results)
+        capabilities = sorted(
+            {
+                operation
+                for selected_operations in selected_operations_by_provider.values()
+                for operation in selected_operations
+            }
+        )
+        event_count = sum(
+            int(event.get("request_count", 0))
+            for result in results
+            for event in result.operation_metrics.get("events", [])
+            if isinstance(event, dict)
+        )
+        provenance = ProvenanceEnvelope(
+            kind="benchmark",
+            suite_id="benchmark",
+            suite_version=f"benchmark:{BENCHMARK_SUITE_CONTRACT_VERSION}",
+            providers=tuple(provider_names),
+            capabilities=tuple(capabilities),
+            runtime_manifests=collect_runtime_manifests(provider_names),
+            input_digest=digest_payload(benchmark_inputs.to_dict()),
+            result_digest=digest_payload([result.to_dict() for result in results]),
+            event_count=event_count,
+            claim_boundary=BENCHMARK_CLAIM_BOUNDARY,
+            metric_semantics=BENCHMARK_METRIC_SEMANTICS,
+        )
         return BenchmarkReport(
             results,
             run_metadata={
@@ -1497,6 +1582,7 @@ class ProviderBenchmarkHarness:
                 "concurrency": concurrency,
                 "inputs": benchmark_inputs.to_dict(),
             },
+            provenance=provenance,
         )
 
 

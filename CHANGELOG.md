@@ -9,6 +9,13 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a result `provenance` envelope (`schema_version: 2`) to evaluation and benchmark JSON
+  and Markdown reports. The envelope carries WorldForge version, command argv, providers,
+  capabilities, runtime manifest references, input and result digests, budget file summary,
+  emitted `ProviderEvent` count, suite contract version, claim boundary, and metric semantics
+  so a claim can be reproduced and cited without console logs. CSV output, the existing
+  `run_metadata.input_file`, and `run_metadata.budget_file` fields are unchanged for
+  backward compatibility.
 - Added an optional OpenTelemetry provider-event sink that maps sanitized provider events to
   host-owned tracing spans without adding OpenTelemetry to the base dependency set.
 - Added an optional Rerun integration for sanitized `ProviderEvent` streams, world snapshots,

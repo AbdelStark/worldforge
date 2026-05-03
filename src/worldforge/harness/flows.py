@@ -20,6 +20,7 @@ from worldforge.harness.workspace import (
     write_run_manifest,
 )
 from worldforge.models import JSONDict, ProviderEvent
+from worldforge.provenance import ProvenanceEnvelope
 
 FlowRunner = Callable[..., JSONDict]
 
@@ -519,6 +520,11 @@ def _benchmark_run_from_payload(payload: JSONDict, *, path: Path, state_dir: Pat
 def _eval_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
     suite_id = str(payload.get("suite_id", "evaluation"))
     suite = str(payload.get("suite", suite_id))
+    provenance = (
+        ProvenanceEnvelope.from_dict(payload["provenance"])
+        if isinstance(payload.get("provenance"), dict)
+        else None
+    )
     report = EvaluationReport(
         suite_id=suite_id,
         suite=suite,
@@ -534,11 +540,17 @@ def _eval_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
             )
             for result in payload.get("results", [])
         ],
+        provenance=provenance,
     )
     return report.artifacts()
 
 
 def _benchmark_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
+    provenance = (
+        ProvenanceEnvelope.from_dict(payload["provenance"])
+        if isinstance(payload.get("provenance"), dict)
+        else None
+    )
     report = BenchmarkReport(
         results=[
             BenchmarkResult(
@@ -562,6 +574,7 @@ def _benchmark_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
             for result in payload.get("results", [])
         ],
         run_metadata=dict(payload.get("run_metadata", {})),
+        provenance=provenance,
     )
     return report.artifacts()
 
