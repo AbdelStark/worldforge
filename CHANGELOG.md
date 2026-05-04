@@ -9,6 +9,15 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added five named benchmark presets — `mock-smoke`, `parser-overhead`, `remote-media-dryrun`,
+  `prepared-host`, and `release-evidence` — exposed through new `worldforge benchmark
+  --list-presets`, `--show-preset`, and `--preset` flags. Presets bundle a deterministic input
+  fixture, an optional budget file, and a runtime-profile gate so checkout-safe regression
+  checks, remote-media dry-runs, prepared-host evidence runs, and release gating each have a
+  named entry point. Remote-media and prepared-host presets skip with a typed reason when the
+  required provider environment is missing; checkout-safe and release presets fail non-zero on
+  budget violations. Public surface lives at `worldforge.benchmark_presets` (`BenchmarkPreset`,
+  `list_presets`, `get_preset`, `load_preset_inputs`, `load_preset_budgets`).
 - Added a packaged capability fixture corpus under `worldforge.testing.fixtures` covering the
   `predict`, `reason`, `embed`, `generate`, `transfer`, `score`, and `policy` capabilities.
   Each capability ships one valid baseline plus at least two invalid boundary fixtures with

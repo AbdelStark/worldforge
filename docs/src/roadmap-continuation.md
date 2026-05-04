@@ -459,16 +459,16 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Presets can be listed and run from the CLI or documented make targets.
-- [ ] Checkout-safe presets run without credentials, network, GPUs, or optional runtimes.
-- [ ] Prepared-host presets skip or fail with typed reasons when prerequisites are missing.
-- [ ] Budget violations include operation, metric, threshold, observed value, and artifact path.
+- [x] Presets can be listed and run from the CLI or documented make targets.
+- [x] Checkout-safe presets run without credentials, network, GPUs, or optional runtimes.
+- [x] Prepared-host presets skip or fail with typed reasons when prerequisites are missing.
+- [x] Budget violations include operation, metric, threshold, observed value, and artifact path.
 
 Validation:
 
 ```bash
-uv run pytest tests/test_benchmark.py tests/test_cli_help_snapshots.py
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run pytest tests/test_benchmark.py tests/test_benchmark_presets.py tests/test_cli_help_snapshots.py
+uv run worldforge benchmark --preset mock-smoke
 uv run mkdocs build --strict
 ```
 

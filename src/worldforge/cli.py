@@ -25,6 +25,15 @@ from worldforge.benchmark import (
     load_benchmark_budgets,
     load_benchmark_inputs,
 )
+from worldforge.benchmark_presets import (
+    BenchmarkPreset,
+    get_preset,
+    list_presets,
+    load_preset_budgets,
+    load_preset_inputs,
+    preset_budget_payload,
+    preset_inputs_payload,
+)
 from worldforge.evaluation import EvaluationSuite
 from worldforge.models import CAPABILITY_NAMES
 from worldforge.providers import ProviderError
@@ -965,6 +974,27 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Preserve sanitized benchmark artifacts under RUN_WORKSPACE/runs/<run-id>/.",
     )
+    benchmark.add_argument(
+        "--preset",
+        dest="preset",
+        default=None,
+        help=(
+            "Run a named benchmark preset (overrides --provider, --operation, --iterations, "
+            "--concurrency, --input-file, and --budget-file). Use --list-presets for the catalogue."
+        ),
+    )
+    benchmark.add_argument(
+        "--list-presets",
+        dest="list_presets",
+        action="store_true",
+        help="List benchmark presets and exit.",
+    )
+    benchmark.add_argument(
+        "--show-preset",
+        dest="show_preset",
+        default=None,
+        help="Print one benchmark preset's details and exit.",
+    )
 
     harness = subparsers.add_parser("harness", help="Launch TheWorldHarness TUI.")
     harness.add_argument(
@@ -1499,7 +1529,222 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
     return 0
 
 
+def _print_preset_list(args: argparse.Namespace) -> int:
+    presets = list_presets()
+    if args.format == "json":
+        print(
+            json.dumps(
+                {"presets": [preset.to_dict() for preset in presets]},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        return 0
+    if args.format == "csv":
+        rows = ["name,category,providers,operations,iterations,budget_file,failure_tolerance"]
+        rows.extend(
+            f"{preset.name},{preset.category},"
+            f"{'+'.join(preset.providers)},"
+            f"{'+'.join(preset.operations)},"
+            f"{preset.iterations},"
+            f"{preset.budget_file or ''},"
+            f"{preset.failure_tolerance}"
+            for preset in presets
+        )
+        print("\n".join(rows))
+        return 0
+    lines = ["# Benchmark Presets", ""]
+    for category in ("checkout-safe", "remote-media", "prepared-host", "release"):
+        section = [preset for preset in presets if preset.category == category]
+        if not section:
+            continue
+        lines.append(f"## {category}")
+        lines.append("")
+        for preset in section:
+            providers = ", ".join(preset.providers)
+            operations = ", ".join(preset.operations)
+            skip = preset.skip_reason()
+            status = f"skip: {skip}" if skip else "ready"
+            lines.append(
+                f"- **{preset.name}** — {preset.title}. providers=[{providers}] "
+                f"operations=[{operations}] iterations={preset.iterations} "
+                f"failure_tolerance={preset.failure_tolerance} status={status}"
+            )
+            lines.append(f"  {preset.summary}")
+        lines.append("")
+    print("\n".join(lines).rstrip())
+    return 0
+
+
+def _print_preset_show(args: argparse.Namespace) -> int:
+    preset = get_preset(args.show_preset)
+    payload = {
+        "preset": preset.to_dict(),
+        "skip_reason": preset.skip_reason(),
+        "configured_providers": list(preset.configured_providers()),
+        "inputs_payload": preset_inputs_payload(preset),
+        "budget_payload": preset_budget_payload(preset),
+    }
+    if args.format == "json":
+        print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        return 0
+    lines = [
+        f"# {preset.title}",
+        "",
+        f"Name: {preset.name}",
+        f"Category: {preset.category}",
+        f"Providers: {', '.join(preset.providers)}",
+        f"Operations: {', '.join(preset.operations)}",
+        f"Iterations: {preset.iterations} (concurrency={preset.concurrency})",
+        f"Failure tolerance: {preset.failure_tolerance}",
+        f"Inputs file: {preset.inputs_file or '-'}",
+        f"Budget file: {preset.budget_file or '-'}",
+    ]
+    if preset.requires_provider_profiles:
+        lines.append(f"Required runtimes: {', '.join(preset.requires_provider_profiles)}")
+    if preset.requires_provider_choice:
+        lines.append(f"Any-of runtimes: {', '.join(preset.requires_provider_choice)}")
+    skip = preset.skip_reason()
+    lines.append(f"Skip reason: {skip or 'none (preset can run on this host)'}")
+    lines.append("")
+    lines.append(preset.summary)
+    if preset.notes:
+        lines.append("")
+        lines.append(preset.notes)
+    print("\n".join(lines))
+    return 0
+
+
+def _run_preset_benchmark(
+    preset: BenchmarkPreset,
+    args: argparse.Namespace,
+    forge: WorldForge,
+) -> int:
+    skip_reason = preset.skip_reason()
+    if skip_reason is not None:
+        if preset.failure_tolerance == "skip-when-env-missing":
+            payload = {
+                "preset": preset.name,
+                "status": "skipped",
+                "reason": skip_reason,
+            }
+            if args.format == "json":
+                print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+            else:
+                print(f"# Benchmark preset '{preset.name}' skipped\n\nReason: {skip_reason}")
+            return 0
+        raise WorldForgeError(
+            f"Benchmark preset '{preset.name}' cannot run on this host: {skip_reason}"
+        )
+
+    providers = preset.configured_providers()
+    if not providers:
+        raise WorldForgeError(
+            f"Benchmark preset '{preset.name}' has no configured providers on this host."
+        )
+    inputs = load_preset_inputs(preset)
+    budgets = load_preset_budgets(preset)
+    harness = ProviderBenchmarkHarness(forge=forge)
+    report = harness.run(
+        list(providers),
+        operations=list(preset.operations),
+        iterations=preset.iterations,
+        concurrency=preset.concurrency,
+        inputs=inputs,
+    )
+    inputs_payload = preset_inputs_payload(preset)
+    if inputs_payload is not None:
+        inputs_text = json.dumps(inputs_payload, sort_keys=True).encode("utf-8")
+        report.run_metadata["input_file"] = {
+            "path": f"benchmark_presets/_data/{preset.inputs_file}",
+            "sha256": sha256(inputs_text).hexdigest(),
+            "metadata": (
+                inputs_payload.get("metadata")
+                if isinstance(inputs_payload.get("metadata"), dict)
+                else {}
+            ),
+        }
+    gate_report = None
+    budget_file_summary: dict[str, object] | None = None
+    if budgets:
+        budget_payload = preset_budget_payload(preset)
+        if budget_payload is not None:
+            budget_metadata = (
+                budget_payload.get("metadata")
+                if isinstance(budget_payload.get("metadata"), dict)
+                else {}
+            )
+            budget_text = json.dumps(budget_payload, sort_keys=True)
+            budget_file_summary = {
+                "path": f"benchmark_presets/_data/{preset.budget_file}",
+                "sha256": f"sha256:{sha256(budget_text.encode('utf-8')).hexdigest()}",
+                "metadata": budget_metadata,
+            }
+            report.run_metadata["budget_file"] = {
+                "path": budget_file_summary["path"],
+                "sha256": sha256(budget_text.encode("utf-8")).hexdigest(),
+                "metadata": budget_metadata,
+            }
+        gate_report = report.evaluate_budgets(budgets)
+
+    report.run_metadata["preset"] = preset.to_dict()
+
+    benchmark_command = _command_string(["benchmark", "--preset", preset.name])
+    if report.provenance is not None:
+        envelope_overrides: dict[str, object] = {
+            "command": tuple(benchmark_command.split()),
+            "notes": f"benchmark preset: {preset.name}",
+        }
+        if budget_file_summary is not None:
+            envelope_overrides["budget_file"] = budget_file_summary
+        report.provenance = report.provenance.with_overrides(**envelope_overrides)
+
+    if args.run_workspace is not None:
+        from worldforge.harness.flows import preserve_benchmark_run_workspace
+
+        preserve_benchmark_run_workspace(
+            args.run_workspace,
+            providers=list(providers),
+            operations=list(preset.operations),
+            artifacts=report.artifacts(),
+            report=report,
+            command=benchmark_command,
+            budget_passed=None if gate_report is None else gate_report.passed,
+        )
+
+    if args.format == "json":
+        if gate_report is None:
+            print(report.to_json())
+        else:
+            print(
+                json.dumps(
+                    {
+                        "preset": preset.name,
+                        "benchmark": report.to_dict(),
+                        "gate": gate_report.to_dict(),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+    elif args.format == "csv":
+        print(gate_report.to_csv() if gate_report is not None else report.to_csv())
+    else:
+        print(report.to_markdown())
+        if gate_report is not None:
+            print()
+            print(gate_report.to_markdown())
+    return 0 if gate_report is None or gate_report.passed else 1
+
+
 def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
+    if args.list_presets:
+        return _print_preset_list(args)
+    if args.show_preset is not None:
+        return _print_preset_show(args)
+    if args.preset is not None:
+        return _run_preset_benchmark(get_preset(args.preset), args, forge)
+
     harness = ProviderBenchmarkHarness(forge=forge)
     providers = args.providers or ["mock"]
     benchmark_inputs = None
