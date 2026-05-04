@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "generate.invalid_duration_zero",
+  "capability": "generate",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "duration",
+  "description": "Generate rejects a non-positive duration_seconds value at the public-input boundary.",
+  "payload": {
+    "prompt": "fixture corpus orbit clip",
+    "duration_seconds": 0.0
+  }
+}

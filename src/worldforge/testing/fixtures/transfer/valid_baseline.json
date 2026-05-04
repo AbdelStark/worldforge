@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "transfer.valid_baseline",
+  "capability": "transfer",
+  "data_class": "synthetic",
+  "expected": "valid",
+  "expected_error_pattern": null,
+  "description": "Tiny base64 single-frame clip suitable for transfer-style providers.",
+  "payload": {
+    "clip": {
+      "frames_base64": ["d29ybGRmb3JnZS1maXh0dXJlLXRyYW5zZmVyLXNlZWQ="],
+      "fps": 8.0,
+      "resolution": [160, 90],
+      "duration_seconds": 1.0,
+      "metadata": {
+        "content_type": "video/mp4",
+        "mode": "fixture-seed"
+      }
+    },
+    "width": 320,
+    "height": 180,
+    "fps": 12.0
+  }
+}

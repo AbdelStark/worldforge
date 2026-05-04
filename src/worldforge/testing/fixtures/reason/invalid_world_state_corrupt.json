@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "reason.invalid_world_state_corrupt",
+  "capability": "reason",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "schema_version",
+  "description": "Reason rejects a world state whose schema_version does not match the persisted contract.",
+  "payload": {
+    "query": "How many objects are tracked?",
+    "world_state": {
+      "schema_version": 999,
+      "id": "world_fixture_reason_corrupt",
+      "name": "fixture-world",
+      "provider": "fixture",
+      "step": 0,
+      "scene": {"objects": {}},
+      "metadata": {}
+    }
+  }
+}
