@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "purpose": "deterministic checkout-safe inputs for mock-provider benchmark presets",
+    "runtime": "mock provider — runs without credentials, network, GPU, or optional runtimes",
+    "presets": ["mock-smoke", "parser-overhead", "release-evidence"]
+  },
+  "inputs": {
+    "prediction_action": {
+      "type": "move_to",
+      "parameters": {
+        "target": {"x": 0.25, "y": 0.5, "z": 0.0},
+        "speed": 1.0
+      }
+    },
+    "prediction_steps": 2,
+    "reason_query": "How many objects are tracked?",
+    "generation_prompt": "preset orbiting cube",
+    "generation_duration_seconds": 1.0,
+    "transfer_prompt": "preset transfer rerender",
+    "transfer_width": 320,
+    "transfer_height": 180,
+    "transfer_fps": 12.0,
+    "transfer_clip": {
+      "frames_base64": ["d29ybGRmb3JnZS1wcmVzZXQtZnJhbWU="],
+      "fps": 8.0,
+      "resolution": [160, 90],
+      "duration_seconds": 1.0,
+      "metadata": {
+        "content_type": "application/octet-stream",
+        "mode": "preset-benchmark-seed"
+      }
+    },
+    "embedding_text": "preset cube state"
+  }
+}

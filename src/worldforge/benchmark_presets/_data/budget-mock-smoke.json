@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "preset": "mock-smoke",
+    "purpose": "fast checkout-safe regression gate; budgets are intentionally loose so unrelated CI noise does not trip the gate"
+  },
+  "budgets": [
+    {
+      "provider": "mock",
+      "min_success_rate": 1.0,
+      "max_error_count": 0,
+      "max_retry_count": 0
+    }
+  ]
+}

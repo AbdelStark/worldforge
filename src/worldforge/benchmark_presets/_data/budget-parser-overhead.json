@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "preset": "parser-overhead",
+    "purpose": "latency-bounded gate for adapter-path overhead measured against the mock provider; loosen only with preserved evidence"
+  },
+  "budgets": [
+    {
+      "provider": "mock",
+      "min_success_rate": 1.0,
+      "max_error_count": 0,
+      "max_retry_count": 0,
+      "max_average_latency_ms": 50.0,
+      "max_p95_latency_ms": 200.0
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "preset": "release-evidence",
+    "purpose": "release-gated benchmark budgets. Failures must be triaged with preserved artifacts before threshold loosening."
+  },
+  "budgets": [
+    {
+      "provider": "mock",
+      "min_success_rate": 1.0,
+      "max_error_count": 0,
+      "max_retry_count": 0,
+      "max_average_latency_ms": 100.0,
+      "max_p95_latency_ms": 400.0,
+      "min_throughput_per_second": 5.0
+    }
+  ]
+}

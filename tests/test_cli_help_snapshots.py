@@ -144,7 +144,8 @@ usage: worldforge benchmark [-h] [--provider PROVIDERS]
                             [--input-file INPUT_FILE]
                             [--budget-file BUDGET_FILE]
                             [--state-dir STATE_DIR]
-                            [--run-workspace RUN_WORKSPACE]
+                            [--run-workspace RUN_WORKSPACE] [--preset PRESET]
+                            [--list-presets] [--show-preset SHOW_PRESET]
 
 options:
   -h, --help            show this help message and exit
@@ -168,6 +169,13 @@ options:
   --run-workspace RUN_WORKSPACE
                         Preserve sanitized benchmark artifacts under
                         RUN_WORKSPACE/runs/<run-id>/.
+  --preset PRESET       Run a named benchmark preset (overrides --provider,
+                        --operation, --iterations, --concurrency, --input-
+                        file, and --budget-file). Use --list-presets for the
+                        catalogue.
+  --list-presets        List benchmark presets and exit.
+  --show-preset SHOW_PRESET
+                        Print one benchmark preset's details and exit.
 """,
 }
 

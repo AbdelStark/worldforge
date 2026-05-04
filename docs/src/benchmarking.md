@@ -222,6 +222,51 @@ benchmark harness is synthetic. It measures operation latency, retries, and thro
 selected provider adapter path; it does not score media quality, physical fidelity, safety, or
 production load capacity.
 
+## Presets
+
+Named presets bundle a deterministic input fixture, an optional budget file, and a runtime
+gate so maintainers can run release-regression workloads without re-deriving inputs and
+budgets each time. Five presets ship with the wheel today, grouped into four categories:
+
+| Preset | Category | Providers | Operations | Iterations | Failure tolerance |
+| --- | --- | --- | --- | ---: | --- |
+| `mock-smoke` | checkout-safe | `mock` | predict, generate, embed | 5 | fail-on-violation |
+| `parser-overhead` | checkout-safe | `mock` | predict, reason, generate, transfer, embed | 20 | fail-on-violation |
+| `remote-media-dryrun` | remote-media | `cosmos`, `runway` | generate | 1 | skip-when-env-missing |
+| `prepared-host` | prepared-host | `leworldmodel`, `lerobot`, `gr00t` | score, policy | 3 | skip-when-env-missing |
+| `release-evidence` | release | `mock` | predict, reason, generate, transfer, embed | 10 | fail-on-violation |
+
+List, inspect, and run presets through the existing `benchmark` subcommand:
+
+```bash
+uv run worldforge benchmark --list-presets
+uv run worldforge benchmark --show-preset release-evidence
+uv run worldforge benchmark --preset mock-smoke
+uv run worldforge benchmark --preset release-evidence --format json --run-workspace .worldforge
+```
+
+`--preset` overrides `--provider`, `--operation`, `--iterations`, `--concurrency`, `--input-file`,
+and `--budget-file`. The `--format` and `--run-workspace` flags still apply.
+
+### Failure tolerance and skip semantics
+
+- **fail-on-violation** (`mock-smoke`, `parser-overhead`, `release-evidence`). The preset runs
+  unconditionally; budget violations exit non-zero with the standard violation table that
+  carries provider, operation, metric, observed value, threshold, and budget selector.
+- **skip-when-env-missing** (`remote-media-dryrun`, `prepared-host`). Each gated preset checks
+  every provider runtime profile it requires through
+  `worldforge.testing.runtime_profiles.provider_profile_skip_reason`. If no eligible runtime
+  is configured the preset prints a typed reason and exits 0; release CI treats this as
+  "evidence not available on this host" rather than a failure.
+
+### Adding a preset
+
+`BenchmarkPreset` is a frozen dataclass under `worldforge.benchmark_presets`. Add a new entry
+to the `_BENCHMARK_PRESETS` tuple, ship the matching `inputs-*.json` and (optionally)
+`budget-*.json` next to it under `src/worldforge/benchmark_presets/_data/`, and add coverage
+in `tests/test_benchmark_presets.py`. Keep the inputs deterministic and small; binary clip
+frames belong inside the JSON via `frames_base64` rather than as separate media files.
+
 ## Provenance envelope
 
 Reports built through `ProviderBenchmarkHarness.run()` and the `worldforge benchmark` CLI carry
