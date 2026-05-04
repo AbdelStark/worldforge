@@ -9,6 +9,14 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a packaged capability fixture corpus under `worldforge.testing.fixtures` covering the
+  `predict`, `reason`, `embed`, `generate`, `transfer`, `score`, and `policy` capabilities.
+  Each capability ships one valid baseline plus at least two invalid boundary fixtures with
+  distinct error patterns. The new `worldforge.testing.load_capability_fixture`,
+  `iter_capability_fixtures`, `iter_all_fixtures`, `list_fixture_names`, and `CapabilityFixture`
+  helpers let conformance tests, evaluation suites, and provider authors reuse canonical
+  inputs instead of inlining payloads. The `assert_*_conformance()` helpers' keyword arguments
+  match each fixture's `payload` keys so a fixture can be passed straight through.
 - Added a result `provenance` envelope (`schema_version: 2`) to evaluation and benchmark JSON
   and Markdown reports. The envelope carries WorldForge version, command argv, providers,
   capabilities, runtime manifest references, input and result digests, budget file summary,

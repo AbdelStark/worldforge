@@ -425,15 +425,15 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Each capability has at least one valid fixture and two invalid boundary fixtures.
-- [ ] Fixtures are used by conformance or evaluation tests.
-- [ ] Fixture docs state whether data is synthetic, captured, or host-supplied.
-- [ ] Package contract remains small and installable.
+- [x] Each capability has at least one valid fixture and two invalid boundary fixtures.
+- [x] Fixtures are used by conformance or evaluation tests.
+- [x] Fixture docs state whether data is synthetic, captured, or host-supplied.
+- [x] Package contract remains small and installable.
 
 Validation:
 
 ```bash
-uv run pytest tests/test_provider_contracts.py tests/test_evaluation_suites.py
+uv run pytest tests/test_capability_fixtures.py tests/test_provider_contracts.py
 bash scripts/test_package.sh
 uv run mkdocs build --strict
 ```

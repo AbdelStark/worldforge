@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "predict.valid_baseline",
+  "capability": "predict",
+  "data_class": "synthetic",
+  "expected": "valid",
+  "expected_error_pattern": null,
+  "description": "Minimal world state with one graspable cube plus a move_to action and a positive step count.",
+  "payload": {
+    "world_state": {
+      "schema_version": 1,
+      "id": "world_fixture_predict",
+      "name": "fixture-world",
+      "provider": "fixture",
+      "description": "Minimal world used by the predict capability fixture corpus.",
+      "step": 0,
+      "scene": {
+        "objects": {
+          "obj_fixture_cube": {
+            "id": "obj_fixture_cube",
+            "name": "cube",
+            "pose": {
+              "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+              "rotation": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+            },
+            "bbox": {
+              "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+              "max": {"x": 0.05, "y": 0.55, "z": 0.05}
+            },
+            "is_graspable": true,
+            "metadata": {}
+          }
+        }
+      },
+      "metadata": {"name": "fixture-world"}
+    },
+    "action": {
+      "type": "move_to",
+      "parameters": {
+        "target": {"x": 0.25, "y": 0.5, "z": 0.0},
+        "speed": 1.0
+      }
+    },
+    "steps": 2
+  }
+}

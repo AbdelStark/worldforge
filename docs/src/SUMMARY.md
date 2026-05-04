@@ -27,6 +27,7 @@
 - [Python API](./api/python.md)
 - [Evaluation](./evaluation.md)
 - [Benchmarking](./benchmarking.md)
+- [Capability Fixture Corpus](./fixtures.md)
 - [Engineering Quality](./quality.md)
 - [Operations](./operations.md)
 - [Security](./security.md)

@@ -18,13 +18,16 @@ from worldforge.providers import (
     ProviderProfileSpec,
 )
 from worldforge.testing import (
+    assert_embed_conformance,
     assert_generate_conformance,
     assert_policy_conformance,
     assert_predict_conformance,
     assert_provider_contract,
     assert_provider_events_conform,
+    assert_reason_conformance,
     assert_score_conformance,
     assert_transfer_conformance,
+    load_capability_fixture,
 )
 
 
@@ -130,6 +133,35 @@ def test_capability_specific_score_and_policy_helpers() -> None:
 
     assert score.best_score == 0.1
     assert policy.actions == [Action.move_to(0.1, 0.2, 0.3)]
+
+
+def test_corpus_valid_baselines_pass_mock_provider_conformance() -> None:
+    provider = MockProvider()
+
+    predict_fx = load_capability_fixture("predict", "valid_baseline")
+    assert_predict_conformance(
+        provider,
+        world_state=predict_fx.payload["world_state"],
+        action=Action.from_dict(predict_fx.payload["action"]),
+        steps=predict_fx.payload["steps"],
+    )
+
+    reason_fx = load_capability_fixture("reason", "valid_baseline")
+    assert_reason_conformance(
+        provider,
+        query=reason_fx.payload["query"],
+        world_state=reason_fx.payload["world_state"],
+    )
+
+    embed_fx = load_capability_fixture("embed", "valid_baseline")
+    assert_embed_conformance(provider, text=embed_fx.payload["text"])
+
+    generate_fx = load_capability_fixture("generate", "valid_baseline")
+    assert_generate_conformance(
+        provider,
+        prompt=generate_fx.payload["prompt"],
+        duration_seconds=generate_fx.payload["duration_seconds"],
+    )
 
 
 def test_provider_event_conformance_helper_rejects_secret_material() -> None:

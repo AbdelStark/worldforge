@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "transfer.invalid_clip_negative_duration",
+  "capability": "transfer",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "duration",
+  "description": "Transfer rejects an input clip whose duration_seconds is negative when the VideoClip is constructed.",
+  "payload": {
+    "clip": {
+      "frames_base64": ["d29ybGRmb3JnZS1maXh0dXJlLXRyYW5zZmVyLXNlZWQ="],
+      "fps": 8.0,
+      "resolution": [160, 90],
+      "duration_seconds": -1.0,
+      "metadata": {"mode": "fixture-seed"}
+    },
+    "width": 320,
+    "height": 180,
+    "fps": 12.0
+  }
+}

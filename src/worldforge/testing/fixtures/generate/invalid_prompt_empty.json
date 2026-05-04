@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "generate.invalid_prompt_empty",
+  "capability": "generate",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "prompt",
+  "description": "Generate rejects an empty prompt before reaching the provider.",
+  "payload": {
+    "prompt": "",
+    "duration_seconds": 1.0
+  }
+}

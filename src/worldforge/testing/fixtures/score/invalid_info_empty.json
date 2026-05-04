@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "score.invalid_info_empty",
+  "capability": "score",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "info",
+  "description": "Score rejects an empty info object: there is no observation, goal, or action material to score against.",
+  "payload": {
+    "info": {},
+    "action_candidates": [
+      [
+        [[0.0, 0.5, 0.0], [0.1, 0.5, 0.0]]
+      ]
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "embed.invalid_text_empty",
+  "capability": "embed",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "non-empty",
+  "description": "Empty text is documented as invalid for embed: providers must receive at least one character to produce a meaningful vector. The framework does not reject this today; the fixture pins the contract for future input validation.",
+  "payload": {
+    "text": ""
+  }
+}
