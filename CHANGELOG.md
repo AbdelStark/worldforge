@@ -9,6 +9,11 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added cross-provider run comparisons for preserved eval and benchmark workspaces. `worldforge
+  runs compare` now exports a shared JSON/Markdown/CSV model with provider rows, capability and
+  operation context, fixture digest, suite version, budget status, event counts, missing evidence,
+  skip reasons, and claim-boundary language while refusing incompatible capability, fixture,
+  budget, operation, or suite-version contexts.
 - Added sanitized evaluation failure galleries. Failed evaluation reports now expose
   representative fixture-level cases with expected contract notes, observed summaries, metrics
   previews, and triage steps; `report.artifacts()` also exports `failure_gallery.json` and

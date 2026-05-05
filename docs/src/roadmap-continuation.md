@@ -633,10 +633,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Compatible runs compare with provenance, metric deltas, event counts, and budget status.
-- [ ] Incompatible runs fail with provider/capability/fixture mismatch details.
-- [ ] Markdown output includes claim-boundary language.
-- [ ] Harness and CLI comparison paths use the same underlying report model.
+- [x] Compatible runs compare with provenance, metric deltas, event counts, and budget status.
+- [x] Incompatible runs fail with capability, operation, fixture, budget, or suite-version details.
+- [x] Markdown output includes claim-boundary language.
+- [x] Harness and CLI comparison paths use the same underlying report model.
 
 Validation:
 
