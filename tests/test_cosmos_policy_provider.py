@@ -135,6 +135,7 @@ def test_cosmos_policy_provider_contract() -> None:
         assert request.url.path == "/act"
         payload = json.loads(request.content.decode("utf-8"))
         assert payload["task_description"] == "put the candy in the bowl"
+        assert payload["action_horizon"] == 2
         return httpx.Response(
             200,
             json={
@@ -377,6 +378,21 @@ def test_cosmos_policy_action_horizon_does_not_exceed_translated_actions() -> No
     assert len(result.actions) == 1
     assert result.action_horizon == 1
     assert result.metadata["requested_action_horizon"] == 50
+
+
+def test_cosmos_policy_rejects_conflicting_action_horizon_option() -> None:
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"actions": _actions(0.1)})
+        ),
+        action_translator=_translator,
+    )
+    info = _policy_info()
+    info["options"] = {"action_horizon": 1}
+
+    with pytest.raises(WorldForgeError, match=r"conflicts with info\.action_horizon"):
+        provider.select_actions(info=info)
 
 
 def test_cosmos_policy_blocks_local_base_url_without_opt_in() -> None:

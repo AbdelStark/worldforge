@@ -499,6 +499,12 @@ class CosmosPolicyProvider(RemoteProvider):
 
         action_horizon_value = normalized_info.get("action_horizon")
         if action_horizon_value is None:
+            action_horizon_value = payload.get("action_horizon")
+        elif "action_horizon" in payload and payload["action_horizon"] != action_horizon_value:
+            raise WorldForgeError(
+                "Cosmos-Policy option 'action_horizon' conflicts with info.action_horizon."
+            )
+        if action_horizon_value is None:
             action_horizon = None
         elif isinstance(action_horizon_value, bool) or not isinstance(action_horizon_value, int):
             raise WorldForgeError(
@@ -509,6 +515,8 @@ class CosmosPolicyProvider(RemoteProvider):
                 action_horizon_value,
                 name="Cosmos-Policy action_horizon",
             )
+        if action_horizon is not None:
+            payload["action_horizon"] = action_horizon
         return payload, task_description.strip(), action_horizon
 
     def _translate_actions(
