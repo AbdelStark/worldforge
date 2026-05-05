@@ -27,6 +27,10 @@ Current decision: keep `jepa-wms` as a direct-construction candidate. Even when 
 successfully runs the smoke command below, WorldForge should not auto-register it until there is
 checked-in real-runtime evidence for the selected upstream model and task family.
 
+The packaged runtime manifest `jepa-wms:schema-1` exists only to make prepared-host smoke evidence
+machine-readable. It does not make `jepa-wms` a catalog provider, exported provider, or
+auto-registered runtime.
+
 ## Runtime Ownership
 
 WorldForge owns the candidate provider shell, score-result validation, event emission, and
@@ -179,8 +183,8 @@ uv run --with torch worldforge-smoke-jepa-wms \
 The command imports `torch` only at runtime, calls `JEPAWMSProvider.from_torch_hub(...)`, scores
 synthetic observation, goal, action-history, and action-candidate tensors, and writes a sanitized
 `run_manifest.json`. The manifest includes value-free environment presence, input shapes, runtime
-version fields such as torch version/model class, event count, and a score summary with candidate
-count, score direction, best index, and best score.
+manifest id, input digest, result digest, runtime version fields such as torch version/model class,
+event count, and a score summary with candidate count, score direction, best index, and best score.
 
 The smoke command does not download or pin checkpoints for users. Hosts remain responsible for the
 compatible `facebookresearch/jepa-wms` runtime, model names, checkpoint availability, device

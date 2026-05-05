@@ -633,7 +633,7 @@ class JEPAWMSProvider(BaseProvider):
                 phase="success",
                 duration_ms=duration_ms,
                 metadata={
-                    "model_path": self.model_path,
+                    "model_configured": self.model_path is not None,
                     "candidate_count": len(result.scores),
                     "best_index": result.best_index,
                 },
@@ -645,7 +645,7 @@ class JEPAWMSProvider(BaseProvider):
                 phase="failure",
                 duration_ms=max(0.1, (perf_counter() - started) * 1000),
                 message=str(exc),
-                metadata={"model_path": self.model_path},
+                metadata={"model_configured": self.model_path is not None},
             )
             raise
         except (
@@ -659,14 +659,12 @@ class JEPAWMSProvider(BaseProvider):
             TypeError,
             ValueError,
         ) as exc:
-            error = ProviderError(
-                f"JEPA-WMS scoring failed for model path '{self.model_path}': {exc}"
-            )
+            error = ProviderError(f"JEPA-WMS scoring failed for configured model: {exc}")
             self._emit_operation_event(
                 "score",
                 phase="failure",
                 duration_ms=max(0.1, (perf_counter() - started) * 1000),
                 message=str(error),
-                metadata={"model_path": self.model_path},
+                metadata={"model_configured": self.model_path is not None},
             )
             raise error from exc

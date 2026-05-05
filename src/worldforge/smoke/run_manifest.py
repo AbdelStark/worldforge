@@ -39,6 +39,7 @@ class LiveSmokeRunManifest:
     artifact_paths: Mapping[str, str] = field(default_factory=dict)
     event_count: int = 0
     input_summary: Mapping[str, Any] = field(default_factory=dict)
+    input_digest: str | None = None
     input_fixture_digest: str | None = None
     result_digest: str | None = None
     runtime_manifest_id: str | None = None
@@ -73,6 +74,7 @@ class LiveSmokeRunManifest:
             "runtime_manifest_id": self.runtime_manifest_id,
             "env_summary": [dict(item) for item in self.env_summary],
             "input_summary": _json_native(dict(self.input_summary)),
+            "input_digest": self.input_digest,
             "input_fixture_digest": self.input_fixture_digest,
             "event_count": self.event_count,
             "result_digest": self.result_digest,
@@ -93,6 +95,7 @@ def build_run_manifest(
     event_count: int = 0,
     input_summary: Mapping[str, Any] | None = None,
     input_fixture: Path | str | None = None,
+    input_digest: str | None = None,
     result: Mapping[str, Any] | None = None,
     result_digest: str | None = None,
     environ: Mapping[str, str] | None = None,
@@ -112,6 +115,15 @@ def build_run_manifest(
     resolved_result_digest = result_digest
     if resolved_result_digest is None and result is not None:
         resolved_result_digest = digest_json_value(dict(result))
+    resolved_input_fixture_digest = (
+        digest_file(input_fixture) if input_fixture is not None else None
+    )
+    resolved_input_digest = input_digest
+    if resolved_input_digest is None:
+        if resolved_input_fixture_digest is not None:
+            resolved_input_digest = resolved_input_fixture_digest
+        elif input_summary:
+            resolved_input_digest = digest_json_value(dict(input_summary))
 
     return LiveSmokeRunManifest(
         run_id=run_id,
@@ -122,7 +134,8 @@ def build_run_manifest(
         runtime_manifest_id=runtime_manifest_id,
         env_summary=tuple(env_summary(env_vars, environ=environ)),
         input_summary=input_summary or {},
-        input_fixture_digest=digest_file(input_fixture) if input_fixture is not None else None,
+        input_digest=resolved_input_digest,
+        input_fixture_digest=resolved_input_fixture_digest,
         event_count=event_count,
         result_digest=resolved_result_digest,
         artifact_paths=_artifact_path_summary(artifact_paths or {}),
@@ -176,7 +189,7 @@ def digest_file(path: Path | str) -> str:
 
 
 def digest_json_value(value: Mapping[str, Any]) -> str:
-    """Return a stable sha256 digest for a JSON-like result summary."""
+    """Return a stable sha256 digest for a JSON-like summary."""
 
     payload = dump_json(require_json_dict(_json_native(dict(value)), name="Run manifest result"))
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"

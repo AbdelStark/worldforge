@@ -17,7 +17,16 @@ from worldforge.providers.runtime_manifest import (
     missing_optional_dependency_detail,
 )
 
-EXPECTED_MANIFEST_PROVIDERS = ("cosmos", "gr00t", "jepa", "lerobot", "leworldmodel", "runway")
+EXPECTED_MANIFEST_PROVIDERS = (
+    "cosmos",
+    "gr00t",
+    "jepa-wms",
+    "jepa",
+    "lerobot",
+    "leworldmodel",
+    "runway",
+)
+DIRECT_CONSTRUCTION_MANIFEST_PROVIDERS = {"jepa-wms"}
 
 
 def test_runtime_manifests_cover_real_optional_providers() -> None:
@@ -27,9 +36,13 @@ def test_runtime_manifests_cover_real_optional_providers() -> None:
     assert manifest_names == EXPECTED_MANIFEST_PROVIDERS
     catalog = {entry.name: entry.create().profile() for entry in PROVIDER_CATALOG}
     for manifest in manifests:
-        profile = catalog[manifest.provider]
         assert manifest.schema_version == 1
-        assert set(manifest.capabilities) <= set(profile.capabilities.enabled_names())
+        if manifest.provider in DIRECT_CONSTRUCTION_MANIFEST_PROVIDERS:
+            assert manifest.provider not in catalog
+            assert manifest.capabilities == ("score",)
+        else:
+            profile = catalog[manifest.provider]
+            assert set(manifest.capabilities) <= set(profile.capabilities.enabled_names())
         assert manifest.docs_path == f"docs/src/providers/{manifest.provider}.md"
         assert manifest.minimum_smoke_command
         assert manifest.expected_success_signal
