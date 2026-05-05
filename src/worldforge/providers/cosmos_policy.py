@@ -64,6 +64,7 @@ _OBSERVATION_FIELDS = (
     "proprio",
 )
 _JSON_NUMPY_DATA_FIELD = "__numpy__"
+_MAX_JSON_NUMPY_ACTION_ELEMENTS = 1024
 _PREDICTION_SUMMARY_MAX_DEPTH = 8
 _PREDICTION_SUMMARY_MAX_KEYS = 32
 
@@ -751,7 +752,11 @@ def _normalize_action_matrix(
     rows: list[list[float]] = []
     width: int | None = None
     for row_index, row in enumerate(value):
-        row = _decode_json_numpy_action_row(row, name=f"{name}[{row_index}]")
+        row = _decode_json_numpy_action_row(
+            row,
+            name=f"{name}[{row_index}]",
+            expected_action_dim=expected_action_dim,
+        )
         if not isinstance(row, list) or not row:
             raise ProviderError(f"{name}[{row_index}] must be a non-empty action row.")
         if width is None:
@@ -771,13 +776,25 @@ def _normalize_action_matrix(
     return rows
 
 
-def _decode_json_numpy_action_row(value: object, *, name: str) -> object:
+def _decode_json_numpy_action_row(
+    value: object,
+    *,
+    name: str,
+    expected_action_dim: int | None,
+) -> object:
     if not _is_json_numpy_payload(value):
         return value
     array_shape = _json_numpy_shape(value, name=name)
     if len(array_shape) != 1:
         raise ProviderError(f"{name} must be a 1-D encoded numpy action row.")
-    return _decode_json_numpy_numeric_array(value, name=name)
+    item_count = array_shape[0]
+    if expected_action_dim is not None and item_count != expected_action_dim:
+        raise ProviderError(f"{name} action_dim must be {expected_action_dim}; got {item_count}.")
+    if item_count > _MAX_JSON_NUMPY_ACTION_ELEMENTS:
+        raise ProviderError(
+            f"{name} encoded action row exceeds {_MAX_JSON_NUMPY_ACTION_ELEMENTS} elements."
+        )
+    return _decode_json_numpy_numeric_array(value, name=name, array_shape=array_shape)
 
 
 def _is_json_numpy_payload(value: object) -> bool:
@@ -798,13 +815,19 @@ def _json_numpy_shape(value: object, *, name: str) -> list[int]:
     return normalized_shape
 
 
-def _decode_json_numpy_numeric_array(value: object, *, name: str) -> list[float]:
+def _decode_json_numpy_numeric_array(
+    value: object,
+    *,
+    name: str,
+    array_shape: Sequence[int] | None = None,
+) -> list[float]:
     if not isinstance(value, dict):
         raise ProviderError(f"{name} must be an encoded numpy object.")
     dtype = value.get("dtype")
     if not isinstance(dtype, str) or not dtype.strip():
         raise ProviderError(f"{name}.dtype must be a non-empty string.")
-    array_shape = _json_numpy_shape(value, name=name)
+    if array_shape is None:
+        array_shape = _json_numpy_shape(value, name=name)
     item_count = 1
     for dimension in array_shape:
         item_count *= dimension

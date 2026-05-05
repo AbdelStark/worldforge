@@ -722,6 +722,10 @@ def test_cosmos_policy_rejects_non_json_native_observation_before_request() -> N
             "__numpy__ is not valid base64",
         ),
         (
+            {"actions": [{"__numpy__": "not-base64", "dtype": "<f8", "shape": [2048]}]},
+            "action_dim must be 14",
+        ),
+        (
             {
                 "actions": [
                     {"__numpy__": _json_numpy_row(0.1)["__numpy__"], "dtype": "|u1", "shape": [14]}
@@ -747,6 +751,19 @@ def test_cosmos_policy_rejects_malformed_responses(payload: JSONDict, match: str
 
     with pytest.raises(WorldStateError, match=match):
         provider.select_actions(info=_policy_info())
+
+
+def test_cosmos_policy_rejects_oversized_json_numpy_without_expected_action_dim() -> None:
+    payload: JSONDict = {
+        "actions": [{"__numpy__": "not-base64", "dtype": "<f8", "shape": [2048]}],
+    }
+
+    with pytest.raises(ProviderError, match="encoded action row exceeds"):
+        CosmosPolicyResponse.from_payload(
+            payload,
+            provider_name="cosmos-policy",
+            expected_action_dim=None,
+        )
 
 
 def test_cosmos_policy_rejects_non_json_response_content_type() -> None:

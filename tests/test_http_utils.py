@@ -63,7 +63,7 @@ class _HangingContext:
         return self.process
 
 
-def test_validate_remote_base_url_rejects_credentials_and_query() -> None:
+def test_validate_remote_base_url_rejects_credentials_query_and_fragments() -> None:
     for url, match in (
         ("https://user:secret@93.184.216.34", "embedded credentials"),
         ("https://93.184.216.34?token=secret", "query parameters"),
@@ -95,6 +95,20 @@ def test_validate_remote_base_url_enforces_allowed_hosts() -> None:
             env_var="COSMOS_POLICY_BASE_URL",
             allowed_hosts=("*.example.com",),
             resolve_dns=False,
+        )
+
+
+def test_validate_remote_base_url_wraps_dns_worker_failures(monkeypatch) -> None:
+    def fail_resolution(*_args: object, **_kwargs: object) -> list[str]:
+        raise RuntimeError("resolver worker failed")
+
+    monkeypatch.setattr(http_utils, "_getaddrinfo_with_timeout", fail_resolution)
+
+    with pytest.raises(ProviderError, match="host resolution failed"):
+        validate_remote_base_url(
+            "https://policy.example.com",
+            provider_name="cosmos-policy",
+            env_var="COSMOS_POLICY_BASE_URL",
         )
 
 
