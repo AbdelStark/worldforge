@@ -29,6 +29,7 @@ from .base import ProviderBudgetExceededError, ProviderError
 _RETRYABLE_EXCEPTIONS = (httpx.TransportError,)
 _LOCAL_HOST_NAMES = frozenset({"localhost", "localhost.localdomain"})
 _DNS_RESOLUTION_TIMEOUT_SECONDS = 2.0
+_DNS_RESULT_QUEUE_TIMEOUT_SECONDS = 1.0
 _ERROR_SUMMARY_BYTES = 512
 
 
@@ -158,6 +159,7 @@ def _getaddrinfo_with_timeout(
         name=f"worldforge-dns-resolver-{host}",
     )
     resolver_started = False
+    started = perf_counter()
     try:
         resolver.start()
         resolver_started = True
@@ -172,8 +174,13 @@ def _getaddrinfo_with_timeout(
                 socket.EAI_FAIL,
                 f"DNS resolver process exited with code {resolver.exitcode}",
             )
+        elapsed_seconds = perf_counter() - started
+        result_timeout_seconds = min(
+            timeout_seconds,
+            max(_DNS_RESULT_QUEUE_TIMEOUT_SECONDS, timeout_seconds - elapsed_seconds),
+        )
         try:
-            status, value = result_queue.get(timeout=0.1)
+            status, value = result_queue.get(timeout=result_timeout_seconds)
         except queue.Empty as exc:
             raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned no result") from exc
         if status == "gaierror":

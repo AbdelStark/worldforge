@@ -973,6 +973,63 @@ def test_validate_remote_url_wraps_dns_worker_failures(monkeypatch) -> None:
         )
 
 
+def test_getaddrinfo_uses_bounded_result_queue_timeout(monkeypatch) -> None:
+    class CompletedProcess:
+        exitcode = 0
+
+        def start(self) -> None:
+            pass
+
+        def join(self, _timeout: float | None = None) -> None:
+            pass
+
+        def is_alive(self) -> bool:
+            return False
+
+        def terminate(self) -> None:
+            raise AssertionError("completed process should not be terminated")
+
+    class ResultQueue:
+        timeout_seen: float | None = None
+
+        def get(self, *, timeout: float) -> tuple[str, list[str]]:
+            self.timeout_seen = timeout
+            return ("ok", ["93.184.216.34"])
+
+        def close(self) -> None:
+            pass
+
+        def join_thread(self) -> None:
+            pass
+
+    class CompletedContext:
+        def __init__(self) -> None:
+            self.queue = ResultQueue()
+
+        def Queue(self, *args: object, **kwargs: object) -> ResultQueue:
+            del args, kwargs
+            return self.queue
+
+        def Process(self, *args: object, **kwargs: object) -> CompletedProcess:
+            del args, kwargs
+            return CompletedProcess()
+
+    context = CompletedContext()
+
+    def fake_get_context(_method: str) -> CompletedContext:
+        return context
+
+    monkeypatch.setattr(http_utils_module.multiprocessing, "get_context", fake_get_context)
+
+    assert http_utils_module._getaddrinfo_with_timeout(
+        "downloads.example.com",
+        443,
+        timeout_seconds=2.0,
+    ) == ["93.184.216.34"]
+    assert context.queue.timeout_seen is not None
+    assert context.queue.timeout_seen >= 1.0
+
+
 def test_runway_provider_rejects_provider_specific_limits(monkeypatch) -> None:
     monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
 
