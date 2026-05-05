@@ -10,7 +10,7 @@ import multiprocessing
 import queue
 import socket
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from time import perf_counter, sleep
 from typing import Any
@@ -88,7 +88,7 @@ def validate_remote_base_url(
     env_var: str,
     allow_local_network: bool = False,
     resolve_dns: bool = True,
-    allowed_hosts: tuple[str, ...] | None = None,
+    allowed_hosts: Sequence[str] | None = None,
     dns_resolution_timeout_seconds: float = _DNS_RESOLUTION_TIMEOUT_SECONDS,
 ) -> str:
     """Return a normalized HTTP base URL after preflight destination checks."""
@@ -135,7 +135,7 @@ def validate_remote_base_url(
 def _reject_unlisted_host(
     host: str,
     *,
-    allowed_hosts: tuple[str, ...] | None,
+    allowed_hosts: Sequence[str] | None,
     provider_name: str,
     env_var: str,
 ) -> None:

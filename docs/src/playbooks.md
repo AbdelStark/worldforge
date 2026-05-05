@@ -632,6 +632,7 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
   uv run worldforge-smoke-cosmos-policy \
     --policy-info-json /path/to/policy_info.json \
     --translator /path/to/translator.py:translate_actions \
+    --allow-translator-code \
     --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json
 # Expected success: run_manifest.json records capability=policy with status=passed.
 # First triage: verify the `/act` server is reachable and recheck the translator path plus

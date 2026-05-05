@@ -140,8 +140,13 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Python action translator formatted as module_or_file:function. The callable receives "
             "(raw_actions, info, provider_info) and returns WorldForge Action objects. "
-            "This imports and executes local Python; use only trusted translator code."
+            "This imports and executes local Python; requires --allow-translator-code."
         ),
+    )
+    parser.add_argument(
+        "--allow-translator-code",
+        action="store_true",
+        help="Acknowledge that --translator imports and executes trusted local Python code.",
     )
     return parser
 
@@ -204,6 +209,7 @@ def _write_manifest_if_requested(
                 "COSMOS_POLICY_MODEL",
                 "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
                 "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
+                "COSMOS_POLICY_ALLOWED_HOSTS",
             ),
             event_count=len(provider_events),
             input_fixture=input_fixture,
@@ -222,6 +228,11 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--action-horizon must be greater than 0.")
         if not args.health_only and args.translator is None:
             raise SystemExit("--translator is required unless --health-only is set.")
+        if args.translator is not None and not args.allow_translator_code:
+            raise SystemExit(
+                "--translator imports and executes local Python; pass --allow-translator-code "
+                "only for trusted translator code."
+            )
 
         translator = (
             None if args.translator is None else _load_callable(args.translator, name="translator")

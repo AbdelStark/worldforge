@@ -77,6 +77,27 @@ def test_validate_remote_base_url_rejects_credentials_and_query() -> None:
             )
 
 
+def test_validate_remote_base_url_enforces_allowed_hosts() -> None:
+    assert (
+        validate_remote_base_url(
+            "https://policy.example.com",
+            provider_name="cosmos-policy",
+            env_var="COSMOS_POLICY_BASE_URL",
+            allowed_hosts=("*.example.com",),
+            resolve_dns=False,
+        )
+        == "https://policy.example.com"
+    )
+    with pytest.raises(ProviderError, match="allowed host"):
+        validate_remote_base_url(
+            "https://unexpected.example.net",
+            provider_name="cosmos-policy",
+            env_var="COSMOS_POLICY_BASE_URL",
+            allowed_hosts=("*.example.com",),
+            resolve_dns=False,
+        )
+
+
 def test_getaddrinfo_timeout_terminates_resolver_process(monkeypatch) -> None:
     context = _HangingContext()
 

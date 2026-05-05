@@ -51,6 +51,13 @@ WorldForge never starts Cosmos-Policy, installs CUDA dependencies, or drives har
   from servers that support that Cosmos-Policy flag.
 - `COSMOS_POLICY_ALLOW_LOCAL_BASE_URL`: optional boolean. Set to `1` only for trusted localhost,
   SSH tunnel, or lab-network servers.
+- `COSMOS_POLICY_ALLOWED_HOSTS`: optional comma-separated hostname allowlist for deployments that
+  restrict the configured policy endpoint. Shell-style wildcards such as `*.example.com` are
+  supported.
+
+URL validation blocks obvious localhost/private/link-local destinations by default. DNS checks are
+best-effort preflight checks before `httpx` connects; they do not pin the TCP connection to a
+resolved address. Use host allowlists plus network egress controls when that distinction matters.
 
 `COSMOS_POLICY_BASE_URL` is enough for endpoint readiness checks. It is not enough for policy
 routing: a provider instance without `action_translator` advertises no executable `policy`
@@ -191,8 +198,12 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
   uv run worldforge-smoke-cosmos-policy \
     --policy-info-json /path/to/policy_info.json \
     --translator /path/to/translator.py:translate_actions \
+    --allow-translator-code \
     --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json
 ```
+
+`--translator` imports and executes local Python code. The smoke command requires
+`--allow-translator-code` so operators explicitly opt into running trusted translator code.
 
 Prepared hosts can also pass `--health-only` to validate WorldForge configuration without sending
 a policy request. Cosmos-Policy does not expose a non-mutating health endpoint in the server shape

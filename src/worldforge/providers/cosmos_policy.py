@@ -44,6 +44,7 @@ COSMOS_POLICY_EMBODIMENT_TAG_ENV_VAR = "COSMOS_POLICY_EMBODIMENT_TAG"
 COSMOS_POLICY_MODEL_ENV_VAR = "COSMOS_POLICY_MODEL"
 COSMOS_POLICY_RETURN_ALL_ENV_VAR = "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS"
 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR = "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL"
+COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR = "COSMOS_POLICY_ALLOWED_HOSTS"
 DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS = 600.0
 DEFAULT_COSMOS_POLICY_ACTION_DIM = 14
 DEFAULT_COSMOS_POLICY_EMBODIMENT_TAG = "aloha"
@@ -157,6 +158,7 @@ class CosmosPolicyProvider(RemoteProvider):
         expected_action_dim: int | None = DEFAULT_COSMOS_POLICY_ACTION_DIM,
         return_all_query_results: bool | str | None = None,
         allow_local_base_url: bool | str | None = None,
+        allowed_hosts: Sequence[str] | str | None = None,
         action_translator: ActionTranslator | None = None,
         request_policy: ProviderRequestPolicy | None = None,
         event_handler: Callable[[ProviderEvent], None] | None = None,
@@ -218,6 +220,13 @@ class CosmosPolicyProvider(RemoteProvider):
             name="Cosmos-Policy allow_local_base_url",
         )
         self.allow_local_base_url = bool(parsed_allow_local)
+        self._allowed_hosts_direct = allowed_hosts is not None
+        self.allowed_hosts = _optional_host_patterns(
+            allowed_hosts
+            if allowed_hosts is not None
+            else env_value(COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR),
+            name="Cosmos-Policy allowed_hosts",
+        )
         self.expected_action_dim = expected_action_dim
         self._action_translator = action_translator
         self._transport = transport
@@ -257,6 +266,10 @@ class CosmosPolicyProvider(RemoteProvider):
                     "actions to WorldForge Action objects.",
                     "Blocks localhost, private, and link-local base URLs unless "
                     f"{COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR}=1 is explicitly set.",
+                    f"Supports {COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR} for deployments that require "
+                    "an explicit host allowlist.",
+                    "DNS checks are a best-effort preflight, not a pinned-connection or network "
+                    "egress control.",
                     "Cosmos-Policy is an embodied policy/planning runtime, not the existing "
                     "Cosmos media-generation NIM adapter.",
                 ),
@@ -350,6 +363,16 @@ class CosmosPolicyProvider(RemoteProvider):
                     present=self._allow_local_base_url_direct
                     or env_value(COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR) is not None,
                 ),
+                _field_summary(
+                    COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR,
+                        direct=self._allowed_hosts_direct,
+                    ),
+                    present=self._allowed_hosts_direct
+                    or env_value(COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR) is not None,
+                ),
             ),
         )
 
@@ -376,6 +399,7 @@ class CosmosPolicyProvider(RemoteProvider):
             provider_name=self.name,
             env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
             allow_local_network=self.allow_local_base_url,
+            allowed_hosts=self.allowed_hosts,
         )
         return httpx.Client(
             base_url=validated_base_url,
@@ -399,6 +423,7 @@ class CosmosPolicyProvider(RemoteProvider):
                     provider_name=self.name,
                     env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
                     allow_local_network=self.allow_local_base_url,
+                    allowed_hosts=self.allowed_hosts,
                 )
             except ProviderError as exc:
                 return self._health(started, str(exc), healthy=False)
@@ -420,9 +445,10 @@ class CosmosPolicyProvider(RemoteProvider):
                 raise WorldForgeError(
                     f"Cosmos-Policy ALOHA observation must include '{field_name}'."
                 )
-        task_description = normalized_info.get("task_description") or observation.get(
-            "task_description"
-        )
+        if "task_description" in normalized_info:
+            task_description = normalized_info["task_description"]
+        else:
+            task_description = observation.get("task_description")
         if not isinstance(task_description, str) or not task_description.strip():
             raise WorldForgeError(
                 "Cosmos-Policy policy info must include a non-empty task_description."
@@ -492,6 +518,11 @@ class CosmosPolicyProvider(RemoteProvider):
     def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
         started = perf_counter()
         payload, task_description, action_horizon_override = self._validate_info(info)
+        if self._action_translator is None:
+            raise ProviderError(
+                "Cosmos-Policy actions are embodiment-specific; provide action_translator "
+                "to map raw policy actions into WorldForge Action objects."
+            )
         try:
             request_policy = self._require_request_policy()
             with self._client() as client:
@@ -518,13 +549,18 @@ class CosmosPolicyProvider(RemoteProvider):
                 info=info,
                 provider_info=parsed.provider_info,
             )
-            selected_index = _selected_action_index(parsed.actions, parsed.all_actions)
             if parsed.all_actions and len(candidate_plans) != len(parsed.all_actions):
                 raise ProviderError(
                     "Cosmos-Policy action translator returned "
                     f"{len(candidate_plans)} candidate(s) for "
                     f"{len(parsed.all_actions)} raw candidate(s)."
                 )
+            if not parsed.all_actions and len(candidate_plans) != 1:
+                raise ProviderError(
+                    "Cosmos-Policy action translator must return exactly 1 candidate "
+                    "when the response omits 'all_actions'."
+                )
+            selected_index = _selected_action_index(parsed.actions, parsed.all_actions)
             if selected_index >= len(candidate_plans):
                 raise ProviderError(
                     "Cosmos-Policy selected candidate index "
@@ -618,6 +654,22 @@ def _optional_positive_float(value: float | int | str | None, *, name: str) -> f
     if number <= 0.0:
         raise WorldForgeError(f"{name} must be greater than 0.")
     return number
+
+
+def _optional_host_patterns(
+    value: Sequence[str] | str | None, *, name: str
+) -> tuple[str, ...] | None:
+    if value is None:
+        return None
+    raw_patterns = value.split(",") if isinstance(value, str) else list(value)
+    patterns: list[str] = []
+    for index, item in enumerate(raw_patterns):
+        if not isinstance(item, str) or not item.strip():
+            raise WorldForgeError(f"{name}[{index}] must be a non-empty hostname pattern.")
+        patterns.append(item.strip().lower())
+    if not patterns:
+        raise WorldForgeError(f"{name} must contain at least one hostname pattern when provided.")
+    return tuple(patterns)
 
 
 def _optional_float(value: object, *, name: str) -> float | None:

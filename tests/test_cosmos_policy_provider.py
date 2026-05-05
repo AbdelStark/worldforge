@@ -504,16 +504,22 @@ def test_cosmos_policy_plus_score_planning_scores_translated_candidates(tmp_path
 
 
 def test_cosmos_policy_requires_translator() -> None:
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
     provider = CosmosPolicyProvider(
         base_url=PUBLIC_BASE_URL,
-        transport=httpx.MockTransport(
-            lambda _request: httpx.Response(200, json={"actions": _actions(0.1)})
-        ),
+        transport=httpx.MockTransport(handler),
     )
 
     assert provider.profile().capabilities.policy is False
     with pytest.raises(ProviderError, match="provide action_translator"):
         provider.select_actions(info=_policy_info())
+    assert called is False
 
 
 def test_cosmos_policy_redacts_translator_exception_text() -> None:
@@ -562,6 +568,29 @@ def test_cosmos_policy_rejects_translator_candidate_mismatch() -> None:
     )
 
     with pytest.raises(ProviderError, match="returned 1 candidate\\(s\\) for 2 raw candidate"):
+        provider.select_actions(info=_policy_info())
+
+
+def test_cosmos_policy_rejects_translator_fanout_without_raw_candidates() -> None:
+    def fanout_translator(
+        _raw_actions: object,
+        _info: JSONDict,
+        _provider_info: JSONDict,
+    ):
+        return [
+            [Action.move_to(0.1, 0.2, 0.3)],
+            [Action.move_to(0.4, 0.5, 0.6)],
+        ]
+
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"actions": _actions(0.1)})
+        ),
+        action_translator=fanout_translator,
+    )
+
+    with pytest.raises(ProviderError, match="exactly 1 candidate"):
         provider.select_actions(info=_policy_info())
 
 
@@ -625,6 +654,28 @@ def test_cosmos_policy_rejects_malformed_embodiment_tag_before_request() -> None
     info["embodiment_tag"] = 3
 
     with pytest.raises(WorldForgeError, match="embodiment_tag"):
+        provider.select_actions(info=info)
+    assert called is False
+
+
+def test_cosmos_policy_rejects_invalid_top_level_task_description() -> None:
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+    info = _policy_info()
+    info["observation"]["task_description"] = "valid fallback"
+    info["task_description"] = "   "
+
+    with pytest.raises(WorldForgeError, match="task_description"):
         provider.select_actions(info=info)
     assert called is False
 
