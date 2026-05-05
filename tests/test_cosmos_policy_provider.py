@@ -23,6 +23,7 @@ from worldforge.providers import (
     ProviderProfileSpec,
     http_utils,
 )
+from worldforge.providers.cosmos_policy import CosmosPolicyResponse, _summarize_prediction_payload
 from worldforge.testing import assert_provider_contract
 
 PUBLIC_BASE_URL = "http://93.184.216.34"
@@ -687,6 +688,27 @@ def test_cosmos_policy_rejects_invalid_top_level_task_description() -> None:
     assert called is False
 
 
+def test_cosmos_policy_rejects_non_json_native_observation_before_request() -> None:
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+    info = _policy_info()
+    info["observation"]["primary_image"] = float("nan")
+
+    with pytest.raises(WorldForgeError, match="finite"):
+        provider.select_actions(info=info)
+    assert called is False
+
+
 @pytest.mark.parametrize(
     ("payload", "match"),
     [
@@ -743,6 +765,38 @@ def test_cosmos_policy_rejects_non_json_response_content_type() -> None:
 
     with pytest.raises(WorldStateError, match="unsupported content type"):
         provider.select_actions(info=_policy_info())
+
+
+def test_cosmos_policy_response_rejects_non_object_payload() -> None:
+    with pytest.raises(ProviderError, match="JSON object"):
+        CosmosPolicyResponse.from_payload(
+            [],  # type: ignore[arg-type]
+            provider_name="cosmos-policy",
+            expected_action_dim=14,
+        )
+
+
+def test_cosmos_policy_prediction_summary_is_bounded() -> None:
+    wide = {f"k{index:02d}": [[index]] for index in range(40)}
+    wide_summary = _summarize_prediction_payload(wide, max_keys=3)
+
+    assert wide_summary == {
+        "k00": {"shape": [1, 1]},
+        "k01": {"shape": [1, 1]},
+        "k02": {"shape": [1, 1]},
+        "truncated_keys": 37,
+    }
+
+    deep: JSONDict = {}
+    cursor = deep
+    for _index in range(4):
+        child: JSONDict = {}
+        cursor["child"] = child
+        cursor = child
+
+    assert _summarize_prediction_payload(deep, max_depth=2) == {
+        "child": {"child": {"truncated": True}}
+    }
 
 
 def test_cosmos_policy_config_summary_is_value_free(monkeypatch) -> None:

@@ -24,6 +24,7 @@ from worldforge.models import (
     WorldStateError,
     _redact_observable_text,
     require_finite_number,
+    require_json_dict,
     require_positive_int,
 )
 
@@ -63,6 +64,8 @@ _OBSERVATION_FIELDS = (
     "proprio",
 )
 _JSON_NUMPY_DATA_FIELD = "__numpy__"
+_PREDICTION_SUMMARY_MAX_DEPTH = 8
+_PREDICTION_SUMMARY_MAX_KEYS = 32
 
 
 @dataclass(slots=True, frozen=True)
@@ -84,6 +87,10 @@ class CosmosPolicyResponse:
         provider_name: str,
         expected_action_dim: int | None,
     ) -> CosmosPolicyResponse:
+        if not isinstance(payload, dict):
+            raise ProviderError(
+                f"Provider '{provider_name}' policy response must be a JSON object."
+            )
         actions = _normalize_action_matrix(
             payload.get("actions"),
             name=f"Provider '{provider_name}' policy response field 'actions'",
@@ -436,7 +443,7 @@ class CosmosPolicyProvider(RemoteProvider):
         )
 
     def _validate_info(self, info: JSONDict) -> tuple[JSONDict, str, int | None]:
-        normalized_info = json_object(info, name="Cosmos-Policy policy info")
+        normalized_info = require_json_dict(info, name="Cosmos-Policy policy info")
         observation = normalized_info.get("observation")
         if not isinstance(observation, dict) or not observation:
             raise WorldForgeError(
@@ -926,13 +933,29 @@ def _future_prediction_summary(payload: JSONDict) -> JSONDict:
     return summary
 
 
-def _summarize_prediction_payload(value: object) -> JSONDict:
+def _summarize_prediction_payload(
+    value: object,
+    *,
+    depth: int = 0,
+    max_depth: int = _PREDICTION_SUMMARY_MAX_DEPTH,
+    max_keys: int = _PREDICTION_SUMMARY_MAX_KEYS,
+) -> JSONDict:
+    if depth >= max_depth:
+        return {"truncated": True}
     if _is_json_numpy_payload(value):
         return {"shape": _bounded_shape(value)}
     if isinstance(value, dict):
-        return {
-            key: _summarize_prediction_payload(child)
-            for key, child in value.items()
-            if isinstance(key, str)
+        string_keys = sorted(key for key in value if isinstance(key, str))
+        summary = {
+            key: _summarize_prediction_payload(
+                value[key],
+                depth=depth + 1,
+                max_depth=max_depth,
+                max_keys=max_keys,
+            )
+            for key in string_keys[:max_keys]
         }
+        if len(string_keys) > max_keys:
+            summary["truncated_keys"] = len(string_keys) - max_keys
+        return summary
     return {"shape": _bounded_shape(value)}
