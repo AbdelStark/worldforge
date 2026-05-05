@@ -21,6 +21,7 @@ from worldforge.models import (
     ProviderHealth,
     ProviderRequestPolicy,
     WorldForgeError,
+    WorldStateError,
     _redact_observable_text,
     require_finite_number,
     require_positive_int,
@@ -527,21 +528,30 @@ class CosmosPolicyProvider(RemoteProvider):
         try:
             request_policy = self._require_request_policy()
             with self._client() as client:
-                response_payload = request_json_with_policy(
-                    client,
-                    method="POST",
-                    url="/act",
+                try:
+                    response_payload = request_json_with_policy(
+                        client,
+                        method="POST",
+                        url="/act",
+                        provider_name=self.name,
+                        operation_name="policy",
+                        policy=request_policy.request,
+                        emit_event=self._emit_event,
+                        accepted_content_types=("application/json",),
+                        json=payload,
+                    )
+                except ProviderError as exc:
+                    if _is_malformed_json_response_error(str(exc)):
+                        raise WorldStateError(str(exc)) from exc
+                    raise
+            try:
+                parsed = CosmosPolicyResponse.from_payload(
+                    response_payload,
                     provider_name=self.name,
-                    operation_name="policy",
-                    policy=request_policy.request,
-                    emit_event=self._emit_event,
-                    json=payload,
+                    expected_action_dim=self.expected_action_dim,
                 )
-            parsed = CosmosPolicyResponse.from_payload(
-                response_payload,
-                provider_name=self.name,
-                expected_action_dim=self.expected_action_dim,
-            )
+            except (ProviderError, WorldForgeError) as exc:
+                raise WorldStateError(str(exc)) from exc
             raw_actions: JSONDict = {"actions": parsed.actions}
             if parsed.all_actions:
                 raw_actions["all_actions"] = parsed.all_actions
@@ -619,6 +629,22 @@ class CosmosPolicyProvider(RemoteProvider):
                 )
             )
             raise
+        except WorldStateError as exc:
+            self._emit_event(
+                ProviderEvent(
+                    provider=self.name,
+                    operation="policy",
+                    phase="failure",
+                    attempt=1,
+                    max_attempts=1,
+                    method="POST",
+                    target="/act",
+                    duration_ms=max(0.1, (perf_counter() - started) * 1000),
+                    message=str(exc),
+                    metadata={"stage": "worldforge-boundary"},
+                )
+            )
+            raise
         except Exception as exc:
             error = ProviderError(
                 f"Cosmos-Policy action selection failed: {_redact_observable_text(str(exc))}"
@@ -677,6 +703,17 @@ def _optional_float(value: object, *, name: str) -> float | None:
     if value is None:
         return None
     return require_finite_number(value, name=name)
+
+
+def _is_malformed_json_response_error(message: str) -> bool:
+    return any(
+        marker in message
+        for marker in (
+            "returned invalid JSON",
+            "returned a non-object JSON payload",
+            "returned unsupported content type",
+        )
+    )
 
 
 def _optional_float_list(value: object, *, name: str) -> list[float]:
@@ -840,7 +877,7 @@ def _selected_action_index(
     for index, candidate in enumerate(all_actions):
         if _action_matrices_close(candidate, actions):
             return index
-    raise ProviderError(
+    raise WorldStateError(
         "Cosmos-Policy response field 'actions' must match one entry in 'all_actions'."
     )
 

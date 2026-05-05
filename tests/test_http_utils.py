@@ -4,7 +4,7 @@ import multiprocessing
 
 import pytest
 
-from worldforge.providers import ProviderError
+from worldforge.providers import ProviderError, http_utils
 from worldforge.providers.http_utils import _getaddrinfo_with_timeout, validate_remote_base_url
 
 
@@ -96,6 +96,22 @@ def test_validate_remote_base_url_enforces_allowed_hosts() -> None:
             allowed_hosts=("*.example.com",),
             resolve_dns=False,
         )
+
+
+def test_dns_resolution_cache_evicts_oldest_entry(monkeypatch) -> None:
+    http_utils._DNS_RESOLUTION_CACHE.clear()
+    monkeypatch.setattr(http_utils, "_DNS_RESOLUTION_CACHE_MAX_ENTRIES", 2)
+    try:
+        http_utils._cache_dns_resolution(("alpha.example", 443), ("93.184.216.34",))
+        http_utils._cache_dns_resolution(("beta.example", 443), ("93.184.216.35",))
+        http_utils._cache_dns_resolution(("gamma.example", 443), ("93.184.216.36",))
+
+        assert list(http_utils._DNS_RESOLUTION_CACHE) == [
+            ("beta.example", 443),
+            ("gamma.example", 443),
+        ]
+    finally:
+        http_utils._DNS_RESOLUTION_CACHE.clear()
 
 
 def test_getaddrinfo_timeout_terminates_resolver_process(monkeypatch) -> None:

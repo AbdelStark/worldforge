@@ -14,6 +14,7 @@ from worldforge.models import (
     ProviderEvent,
     ProviderHealth,
     WorldForgeError,
+    WorldStateError,
 )
 from worldforge.providers import (
     BaseProvider,
@@ -76,13 +77,19 @@ def _policy_info() -> JSONDict:
 
 
 def _translator(raw_actions: object, _info: JSONDict, _provider_info: JSONDict):
-    assert isinstance(raw_actions, dict)
+    if not isinstance(raw_actions, dict):
+        raise AssertionError("test translator expected raw_actions to be a dict")
+    if "actions" not in raw_actions:
+        raise AssertionError("test translator expected raw_actions.actions")
     matrix = raw_actions["actions"]
     return [Action.move_to(float(row[0]), float(row[1]), float(row[2])) for row in matrix]
 
 
 def _candidate_translator(raw_actions: object, _info: JSONDict, _provider_info: JSONDict):
-    assert isinstance(raw_actions, dict)
+    if not isinstance(raw_actions, dict):
+        raise AssertionError("test candidate translator expected raw_actions to be a dict")
+    if "actions" not in raw_actions:
+        raise AssertionError("test candidate translator expected raw_actions.actions")
     candidates = raw_actions.get("all_actions") or [raw_actions["actions"]]
     return [
         [Action.move_to(float(row[0]), float(row[1]), float(row[2])) for row in candidate]
@@ -244,7 +251,7 @@ def test_cosmos_policy_rejects_value_prediction_candidate_mismatch() -> None:
         action_translator=_candidate_translator,
     )
 
-    with pytest.raises(ProviderError, match="all_value_predictions"):
+    with pytest.raises(WorldStateError, match="all_value_predictions"):
         provider.select_actions(info=_policy_info())
 
 
@@ -612,7 +619,7 @@ def test_cosmos_policy_rejects_unknown_selected_action_candidate() -> None:
         action_translator=_candidate_translator,
     )
 
-    with pytest.raises(ProviderError, match="must match one entry in 'all_actions'"):
+    with pytest.raises(WorldStateError, match="must match one entry in 'all_actions'"):
         provider.select_actions(info=_policy_info())
 
 
@@ -716,7 +723,25 @@ def test_cosmos_policy_rejects_malformed_responses(payload: JSONDict, match: str
         action_translator=_translator,
     )
 
-    with pytest.raises(ProviderError, match=match):
+    with pytest.raises(WorldStateError, match=match):
+        provider.select_actions(info=_policy_info())
+
+
+def test_cosmos_policy_rejects_non_json_response_content_type() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text="not json",
+            headers={"content-type": "text/plain"},
+        )
+
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+
+    with pytest.raises(WorldStateError, match="unsupported content type"):
         provider.select_actions(info=_policy_info())
 
 

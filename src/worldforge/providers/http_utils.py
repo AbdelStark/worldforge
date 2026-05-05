@@ -739,6 +739,7 @@ def request_json_with_policy(
     operation_name: str,
     policy: RequestOperationPolicy,
     emit_event: Callable[[ProviderEvent], None] | None = None,
+    accepted_content_types: tuple[str, ...] | None = None,
     **kwargs: Any,
 ) -> dict[str, object]:
     """Send an HTTP request and decode a JSON object response."""
@@ -753,6 +754,19 @@ def request_json_with_policy(
         emit_event=emit_event,
         **kwargs,
     )
+    content_type = response.headers.get("content-type")
+    if (
+        content_type
+        and accepted_content_types
+        and not _content_type_is_allowed(
+            content_type,
+            accepted_content_types,
+        )
+    ):
+        raise ProviderError(
+            f"Provider '{provider_name}' {operation_name} returned unsupported "
+            f"content type '{content_type}'."
+        )
     try:
         payload = response.json()
     except ValueError as exc:
