@@ -36,6 +36,7 @@ class BundleResult:
     manifest_path: Path
     summary_path: Path
     manifest: JSONDict
+    issue_template_path: Path | None = None
 
 
 def generate_evidence_bundle(
@@ -73,7 +74,10 @@ def generate_evidence_bundle(
             "command": str(manifest.get("command", "")),
             "provider": manifest.get("provider"),
             "operation": manifest.get("operation"),
+            "expected_signal": _expected_signal(manifest),
+            "observed_failure": _observed_failure(manifest),
             "skip_reason": _skip_reason(manifest),
+            "validation_errors": _validation_errors(manifest),
             "source_path": _display_path(run_path),
         }
         runs.append(run_record)
@@ -121,6 +125,45 @@ def generate_evidence_bundle(
         output_dir=output,
         manifest_path=manifest_path,
         summary_path=summary_path,
+        manifest=manifest,
+    )
+
+
+def generate_issue_bundle(
+    *,
+    workspace_dir: Path,
+    run_id: str,
+    output_dir: Path,
+    overwrite: bool = False,
+) -> BundleResult:
+    """Generate a small issue-ready bundle for one preserved run."""
+
+    result = generate_evidence_bundle(
+        workspace_dir=workspace_dir,
+        output_dir=output_dir,
+        run_ids=(run_id,),
+        overwrite=overwrite,
+        include_fixture_digests=False,
+    )
+    manifest = {
+        **result.manifest,
+        "bundle_kind": "issue-run",
+        "issue_template": "issue.md",
+        "first_triage_step": _first_triage_step(result.manifest),
+    }
+    dump_json(manifest)
+    issue_path = result.output_dir / "issue.md"
+    result.manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    result.summary_path.write_text(render_evidence_bundle_summary(manifest), encoding="utf-8")
+    issue_path.write_text(render_issue_bundle_template(manifest), encoding="utf-8")
+    return BundleResult(
+        output_dir=result.output_dir,
+        manifest_path=result.manifest_path,
+        summary_path=result.summary_path,
+        issue_template_path=issue_path,
         manifest=manifest,
     )
 
@@ -200,6 +243,64 @@ def render_evidence_bundle_summary(manifest: JSONDict) -> str:
             "This bundle copies checkout-safe evidence from preserved WorldForge run workspaces. "
             "Excluded files are listed with reasons. The bundle does not upload artifacts, execute "
             "live providers, include raw secrets, or claim physical fidelity.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_issue_bundle_template(manifest: JSONDict) -> str:
+    """Render a short GitHub issue body from an issue-run bundle manifest."""
+
+    runs = manifest.get("runs", [])
+    run = runs[0] if isinstance(runs, list) and runs else {}
+    if not isinstance(run, dict):
+        run = {}
+    safe = bool(manifest.get("safe_to_attach"))
+    validation_errors = run.get("validation_errors")
+    lines = [
+        f"## WorldForge Run Issue: `{run.get('run_id', '-')}`",
+        "",
+        "### Command",
+        "",
+        f"`{run.get('command') or '-'}`",
+        "",
+        "### Expected Signal",
+        "",
+        str(run.get("expected_signal") or "-"),
+        "",
+        "### Observed Failure",
+        "",
+        str(run.get("observed_failure") or "-"),
+    ]
+    if isinstance(validation_errors, list) and validation_errors:
+        lines.extend(["", "Validation errors:"])
+        lines.extend(f"- {error}" for error in validation_errors)
+    lines.extend(
+        [
+            "",
+            "### Artifacts",
+            "",
+            "- `evidence_manifest.json`",
+            "- `summary.md`",
+            "- `issue.md`",
+            f"- included files: {manifest.get('included_count', 0)}",
+            f"- excluded files: {manifest.get('excluded_count', 0)}",
+            "",
+            "### Safe-To-Attach Notes",
+            "",
+            f"- safe_to_attach: `{str(safe).lower()}`",
+            (
+                "- Attach the bundle contents from this directory."
+                if safe
+                else "- Review `evidence_manifest.json` before attaching; at least one file was "
+                "excluded or marked local-only."
+            ),
+            "- Excluded files remain listed with reason, digest when available, and `local_only`.",
+            "",
+            "### First Triage Step",
+            "",
+            str(manifest.get("first_triage_step") or _first_triage_step(manifest)),
             "",
         ]
     )
@@ -550,7 +651,7 @@ def _record_excluded(
     context.files.append(
         {
             "path": destination.as_posix(),
-            "source": source,
+            "source": _safe_source_display(source),
             "kind": kind,
             "included": False,
             "safe_to_attach": False,
@@ -641,6 +742,69 @@ def _skip_reason(manifest: JSONDict) -> str | None:
     return None
 
 
+def _expected_signal(manifest: JSONDict) -> str:
+    result_summary = manifest.get("result_summary", {})
+    if isinstance(result_summary, dict):
+        expected = result_summary.get("expected_signal")
+        if isinstance(expected, str) and expected.strip():
+            return expected.strip()
+    return "The preserved command completes and writes a non-failed run_manifest.json."
+
+
+def _observed_failure(manifest: JSONDict) -> str:
+    status = str(manifest.get("status", "") or "unknown")
+    result_summary = manifest.get("result_summary", {})
+    if isinstance(result_summary, dict):
+        for key in (
+            "observed_failure",
+            "failure_reason",
+            "error",
+            "error_message",
+            "message",
+            "skip_reason",
+            "reason",
+        ):
+            value = result_summary.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        validation_errors = _validation_errors(manifest)
+        if validation_errors:
+            return "; ".join(validation_errors)
+    if status == "passed":
+        return "No failure recorded; bundle captures a successful preserved run."
+    if status == "skipped":
+        return _skip_reason(manifest) or "Run was skipped without a structured reason."
+    if status == "cancelled":
+        return "Run was cancelled before completion."
+    if status == "failed":
+        return "Run failed without a structured failure reason."
+    return f"Run status is {status}."
+
+
+def _validation_errors(manifest: JSONDict) -> list[str]:
+    result_summary = manifest.get("result_summary", {})
+    if not isinstance(result_summary, dict):
+        return []
+    raw_errors = result_summary.get("validation_errors") or result_summary.get("validation_error")
+    if isinstance(raw_errors, str) and raw_errors.strip():
+        return [raw_errors.strip()]
+    if isinstance(raw_errors, list):
+        return [str(error).strip() for error in raw_errors if str(error).strip()]
+    return []
+
+
+def _first_triage_step(manifest: JSONDict) -> str:
+    if not bool(manifest.get("safe_to_attach")):
+        return (
+            "Open evidence_manifest.json, inspect excluded files and local_only entries, and "
+            "remove or replace unsafe artifacts before attaching the bundle."
+        )
+    return (
+        "Open summary.md, then inspect the copied run_manifest.json and report artifacts for the "
+        "preserved run."
+    )
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -661,7 +825,13 @@ def _display_path(path: Path) -> str:
     try:
         return path.resolve().relative_to(_ROOT.resolve()).as_posix()
     except ValueError:
-        return str(path)
+        return f"<host-local:{path.name}>"
+
+
+def _safe_source_display(source: str) -> str:
+    if Path(source).is_absolute() or _HOST_PATH_PATTERN.search(source):
+        return f"<host-local:{Path(source).name or 'path'}>"
+    return source
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:
@@ -676,5 +846,7 @@ __all__ = [
     "EVIDENCE_BUNDLE_SCHEMA_VERSION",
     "BundleResult",
     "generate_evidence_bundle",
+    "generate_issue_bundle",
     "render_evidence_bundle_summary",
+    "render_issue_bundle_template",
 ]

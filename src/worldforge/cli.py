@@ -793,7 +793,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for the forked world summary.",
     )
 
-    runs = subparsers.add_parser("runs", help="List and clean preserved run workspaces.")
+    runs = subparsers.add_parser("runs", help="List, bundle, compare, and clean preserved runs.")
     runs_subparsers = runs.add_subparsers(dest="runs_command", required=True, metavar="command")
     runs_list = runs_subparsers.add_parser("list", help="List preserved run manifests.")
     runs_list.add_argument(
@@ -828,6 +828,33 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         help="Optional path to write the comparison artifact instead of stdout.",
+    )
+    runs_bundle = runs_subparsers.add_parser(
+        "bundle",
+        help="Export an issue-ready bundle for one preserved run.",
+    )
+    runs_bundle.add_argument("run_id", help="Run id under .worldforge/runs/.")
+    runs_bundle.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path(".worldforge"),
+        help="WorldForge workspace directory containing runs/.",
+    )
+    runs_bundle.add_argument(
+        "--output",
+        type=Path,
+        help="Bundle output directory. Defaults to <workspace-dir>/issue-bundles/<run-id>.",
+    )
+    runs_bundle.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace an existing output directory.",
+    )
+    runs_bundle.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="markdown",
+        help="Output format for the issue bundle summary.",
     )
     runs_cleanup = runs_subparsers.add_parser("cleanup", help="Remove old preserved runs.")
     runs_cleanup.add_argument(
@@ -1107,6 +1134,36 @@ def _cmd_runs(args: argparse.Namespace) -> int:
             )
             return 0
         print(rendered)
+        return 0
+
+    if args.runs_command == "bundle":
+        from worldforge.evidence_bundle import generate_issue_bundle
+
+        output_dir = args.output or args.workspace_dir / "issue-bundles" / args.run_id
+        result = generate_issue_bundle(
+            workspace_dir=args.workspace_dir,
+            run_id=args.run_id,
+            output_dir=output_dir,
+            overwrite=args.overwrite,
+        )
+        if args.format == "json":
+            _print_json(
+                {
+                    "run_id": args.run_id,
+                    "output_dir": str(result.output_dir),
+                    "manifest_path": str(result.manifest_path),
+                    "summary_path": str(result.summary_path),
+                    "issue_template_path": str(result.issue_template_path),
+                    "safe_to_attach": result.manifest["safe_to_attach"],
+                    "included_count": result.manifest["included_count"],
+                    "excluded_count": result.manifest["excluded_count"],
+                    "first_triage_step": result.manifest["first_triage_step"],
+                }
+            )
+        else:
+            if result.issue_template_path is None:
+                raise WorldForgeError("Issue bundle did not produce issue.md.")
+            print(result.issue_template_path.read_text(encoding="utf-8"))
         return 0
 
     if args.runs_command == "cleanup":

@@ -534,6 +534,31 @@ def test_evidence_bundle_docs_cover_issue_145_contract() -> None:
     assert "- [x] Bundle generation succeeds" in continuation
 
 
+def test_issue_bundle_docs_cover_issue_148_contract() -> None:
+    evaluation = (ROOT / "docs/src/evaluation.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for signal in (
+        "worldforge runs bundle <run-id>",
+        "issue.md",
+        "expected signal",
+        "observed failure",
+        "safe_to_attach",
+        "first triage step",
+        "local_only",
+    ):
+        assert signal in evaluation or signal in operations or signal in playbooks
+
+    assert "issue-ready bundles" in changelog
+    assert "- [x] Export succeeds for successful, failed, skipped, and cancelled mock runs" in (
+        continuation
+    )
+    assert "- [x] Unsafe metadata causes a clear error or local-only marking" in continuation
+
+
 def test_benchmark_budget_calibration_docs_cover_issue_146_contract() -> None:
     benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")

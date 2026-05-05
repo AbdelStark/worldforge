@@ -761,10 +761,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Export succeeds for successful, failed, skipped, and cancelled mock runs.
-- [ ] Unsafe metadata causes a clear error or local-only marking.
-- [ ] Bundle manifest contains digests and safe-to-attach flags.
-- [ ] Docs explain the first triage step after export.
+- [x] Export succeeds for successful, failed, skipped, and cancelled mock runs.
+- [x] Unsafe metadata causes a clear error or local-only marking.
+- [x] Bundle manifest contains digests and safe-to-attach flags.
+- [x] Docs explain the first triage step after export.
 
 Validation:
 
