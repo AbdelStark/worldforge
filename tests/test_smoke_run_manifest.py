@@ -40,6 +40,7 @@ def test_build_run_manifest_records_value_free_runtime_evidence(
 
     assert manifest["schema_version"] == 1
     assert manifest["runtime_manifest_id"] == "runway:schema-1"
+    assert manifest["input_digest"] == digest_file(input_fixture)
     assert manifest["input_fixture_digest"] == digest_file(input_fixture)
     assert manifest["result_digest"] == digest_json_value(
         {"task_id": "task-1", "status": "succeeded"}
@@ -79,6 +80,10 @@ def test_write_run_manifest_validates_before_writing(tmp_path: Path) -> None:
 
 
 def test_run_manifest_preserves_safe_input_summary() -> None:
+    input_summary = {
+        "bridge": "pusht",
+        "score_shapes": {"action_candidates": [1, 3, 4, 10]},
+    }
     manifest = build_run_manifest(
         run_id="run-1",
         provider_profile="leworldmodel",
@@ -86,16 +91,11 @@ def test_run_manifest_preserves_safe_input_summary() -> None:
         status="passed",
         env_vars=("LEWORLDMODEL_POLICY",),
         command_argv=("lewm-real",),
-        input_summary={
-            "bridge": "pusht",
-            "score_shapes": {"action_candidates": [1, 3, 4, 10]},
-        },
+        input_summary=input_summary,
     ).to_dict()
 
-    assert manifest["input_summary"] == {
-        "bridge": "pusht",
-        "score_shapes": {"action_candidates": [1, 3, 4, 10]},
-    }
+    assert manifest["input_summary"] == input_summary
+    assert manifest["input_digest"] == digest_json_value(input_summary)
 
 
 def test_run_manifest_rejects_secret_like_values_and_signed_urls(tmp_path: Path) -> None:

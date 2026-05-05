@@ -326,6 +326,11 @@ def test_jepa_wms_fake_runtime_scores_fixture_payload_and_contract() -> None:
     assert runtime.calls[-1]["info"] == payload["info"]
     assert events[-1].operation == "score"
     assert events[-1].phase == "success"
+    assert events[-1].metadata == {
+        "best_index": 1,
+        "candidate_count": 3,
+        "model_configured": True,
+    }
 
 
 def test_jepa_wms_torchhub_runtime_scores_and_plans_through_world(tmp_path) -> None:
@@ -658,6 +663,7 @@ def test_jepa_wms_runtime_error_response_emits_failure_event() -> None:
     assert events[-1].operation == "score"
     assert events[-1].phase == "failure"
     assert "checkpoint_expired" in events[-1].message
+    assert events[-1].metadata == {"model_configured": True}
 
 
 @pytest.mark.parametrize(
@@ -910,7 +916,11 @@ def test_jepa_wms_prepared_host_smoke_writes_runtime_manifest(
     assert manifest["provider_profile"] == "jepa-wms"
     assert manifest["capability"] == "score"
     assert manifest["status"] == "passed"
+    assert manifest["runtime_manifest_id"] == "jepa-wms:schema-1"
+    assert manifest["input_digest"].startswith("sha256:")
+    assert manifest["result_digest"].startswith("sha256:")
     assert manifest["event_count"] == 1
+    assert manifest["input_summary"]["inputs"]["shapes"]["action_candidates"] == [1, 3, 4, 10]
     assert manifest["input_summary"]["runtime_version"]["torch"] == "2.9.0-test"
     assert manifest["input_summary"]["score_summary"]["best_score"] == 0.1
     assert manifest["artifact_paths"]["summary_json"] == str(summary_path)
