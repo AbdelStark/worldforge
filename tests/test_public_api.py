@@ -45,12 +45,15 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.RerunEventSink is not None
     assert worldforge.RerunRecordingConfig is not None
     assert worldforge.RerunSession is not None
+    assert worldforge.SCENE_ARTIFACT_KIND == "worldforge.scene_artifact"
+    assert worldforge.SCENE_ARTIFACT_SCHEMA_VERSION == "1"
     assert worldforge.StructuredGoal is not None
     assert worldforge.TransferEvaluationSuite is not None
     assert worldforge.WorldForge is not None
     assert worldforge.WorldForgeError is not None
     assert worldforge.WorldStateError is not None
     assert worldforge.SceneObjectPatch is not None
+    assert worldforge.validate_scene_artifact is not None
     assert worldforge.load_benchmark_budgets is not None
     assert worldforge.load_benchmark_inputs is not None
     assert EvaluationSuite is not None

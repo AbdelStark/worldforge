@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "kind": "worldforge.scene_artifact",
+  "provider": "fixture-scene",
+  "capability": "generate",
+  "units": "furlong",
+  "coordinate_frame": {
+    "up_axis": "z",
+    "forward_axis": "x",
+    "handedness": "right"
+  },
+  "objects": [],
+  "assets": [],
+  "provenance": {
+    "input_digest": "sha256:input",
+    "result_digest": "sha256:result"
+  }
+}

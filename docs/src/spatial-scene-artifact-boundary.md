@@ -155,6 +155,37 @@ Validators and issue-bundle exporters should reject or redact:
 Redaction must preserve enough context to triage the artifact: provider name, object IDs, asset
 roles, safe URI path, digest, size, and failure reason.
 
+## Validation Helper
+
+WorldForge exposes a checkout-safe validator for fixture and adapter tests:
+
+```python
+from worldforge import validate_scene_artifact
+
+artifact = validate_scene_artifact(payload)
+```
+
+The validator returns a JSON-native copy and raises `WorldForgeError` before a scene artifact can
+enter docs, run manifests, or issue bundles. It rejects non-finite numbers, tuple-shaped values,
+object instances, malformed transforms, invalid units, duplicate identifiers, secret-like metadata
+keys, oversized metadata, path traversal, signed URLs, public `http` URLs, and host-local paths
+unless the asset or media descriptor is explicitly marked `local_only: true`.
+
+## Safe Issue Attachments
+
+An issue-ready scene artifact should include the JSON descriptor and any tiny retained fixture
+assets referenced by relative paths. It should not include:
+
+- raw provider outputs that have not passed `validate_scene_artifact`;
+- host-local absolute paths unless the issue is explicitly documenting a local-only run manifest;
+- signed URLs, query strings, API keys, tokens, or private network URLs;
+- generated meshes, textures, point clouds, splats, or previews when the license or retention
+  policy is unclear;
+- claims that the scene is physically valid, simulator-ready, collision-free, or robot-executable.
+
+When large or local-only assets are needed for triage, attach the sanitized descriptor first and
+summarize the retained asset digest, role, size, and host-side storage location separately.
+
 ## Host-Owned Responsibilities
 
 Hosts own:

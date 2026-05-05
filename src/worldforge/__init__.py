@@ -95,6 +95,9 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "RerunSession": "worldforge.rerun",
     "RetryPolicy": "worldforge.models",
     "Rotation": "worldforge.models",
+    "SCENE_ARTIFACT_KIND": "worldforge.scene_artifacts",
+    "SCENE_ARTIFACT_MAX_METADATA_BYTES": "worldforge.scene_artifacts",
+    "SCENE_ARTIFACT_SCHEMA_VERSION": "worldforge.scene_artifacts",
     "SceneObject": "worldforge.models",
     "SceneObjectPatch": "worldforge.models",
     "StructuredGoal": "worldforge.models",
@@ -102,6 +105,7 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "WorldForgeError": "worldforge.models",
     "WorldStateError": "worldforge.models",
     "create_rerun_event_handler": "worldforge.rerun",
+    "validate_scene_artifact": "worldforge.scene_artifacts",
 }
 
 __all__ = sorted((*_EXPORTS, "__version__"))
