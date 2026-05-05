@@ -755,6 +755,7 @@ def request_bytes_with_policy(
                             )
                         )
                     if delay > 0.0:
+                        response.close()
                         sleep(delay)
                     continue
 

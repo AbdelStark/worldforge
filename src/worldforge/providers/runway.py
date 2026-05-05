@@ -436,7 +436,7 @@ class RunwayProvider(RemoteProvider):
             provider_name=self.name,
             url_name="artifact URL",
             allow_local_network=self._allow_local_artifact_urls,
-            resolve_dns=self._transport is None,
+            resolve_dns=not isinstance(self._transport, httpx.MockTransport),
         )
         with httpx.Client(transport=self._transport) as client:
             try:
