@@ -30,6 +30,7 @@ controllers, and deployment host-owned.
 [**Capability Model**](#capability-model) ·
 [**Architecture**](#architecture) ·
 [**Quality**](https://abdelstark.github.io/worldforge/quality/) ·
+[**Evidence**](https://abdelstark.github.io/worldforge/claim-evidence-map/) ·
 [**Docs**](https://abdelstark.github.io/worldforge/) ·
 [**Playbooks**](https://abdelstark.github.io/worldforge/playbooks/) ·
 [**Support**](./SUPPORT.md) ·
@@ -176,6 +177,8 @@ Planning, evaluation, benchmarks, diagnostics, and persistence are built on top 
 not on any specific runtime.
 Benchmark budget files can turn success rate, error count, retry count, latency, and throughput
 thresholds into non-zero CLI gates for release checks or preserved benchmark claims.
+The [claim-to-evidence map](https://abdelstark.github.io/worldforge/claim-evidence-map/) links
+public capability and runtime claims to concrete tests, commands, artifacts, and non-claims.
 
 WorldForge is not a hosted service, a model API abstraction, or a training framework. Optional
 runtimes, robot stacks, credentials, checkpoints, and durable storage remain the host

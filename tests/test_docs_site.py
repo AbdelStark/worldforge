@@ -455,6 +455,59 @@ def test_live_smoke_evidence_registry_docs_cover_issue_144_contract() -> None:
     assert "Live Smoke Evidence Registry: live-smoke-evidence.md" in mkdocs
 
 
+def test_claim_to_evidence_map_covers_issue_140_contract() -> None:
+    claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+
+    assert "Issue: [#140]" in claim_map
+    for evidence_class in (
+        "`checkout-tested`",
+        "`fixture-tested`",
+        "`prepared-host smoke-tested`",
+        "`release-gated`",
+        "`deferred`",
+        "`unsupported`",
+    ):
+        assert evidence_class in claim_map
+
+    for capability in (
+        "`predict`",
+        "`score`",
+        "`policy`",
+        "`generate`",
+        "`transfer`",
+        "`reason`",
+        "`embed`",
+        "`plan`",
+    ):
+        assert capability in claim_map
+
+    for non_claim in (
+        "Physical fidelity",
+        "robot safety certification",
+        "Upstream provider SLA",
+        "Training LeWorldModel",
+        "Service-grade persistence",
+    ):
+        assert non_claim in claim_map
+
+    for route in (
+        "uv run worldforge benchmark --preset mock-smoke",
+        "scripts/robotics-showcase --json-only --no-tui --no-rerun",
+        "uv run python scripts/generate_release_evidence.py",
+        "docs/src/live-smoke-evidence.json",
+    ):
+        assert route in claim_map
+
+    assert "claim-to-evidence map" in readme
+    assert "[Claim-To-Evidence Map](./claim-evidence-map.md)" in summary
+    assert "Claim-To-Evidence Map: claim-evidence-map.md" in mkdocs
+    assert "- [x] Every README-level capability claim" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

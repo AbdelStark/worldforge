@@ -27,6 +27,7 @@
 - [Provider Cohort Selection Record](./provider-cohort-selection.md)
 - [Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md)
 - [Live Smoke Evidence Registry](./live-smoke-evidence.md)
+- [Claim-To-Evidence Map](./claim-evidence-map.md)
 - [Python API](./api/python.md)
 - [Evaluation](./evaluation.md)
 - [Benchmarking](./benchmarking.md)

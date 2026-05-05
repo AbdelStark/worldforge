@@ -9,6 +9,8 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a claim-to-evidence map for public README-level claims, capability surfaces, runtime
+  boundaries, preserved artifacts, and explicit non-claims.
 - Added five named benchmark presets — `mock-smoke`, `parser-overhead`, `remote-media-dryrun`,
   `prepared-host`, and `release-evidence` — exposed through new `worldforge benchmark
   --list-presets`, `--show-preset`, and `--preset` flags. Presets bundle a deterministic input
