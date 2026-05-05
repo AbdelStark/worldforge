@@ -36,6 +36,11 @@ For the next implementation batch, use the
 provider evidence and runtime cohorts, evaluation evidence and claim integrity, and operator
 workflow plus adapter authoring.
 
+For the active provider evidence cohort, use the
+[Provider Cohort Selection Record](./provider-cohort-selection.md). It selects the next provider
+work items, records explicit deferrals, and keeps public provider capability claims unchanged until
+implementation evidence exists.
+
 ## Non-Goals
 
 - WorldForge will not bundle LeWorldModel, LeRobot, GR00T, torch, CUDA, checkpoints, datasets, or

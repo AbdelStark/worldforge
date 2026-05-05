@@ -368,6 +368,44 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
     assert "host must provide" in showcase
 
 
+def test_provider_cohort_selection_record_covers_issue_130_contract() -> None:
+    record = (ROOT / "docs/src/provider-cohort-selection.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
+
+    assert "Issue: [#130]" in record
+    assert "provider-platform-roadmap.md#provider-prioritization-rubric" in record
+    assert "provider-authoring-guide.md#step-3-apply-the-promotion-gate" in record
+    assert "## Candidate Scorecard" in record
+
+    for candidate in (
+        "JEPA-WMS and public `jepa` score path",
+        "Cosmos and Runway remote media retention",
+        "Nano World Model score candidate",
+        "Spatial/3D scene provider family",
+        "Genie interactive-world generation",
+        "Additional remote video APIs",
+        "Simulator bridges",
+        "New embodied policy stacks beyond LeRobot and GR00T",
+    ):
+        assert candidate in record
+
+    for selected in ("#133", "#134", "#158"):
+        assert selected in record
+
+    assert "The selected cohort contains three active work items" in record
+    assert "Deferred Candidates" in record
+    assert "generated provider catalog remains unchanged" in record
+    assert "Provider Cohort Selection Record" in roadmap
+    assert "Provider Cohort Selection Record" in continuation
+    assert "[Provider Cohort Selection Record](./provider-cohort-selection.md)" in summary
+    assert "Provider Cohort Selection Record: provider-cohort-selection.md" in mkdocs
+    assert "nanowm" not in provider_index
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

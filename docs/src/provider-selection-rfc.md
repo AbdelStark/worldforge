@@ -6,6 +6,10 @@ or public capability claims.
 
 Decision date: 2026-04-30.
 
+Current cohort note: this RFC records the previous expansion batch. The active issue #130 cohort
+decision is recorded in the
+[Provider Cohort Selection Record](./provider-cohort-selection.md).
+
 ## Selection Rules
 
 Use the [provider prioritization rubric](./provider-platform-roadmap.md#provider-prioritization-rubric)

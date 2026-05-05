@@ -64,6 +64,8 @@ Exit signal:
 
 ### WF-A1: Establish The Provider Cohort Selection Record
 
+Selection record: [Provider Cohort Selection Record](./provider-cohort-selection.md).
+
 Problem: provider growth can become catalog noise if new work starts from name recognition instead
 of callable capability, maintenance cost, fixture strategy, and smoke feasibility.
 
