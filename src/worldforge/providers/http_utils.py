@@ -175,13 +175,17 @@ def _getaddrinfo_with_timeout(
                 f"DNS resolver process exited with code {resolver.exitcode}",
             )
         elapsed_seconds = perf_counter() - started
-        result_timeout_seconds = min(
-            timeout_seconds,
-            max(_DNS_RESULT_QUEUE_TIMEOUT_SECONDS, timeout_seconds - elapsed_seconds),
-        )
+        remaining_seconds = timeout_seconds - elapsed_seconds
         try:
-            status, value = result_queue.get(timeout=result_timeout_seconds)
+            if remaining_seconds <= 0:
+                status, value = result_queue.get_nowait()
+            else:
+                status, value = result_queue.get(
+                    timeout=min(_DNS_RESULT_QUEUE_TIMEOUT_SECONDS, remaining_seconds)
+                )
         except queue.Empty as exc:
+            if perf_counter() - started >= timeout_seconds:
+                raise TimeoutError(f"DNS resolution exceeded {timeout_seconds:.1f}s.") from exc
             raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned no result") from exc
         if status == "gaierror":
             error_number, error_text = value

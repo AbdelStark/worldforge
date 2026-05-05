@@ -973,7 +973,7 @@ def test_validate_remote_url_wraps_dns_worker_failures(monkeypatch) -> None:
         )
 
 
-def test_getaddrinfo_uses_bounded_result_queue_timeout(monkeypatch) -> None:
+def test_getaddrinfo_caps_result_queue_timeout_to_remaining_budget(monkeypatch) -> None:
     class CompletedProcess:
         exitcode = 0
 
@@ -995,6 +995,9 @@ def test_getaddrinfo_uses_bounded_result_queue_timeout(monkeypatch) -> None:
         def get(self, *, timeout: float) -> tuple[str, list[str]]:
             self.timeout_seen = timeout
             return ("ok", ["93.184.216.34"])
+
+        def get_nowait(self) -> tuple[str, list[str]]:
+            raise AssertionError("remaining budget should allow a bounded blocking read")
 
         def close(self) -> None:
             pass
@@ -1020,14 +1023,19 @@ def test_getaddrinfo_uses_bounded_result_queue_timeout(monkeypatch) -> None:
         return context
 
     monkeypatch.setattr(http_utils_module.multiprocessing, "get_context", fake_get_context)
+    perf_counter_values = iter([100.0, 101.75])
+    monkeypatch.setattr(
+        http_utils_module,
+        "perf_counter",
+        lambda: next(perf_counter_values),
+    )
 
     assert http_utils_module._getaddrinfo_with_timeout(
         "downloads.example.com",
         443,
         timeout_seconds=2.0,
     ) == ["93.184.216.34"]
-    assert context.queue.timeout_seen is not None
-    assert context.queue.timeout_seen >= 1.0
+    assert context.queue.timeout_seen == pytest.approx(0.25)
 
 
 def test_runway_provider_rejects_provider_specific_limits(monkeypatch) -> None:
