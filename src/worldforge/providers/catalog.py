@@ -124,7 +124,11 @@ PROVIDER_CATALOG: tuple[ProviderCatalogEntry, ...] = (
         "cosmos-policy",
         _cosmos_policy,
         docs_page="cosmos-policy.md",
-        runtime_ownership=("host runs or reaches a NVIDIA Cosmos-Policy ALOHA `/act` server"),
+        runtime_ownership=(
+            "WorldForge validates `/act` request/response and planning composition; host owns "
+            "Cosmos-Policy reachability/CUDA/runtime, ALOHA observation construction, and "
+            "translation of raw 14D rows into executable `Action` objects"
+        ),
     ),
     ProviderCatalogEntry(
         "runway",

@@ -8,7 +8,13 @@ import httpx
 import pytest
 
 from worldforge import Action, ActionPolicyResult, ActionScoreResult, WorldForge
-from worldforge.models import JSONDict, ProviderCapabilities, ProviderEvent, ProviderHealth
+from worldforge.models import (
+    JSONDict,
+    ProviderCapabilities,
+    ProviderEvent,
+    ProviderHealth,
+    WorldForgeError,
+)
 from worldforge.providers import (
     BaseProvider,
     CosmosPolicyProvider,
@@ -220,6 +226,28 @@ def test_cosmos_policy_select_actions_preserves_values_candidates_and_events() -
     assert events[-1].target == "/act"
 
 
+def test_cosmos_policy_rejects_value_prediction_candidate_mismatch() -> None:
+    candidate_a = _actions(0.1)
+    candidate_b = _actions(2.0)
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(
+                200,
+                json={
+                    "actions": candidate_a,
+                    "all_actions": [candidate_a, candidate_b],
+                    "all_value_predictions": [0.1],
+                },
+            )
+        ),
+        action_translator=_candidate_translator,
+    )
+
+    with pytest.raises(ProviderError, match="all_value_predictions"):
+        provider.select_actions(info=_policy_info())
+
+
 def test_cosmos_policy_accepts_live_json_numpy_action_rows() -> None:
     actions = [_json_numpy_row(0.1), _json_numpy_row(1.1)]
 
@@ -246,6 +274,33 @@ def test_cosmos_policy_accepts_live_json_numpy_action_rows() -> None:
     assert result.metadata["provider_info"]["future_prediction_summary"][
         "future_image_predictions"
     ]["future_image"] == {"shape": [1, 2, 3]}
+
+
+def test_cosmos_policy_matches_selected_candidate_with_float_tolerance() -> None:
+    candidate_b = _actions(2.0)
+    all_actions = [
+        [_json_numpy_row(0.1, dtype="<f4"), _json_numpy_row(1.1, dtype="<f4")],
+        [_json_numpy_row(2.0, dtype="<f4"), _json_numpy_row(3.0, dtype="<f4")],
+    ]
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(
+                200,
+                json={
+                    "actions": candidate_b,
+                    "all_actions": all_actions,
+                },
+            )
+        ),
+        action_translator=_candidate_translator,
+    )
+
+    result = provider.select_actions(info=_policy_info())
+
+    assert result.metadata["selected_candidate_index"] == 1
+    assert result.raw_actions["actions"] == candidate_b
+    assert result.metadata["raw_action_summary"]["all_actions_shape"] == [2, 2, 14]
 
 
 def test_cosmos_policy_action_horizon_uses_translated_selected_actions() -> None:
@@ -548,7 +603,28 @@ def test_cosmos_policy_validates_observation_before_request() -> None:
     info = _policy_info()
     del info["observation"]["primary_image"]
 
-    with pytest.raises(ProviderError, match="primary_image"):
+    with pytest.raises(WorldForgeError, match="primary_image"):
+        provider.select_actions(info=info)
+    assert called is False
+
+
+def test_cosmos_policy_rejects_malformed_embodiment_tag_before_request() -> None:
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+    info = _policy_info()
+    info["embodiment_tag"] = 3
+
+    with pytest.raises(WorldForgeError, match="embodiment_tag"):
         provider.select_actions(info=info)
     assert called is False
 

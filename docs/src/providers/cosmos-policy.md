@@ -199,6 +199,17 @@ a policy request. Cosmos-Policy does not expose a non-mutating health endpoint i
 this adapter targets, so health checks confirm configuration only; live inference evidence comes
 from `select_actions(...)` or the smoke command above.
 
+Expected success signal:
+
+- `--health-only`: run manifest records `capability=policy` with `status=skipped`.
+- Full smoke (`--policy-info-json` + `--translator`): run manifest records `capability=policy`
+  with `status=passed`.
+
+First triage step:
+
+- Run `uv run worldforge provider health cosmos-policy` to verify configuration, then run the
+  full smoke command to confirm `/act` reachability.
+
 The smoke can write a sanitized `run_manifest.json` with value-free environment presence, runtime
 manifest id, input fixture digest, event count, and result digest. The manifest does not store
 tokens, raw image tensors, checkpoint bytes, or robot controller state.

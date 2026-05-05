@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import math
 import struct
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -99,6 +100,12 @@ class CosmosPolicyResponse:
             payload.get("all_value_predictions"),
             name=f"Provider '{provider_name}' policy response field 'all_value_predictions'",
         )
+        if all_actions and all_value_predictions and len(all_value_predictions) != len(all_actions):
+            raise ProviderError(
+                f"Provider '{provider_name}' policy response field 'all_value_predictions' "
+                f"must contain {len(all_actions)} value(s) to match 'all_actions'; "
+                f"got {len(all_value_predictions)}."
+            )
         future_prediction_summary = _future_prediction_summary(payload)
         provider_info = {
             "value_prediction": value_prediction,
@@ -405,35 +412,44 @@ class CosmosPolicyProvider(RemoteProvider):
         normalized_info = json_object(info, name="Cosmos-Policy policy info")
         observation = normalized_info.get("observation")
         if not isinstance(observation, dict) or not observation:
-            raise ProviderError(
+            raise WorldForgeError(
                 "Cosmos-Policy policy info.observation must be a non-empty JSON object."
             )
         for field_name in _OBSERVATION_FIELDS:
             if field_name not in observation:
-                raise ProviderError(f"Cosmos-Policy ALOHA observation must include '{field_name}'.")
+                raise WorldForgeError(
+                    f"Cosmos-Policy ALOHA observation must include '{field_name}'."
+                )
         task_description = normalized_info.get("task_description") or observation.get(
             "task_description"
         )
         if not isinstance(task_description, str) or not task_description.strip():
-            raise ProviderError(
+            raise WorldForgeError(
                 "Cosmos-Policy policy info must include a non-empty task_description."
+            )
+        embodiment_tag_value = normalized_info.get("embodiment_tag")
+        if embodiment_tag_value is not None and (
+            not isinstance(embodiment_tag_value, str) or not embodiment_tag_value.strip()
+        ):
+            raise WorldForgeError(
+                "Cosmos-Policy policy info.embodiment_tag must be a non-empty string."
             )
         options = normalized_info.get("options")
         if options is not None and not isinstance(options, dict):
-            raise ProviderError("Cosmos-Policy policy info.options must be a JSON object.")
+            raise WorldForgeError("Cosmos-Policy policy info.options must be a JSON object.")
         payload: JSONDict = dict(observation)
         payload["task_description"] = task_description.strip()
         if options:
             for key, value in options.items():
                 if key in payload and payload[key] != value:
-                    raise ProviderError(
+                    raise WorldForgeError(
                         f"Cosmos-Policy option '{key}' conflicts with the observation payload."
                     )
                 payload[key] = value
         if "return_all_query_results" in normalized_info:
             return_all = normalized_info["return_all_query_results"]
             if not isinstance(return_all, bool):
-                raise ProviderError("Cosmos-Policy return_all_query_results must be a boolean.")
+                raise WorldForgeError("Cosmos-Policy return_all_query_results must be a boolean.")
             payload["return_all_query_results"] = return_all
         elif self.return_all_query_results is not None:
             payload["return_all_query_results"] = self.return_all_query_results
@@ -442,7 +458,7 @@ class CosmosPolicyProvider(RemoteProvider):
         if action_horizon_value is None:
             action_horizon = None
         elif isinstance(action_horizon_value, bool) or not isinstance(action_horizon_value, int):
-            raise ProviderError(
+            raise WorldForgeError(
                 "Cosmos-Policy info.action_horizon must be an integer greater than 0."
             )
         else:
@@ -475,8 +491,8 @@ class CosmosPolicyProvider(RemoteProvider):
 
     def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
         started = perf_counter()
+        payload, task_description, action_horizon_override = self._validate_info(info)
         try:
-            payload, task_description, action_horizon_override = self._validate_info(info)
             request_policy = self._require_request_policy()
             with self._client() as client:
                 response_payload = request_json_with_policy(
@@ -516,7 +532,15 @@ class CosmosPolicyProvider(RemoteProvider):
                     f"{len(candidate_plans)}."
                 )
             selected_actions = candidate_plans[selected_index]
-            embodiment_tag = str(info.get("embodiment_tag") or self.embodiment_tag or "").strip()
+            embodiment_tag_value = info.get("embodiment_tag")
+            if embodiment_tag_value is not None:
+                if not isinstance(embodiment_tag_value, str) or not embodiment_tag_value.strip():
+                    raise WorldForgeError(
+                        "Cosmos-Policy policy info.embodiment_tag must be a non-empty string."
+                    )
+                embodiment_tag = embodiment_tag_value.strip()
+            else:
+                embodiment_tag = self.embodiment_tag or ""
             action_horizon = action_horizon_override or len(selected_actions)
             return ActionPolicyResult(
                 provider=self.name,
@@ -761,11 +785,29 @@ def _selected_action_index(
     if not all_actions:
         return 0
     for index, candidate in enumerate(all_actions):
-        if candidate == actions:
+        if _action_matrices_close(candidate, actions):
             return index
     raise ProviderError(
         "Cosmos-Policy response field 'actions' must match one entry in 'all_actions'."
     )
+
+
+def _action_matrices_close(
+    left: list[list[float]],
+    right: list[list[float]],
+    *,
+    rel_tol: float = 1e-6,
+    abs_tol: float = 1e-6,
+) -> bool:
+    if len(left) != len(right):
+        return False
+    for left_row, right_row in zip(left, right, strict=True):
+        if len(left_row) != len(right_row):
+            return False
+        for left_value, right_value in zip(left_row, right_row, strict=True):
+            if not math.isclose(left_value, right_value, rel_tol=rel_tol, abs_tol=abs_tol):
+                return False
+    return True
 
 
 def _bounded_shape(value: object, *, depth: int = 0, max_depth: int = 8) -> list[int] | None:
