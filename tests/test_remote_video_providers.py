@@ -9,6 +9,7 @@ import pytest
 from worldforge import GenerationOptions, ProviderEvent, ProviderRequestPolicy, VideoClip
 from worldforge.models import WorldForgeError
 from worldforge.providers import CosmosProvider, ProviderError, RunwayProvider
+from worldforge.providers.http_utils import request_bytes_with_policy, validate_remote_url
 from worldforge.testing import assert_provider_contract
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "providers"
@@ -682,6 +683,143 @@ def test_runway_provider_rejects_expired_artifacts_and_bad_content_types(monkeyp
     )
     with pytest.raises(ProviderError, match="unsupported content type"):
         provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+
+@pytest.mark.parametrize(
+    "artifact_url",
+    [
+        "http://127.0.0.1:8777/generated.mp4",
+        "http://localhost:8777/generated.mp4",
+        "http://169.254.169.254/latest/meta-data",
+        "ftp://downloads.example.com/generated.mp4",
+        "https://user:pass@downloads.example.com/generated.mp4",
+    ],
+)
+def test_runway_provider_rejects_unsafe_artifact_urls(monkeypatch, artifact_url: str) -> None:
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json=_fixture("runway_create_success.json"))
+        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "task_generate",
+                    "status": "SUCCEEDED",
+                    "output": [artifact_url],
+                },
+            )
+        raise AssertionError(f"Unexpected request after artifact validation: {request.url}")
+
+    provider = RunwayProvider(
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+    )
+
+    with pytest.raises(ProviderError, match="artifact URL"):
+        provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+
+def test_runway_provider_allows_local_artifact_urls_only_when_explicit(monkeypatch) -> None:
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+    artifact_url = "http://127.0.0.1:8777/generated.mp4"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json=_fixture("runway_create_success.json"))
+        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "task_generate",
+                    "status": "SUCCEEDED",
+                    "output": [artifact_url],
+                },
+            )
+        if request.method == "GET" and request.url.host == "127.0.0.1":
+            return httpx.Response(200, content=b"local-artifact")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = RunwayProvider(
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+        allow_local_artifact_urls=True,
+    )
+
+    generated = provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+    assert generated.blob() == b"local-artifact"
+
+
+def test_runway_provider_rejects_artifacts_over_size_limit(monkeypatch) -> None:
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json=_fixture("runway_create_success.json"))
+        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "task_generate",
+                    "status": "SUCCEEDED",
+                    "output": ["https://downloads.example.com/generated.mp4"],
+                },
+            )
+        if request.method == "GET" and request.url.host == "downloads.example.com":
+            return httpx.Response(
+                200,
+                content=b"too-large",
+                headers={"content-length": "9", "content-type": "video/mp4"},
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = RunwayProvider(
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+        max_artifact_bytes=8,
+    )
+
+    with pytest.raises(ProviderError, match="download size limit"):
+        provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+
+def test_request_bytes_with_policy_caps_streamed_body_without_content_length() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=httpx.ByteStream(b"abcdef"))
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(ProviderError, match="download size limit"),
+    ):
+        request_bytes_with_policy(
+            client,
+            method="GET",
+            url="https://downloads.example.com/generated.mp4",
+            provider_name="runway",
+            operation_name="artifact download",
+            policy=ProviderRequestPolicy.remote_defaults(
+                request_timeout_seconds=30.0,
+                read_retry_attempts=1,
+            ).download,
+            max_bytes=5,
+        )
+
+
+def test_validate_remote_url_allows_public_https_without_dns_resolution() -> None:
+    assert (
+        validate_remote_url(
+            "https://downloads.example.com/generated.mp4?signature=temporary",
+            provider_name="runway",
+            url_name="artifact URL",
+            resolve_dns=False,
+        )
+        == "https://downloads.example.com/generated.mp4?signature=temporary"
+    )
 
 
 def test_runway_provider_rejects_provider_specific_limits(monkeypatch) -> None:

@@ -154,6 +154,9 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Fixed
 
+- Runway artifact downloads now validate provider-returned URLs before fetching, block local,
+  private, and link-local destinations unless explicitly opted in, and stream downloaded bytes with
+  a hard size cap instead of buffering unbounded response bodies.
 - Preserved LeRobot loader provenance after lazy policy loading so real `from_pretrained` runs no
   longer report as `injected_policy` in policy result metadata or provider events.
 - Documented first triage commands for Cosmos and Runway media artifacts and added focused

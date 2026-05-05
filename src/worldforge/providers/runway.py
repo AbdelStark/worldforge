@@ -20,7 +20,13 @@ from worldforge.models import (
     require_positive_int,
 )
 
-from ._config import ProviderConfigSummary, config_source, env_value, first_env_value
+from ._config import (
+    ProviderConfigSummary,
+    config_source,
+    env_value,
+    first_env_value,
+    optional_bool,
+)
 from .base import (
     ProviderError,
     ProviderProfileSpec,
@@ -34,11 +40,14 @@ from .http_utils import (
     clip_to_data_uri,
     request_bytes_with_policy,
     request_json_with_policy,
+    validate_remote_url,
 )
 
 _RUNWAY_API_VERSION = "2024-11-06"
 _RUNWAY_DEFAULT_RATIO = "1280:720"
 _RUNWAY_DEFAULT_DURATION = 5
+_RUNWAY_MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
+_RUNWAY_ALLOW_LOCAL_ARTIFACT_URLS_ENV_VAR = "RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS"
 
 
 def _parse_ratio(ratio: str) -> tuple[int, int]:
@@ -227,6 +236,8 @@ class RunwayProvider(RemoteProvider):
         request_policy: ProviderRequestPolicy | None = None,
         event_handler: Callable[[ProviderEvent], None] | None = None,
         transport: httpx.BaseTransport | None = None,
+        allow_local_artifact_urls: bool | str | None = None,
+        max_artifact_bytes: int = _RUNWAY_MAX_ARTIFACT_BYTES,
     ) -> None:
         resolved_request_policy = request_policy or ProviderRequestPolicy.remote_defaults(
             request_timeout_seconds=timeout_seconds
@@ -273,6 +284,18 @@ class RunwayProvider(RemoteProvider):
             raise ProviderError("Runway poll_interval_seconds must be non-negative.")
         self._max_polls = require_positive_int(max_polls, name="Runway max_polls")
         self._transport = transport
+        self._allow_local_artifact_urls_direct = allow_local_artifact_urls is not None
+        parsed_allow_local_artifacts = optional_bool(
+            allow_local_artifact_urls
+            if allow_local_artifact_urls is not None
+            else env_value(_RUNWAY_ALLOW_LOCAL_ARTIFACT_URLS_ENV_VAR),
+            name="Runway allow_local_artifact_urls",
+        )
+        self._allow_local_artifact_urls = bool(parsed_allow_local_artifacts)
+        self._max_artifact_bytes = require_positive_int(
+            max_artifact_bytes,
+            name="Runway max_artifact_bytes",
+        )
 
     def configured(self) -> bool:
         return bool(self._api_key())
@@ -304,6 +327,16 @@ class RunwayProvider(RemoteProvider):
                     required=False,
                     source=config_source("RUNWAYML_BASE_URL", default=True),
                     present=base_url_from_env,
+                ),
+                _field_summary(
+                    _RUNWAY_ALLOW_LOCAL_ARTIFACT_URLS_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        _RUNWAY_ALLOW_LOCAL_ARTIFACT_URLS_ENV_VAR,
+                        direct=self._allow_local_artifact_urls_direct,
+                    ),
+                    present=self._allow_local_artifact_urls_direct
+                    or env_value(_RUNWAY_ALLOW_LOCAL_ARTIFACT_URLS_ENV_VAR) is not None,
                 ),
             ),
         )
@@ -398,17 +431,25 @@ class RunwayProvider(RemoteProvider):
 
     def _download_output(self, output_url: str) -> bytes:
         request_policy = self._require_request_policy()
+        validated_output_url = validate_remote_url(
+            output_url,
+            provider_name=self.name,
+            url_name="artifact URL",
+            allow_local_network=self._allow_local_artifact_urls,
+            resolve_dns=self._transport is None,
+        )
         with httpx.Client(transport=self._transport) as client:
             try:
                 data = request_bytes_with_policy(
                     client,
                     method="GET",
-                    url=output_url,
+                    url=validated_output_url,
                     provider_name=self.name,
                     operation_name="artifact download",
                     policy=request_policy.download,
                     emit_event=self._emit_event,
                     accepted_content_types=("video/", "application/octet-stream"),
+                    max_bytes=self._max_artifact_bytes,
                 )
             except ProviderError as exc:
                 message = str(exc)
