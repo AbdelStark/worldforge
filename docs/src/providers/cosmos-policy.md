@@ -55,9 +55,10 @@ WorldForge never starts Cosmos-Policy, installs CUDA dependencies, or drives har
   restrict the configured policy endpoint. Shell-style wildcards such as `*.example.com` are
   supported.
 
-URL validation blocks obvious localhost/private/link-local destinations by default. DNS checks are
-best-effort preflight checks before `httpx` connects; they do not pin the TCP connection to a
-resolved address. Use host allowlists plus network egress controls when that distinction matters.
+URL validation rejects obvious localhost/private/link-local destinations during preflight by
+default. DNS checks are best-effort checks before `httpx` connects; they do not pin the TCP
+connection to a resolved address. Use host allowlists plus network egress controls when that
+distinction matters.
 
 `COSMOS_POLICY_BASE_URL` is enough for endpoint readiness checks. It is not enough for policy
 routing: a provider instance without `action_translator` advertises no executable `policy`

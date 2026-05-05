@@ -264,7 +264,8 @@ class CosmosPolicyProvider(RemoteProvider):
                     "dependencies.",
                     "Requires a host-supplied action_translator to map raw 14D bimanual "
                     "actions to WorldForge Action objects.",
-                    "Blocks localhost, private, and link-local base URLs unless "
+                    "Rejects localhost, private, and link-local base URLs during URL preflight "
+                    "unless "
                     f"{COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR}=1 is explicitly set.",
                     f"Supports {COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR} for deployments that require "
                     "an explicit host allowlist.",
