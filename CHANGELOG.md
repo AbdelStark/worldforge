@@ -48,6 +48,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a roadmap continuation document that defines the next three GitHub issue streams:
   provider evidence and runtime cohorts, evaluation evidence and claim integrity, and operator
   workflow plus adapter authoring.
+- Added a provider cohort selection record that scores active and deferred provider candidates,
+  selects the next evidence cohort, and keeps provider catalog claims unchanged until runtime
+  evidence exists.
 - Added an optional live robotics showcase workflow for pull request and main-branch push
   validation.
   It runs real LeRobot policy inference plus real LeWorldModel checkpoint scoring in
