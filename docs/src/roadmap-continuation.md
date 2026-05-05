@@ -727,10 +727,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Scaffold output includes tests for unsupported capability calls and provider profile metadata.
-- [ ] Generated manifest stubs are clearly marked incomplete and not used as real evidence.
-- [ ] Generated docs warn that the provider is not executable until promotion criteria pass.
-- [ ] Running the scaffold command does not overwrite existing files unless explicitly requested.
+- [x] Scaffold output includes tests for unsupported capability calls and provider profile metadata.
+- [x] Generated manifest stubs are clearly marked incomplete and not used as real evidence.
+- [x] Generated docs warn that the provider is not executable until promotion criteria pass.
+- [x] Running the scaffold command does not overwrite existing files unless explicitly requested.
 
 Validation:
 

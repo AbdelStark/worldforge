@@ -9,6 +9,11 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Provider scaffolding now generates a fuller fail-closed contract pack: an explicit
+  `--implementation-status scaffold` maturity claim, provider/profile tests for disabled
+  capability calls, placeholder fixtures marked as non-evidence, an incomplete `.json.stub`
+  runtime manifest, a workbench checklist, and printed validation commands. Existing scaffold
+  files still require `--force` before overwrite.
 - Added an adapter author workbench flow for provider promotion evidence. The non-Textual
   workbench now handles catalog providers, scaffold providers, and the direct-construction
   `jepa-wms` candidate; reports include runtime manifest status, fixture coverage, docs/catalog

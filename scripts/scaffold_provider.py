@@ -14,6 +14,7 @@ from textwrap import dedent
 
 CAPABILITIES = ("predict", "generate", "transfer", "reason", "embed", "score", "policy")
 DEFAULT_TAXONOMY = "unclassified provider scaffold"
+IMPLEMENTATION_STATUSES = ("scaffold",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,7 @@ class ScaffoldOptions:
     names: ProviderNames
     taxonomy: str
     planned_capabilities: tuple[str, ...]
+    implementation_status: str
     is_local: bool
     env_var: str | None
     force: bool
@@ -164,7 +166,7 @@ def _capability_stubs(names: ProviderNames, planned_capabilities: tuple[str, ...
 def _provider_source(options: ScaffoldOptions) -> str:
     names = options.names
     env_constant = f"{names.snake.upper()}_ENV_VAR"
-    required_env_vars = f"[{env_constant}]" if options.env_var else "[]"
+    required_env_vars = f"({env_constant},)" if options.env_var else "()"
     planned = ", ".join(options.planned_capabilities)
     stubs = _capability_stubs(names, options.planned_capabilities)
     model_imports = ["ProviderCapabilities", "ProviderEvent", "ProviderHealth"]
@@ -182,7 +184,7 @@ def _provider_source(options: ScaffoldOptions) -> str:
         model_imports.extend(["ActionPolicyResult", "JSONDict"])
 
     deduped_model_imports = sorted(dict.fromkeys(model_imports))
-    base_imports = ["BaseProvider", "ProviderError"]
+    base_imports = ["BaseProvider", "ProviderError", "ProviderProfileSpec"]
     if "predict" in options.planned_capabilities:
         base_imports.insert(1, "PredictionPayload")
 
@@ -230,6 +232,7 @@ def _provider_source(options: ScaffoldOptions) -> str:
             "",
             f"    planned_capabilities = {options.planned_capabilities!r}",
             f"    taxonomy_category = {options.taxonomy!r}",
+            f"    scaffold_implementation_status = {options.implementation_status!r}",
             "",
             "    def __init__(",
             "        self,",
@@ -240,23 +243,25 @@ def _provider_source(options: ScaffoldOptions) -> str:
             "        super().__init__(",
             "            name=name,",
             "            capabilities=ProviderCapabilities(predict=False),",
-            f"            is_local={options.is_local!r},",
-            f'            description="{names.display} provider scaffold.",',
-            '            package="worldforge",',
-            '            implementation_status="scaffold",',
-            "            deterministic=False,",
-            f"            requires_credentials={not options.is_local!r},",
-            f"            required_env_vars={required_env_vars},",
-            "            supported_modalities=[],",
-            "            artifact_types=[],",
-            "            notes=[",
+            "            profile=ProviderProfileSpec(",
+            f"                is_local={options.is_local!r},",
+            f'                description="{names.display} provider scaffold.",',
+            '                package="worldforge",',
+            f"                implementation_status={options.implementation_status!r},",
+            "                deterministic=False,",
+            f"                requires_credentials={not options.is_local!r},",
+            f"                required_env_vars={required_env_vars},",
+            "                supported_modalities=(),",
+            "                artifact_types=(),",
+            "                notes=(",
             (
-                '                "Generated scaffold; do not register as a real provider until '
+                '                    "Generated scaffold; do not register as a real provider until '
                 'implemented.",'
             ),
-            f'                "Taxonomy category: {options.taxonomy}.",',
-            f'                "Planned capabilities: {planned}.",',
-            "            ],",
+            f'                    "Taxonomy category: {options.taxonomy}.",',
+            f'                    "Planned capabilities: {planned}.",',
+            "                ),",
+            "            ),",
             "            event_handler=event_handler,",
             "        )",
             "",
@@ -304,24 +309,17 @@ def _provider_source(options: ScaffoldOptions) -> str:
 
 def _test_source(options: ScaffoldOptions) -> str:
     names = options.names
-    worldforge_imports: list[str] = []
-    if "predict" in options.planned_capabilities:
-        worldforge_imports.append("Action")
-    if "transfer" in options.planned_capabilities:
-        worldforge_imports.append("VideoClip")
-
     lines = [
         "from __future__ import annotations",
         "",
         "import pytest",
         "",
+        "from worldforge import Action, VideoClip",
     ]
-    if worldforge_imports:
-        lines.append(f"from worldforge import {', '.join(worldforge_imports)}")
     lines.extend(
         [
-            "from worldforge.providers.base import ProviderError",
             f"from worldforge.providers.{names.snake} import {names.class_name}",
+            "from worldforge.providers.base import ProviderError",
             "",
             "",
             f"def test_{names.snake}_profile_starts_as_safe_scaffold() -> None:",
@@ -329,10 +327,55 @@ def _test_source(options: ScaffoldOptions) -> str:
             "    profile = provider.profile()",
             "",
             f'    assert profile.name == "{names.slug}"',
-            '    assert profile.implementation_status == "scaffold"',
+            f"    assert profile.implementation_status == {options.implementation_status!r}",
             "    assert profile.supported_tasks == []",
+            "    assert all(",
+            "        profile.capabilities.supports(capability) is False",
+            "        for capability in (",
+            '            "predict",',
+            '            "generate",',
+            '            "transfer",',
+            '            "reason",',
+            '            "embed",',
+            '            "score",',
+            '            "policy",',
+            "        )",
+            "    )",
             f"    assert provider.planned_capabilities == {options.planned_capabilities!r}",
             f"    assert provider.taxonomy_category == {options.taxonomy!r}",
+            "    assert (",
+            f"        provider.scaffold_implementation_status == {options.implementation_status!r}",
+            "    )",
+            '    assert any("do not register" in note for note in profile.notes)',
+            "",
+            "",
+            f"def test_{names.snake}_capability_calls_fail_closed_until_promoted() -> None:",
+            f"    provider = {names.class_name}()",
+            "    clip = VideoClip(",
+            '        frames=[b"frame"],',
+            "        fps=1.0,",
+            "        resolution=(1, 1),",
+            "        duration_seconds=1.0,",
+            "    )",
+            "    calls = {",
+            '        "predict": lambda: provider.predict({}, Action.noop(), 1),',
+            '        "generate": lambda: provider.generate("prompt", 1.0),',
+            '        "transfer": lambda: provider.transfer(',
+            "            clip,",
+            "            width=1,",
+            "            height=1,",
+            "            fps=1.0,",
+            "        ),",
+            '        "reason": lambda: provider.reason("query"),',
+            '        "embed": lambda: provider.embed(text="query"),',
+            '        "score": lambda: provider.score_actions(info={}, action_candidates=[]),',
+            '        "policy": lambda: provider.select_actions(info={}),',
+            "    }",
+            "",
+            "    for capability, call in calls.items():",
+            "        assert provider.profile().capabilities.supports(capability) is False",
+            '        with pytest.raises(ProviderError, match="not implement"):',
+            "            call()",
         ]
     )
     if options.env_var:
@@ -460,22 +503,44 @@ def _docs_source(options: ScaffoldOptions) -> str:
         f"""\
         # {names.display} Provider
 
-        Status: scaffold
+        Status: {options.implementation_status}
 
         Taxonomy category: {options.taxonomy}
 
         This file was generated by `scripts/scaffold_provider.py`. Treat it as a checklist, not as
         proof that the provider is implemented.
 
+        The generated provider is not executable until the promotion criteria pass: every planned
+        capability must call a real runtime, return validated WorldForge models, have
+        fixture-backed parser and failure tests, and advertise only the capabilities implemented
+        end to end.
+
         ## Planned Capabilities
 
         {capability_rows}
+
+        ## Generated Contract Files
+
+        - Provider scaffold: `src/worldforge/providers/{names.snake}.py`
+        - Contract tests: `tests/test_{names.snake}_provider.py`
+        - Placeholder fixtures: `tests/fixtures/providers/{names.snake}_success.json` and
+          `tests/fixtures/providers/{names.snake}_error.json`
+        - Runtime manifest stub:
+          `src/worldforge/providers/runtime_manifests/{names.slug}.json.stub`
+        - Workbench checklist: `docs/src/providers/{names.slug}-workbench.md`
 
         ## Configuration
 
         {env_section}
         - Optional dependencies: document runtime packages, model checkpoints, and cache paths.
         - Registration rule: document the environment variables required before auto-registration.
+
+        ## Runtime Manifest Stub
+
+        The generated `.json.stub` file is intentionally incomplete and must not be renamed to
+        `{names.slug}.json` or treated as smoke evidence until every TODO is replaced with a real
+        host-owned runtime contract and `uv run pytest tests/test_provider_runtime_manifests.py`
+        passes.
 
         ## Contract To Define
 
@@ -499,6 +564,9 @@ def _docs_source(options: ScaffoldOptions) -> str:
 
         - [ ] Provider capabilities are narrow and truthful.
         - [ ] Provider profile metadata is complete.
+        - [ ] Runtime manifest stub is complete, renamed, and validated or intentionally omitted.
+        - [ ] `uv run worldforge provider workbench {names.slug} --format markdown` has no failed
+              checks after a catalog entry or direct workbench target exists.
         - [ ] Public API docs mention new failure modes.
         - [ ] `docs/src/providers/README.md` links this provider page.
         - [ ] `AGENTS.md` documents any new commands, dependencies, or gotchas.
@@ -510,8 +578,12 @@ def _docs_source(options: ScaffoldOptions) -> str:
 def _fixture_payload(options: ScaffoldOptions, *, success: bool) -> str:
     payload = {
         "provider": options.names.slug,
+        "fixture_status": "placeholder",
+        "implementation_status": options.implementation_status,
         "taxonomy_category": options.taxonomy,
         "planned_capabilities": list(options.planned_capabilities),
+        "replace_before_promotion": True,
+        "usable_as_evidence": False,
     }
     if success:
         payload["status"] = "replace-with-real-success-payload"
@@ -521,6 +593,101 @@ def _fixture_payload(options: ScaffoldOptions, *, success: bool) -> str:
             "message": "Replace this scaffold fixture with a real malformed upstream response.",
         }
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def _runtime_manifest_stub_source(options: ScaffoldOptions) -> str:
+    names = options.names
+    required_env_vars = [options.env_var] if options.env_var is not None else ["TODO_RUNTIME_ENV"]
+    payload = {
+        "_instructions": (
+            f"Incomplete scaffold stub for {names.slug}. Replace every TODO, remove "
+            "stub_status/usable_as_evidence, rename this file to "
+            f"{names.slug}.json, and validate it before using it as runtime evidence."
+        ),
+        "schema_version": 1,
+        "provider": names.slug,
+        "implementation_status": options.implementation_status,
+        "stub_status": "incomplete",
+        "usable_as_evidence": False,
+        "capabilities": list(options.planned_capabilities),
+        "optional_dependencies": ["TODO_RUNTIME_PACKAGE"],
+        "required_env_vars": required_env_vars,
+        "optional_env_vars": [],
+        "default_model": "TODO_MODEL_OR_RUNTIME_ALIAS",
+        "device_support": ["TODO_DEVICE"],
+        "host_owned_artifacts": ["TODO_HOST_OWNED_CHECKPOINT_OR_RUNTIME_ARTIFACT"],
+        "minimum_smoke_command": (
+            "TODO uv run worldforge-smoke-"
+            f"{names.slug} --run-manifest .worldforge/runs/{names.slug}-live/run_manifest.json"
+        ),
+        "expected_success_signal": (
+            "TODO describe the validated provider result and sanitized run_manifest.json signal"
+        ),
+        "setup_hint": "TODO document host-owned install, credentials, cache, and checkpoint setup",
+        "docs_path": f"docs/src/providers/{names.slug}.md",
+    }
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def _workbench_checklist_source(options: ScaffoldOptions) -> str:
+    names = options.names
+    planned = ", ".join(f"`{capability}`" for capability in options.planned_capabilities)
+    return dedent(
+        f"""\
+        # {names.display} Provider Workbench Checklist
+
+        Status: {options.implementation_status}
+
+        This checklist was generated by `scripts/scaffold_provider.py`. It is not evidence by
+        itself; it names the contract work required before `{names.slug}` becomes executable.
+
+        ## Scaffold Surface
+
+        - Planned capabilities: {planned}
+        - Provider source: `src/worldforge/providers/{names.snake}.py`
+        - Provider docs: `docs/src/providers/{names.slug}.md`
+        - Placeholder fixtures: `tests/fixtures/providers/{names.snake}_*.json`
+        - Runtime manifest stub:
+          `src/worldforge/providers/runtime_manifests/{names.slug}.json.stub`
+
+        ## Fail-Closed Checks
+
+        - [ ] Generated provider profile reports
+              `implementation_status="{options.implementation_status}"`.
+        - [ ] Generated provider advertises no public capabilities before promotion.
+        - [ ] Every generated capability call raises `ProviderError` until real runtime behavior
+              is implemented.
+        - [ ] Existing files are not overwritten unless `--force` is explicit.
+
+        ## Promotion Work
+
+        - [ ] Replace placeholder fixtures with real success and malformed upstream payloads.
+        - [ ] Replace generated method stubs with real runtime calls and typed WorldForge models.
+        - [ ] Validate provider events do not expose secrets, signed URLs, raw tensors, or local
+              checkpoint paths.
+        - [ ] Replace every runtime manifest TODO, rename `.json.stub` to `.json`, and run
+              `uv run pytest tests/test_provider_runtime_manifests.py`.
+        - [ ] Add catalog registration only after configuration, docs, fixtures, and runtime
+              evidence are ready.
+
+        ## Workbench Target
+
+        Add a catalog entry or direct workbench target before running this command:
+
+        ```bash
+        uv run worldforge provider workbench {names.slug} --format markdown
+        ```
+
+        ## Validation Commands
+
+        ```bash
+        uv run pytest tests/test_{names.snake}_provider.py
+        uv run python scripts/generate_provider_docs.py --check
+        uv run pytest tests/test_provider_catalog_docs.py
+        uv run mkdocs build --strict
+        ```
+        """
+    )
 
 
 def scaffold_files(options: ScaffoldOptions) -> dict[Path, str]:
@@ -536,7 +703,16 @@ def scaffold_files(options: ScaffoldOptions) -> dict[Path, str]:
         options.root / "tests" / "fixtures" / "providers" / f"{names.snake}_error.json": (
             _fixture_payload(options, success=False)
         ),
+        options.root
+        / "src"
+        / "worldforge"
+        / "providers"
+        / "runtime_manifests"
+        / f"{names.slug}.json.stub": _runtime_manifest_stub_source(options),
         options.root / "docs" / "src" / "providers" / f"{names.slug}.md": _docs_source(options),
+        options.root / "docs" / "src" / "providers" / f"{names.slug}-workbench.md": (
+            _workbench_checklist_source(options)
+        ),
     }
 
 
@@ -579,6 +755,12 @@ def parse_args(argv: list[str]) -> ScaffoldOptions:
         help="Capability stub to generate. Repeat for multiple planned capabilities.",
     )
     parser.add_argument(
+        "--implementation-status",
+        choices=IMPLEMENTATION_STATUSES,
+        required=True,
+        help="Explicit provider maturity claim for the generated scaffold.",
+    )
+    parser.add_argument(
         "--env-var",
         help="Optional environment variable required by the provider.",
     )
@@ -604,6 +786,7 @@ def parse_args(argv: list[str]) -> ScaffoldOptions:
         names=names,
         taxonomy=args.taxonomy.strip() or DEFAULT_TAXONOMY,
         planned_capabilities=planned_capabilities,
+        implementation_status=args.implementation_status,
         is_local=is_local,
         env_var=env_var,
         force=bool(args.force),
@@ -623,9 +806,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"- {path.relative_to(options.root)}")
     print("\nNext steps:")
     print("- implement the TODO methods before advertising capabilities")
+    print("- replace placeholder fixtures and the .json.stub runtime manifest before promotion")
     print("- add the provider to src/worldforge/providers/__init__.py when it is ready")
     print("- register it in src/worldforge/providers/catalog.py only after the adapter is tested")
     print("- link the docs stub from docs/src/providers/README.md")
+    print("\nNext validation commands:")
+    print(f"- uv run pytest tests/test_{options.names.snake}_provider.py")
+    print("- uv run python scripts/generate_provider_docs.py --check")
+    print("- uv run pytest tests/test_provider_catalog_docs.py")
+    print("- uv run mkdocs build --strict")
+    print("\nWorkbench command after adding a catalog or direct target:")
+    print(f"- uv run worldforge provider workbench {options.names.slug} --format markdown")
     return 0
 
 
