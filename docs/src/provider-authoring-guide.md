@@ -16,11 +16,12 @@ Related docs:
 ## Scaffold Generator
 
 Use the scaffold generator to create the first draft of a provider adapter, fixture files, test
-file, and provider docs stub:
+file, runtime manifest stub, provider docs stub, and workbench checklist:
 
 ```bash
 uv run python scripts/scaffold_provider.py "Acme WM" \
   --taxonomy "JEPA latent predictive world model" \
+  --implementation-status scaffold \
   --planned-capability score \
   --remote \
   --env-var ACME_WM_API_KEY
@@ -33,13 +34,21 @@ src/worldforge/providers/acme_wm.py
 tests/test_acme_wm_provider.py
 tests/fixtures/providers/acme_wm_success.json
 tests/fixtures/providers/acme_wm_error.json
+src/worldforge/providers/runtime_manifests/acme-wm.json.stub
 docs/src/providers/acme-wm.md
+docs/src/providers/acme-wm-workbench.md
 ```
 
 The generated provider is safe by default: it starts as `implementation_status="scaffold"`,
 advertises no public capabilities, and raises `ProviderError` from generated method stubs. Enable
 capabilities only after the adapter calls the real upstream runtime, validates inputs and outputs,
 and has fixture-driven tests for every documented failure mode.
+
+The generated runtime manifest is deliberately named `.json.stub`; it is not loadable runtime
+evidence and should not be renamed to `.json` until every TODO is replaced, the host-owned smoke
+path writes a sanitized `run_manifest.json`, and `uv run pytest tests/test_provider_runtime_manifests.py`
+passes. The generated workbench checklist records the fail-closed checks, promotion work, and next
+validation commands for the provider.
 
 ## Workbench Loop
 

@@ -77,7 +77,7 @@ evaluation harnesses, and testable prototypes.
   compatibility wrapper with an injected deterministic policy.
 - `scripts/generate_provider_docs.py`: provider catalog documentation generator and drift check.
 - `scripts/scaffold_provider.py`: safe scaffold generator for new provider adapter files,
-  fixture placeholders, tests, and docs stubs.
+  fixture placeholders, tests, runtime manifest stubs, docs stubs, and workbench checklists.
 - `scripts/smoke_leworldmodel.py`: compatibility wrapper for
   `uv run --python 3.13 --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" --with "datasets>=2.21" worldforge-smoke-leworldmodel`.
 - `scripts/smoke_gr00t_policy.py`: optional live GR00T PolicyClient smoke for host environments
@@ -148,6 +148,7 @@ Generate a provider scaffold:
 ```bash
 uv run python scripts/scaffold_provider.py "Acme WM" \
   --taxonomy "JEPA latent predictive world model" \
+  --implementation-status scaffold \
   --planned-capability score
 ```
 

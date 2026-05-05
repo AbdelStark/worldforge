@@ -495,6 +495,7 @@ Scaffold a new provider:
 ```bash
 uv run python scripts/scaffold_provider.py "Acme WM" \
   --taxonomy "JEPA latent predictive world model" \
+  --implementation-status scaffold \
   --planned-capability score
 ```
 

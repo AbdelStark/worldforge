@@ -91,6 +91,7 @@ Use this for new provider work and for promoting a scaffold to a real adapter.
 ```bash
 uv run python scripts/scaffold_provider.py "Acme WM" \
   --taxonomy "JEPA latent predictive world model" \
+  --implementation-status scaffold \
   --planned-capability score \
   --remote \
   --env-var ACME_WM_API_KEY

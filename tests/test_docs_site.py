@@ -641,6 +641,30 @@ def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     assert "- [x] TUI and CLI workbench views use the same non-Textual flow logic" in continuation
 
 
+def test_scaffold_provider_docs_cover_issue_142_contract() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for signal in (
+        "--implementation-status scaffold",
+        "runtime manifest stubs",
+        "workbench checklists",
+        "acme-wm.json.stub",
+        "not loadable runtime",
+        "uv run pytest tests/test_provider_runtime_manifests.py",
+        "validation commands",
+    ):
+        assert signal in readme or signal in agents or signal in playbooks or signal in authoring
+
+    assert "fuller fail-closed contract pack" in changelog
+    assert "- [x] Scaffold output includes tests for unsupported capability calls" in continuation
+    assert "- [x] Generated manifest stubs are clearly marked incomplete" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
