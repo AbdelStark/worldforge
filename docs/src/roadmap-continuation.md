@@ -599,11 +599,11 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Failed evaluation reports include representative cases with fixture IDs and expected
+- [x] Failed evaluation reports include representative cases with fixture IDs and expected
       contract notes.
-- [ ] Galleries are exported as JSON and Markdown.
-- [ ] Reports avoid raw secrets, signed URLs, raw tensors, and host-local paths.
-- [ ] Docs explain that galleries are deterministic contract triage, not fidelity claims.
+- [x] Galleries are exported as JSON and Markdown.
+- [x] Reports avoid raw secrets, signed URLs, raw tensors, and host-local paths.
+- [x] Docs explain that galleries are deterministic contract triage, not fidelity claims.
 
 Validation:
 

@@ -564,6 +564,31 @@ def test_benchmark_budget_calibration_docs_cover_issue_146_contract() -> None:
     assert "- [x] Existing budget failure behavior remains non-zero" in continuation
 
 
+def test_evaluation_failure_gallery_docs_cover_issue_147_contract() -> None:
+    evaluation = (ROOT / "docs/src/evaluation.md").read_text(encoding="utf-8")
+    python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
+    claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for signal in (
+        "failure_gallery.json",
+        "failure_gallery.md",
+        "fixture id",
+        "expected contract note",
+        "secret-shaped values are redacted",
+        "tensor-like arrays are summarized",
+        "not provider quality ranking",
+    ):
+        assert signal in evaluation
+
+    assert "report.failure_gallery()" in python_api
+    assert "tests/test_evaluation_failure_gallery.py" in claim_map
+    assert "sanitized evaluation failure galleries" in changelog
+    assert "- [x] Failed evaluation reports include representative cases" in continuation
+    assert "- [x] Reports avoid raw secrets" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

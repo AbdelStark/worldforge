@@ -41,6 +41,21 @@ uv run worldforge eval --suite planning --provider mock --run-workspace .worldfo
 The run workspace stores `run_manifest.json`, JSON/Markdown/CSV reports, and a result summary under
 `.worldforge/runs/<run-id>/`.
 
+When a suite has failures, the JSON and Markdown reports include a compact failure gallery. The
+gallery is also exported through `report.artifacts()` as `failure_gallery.json` and
+`failure_gallery.md` for issue attachments:
+
+```python
+gallery = report.failure_gallery()
+print(gallery.to_markdown())
+```
+
+Each gallery case records a fixture id such as `evaluation:planning:object-relocation`, the
+provider, scenario, score, expected contract note, observed summary, small metrics preview, and
+triage steps. Metric previews are sanitized: secret-shaped values are redacted, signed URL query
+strings are stripped, host-local paths are replaced, and tensor-like arrays are summarized instead
+of copied raw.
+
 To package one or more preserved evaluation or benchmark runs for issue triage or release review,
 generate a checkout-safe evidence bundle:
 
@@ -66,13 +81,16 @@ silently skipping the suite.
 
 - Markdown: provenance section, provider summary table, scenario-level detail table
 - JSON: `suite_id`, `suite`, `claim_boundary`, `metric_semantics`, `provider_summaries`,
-  scenario `results`, and a `provenance` envelope
+  scenario `results`, a `provenance` envelope, and `failure_gallery` when failed scenarios exist
 - CSV: one row per provider/scenario pair with serialized metrics payloads (envelope omitted
   to keep the table import-compatible with prior releases)
+- Failure gallery JSON/Markdown: representative failed cases with fixture ids, expected contract
+  notes, sanitized metrics previews, and first triage steps
 
 Every JSON and Markdown report carries an explicit claim boundary. Built-in suites are
 deterministic adapter contract checks; their scores are not physical-fidelity, media-quality,
-safety, or real robot performance claims.
+safety, or real robot performance claims. Failure galleries follow the same boundary: they are for
+issue triage and provider-review debugging, not provider quality ranking.
 
 ## Provenance envelope
 

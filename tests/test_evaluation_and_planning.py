@@ -344,7 +344,13 @@ def test_evaluation_reports_and_eval_helpers(tmp_path) -> None:
         world=world,
         forge=forge,
     )
-    assert set(artifacts) == {"json", "markdown", "csv"}
+    assert set(artifacts) == {
+        "json",
+        "markdown",
+        "csv",
+        "failure_gallery.json",
+        "failure_gallery.md",
+    }
     assert json.loads(artifacts["json"])["suite_id"] == "physics"
     assert artifacts["markdown"].startswith("# Evaluation Report")
     assert "metrics_json" in artifacts["csv"]
