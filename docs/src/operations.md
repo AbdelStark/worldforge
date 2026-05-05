@@ -504,6 +504,7 @@ Generate the release evidence bundle after local gates and optional smokes finis
 
 ```bash
 uv run python scripts/generate_release_evidence.py \
+  --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
   --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
@@ -511,8 +512,9 @@ uv run python scripts/generate_release_evidence.py \
 
 The report defaults to `.worldforge/release-evidence/release-evidence.md`. It can be generated
 without credentials; providers without linked live-smoke manifests are recorded as `not configured`
-or `skipped` rather than being silently omitted. Attach the report and linked artifacts when a
-release note or provider promotion claims live-provider coverage.
+or `skipped` rather than being silently omitted, and the live-smoke registry records
+missing-runtime and missing-credential skips. Attach the report and linked artifacts when a release
+note or provider promotion claims live-provider coverage.
 
 The tag-triggered release workflow repeats the full quality gate before building distributions or
 publishing release artifacts.

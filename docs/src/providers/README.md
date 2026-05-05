@@ -207,6 +207,10 @@ provider profile, capability, value-free env presence, runtime manifest id, inpu
 input fixture digest, event count, result digest, and artifact paths. It does not store credential
 values, raw signed URL query strings, checkpoint bytes, or generated media bytes.
 
+Use the [Live Smoke Evidence Registry](../live-smoke-evidence.md) to see which optional provider
+smokes have current evidence, which were skipped, and how to attach sanitized `run_manifest.json`
+files to provider issues.
+
 ## Authoring Standard
 
 Before adding or promoting a provider, document:

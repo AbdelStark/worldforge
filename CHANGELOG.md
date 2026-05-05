@@ -57,6 +57,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added `validate_scene_artifact` for checkout-safe spatial scene artifact validation, plus tiny
   valid and malformed fixtures covering transforms, units, non-finite values, unsafe references,
   and oversized metadata.
+- Added a live-smoke evidence registry with schema validation, first-class missing-runtime and
+  missing-credential skip statuses, docs for safe provider issue attachments, and release-evidence
+  rendering support.
 - Added a JEPA-WMS runtime manifest for prepared-host smoke evidence and a stable `input_digest`
   field for smoke run manifests with synthetic input summaries.
 - Added an optional live robotics showcase workflow for pull request and main-branch push

@@ -433,6 +433,28 @@ def test_spatial_scene_artifact_boundary_covers_issue_138_contract() -> None:
     assert "Spatial Scene Artifact Boundary" in continuation
 
 
+def test_live_smoke_evidence_registry_docs_cover_issue_144_contract() -> None:
+    registry_doc = (ROOT / "docs/src/live-smoke-evidence.md").read_text(encoding="utf-8")
+    registry_json = (ROOT / "docs/src/live-smoke-evidence.json").read_text(encoding="utf-8")
+    provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+
+    assert "Issue: [#144]" in registry_doc
+    assert "skipped_missing_runtime" in registry_doc
+    assert "skipped_missing_credentials" in registry_doc
+    assert "validate_live_smoke_registry" in registry_doc
+    assert "signed artifact URLs" in registry_doc
+    assert "It is not a" in registry_doc
+    assert "benchmark" in registry_doc
+    assert "skipped_missing_credentials" in registry_json
+    assert "Live Smoke Evidence Registry" in provider_index
+    assert "--live-smoke-registry docs/src/live-smoke-evidence.json" in operations
+    assert "[Live Smoke Evidence Registry](./live-smoke-evidence.md)" in summary
+    assert "Live Smoke Evidence Registry: live-smoke-evidence.md" in mkdocs
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

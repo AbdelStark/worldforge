@@ -35,6 +35,8 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.RunnableModel is not None
     assert worldforge.GenerationOptions is not None
     assert worldforge.GenerationEvaluationSuite is not None
+    assert worldforge.LIVE_SMOKE_EVIDENCE_SCHEMA_VERSION == 1
+    assert "skipped_missing_runtime" in worldforge.LIVE_SMOKE_EVIDENCE_STATUSES
     assert worldforge.ProviderEvent is not None
     assert worldforge.ProviderBenchmarkHarness is not None
     assert worldforge.ProviderBudgetExceededError is not None
@@ -53,6 +55,8 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.WorldForgeError is not None
     assert worldforge.WorldStateError is not None
     assert worldforge.SceneObjectPatch is not None
+    assert worldforge.render_live_smoke_registry_table is not None
+    assert worldforge.validate_live_smoke_registry is not None
     assert worldforge.validate_scene_artifact is not None
     assert worldforge.load_benchmark_budgets is not None
     assert worldforge.load_benchmark_inputs is not None
