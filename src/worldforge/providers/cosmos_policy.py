@@ -480,11 +480,13 @@ class CosmosPolicyProvider(RemoteProvider):
         options = normalized_info.get("options")
         if options is not None and not isinstance(options, dict):
             raise WorldForgeError("Cosmos-Policy policy info.options must be a JSON object.")
+        observation_action_horizon_present = "action_horizon" in observation
+        options_action_horizon_present = isinstance(options, dict) and "action_horizon" in options
         payload: JSONDict = dict(observation)
         payload["task_description"] = task_description.strip()
         if options:
             for key, value in options.items():
-                if key in payload and payload[key] != value:
+                if key in payload and key != "action_horizon" and payload[key] != value:
                     raise WorldForgeError(
                         f"Cosmos-Policy option '{key}' conflicts with the observation payload."
                     )
@@ -499,35 +501,45 @@ class CosmosPolicyProvider(RemoteProvider):
 
         action_horizon_info_present = "action_horizon" in normalized_info
         action_horizon_payload_present = "action_horizon" in payload
+        payload_action_horizon_source = (
+            "options.action_horizon"
+            if options_action_horizon_present
+            else "observation.action_horizon"
+        )
         if action_horizon_info_present:
-            action_horizon_value = normalized_info["action_horizon"]
-        elif action_horizon_payload_present:
-            action_horizon_value = payload["action_horizon"]
-        else:
-            action_horizon_value = None
-        if (
-            action_horizon_info_present
-            and action_horizon_payload_present
-            and payload["action_horizon"] != action_horizon_value
-        ):
-            raise WorldForgeError(
-                "Cosmos-Policy option 'action_horizon' conflicts with info.action_horizon."
+            action_horizon = _require_action_horizon(
+                normalized_info["action_horizon"],
+                source="info.action_horizon",
             )
-        if action_horizon_value is None:
-            if action_horizon_info_present or action_horizon_payload_present:
-                raise WorldForgeError(
-                    "Cosmos-Policy info.action_horizon must be an integer greater than 0."
+            if action_horizon_payload_present:
+                payload_action_horizon = _require_action_horizon(
+                    payload["action_horizon"],
+                    source=payload_action_horizon_source,
                 )
-            action_horizon = None
-        elif isinstance(action_horizon_value, bool) or not isinstance(action_horizon_value, int):
-            raise WorldForgeError(
-                "Cosmos-Policy info.action_horizon must be an integer greater than 0."
+                if payload_action_horizon != action_horizon:
+                    raise WorldForgeError(
+                        "Cosmos-Policy option 'action_horizon' conflicts with info.action_horizon."
+                    )
+        elif action_horizon_payload_present:
+            action_horizon = _require_action_horizon(
+                payload["action_horizon"],
+                source=payload_action_horizon_source,
             )
         else:
-            action_horizon = require_positive_int(
-                action_horizon_value,
-                name="Cosmos-Policy action_horizon",
+            action_horizon = None
+        if observation_action_horizon_present and options_action_horizon_present:
+            observation_action_horizon = _require_action_horizon(
+                observation["action_horizon"],
+                source="observation.action_horizon",
             )
+            options_action_horizon = _require_action_horizon(
+                options["action_horizon"],
+                source="options.action_horizon",
+            )
+            if observation_action_horizon != options_action_horizon:
+                raise WorldForgeError(
+                    "Cosmos-Policy option 'action_horizon' conflicts with the observation payload."
+                )
         if action_horizon is not None:
             payload["action_horizon"] = action_horizon
         return payload, task_description.strip(), action_horizon
@@ -735,6 +747,12 @@ def _optional_host_patterns(
     if not patterns:
         raise WorldForgeError(f"{name} must contain at least one hostname pattern when provided.")
     return tuple(patterns)
+
+
+def _require_action_horizon(value: object, *, source: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WorldForgeError(f"Cosmos-Policy {source} must be an integer greater than 0.")
+    return require_positive_int(value, name=f"Cosmos-Policy {source}")
 
 
 def _optional_float(value: object, *, name: str) -> float | None:

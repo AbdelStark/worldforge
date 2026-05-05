@@ -395,8 +395,31 @@ def test_cosmos_policy_rejects_conflicting_action_horizon_option() -> None:
         provider.select_actions(info=info)
 
 
-@pytest.mark.parametrize("container", ["observation", "options"])
-def test_cosmos_policy_rejects_null_action_horizon(container: str) -> None:
+def test_cosmos_policy_rejects_observation_options_action_horizon_conflict() -> None:
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"actions": _actions(0.1)})
+        ),
+        action_translator=_translator,
+    )
+    info = _policy_info()
+    del info["action_horizon"]
+    info["observation"]["action_horizon"] = 1
+    info["options"] = {"action_horizon": 2}
+
+    with pytest.raises(WorldForgeError, match="conflicts with the observation payload"):
+        provider.select_actions(info=info)
+
+
+@pytest.mark.parametrize(
+    ("container", "match"),
+    [
+        ("observation", r"observation\.action_horizon must be an integer"),
+        ("options", r"options\.action_horizon must be an integer"),
+    ],
+)
+def test_cosmos_policy_rejects_null_action_horizon(container: str, match: str) -> None:
     provider = CosmosPolicyProvider(
         base_url=PUBLIC_BASE_URL,
         transport=httpx.MockTransport(
@@ -411,7 +434,36 @@ def test_cosmos_policy_rejects_null_action_horizon(container: str) -> None:
     else:
         info[container]["action_horizon"] = None
 
-    with pytest.raises(WorldForgeError, match="action_horizon must be an integer"):
+    with pytest.raises(WorldForgeError, match=match):
+        provider.select_actions(info=info)
+
+
+@pytest.mark.parametrize(
+    ("container", "match"),
+    [
+        ("observation", r"observation\.action_horizon must be an integer"),
+        ("options", r"options\.action_horizon must be an integer"),
+    ],
+)
+def test_cosmos_policy_rejects_bool_payload_horizon_even_when_info_matches(
+    container: str,
+    match: str,
+) -> None:
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"actions": _actions(0.1)})
+        ),
+        action_translator=_translator,
+    )
+    info = _policy_info()
+    info["action_horizon"] = 1
+    if container == "options":
+        info["options"] = {"action_horizon": True}
+    else:
+        info[container]["action_horizon"] = True
+
+    with pytest.raises(WorldForgeError, match=match):
         provider.select_actions(info=info)
 
 
