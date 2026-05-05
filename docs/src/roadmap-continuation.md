@@ -500,10 +500,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Every README-level capability claim has a corresponding evidence class.
-- [ ] Unsupported or deferred claims are visible and specific.
-- [ ] Docs route users to preserved artifacts or commands instead of vague confidence language.
-- [ ] MkDocs strict build passes with nav and SUMMARY synchronized.
+- [x] Every README-level capability claim has a corresponding evidence class.
+- [x] Unsupported or deferred claims are visible and specific.
+- [x] Docs route users to preserved artifacts or commands instead of vague confidence language.
+- [x] MkDocs strict build passes with nav and SUMMARY synchronized.
 
 Validation:
 
