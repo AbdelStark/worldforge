@@ -692,7 +692,12 @@ def _optional_host_patterns(
 ) -> tuple[str, ...] | None:
     if value is None:
         return None
-    raw_patterns = value.split(",") if isinstance(value, str) else list(value)
+    if isinstance(value, str):
+        raw_patterns = [item for item in value.split(",") if item.strip()]
+        if not raw_patterns:
+            return None
+    else:
+        raw_patterns = list(value)
     patterns: list[str] = []
     for index, item in enumerate(raw_patterns):
         if not isinstance(item, str) or not item.strip():

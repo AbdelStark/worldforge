@@ -144,3 +144,60 @@ def test_getaddrinfo_timeout_terminates_resolver_process(monkeypatch) -> None:
     assert context.queue is not None
     assert context.queue.closed is True
     assert context.queue.joined is True
+
+
+def test_getaddrinfo_uses_bounded_result_queue_timeout(monkeypatch) -> None:
+    class CompletedProcess:
+        exitcode = 0
+
+        def start(self) -> None:
+            pass
+
+        def join(self, _timeout: float | None = None) -> None:
+            pass
+
+        def is_alive(self) -> bool:
+            return False
+
+        def terminate(self) -> None:
+            raise AssertionError("completed process should not be terminated")
+
+    class ResultQueue:
+        timeout_seen: float | None = None
+
+        def get(self, *, timeout: float) -> tuple[str, list[str]]:
+            self.timeout_seen = timeout
+            return ("ok", ["93.184.216.34"])
+
+        def close(self) -> None:
+            pass
+
+        def join_thread(self) -> None:
+            pass
+
+    class CompletedContext:
+        def __init__(self) -> None:
+            self.queue = ResultQueue()
+
+        def Queue(self, *args: object, **kwargs: object) -> ResultQueue:
+            del args, kwargs
+            return self.queue
+
+        def Process(self, *args: object, **kwargs: object) -> CompletedProcess:
+            del args, kwargs
+            return CompletedProcess()
+
+    context = CompletedContext()
+
+    def fake_get_context(_method: str) -> CompletedContext:
+        return context
+
+    monkeypatch.setattr(multiprocessing, "get_context", fake_get_context)
+
+    assert _getaddrinfo_with_timeout(
+        "cosmos-policy.example",
+        443,
+        timeout_seconds=2.0,
+    ) == ["93.184.216.34"]
+    assert context.queue.timeout_seen is not None
+    assert context.queue.timeout_seen >= 1.0

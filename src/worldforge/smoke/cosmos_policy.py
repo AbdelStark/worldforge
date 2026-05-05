@@ -31,7 +31,12 @@ def _load_json_file(path: Path, *, name: str) -> JSONDict:
     return payload
 
 
-def _module_from_path(path: Path) -> ModuleType:
+def _module_from_path(path: Path, *, allow_code: bool) -> ModuleType:
+    if not allow_code:
+        raise SystemExit(
+            "Loading a translator from a Python file imports and executes local code; "
+            "pass --allow-translator-code only for trusted translator code."
+        )
     resolved = path.expanduser().resolve()
     if not resolved.exists():
         raise SystemExit(f"Python module file does not exist: {path}")
@@ -43,7 +48,12 @@ def _module_from_path(path: Path) -> ModuleType:
     return module
 
 
-def _load_callable(spec: str, *, name: str) -> Callable[..., Any]:
+def _load_callable(spec: str, *, name: str, allow_code: bool = False) -> Callable[..., Any]:
+    if not allow_code:
+        raise SystemExit(
+            f"Loading {name} imports and executes local Python; pass --allow-translator-code "
+            "only for trusted translator code."
+        )
     if ":" not in spec:
         raise SystemExit(f"{name} must be formatted as module_or_file:function.")
     module_ref, function_name = spec.rsplit(":", 1)
@@ -51,7 +61,7 @@ def _load_callable(spec: str, *, name: str) -> Callable[..., Any]:
         raise SystemExit(f"{name} must be formatted as module_or_file:function.")
     candidate_path = Path(module_ref)
     if candidate_path.exists() or module_ref.endswith(".py") or "/" in module_ref:
-        module = _module_from_path(candidate_path)
+        module = _module_from_path(candidate_path, allow_code=allow_code)
     else:
         try:
             module = importlib.import_module(module_ref)
@@ -228,14 +238,14 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--action-horizon must be greater than 0.")
         if not args.health_only and args.translator is None:
             raise SystemExit("--translator is required unless --health-only is set.")
-        if args.translator is not None and not args.allow_translator_code:
-            raise SystemExit(
-                "--translator imports and executes local Python; pass --allow-translator-code "
-                "only for trusted translator code."
-            )
-
         translator = (
-            None if args.translator is None else _load_callable(args.translator, name="translator")
+            None
+            if args.translator is None
+            else _load_callable(
+                args.translator,
+                name="translator",
+                allow_code=args.allow_translator_code,
+            )
         )
         provider = CosmosPolicyProvider(
             base_url=args.base_url,

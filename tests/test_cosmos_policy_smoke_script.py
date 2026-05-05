@@ -256,6 +256,20 @@ def test_cosmos_policy_smoke_requires_translator_code_opt_in(tmp_path: Path) -> 
         )
 
 
+def test_cosmos_policy_translator_loader_requires_code_opt_in(tmp_path: Path) -> None:
+    translator_path = tmp_path / "translator.py"
+    translator_path.write_text(
+        "def translate_actions(raw_actions, info, provider_info):\n    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="allow-translator-code"):
+        cosmos_policy._load_callable(
+            f"{translator_path}:translate_actions",
+            name="translator",
+        )
+
+
 def test_cosmos_policy_smoke_requires_explicit_base_url(monkeypatch) -> None:
     monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
 
