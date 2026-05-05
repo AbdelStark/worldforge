@@ -51,6 +51,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a provider cohort selection record that scores active and deferred provider candidates,
   selects the next evidence cohort, and keeps provider catalog claims unchanged until runtime
   evidence exists.
+- Added a spatial scene artifact boundary record for future 3D scene providers, including
+  candidate decisions, JSON-native artifact shape, asset redaction rules, host-owned
+  responsibilities, and the fixture contract for follow-up validation.
 - Added a JEPA-WMS runtime manifest for prepared-host smoke evidence and a stable `input_digest`
   field for smoke run manifests with synthetic input summaries.
 - Added an optional live robotics showcase workflow for pull request and main-branch push

@@ -406,6 +406,33 @@ def test_provider_cohort_selection_record_covers_issue_130_contract() -> None:
     assert "nanowm" not in provider_index
 
 
+def test_spatial_scene_artifact_boundary_covers_issue_138_contract() -> None:
+    boundary = (ROOT / "docs/src/spatial-scene-artifact-boundary.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    selection = (ROOT / "docs/src/provider-selection-rfc.md").read_text(encoding="utf-8")
+    cohort = (ROOT / "docs/src/provider-cohort-selection.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+
+    assert "Issue: [#138]" in boundary
+    assert "Status: design accepted; provider implementation deferred." in boundary
+    assert "OpenLRM-style local 3D reconstruction or generation runtime" in boundary
+    assert "World Labs Marble-style hosted spatial world products" in boundary
+    assert "Generated videos are media artifacts" in boundary
+    assert "future `generate` surface" in boundary
+    assert "worldforge.scene_artifact" in boundary
+    assert "coordinate_frame" in boundary
+    assert "host-local absolute paths" in boundary
+    assert "does not prove physical validity" in boundary
+    assert "Follow-Up Contract For #143" in boundary
+
+    assert "[Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md)" in summary
+    assert "Spatial Scene Artifact Boundary: spatial-scene-artifact-boundary.md" in mkdocs
+    assert "Spatial Scene Artifact Boundary" in selection
+    assert "Spatial Scene Artifact Boundary" in cohort
+    assert "Spatial Scene Artifact Boundary" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
