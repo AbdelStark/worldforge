@@ -19,6 +19,7 @@ def test_worldforge_harness_lists_flows_without_textual(monkeypatch, capsys) -> 
     assert "leworldmodel" in output
     assert "lerobot" in output
     assert "diagnostics" in output
+    assert "workbench" in output
 
 
 def test_worldforge_harness_lists_json_without_textual(monkeypatch, capsys) -> None:
@@ -31,7 +32,12 @@ def test_worldforge_harness_lists_json_without_textual(monkeypatch, capsys) -> N
     assert worldforge_main() == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert [flow["id"] for flow in payload] == ["leworldmodel", "lerobot", "diagnostics"]
+    assert [flow["id"] for flow in payload] == [
+        "leworldmodel",
+        "lerobot",
+        "diagnostics",
+        "workbench",
+    ]
 
 
 def test_worldforge_harness_console_entry_lists_flows(capsys) -> None:

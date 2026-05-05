@@ -19,13 +19,14 @@ from worldforge.harness.flows import (
 
 def test_harness_flow_metadata_is_available_without_textual() -> None:
     flows = available_flows()
-    assert [flow.id for flow in flows] == ["leworldmodel", "lerobot", "diagnostics"]
+    assert [flow.id for flow in flows] == ["leworldmodel", "lerobot", "diagnostics", "workbench"]
     assert flow_index()["leworldmodel"].provider == "LeWorldModelProvider"
 
     payload = flow_to_dicts()
     assert payload[0]["command"] == "uv run worldforge-demo-leworldmodel"
     assert payload[1]["focus"] == "policy plus score planning"
     assert payload[2]["command"] == "uv run worldforge harness --flow diagnostics"
+    assert payload[3]["command"] == "uv run worldforge provider workbench mock"
 
 
 def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
@@ -101,6 +102,27 @@ def test_harness_runs_diagnostics_flow(tmp_path) -> None:
     ]
     assert run.summary["benchmark_event_count"] >= 10
     assert "benchmark_operations: predict, reason, generate, transfer, embed" in run.transcript
+
+
+def test_harness_runs_workbench_flow(tmp_path) -> None:
+    run = run_flow("workbench", state_dir=tmp_path)
+
+    assert run.flow.id == "workbench"
+    assert len(run.steps) == 5
+    assert len(run.metrics) == 5
+    assert run.summary["providers"] == ["mock", "jepa-wms"]
+    assert run.summary["passed_count"] == 2
+    assert run.summary["missing_evidence_by_provider"]["jepa-wms"]["experimental"] == []
+    assert run.summary["missing_evidence_by_provider"]["jepa-wms"]["stable"] == [
+        "prepared_host_smoke_artifact",
+        "release_evidence",
+    ]
+    assert "jepa-wms_missing_stable: prepared_host_smoke_artifact, release_evidence" in (
+        run.transcript
+    )
+    assert run.workspace_path is not None
+    inspector = json.loads((run.workspace_path / "results" / "inspector.json").read_text())
+    assert inspector["steps"][0]["title"] == "Select authoring targets"
 
 
 def test_eval_run_artifacts_match_canonical_renderer(tmp_path) -> None:
