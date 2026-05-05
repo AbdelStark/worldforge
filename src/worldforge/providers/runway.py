@@ -357,7 +357,7 @@ class RunwayProvider(RemoteProvider):
                     ),
                     present=self._resolve_artifact_dns_direct
                     or env_value(_RUNWAY_RESOLVE_ARTIFACT_DNS_ENV_VAR) is not None,
-                    detail="auto" if self._resolve_artifact_dns is None else "",
+                    detail=self._artifact_dns_config_detail(),
                 ),
             ),
         )
@@ -487,6 +487,12 @@ class RunwayProvider(RemoteProvider):
         if self._resolve_artifact_dns is not None:
             return self._resolve_artifact_dns
         return self._transport is None or isinstance(self._transport, httpx.HTTPTransport)
+
+    def _artifact_dns_config_detail(self) -> str:
+        effective = str(self._should_resolve_artifact_dns()).lower()
+        if self._resolve_artifact_dns is None:
+            return f"auto; effective resolve_dns={effective}"
+        return f"effective resolve_dns={effective}"
 
     def generate(
         self,

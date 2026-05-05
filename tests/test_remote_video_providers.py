@@ -859,6 +859,29 @@ def test_runway_provider_artifact_dns_policy_with_custom_transport(
     assert resolve_dns_values == [expected_resolve_dns]
 
 
+def test_runway_config_summary_reports_effective_artifact_dns_policy(monkeypatch) -> None:
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+
+    def artifact_dns_detail(provider: RunwayProvider) -> str:
+        summary = provider.config_summary().to_dict()
+        field = next(
+            item for item in summary["fields"] if item["name"] == "RUNWAYML_RESOLVE_ARTIFACT_DNS"
+        )
+        return str(field["detail"])
+
+    assert artifact_dns_detail(RunwayProvider()) == "auto; effective resolve_dns=true"
+    assert (
+        artifact_dns_detail(
+            RunwayProvider(transport=httpx.MockTransport(lambda request: httpx.Response(500)))
+        )
+        == "auto; effective resolve_dns=false"
+    )
+    assert (
+        artifact_dns_detail(RunwayProvider(resolve_artifact_dns=False))
+        == "effective resolve_dns=false"
+    )
+
+
 def test_request_bytes_with_policy_caps_streamed_body_without_content_length() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, stream=httpx.ByteStream(b"abcdef"))
