@@ -176,6 +176,8 @@ uv run mkdocs build --strict
 
 ### WF-A4: Define The Spatial/3D Scene Provider Boundary
 
+Design record: [Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md).
+
 Problem: scene and 3D-world generation are distinct from video generation, prediction, and
 planning. Adding a provider before defining the artifact contract would blur the capability model.
 

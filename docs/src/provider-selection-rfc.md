@@ -96,6 +96,8 @@ Capability: `generate`.
 
 Owner: provider platform maintainer.
 
+Boundary record: [Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md).
+
 Validation path:
 
 - write a design issue selecting one concrete scene or 3D-world API;
