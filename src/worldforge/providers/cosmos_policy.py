@@ -106,16 +106,23 @@ class CosmosPolicyResponse:
             payload.get("value_prediction"),
             name=f"Provider '{provider_name}' policy response field 'value_prediction'",
         )
+        all_value_predictions_present = "all_value_predictions" in payload
         all_value_predictions = _optional_float_list(
             payload.get("all_value_predictions"),
             name=f"Provider '{provider_name}' policy response field 'all_value_predictions'",
         )
-        if all_actions and all_value_predictions and len(all_value_predictions) != len(all_actions):
-            raise ProviderError(
-                f"Provider '{provider_name}' policy response field 'all_value_predictions' "
-                f"must contain {len(all_actions)} value(s) to match 'all_actions'; "
-                f"got {len(all_value_predictions)}."
-            )
+        if all_value_predictions_present:
+            if all_actions and len(all_value_predictions) != len(all_actions):
+                raise ProviderError(
+                    f"Provider '{provider_name}' policy response field 'all_value_predictions' "
+                    f"must contain {len(all_actions)} value(s) to match 'all_actions'; "
+                    f"got {len(all_value_predictions)}."
+                )
+            if not all_actions and len(all_value_predictions) != 1:
+                raise ProviderError(
+                    f"Provider '{provider_name}' policy response field 'all_value_predictions' "
+                    "must contain exactly 1 value when 'all_actions' is absent."
+                )
         future_prediction_summary = _future_prediction_summary(payload)
         provider_info = {
             "value_prediction": value_prediction,
@@ -592,7 +599,7 @@ class CosmosPolicyProvider(RemoteProvider):
                 embodiment_tag = embodiment_tag_value.strip()
             else:
                 embodiment_tag = self.embodiment_tag or ""
-            action_horizon = action_horizon_override or len(selected_actions)
+            action_horizon = len(selected_actions)
             return ActionPolicyResult(
                 provider=self.name,
                 actions=list(selected_actions),
@@ -607,6 +614,7 @@ class CosmosPolicyProvider(RemoteProvider):
                     "expected_action_dim": self.expected_action_dim,
                     "selected_candidate_index": selected_index,
                     "candidate_count": len(candidate_plans),
+                    "requested_action_horizon": action_horizon_override,
                     "provider_info": parsed.provider_info,
                     "raw_action_summary": {
                         "actions_shape": _bounded_shape(parsed.actions),

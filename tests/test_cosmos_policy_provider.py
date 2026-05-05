@@ -257,6 +257,24 @@ def test_cosmos_policy_rejects_value_prediction_candidate_mismatch() -> None:
         provider.select_actions(info=_policy_info())
 
 
+def test_cosmos_policy_rejects_empty_value_predictions_when_present() -> None:
+    with pytest.raises(ProviderError, match="must contain exactly 1 value"):
+        CosmosPolicyResponse.from_payload(
+            {"actions": _actions(0.1), "all_value_predictions": []},
+            provider_name="cosmos-policy",
+            expected_action_dim=14,
+        )
+
+
+def test_cosmos_policy_rejects_multi_value_predictions_without_candidates() -> None:
+    with pytest.raises(ProviderError, match="must contain exactly 1 value"):
+        CosmosPolicyResponse.from_payload(
+            {"actions": _actions(0.1), "all_value_predictions": [0.1, 0.2]},
+            provider_name="cosmos-policy",
+            expected_action_dim=14,
+        )
+
+
 def test_cosmos_policy_accepts_live_json_numpy_action_rows() -> None:
     actions = [_json_numpy_row(0.1), _json_numpy_row(1.1)]
 
@@ -334,6 +352,31 @@ def test_cosmos_policy_action_horizon_uses_translated_selected_actions() -> None
 
     assert len(result.actions) == 1
     assert result.action_horizon == 1
+
+
+def test_cosmos_policy_action_horizon_does_not_exceed_translated_actions() -> None:
+    def one_step_translator(
+        _raw_actions: object,
+        _info: JSONDict,
+        _provider_info: JSONDict,
+    ) -> list[Action]:
+        return [Action.move_to(0.1, 0.2, 0.3)]
+
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"actions": _actions(0.1)})
+        ),
+        action_translator=one_step_translator,
+    )
+    info = _policy_info()
+    info["action_horizon"] = 50
+
+    result = provider.select_actions(info=info)
+
+    assert len(result.actions) == 1
+    assert result.action_horizon == 1
+    assert result.metadata["requested_action_horizon"] == 50
 
 
 def test_cosmos_policy_blocks_local_base_url_without_opt_in() -> None:
@@ -438,6 +481,60 @@ def test_cosmos_policy_ignores_empty_allowed_host_env_segments(monkeypatch) -> N
     )
 
     assert provider.allowed_hosts == ("policy.example.com", "*.example.net")
+
+
+def test_cosmos_policy_rejects_public_host_not_in_allowlist(monkeypatch) -> None:
+    called = False
+
+    def fake_getaddrinfo(
+        _host: str,
+        _port: int,
+        *,
+        timeout_seconds: float,
+    ) -> list[str]:
+        return ["93.184.216.34"]
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
+    monkeypatch.setenv("COSMOS_POLICY_ALLOWED_HOSTS", "other.example")
+    monkeypatch.setattr(http_utils, "_getaddrinfo_with_timeout", fake_getaddrinfo)
+    provider = CosmosPolicyProvider(
+        base_url="http://cosmos-policy.example",
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+
+    with pytest.raises(ProviderError, match="not in the allowed host list"):
+        provider.select_actions(info=_policy_info())
+    assert called is False
+
+
+def test_cosmos_policy_allows_public_host_in_allowlist(monkeypatch) -> None:
+    def fake_getaddrinfo(
+        _host: str,
+        _port: int,
+        *,
+        timeout_seconds: float,
+    ) -> list[str]:
+        return ["93.184.216.34"]
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
+    monkeypatch.setenv("COSMOS_POLICY_ALLOWED_HOSTS", "cosmos-policy.example")
+    monkeypatch.setattr(http_utils, "_getaddrinfo_with_timeout", fake_getaddrinfo)
+    provider = CosmosPolicyProvider(
+        base_url="http://cosmos-policy.example",
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+
+    result = provider.select_actions(info=_policy_info())
+
+    assert result.provider == "cosmos-policy"
 
 
 def test_cosmos_policy_revalidates_base_url_before_each_request(monkeypatch) -> None:
@@ -816,6 +913,8 @@ def test_cosmos_policy_rejects_oversized_json_numpy_without_decoding(monkeypatch
 
 
 def test_cosmos_policy_rejects_non_json_response_content_type() -> None:
+    events: list[ProviderEvent] = []
+
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -827,10 +926,36 @@ def test_cosmos_policy_rejects_non_json_response_content_type() -> None:
         base_url=PUBLIC_BASE_URL,
         transport=httpx.MockTransport(handler),
         action_translator=_translator,
+        event_handler=events.append,
     )
 
     with pytest.raises(WorldStateError, match="unsupported content type"):
         provider.select_actions(info=_policy_info())
+    assert events[0].phase == "failure"
+    assert events[0].status_code == 200
+    assert "unsupported content type" in events[0].message
+    assert all(event.phase != "success" for event in events)
+
+
+def test_cosmos_policy_rejects_nested_non_json_observation_as_public_input() -> None:
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={"actions": _actions(0.1)})
+
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(handler),
+        action_translator=_translator,
+    )
+    info = _policy_info()
+    info["observation"]["proprio"] = [float("nan")]
+
+    with pytest.raises(WorldForgeError, match="finite"):
+        provider.select_actions(info=info)
+    assert called is False
 
 
 def test_cosmos_policy_response_rejects_non_object_payload() -> None:

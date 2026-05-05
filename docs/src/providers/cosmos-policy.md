@@ -211,6 +211,14 @@ a policy request. Cosmos-Policy does not expose a non-mutating health endpoint i
 this adapter targets, so health checks confirm configuration only; live inference evidence comes
 from `select_actions(...)` or the smoke command above.
 
+```bash
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
+  uv run worldforge-smoke-cosmos-policy \
+    --health-only \
+    --run-manifest .worldforge/runs/cosmos-policy-health/run_manifest.json
+```
+
 Expected success signal:
 
 - `--health-only`: run manifest records `capability=policy` with `status=skipped`.

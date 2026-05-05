@@ -146,7 +146,7 @@ def test_getaddrinfo_timeout_terminates_resolver_process(monkeypatch) -> None:
     assert context.queue.joined is True
 
 
-def test_getaddrinfo_uses_bounded_result_queue_timeout(monkeypatch) -> None:
+def test_getaddrinfo_caps_result_queue_timeout_to_remaining_budget(monkeypatch) -> None:
     class CompletedProcess:
         exitcode = 0
 
@@ -168,6 +168,9 @@ def test_getaddrinfo_uses_bounded_result_queue_timeout(monkeypatch) -> None:
         def get(self, *, timeout: float) -> tuple[str, list[str]]:
             self.timeout_seen = timeout
             return ("ok", ["93.184.216.34"])
+
+        def get_nowait(self) -> tuple[str, list[str]]:
+            raise AssertionError("remaining budget should allow a bounded blocking read")
 
         def close(self) -> None:
             pass
@@ -193,11 +196,12 @@ def test_getaddrinfo_uses_bounded_result_queue_timeout(monkeypatch) -> None:
         return context
 
     monkeypatch.setattr(multiprocessing, "get_context", fake_get_context)
+    perf_counter_values = iter([100.0, 100.0, 101.75, 101.75])
+    monkeypatch.setattr(http_utils, "perf_counter", lambda: next(perf_counter_values))
 
     assert _getaddrinfo_with_timeout(
         "cosmos-policy.example",
         443,
         timeout_seconds=2.0,
     ) == ["93.184.216.34"]
-    assert context.queue.timeout_seen is not None
-    assert context.queue.timeout_seen >= 1.0
+    assert context.queue.timeout_seen == pytest.approx(0.25)

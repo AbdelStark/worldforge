@@ -155,6 +155,32 @@ def test_cosmos_policy_smoke_writes_failed_manifest_on_unhealthy_provider(
     assert manifest["event_count"] == 0
 
 
+def test_cosmos_policy_smoke_health_only_allows_localhost_opt_in(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("COSMOS_POLICY_ALLOW_LOCAL_BASE_URL", "1")
+    manifest_path = tmp_path / "runs" / "cosmos-policy-health-local" / "run_manifest.json"
+
+    assert (
+        cosmos_policy.main(
+            [
+                "--base-url",
+                "http://127.0.0.1:8777",
+                "--health-only",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+        == 0
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["provider_profile"] == "cosmos-policy"
+    assert manifest["status"] == "skipped"
+    assert manifest["result_digest"] is not None
+
+
 def test_cosmos_policy_smoke_redacts_failed_exception_text(
     tmp_path: Path,
     monkeypatch,

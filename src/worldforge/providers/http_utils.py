@@ -498,6 +498,7 @@ def request_with_policy(
     operation_name: str,
     policy: RequestOperationPolicy,
     emit_event: Callable[[ProviderEvent], None] | None = None,
+    emit_success_event: bool = True,
     **kwargs: Any,
 ) -> httpx.Response:
     """Send an HTTP request using the configured timeout and retry policy."""
@@ -711,7 +712,10 @@ def request_with_policy(
                 f"Provider '{provider_name}' {operation_name} failed with "
                 f"status {response.status_code}: {_response_summary(response)}"
             ) from exc
-        if emit_event is not None:
+        response.extensions["worldforge_attempt_number"] = attempt_number
+        response.extensions["worldforge_max_attempts"] = policy.retry.max_attempts
+        response.extensions["worldforge_duration_ms"] = duration_ms
+        if emit_success_event and emit_event is not None:
             emit_event(
                 ProviderEvent(
                     provider=provider_name,
@@ -728,6 +732,43 @@ def request_with_policy(
         return response
 
     raise AssertionError("request_with_policy exhausted retries without returning or raising")
+
+
+def _emit_response_validation_event(
+    emit_event: Callable[[ProviderEvent], None] | None,
+    *,
+    response: httpx.Response,
+    provider_name: str,
+    operation_name: str,
+    phase: str,
+    method: str,
+    target: str,
+    policy: RequestOperationPolicy,
+    message: str | None = None,
+) -> None:
+    if emit_event is None:
+        return
+    attempt = response.extensions.get("worldforge_attempt_number")
+    max_attempts = response.extensions.get("worldforge_max_attempts")
+    duration = response.extensions.get("worldforge_duration_ms")
+    emit_event(
+        ProviderEvent(
+            provider=provider_name,
+            operation=operation_name,
+            phase=phase,
+            attempt=attempt if isinstance(attempt, int) and not isinstance(attempt, bool) else 1,
+            max_attempts=max_attempts
+            if isinstance(max_attempts, int) and not isinstance(max_attempts, bool)
+            else policy.retry.max_attempts,
+            method=method,
+            target=target,
+            status_code=response.status_code,
+            duration_ms=duration
+            if isinstance(duration, int | float) and not isinstance(duration, bool)
+            else None,
+            message=message or "",
+        )
+    )
 
 
 def request_json_with_policy(
@@ -752,6 +793,7 @@ def request_json_with_policy(
         operation_name=operation_name,
         policy=policy,
         emit_event=emit_event,
+        emit_success_event=False,
         **kwargs,
     )
     content_type = response.headers.get("content-type")
@@ -763,20 +805,59 @@ def request_json_with_policy(
             accepted_content_types,
         )
     ):
-        raise ProviderError(
-            f"Provider '{provider_name}' {operation_name} returned unsupported "
-            f"content type '{content_type}'."
+        message = f"returned unsupported content type '{content_type}'."
+        _emit_response_validation_event(
+            emit_event,
+            response=response,
+            provider_name=provider_name,
+            operation_name=operation_name,
+            phase="failure",
+            method=method,
+            target=url,
+            policy=policy,
+            message=message,
         )
+        raise ProviderError(f"Provider '{provider_name}' {operation_name} {message}")
     try:
         payload = response.json()
     except ValueError as exc:
-        raise ProviderError(
-            f"Provider '{provider_name}' {operation_name} returned invalid JSON."
-        ) from exc
-    if not isinstance(payload, dict):
-        raise ProviderError(
-            f"Provider '{provider_name}' {operation_name} returned a non-object JSON payload."
+        message = "returned invalid JSON."
+        _emit_response_validation_event(
+            emit_event,
+            response=response,
+            provider_name=provider_name,
+            operation_name=operation_name,
+            phase="failure",
+            method=method,
+            target=url,
+            policy=policy,
+            message=message,
         )
+        raise ProviderError(f"Provider '{provider_name}' {operation_name} {message}") from exc
+    if not isinstance(payload, dict):
+        message = "returned a non-object JSON payload."
+        _emit_response_validation_event(
+            emit_event,
+            response=response,
+            provider_name=provider_name,
+            operation_name=operation_name,
+            phase="failure",
+            method=method,
+            target=url,
+            policy=policy,
+            message=message,
+        )
+        raise ProviderError(f"Provider '{provider_name}' {operation_name} {message}")
+    _emit_response_validation_event(
+        emit_event,
+        response=response,
+        provider_name=provider_name,
+        operation_name=operation_name,
+        phase="success",
+        method=method,
+        target=url,
+        policy=policy,
+    )
     return dict(payload)
 
 

@@ -547,8 +547,10 @@ readiness, and safety certification.
 - To smoke-test a real Cosmos-Policy ALOHA server, run the upstream server on a compatible
   Linux/NVIDIA host, prepare ALOHA policy info and an action translator, then run
   `COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 uv run worldforge-smoke-cosmos-policy --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions --allow-translator-code --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json`.
+  For the configuration-only path, run
+  `COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 uv run worldforge-smoke-cosmos-policy --health-only --run-manifest .worldforge/runs/cosmos-policy-health/run_manifest.json`.
   `--health-only` validates WorldForge configuration only because the targeted upstream server has
-  no non-mutating health endpoint.
+  no non-mutating health endpoint and does not call `/act`.
   Expected success for `--health-only`: the process exits 0 and the run manifest records
   `capability=policy` with `status=skipped`.
   Expected success: the process exits 0 and the run manifest records `capability=policy` with
