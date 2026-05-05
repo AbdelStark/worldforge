@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from worldforge import GenerationOptions, ProviderEvent, ProviderRequestPolicy, VideoClip
-from worldforge.models import WorldForgeError
+from worldforge.models import JSONDict, WorldForgeError
 from worldforge.providers import CosmosProvider, ProviderError, RunwayProvider
 from worldforge.providers import http_utils as http_utils_module
 from worldforge.providers import runway as runway_module
@@ -860,10 +860,11 @@ def test_runway_provider_artifact_dns_policy_with_custom_transport(
 
 
 def test_runway_config_summary_reports_effective_artifact_dns_policy(monkeypatch) -> None:
+    monkeypatch.delenv("RUNWAYML_RESOLVE_ARTIFACT_DNS", raising=False)
     monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
 
     def artifact_dns_detail(provider: RunwayProvider) -> str:
-        summary = provider.config_summary().to_dict()
+        summary: JSONDict = provider.config_summary().to_dict()
         field = next(
             item for item in summary["fields"] if item["name"] == "RUNWAYML_RESOLVE_ARTIFACT_DNS"
         )
