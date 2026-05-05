@@ -661,6 +661,7 @@ Finally generate the release evidence bundle:
 
 ```bash
 uv run python scripts/generate_release_evidence.py \
+  --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
   --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
@@ -668,9 +669,9 @@ uv run python scripts/generate_release_evidence.py \
 
 The default report path is `.worldforge/release-evidence/release-evidence.md`. The generator does
 not require provider credentials; absent live smokes are listed explicitly as `not configured` or
-`skipped`, and passed/failed/skipped live runs link back to their preserved `run_manifest.json`
-files and artifact summaries. Use `--known-limitation` for release-scoped caveats that should
-travel with the bundle.
+`skipped`, the registry records missing-runtime and missing-credential skips, and
+passed/failed/skipped live runs link back to their preserved `run_manifest.json` files and artifact
+summaries. Use `--known-limitation` for release-scoped caveats that should travel with the bundle.
 
 Success signal:
 

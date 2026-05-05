@@ -17,9 +17,14 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from worldforge.live_smoke_evidence import (  # noqa: E402
+    render_live_smoke_registry_table,
+    validate_live_smoke_registry,
+)
 from worldforge.smoke.run_manifest import validate_run_manifest  # noqa: E402
 
 DEFAULT_OUTPUT = ROOT / ".worldforge" / "release-evidence" / "release-evidence.md"
+DEFAULT_LIVE_SMOKE_REGISTRY = ROOT / "docs" / "src" / "live-smoke-evidence.json"
 DEFAULT_RUNS_DIR = ROOT / ".worldforge" / "runs"
 DEFAULT_REPORTS_DIR = ROOT / ".worldforge" / "reports"
 DEFAULT_DIST_DIR = ROOT / "dist"
@@ -84,6 +89,15 @@ def _parser() -> argparse.ArgumentParser:
         help="Optional live-smoke run_manifest.json to include. Can be repeated.",
     )
     parser.add_argument(
+        "--live-smoke-registry",
+        type=Path,
+        default=DEFAULT_LIVE_SMOKE_REGISTRY,
+        help=(
+            "Publishable live-smoke evidence registry JSON. Defaults to "
+            "docs/src/live-smoke-evidence.json."
+        ),
+    )
+    parser.add_argument(
         "--benchmark-artifact",
         type=Path,
         action="append",
@@ -110,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     output = args.output.expanduser().resolve()
     manifests = _collect_manifests(args.run_manifest)
+    live_smoke_registry = _load_live_smoke_registry(args.live_smoke_registry)
     benchmark_artifacts = _dedupe_paths(
         [*args.benchmark_artifact, *_glob_existing(DEFAULT_REPORTS_DIR, "*.json")]
     )
@@ -117,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     report = render_release_evidence(
         output=output,
         manifests=manifests,
+        live_smoke_registry=live_smoke_registry,
         benchmark_artifacts=benchmark_artifacts,
         artifacts=artifacts,
         known_limitations=tuple(args.known_limitation),
@@ -133,6 +149,7 @@ def render_release_evidence(
     manifests: tuple[ManifestEvidence, ...],
     benchmark_artifacts: tuple[Path, ...],
     artifacts: tuple[Path, ...],
+    live_smoke_registry: dict[str, Any] | None = None,
     known_limitations: tuple[str, ...] = (),
 ) -> str:
     commit = _git_output("rev-parse", "--short", "HEAD") or "unknown"
@@ -170,6 +187,18 @@ def render_release_evidence(
         {manifest.provider for manifest in manifests if manifest.provider not in LIVE_PROVIDER_ENV}
     )
     lines.extend(_render_provider_row(provider, manifests, output) for provider in extra_providers)
+
+    lines.extend(
+        [
+            "",
+            "## Live Smoke Evidence Registry",
+            "",
+        ]
+    )
+    if live_smoke_registry is None:
+        lines.append("- No live-smoke evidence registry linked.")
+    else:
+        lines.extend(render_live_smoke_registry_table(live_smoke_registry))
 
     lines.extend(
         [
@@ -228,6 +257,16 @@ def _collect_manifests(paths: list[Path]) -> tuple[ManifestEvidence, ...]:
             ManifestEvidence(path=path.resolve(), payload=validate_run_manifest(payload))
         )
     return tuple(evidence)
+
+
+def _load_live_smoke_registry(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    registry_path = path.expanduser()
+    if not registry_path.exists():
+        return None
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    return validate_live_smoke_registry(payload)
 
 
 def _render_provider_row(

@@ -50,6 +50,8 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "EvaluationSuite": "worldforge.evaluation",
     "GenerationEval": "worldforge.evaluation",
     "GenerationEvaluationSuite": "worldforge.evaluation",
+    "LIVE_SMOKE_EVIDENCE_SCHEMA_VERSION": "worldforge.live_smoke_evidence",
+    "LIVE_SMOKE_EVIDENCE_STATUSES": "worldforge.live_smoke_evidence",
     "PhysicsEval": "worldforge.evaluation",
     "PhysicsEvaluationSuite": "worldforge.evaluation",
     "PlanningEval": "worldforge.evaluation",
@@ -105,7 +107,10 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "WorldForgeError": "worldforge.models",
     "WorldStateError": "worldforge.models",
     "create_rerun_event_handler": "worldforge.rerun",
+    "render_live_smoke_registry_table": "worldforge.live_smoke_evidence",
     "validate_scene_artifact": "worldforge.scene_artifacts",
+    "validate_live_smoke_entry": "worldforge.live_smoke_evidence",
+    "validate_live_smoke_registry": "worldforge.live_smoke_evidence",
 }
 
 __all__ = sorted((*_EXPORTS, "__version__"))

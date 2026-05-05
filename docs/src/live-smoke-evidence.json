@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "provider": "jepa-wms",
+      "capability": "score",
+      "command": "uv run --with torch worldforge-smoke-jepa-wms --model-name jepa_wm_pusht --device cpu --run-manifest .worldforge/runs/jepa-wms-live/run_manifest.json",
+      "runtime_manifest": "jepa-wms:schema-1",
+      "date": "2026-05-05",
+      "version": "0.5.0",
+      "status": "not_run",
+      "artifact_path": null,
+      "skip_reason": "prepared-host smoke command documented; no sanitized run manifest is checked into the repository",
+      "known_limitations": [
+        "direct-construction candidate only",
+        "requires host-owned torch, upstream JEPA-WMS runtime, checkpoints, and task preprocessing"
+      ]
+    },
+    {
+      "provider": "jepa",
+      "capability": "score",
+      "command": "uv run --with torch worldforge-smoke-jepa-wms --model-name jepa_wm_pusht --device cpu --run-manifest .worldforge/runs/jepa-live/run_manifest.json",
+      "runtime_manifest": "jepa:schema-1",
+      "date": "2026-05-05",
+      "version": "0.5.0",
+      "status": "skipped_missing_runtime",
+      "artifact_path": null,
+      "skip_reason": "requires host-owned torch, facebookresearch/jepa-wms runtime, model assets, and JEPA_MODEL_NAME",
+      "known_limitations": [
+        "public adapter is score-only",
+        "checkpoint and task preprocessing remain host-owned"
+      ]
+    },
+    {
+      "provider": "cosmos",
+      "capability": "generate",
+      "command": "uv run worldforge-smoke-cosmos --run-manifest .worldforge/runs/cosmos-live/run_manifest.json",
+      "runtime_manifest": "cosmos:schema-1",
+      "date": "2026-05-05",
+      "version": "0.5.0",
+      "status": "skipped_missing_runtime",
+      "artifact_path": null,
+      "skip_reason": "requires a prepared Cosmos endpoint through COSMOS_BASE_URL",
+      "known_limitations": [
+        "host must persist generated media before endpoint artifact retention expires"
+      ]
+    },
+    {
+      "provider": "runway",
+      "capability": "generate",
+      "command": "uv run worldforge-smoke-runway --run-manifest .worldforge/runs/runway-live/run_manifest.json",
+      "runtime_manifest": "runway:schema-1",
+      "date": "2026-05-05",
+      "version": "0.5.0",
+      "status": "skipped_missing_credentials",
+      "artifact_path": null,
+      "skip_reason": "requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET on a prepared host",
+      "known_limitations": [
+        "signed artifact URLs expire and must not be copied into issue evidence"
+      ]
+    },
+    {
+      "provider": "leworldmodel",
+      "capability": "score",
+      "command": "uv run worldforge-smoke-leworldmodel --run-manifest .worldforge/runs/leworldmodel-live/run_manifest.json",
+      "runtime_manifest": "leworldmodel:schema-1",
+      "date": "2026-05-05",
+      "version": "0.5.0",
+      "status": "skipped_missing_runtime",
+      "artifact_path": null,
+      "skip_reason": "requires stable-worldmodel, torch, checkpoint assets, and LEWORLDMODEL_POLICY or LEWM_POLICY",
+      "known_limitations": [
+        "score tensors remain task-preprocessed and host-owned"
+      ]
+    },
+    {
+      "provider": "gr00t",
+      "capability": "policy",
+      "command": "uv run python scripts/smoke_gr00t_policy.py --run-manifest .worldforge/runs/gr00t-live/run_manifest.json",
+      "runtime_manifest": "gr00t:schema-1",
+      "date": "2026-05-05",
+      "version": "0.5.0",
+      "status": "skipped_missing_runtime",
+      "artifact_path": null,
+      "skip_reason": "requires a reachable GR00T PolicyClient host through GROOT_POLICY_HOST",
+      "known_limitations": [
+        "embodiment action translation and robot safety remain host-owned"
+      ]
+    },
+    {
+      "provider": "lerobot",
+      "capability": "policy",
+      "command": "uv run python scripts/smoke_lerobot_policy.py --run-manifest .worldforge/runs/lerobot-live/run_manifest.json",
+      "runtime_manifest": "lerobot:schema-1",
+      "date": "2026-05-05",
+      "version": "0.5.0",
+      "status": "skipped_missing_runtime",
+      "artifact_path": null,
+      "skip_reason": "requires LeRobot runtime packages and LEROBOT_POLICY_PATH or LEROBOT_POLICY",
+      "known_limitations": [
+        "policy checkpoints and action translators remain host-owned"
+      ]
+    }
+  ]
+}

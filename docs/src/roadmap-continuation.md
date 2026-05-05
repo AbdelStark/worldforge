@@ -315,6 +315,8 @@ uv run mkdocs build --strict
 
 ### WF-A8: Build The Provider Live-Smoke Evidence Registry
 
+Registry: [Live Smoke Evidence Registry](./live-smoke-evidence.md).
+
 Problem: prepared-host smoke results are currently preserved per run, but maintainers need a
 single lightweight registry that records which optional providers have recent evidence and which
 were skipped.

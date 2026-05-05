@@ -26,6 +26,7 @@
 - [Next Provider Selection RFC](./provider-selection-rfc.md)
 - [Provider Cohort Selection Record](./provider-cohort-selection.md)
 - [Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md)
+- [Live Smoke Evidence Registry](./live-smoke-evidence.md)
 - [Python API](./api/python.md)
 - [Evaluation](./evaluation.md)
 - [Benchmarking](./benchmarking.md)
