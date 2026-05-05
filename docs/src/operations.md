@@ -164,6 +164,7 @@ operator evidence bundles, not a database.
 uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
 uv run worldforge benchmark --provider mock --operation predict --run-workspace .worldforge
 uv run worldforge runs list
+uv run worldforge runs bundle <run-id>
 uv run worldforge runs cleanup --keep 20
 ```
 
@@ -171,10 +172,17 @@ Each run directory contains `run_manifest.json`, `inputs/`, `results/`, `reports
 and `logs/`. The manifest stores a sortable file-safe run ID, command, provider, operation, status,
 input summary, result summary, event count, and relative artifact paths.
 
+For public issues, run `worldforge runs bundle <run-id> --workspace-dir .worldforge` first. The
+command writes `.worldforge/issue-bundles/<run-id>/evidence_manifest.json`, `summary.md`, and
+`issue.md`, then prints the issue template. Success signal: `safe_to_attach` is `true` or the
+manifest clearly lists excluded/local-only files with a reason. First triage step after export:
+open `evidence_manifest.json`; if anything is excluded or local-only, remove or replace the unsafe
+artifact before attaching the bundle.
+
 Retention is host-owned. `worldforge runs cleanup --keep <n>` keeps the newest run IDs and removes
 older directories; use `--dry-run` before deleting evidence attached to an incident or release gate.
-For public issues, attach the manifest plus report files and redact any host-created artifacts that
-contain private paths, prompts, credentials, signed URLs, or provider-native payloads.
+Do not attach raw host-created artifacts that contain private paths, prompts, credentials, signed
+URLs, or provider-native payloads.
 
 Candidate benchmark budgets must be generated from preserved benchmark reports and reviewed before
 they replace release budget files:

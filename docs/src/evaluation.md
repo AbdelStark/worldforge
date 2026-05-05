@@ -62,6 +62,7 @@ generate a checkout-safe evidence bundle:
 ```bash
 uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
 uv run worldforge benchmark --preset mock-smoke --run-workspace .worldforge
+uv run worldforge runs bundle <run-id>
 uv run python scripts/generate_evidence_bundle.py --workspace-dir .worldforge
 ```
 
@@ -70,6 +71,10 @@ The bundle defaults to `.worldforge/evidence-bundles/<timestamp>/` and writes
 event logs, preset input and budget files, fixture digests, SHA-256 file digests, and
 `safe_to_attach` flags. Unsupported binary artifacts, host-local absolute paths, signed URLs, and
 secret-like text are excluded or marked local-only by default.
+
+Use `worldforge runs bundle <run-id>` for a smaller issue-ready export of one run. It writes
+`issue.md` beside the digest manifest and summary, and the printed issue template includes the
+command, expected signal, observed failure, safe-to-attach notes, and first triage step.
 
 The same built-in suites are available from TheWorldHarness. Launch
 `uv run --extra harness worldforge-harness --flow eval`, pick a suite and provider, and the TUI

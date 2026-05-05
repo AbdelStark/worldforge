@@ -258,6 +258,19 @@ in-memory edit buffer stays intact so the user can fix and retry.
 Use this when a CLI job, batch host, service request, or TheWorldHarness run needs provider events
 that can be attached to an issue, release bundle, or incident note.
 
+For one failed preserved run, export the issue-ready bundle before posting:
+
+```bash
+uv run worldforge runs bundle <run-id> \
+  --workspace-dir .worldforge \
+  --output .worldforge/issue-bundles/<run-id>
+```
+
+Success signal: the command writes `evidence_manifest.json`, `summary.md`, and `issue.md`, then
+prints a short issue template with the command, expected signal, observed failure, artifact list,
+`safe_to_attach` status, and first triage step. If `safe_to_attach` is `false`, inspect the
+manifest's excluded and `local_only` entries before attaching anything.
+
 ```python
 from pathlib import Path
 
