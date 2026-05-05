@@ -534,6 +534,36 @@ def test_evidence_bundle_docs_cover_issue_145_contract() -> None:
     assert "- [x] Bundle generation succeeds" in continuation
 
 
+def test_benchmark_budget_calibration_docs_cover_issue_146_contract() -> None:
+    benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for doc in (benchmarking, operations, playbooks, claim_map):
+        assert "scripts/calibrate_benchmark_budgets.py" in doc
+
+    for signal in (
+        "candidate-budgets.json",
+        "budget-calibration.md",
+        "source report digests",
+        "old threshold",
+        "candidate threshold",
+        "observed baseline",
+        "rationale",
+    ):
+        assert signal in benchmarking or signal in operations
+
+    assert "Threshold loosening requires human review" in benchmarking
+    assert "does not weaken existing release gates automatically" in operations
+    assert "tests/test_benchmark_budget_calibration.py" in claim_map
+    assert "benchmark budget calibration artifacts" in changelog
+    assert "- [x] Candidate budget generation records source report digests" in continuation
+    assert "- [x] Existing budget failure behavior remains non-zero" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
