@@ -67,7 +67,7 @@ def test_validate_remote_base_url_rejects_credentials_and_query() -> None:
     for url, match in (
         ("https://user:secret@93.184.216.34", "embedded credentials"),
         ("https://93.184.216.34?token=secret", "query parameters"),
-        ("https://93.184.216.34/#token", "query parameters"),
+        ("https://93.184.216.34/#token", "fragments"),
     ):
         with pytest.raises(ProviderError, match=match):
             validate_remote_base_url(

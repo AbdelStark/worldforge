@@ -588,10 +588,6 @@ class CosmosPolicyProvider(RemoteProvider):
             selected_actions = candidate_plans[selected_index]
             embodiment_tag_value = info.get("embodiment_tag")
             if embodiment_tag_value is not None:
-                if not isinstance(embodiment_tag_value, str) or not embodiment_tag_value.strip():
-                    raise WorldForgeError(
-                        "Cosmos-Policy policy info.embodiment_tag must be a non-empty string."
-                    )
                 embodiment_tag = embodiment_tag_value.strip()
             else:
                 embodiment_tag = self.embodiment_tag or ""
