@@ -44,6 +44,9 @@ The host owns:
 - `RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS`: optional test-only escape hatch. When unset, Runway task
   output URLs that point at localhost, private, link-local, reserved, multicast, or unresolved
   local destinations are rejected before download.
+- `RUNWAYML_RESOLVE_ARTIFACT_DNS`: optional override for artifact URL DNS checks when using a
+  custom HTTP transport. Auto mode checks DNS for normal HTTP clients and avoids system DNS for
+  deterministic offline transports.
 
 Runtime manifest:
 `src/worldforge/providers/runtime_manifests/runway.json` records the credential aliases, optional
@@ -194,6 +197,9 @@ Pass a custom `request_policy=` when the host needs different timeout or retry b
 - Local/private/link-local artifact URLs fail before any download unless
   `RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS=1` or the constructor opt-in is used for a trusted local
   test deployment.
+- Custom network transports that need hostname-to-IP validation should set
+  `RUNWAYML_RESOLVE_ARTIFACT_DNS=1` or use the constructor override; offline deterministic
+  transports can leave auto mode in place.
 - Expired, unavailable, empty, or wrong-content-type artifacts fail before returning `VideoClip`.
 - Oversized artifacts fail from `Content-Length` or while streaming the body.
 - Result metadata and run manifests keep only sanitized artifact URLs; signed query strings and

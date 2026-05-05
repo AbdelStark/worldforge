@@ -4,7 +4,11 @@
   "capabilities": ["generate", "transfer"],
   "optional_dependencies": [],
   "required_env_vars": ["RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"],
-  "optional_env_vars": ["RUNWAYML_BASE_URL"],
+  "optional_env_vars": [
+    "RUNWAYML_BASE_URL",
+    "RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS",
+    "RUNWAYML_RESOLVE_ARTIFACT_DNS"
+  ],
   "default_model": "gen4.5",
   "device_support": ["remote"],
   "host_owned_artifacts": ["Runway task ids", "downloaded video artifacts", "artifact retention path"],

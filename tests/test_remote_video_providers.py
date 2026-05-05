@@ -790,7 +790,19 @@ def test_runway_provider_rejects_artifacts_over_size_limit(monkeypatch) -> None:
         provider.generate("a rainy alley at night", duration_seconds=4.0)
 
 
-def test_runway_provider_resolves_artifact_dns_with_custom_transport(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("resolve_artifact_dns", "expected_resolve_dns"),
+    (
+        (None, False),
+        (True, True),
+        (False, False),
+    ),
+)
+def test_runway_provider_artifact_dns_policy_with_custom_transport(
+    monkeypatch,
+    resolve_artifact_dns: bool | None,
+    expected_resolve_dns: bool,
+) -> None:
     monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
     artifact_url = "https://downloads.example.com/generated.mp4"
     resolve_dns_values: list[bool] = []
@@ -830,17 +842,21 @@ def test_runway_provider_resolves_artifact_dns_with_custom_transport(monkeypatch
         return url
 
     monkeypatch.setattr(runway_module, "validate_remote_url", capture_validate_remote_url)
+    kwargs = {}
+    if resolve_artifact_dns is not None:
+        kwargs["resolve_artifact_dns"] = resolve_artifact_dns
 
     provider = RunwayProvider(
         transport=CustomTransport(),
         poll_interval_seconds=0.0,
         max_polls=1,
+        **kwargs,
     )
 
     generated = provider.generate("a rainy alley at night", duration_seconds=4.0)
 
     assert generated.blob() == b"artifact"
-    assert resolve_dns_values == [True]
+    assert resolve_dns_values == [expected_resolve_dns]
 
 
 def test_request_bytes_with_policy_caps_streamed_body_without_content_length() -> None:

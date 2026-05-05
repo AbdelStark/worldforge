@@ -87,6 +87,8 @@ Configuration comes from constructor arguments and environment variables documen
 - `RUNWAYML_BASE_URL` overrides the default Runway API endpoint.
 - `RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS` is a test-only opt-in for trusted local Runway-compatible
   artifact URLs. Leave it unset in normal remote-provider deployments.
+- `RUNWAYML_RESOLVE_ARTIFACT_DNS` overrides artifact URL DNS validation for custom transports.
+  Leave it unset for auto mode, or set it for custom network transports that still use system DNS.
 - `LEWORLDMODEL_POLICY` or `LEWM_POLICY` enables the optional LeWorldModel adapter.
 - `LEWORLDMODEL_CACHE_DIR` overrides the LeWorldModel checkpoint root.
 - `LEWORLDMODEL_REVISION` pins the Hugging Face LeWM commit used when the showcase auto-builds

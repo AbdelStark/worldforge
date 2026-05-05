@@ -48,6 +48,7 @@ _RUNWAY_DEFAULT_RATIO = "1280:720"
 _RUNWAY_DEFAULT_DURATION = 5
 _RUNWAY_MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
 _RUNWAY_ALLOW_LOCAL_ARTIFACT_URLS_ENV_VAR = "RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS"
+_RUNWAY_RESOLVE_ARTIFACT_DNS_ENV_VAR = "RUNWAYML_RESOLVE_ARTIFACT_DNS"
 
 
 def _parse_ratio(ratio: str) -> tuple[int, int]:
@@ -237,6 +238,7 @@ class RunwayProvider(RemoteProvider):
         event_handler: Callable[[ProviderEvent], None] | None = None,
         transport: httpx.BaseTransport | None = None,
         allow_local_artifact_urls: bool | str | None = None,
+        resolve_artifact_dns: bool | str | None = None,
         max_artifact_bytes: int = _RUNWAY_MAX_ARTIFACT_BYTES,
     ) -> None:
         resolved_request_policy = request_policy or ProviderRequestPolicy.remote_defaults(
@@ -292,6 +294,13 @@ class RunwayProvider(RemoteProvider):
             name="Runway allow_local_artifact_urls",
         )
         self._allow_local_artifact_urls = bool(parsed_allow_local_artifacts)
+        self._resolve_artifact_dns_direct = resolve_artifact_dns is not None
+        self._resolve_artifact_dns = optional_bool(
+            resolve_artifact_dns
+            if resolve_artifact_dns is not None
+            else env_value(_RUNWAY_RESOLVE_ARTIFACT_DNS_ENV_VAR),
+            name="Runway resolve_artifact_dns",
+        )
         self._max_artifact_bytes = require_positive_int(
             max_artifact_bytes,
             name="Runway max_artifact_bytes",
@@ -337,6 +346,18 @@ class RunwayProvider(RemoteProvider):
                     ),
                     present=self._allow_local_artifact_urls_direct
                     or env_value(_RUNWAY_ALLOW_LOCAL_ARTIFACT_URLS_ENV_VAR) is not None,
+                ),
+                _field_summary(
+                    _RUNWAY_RESOLVE_ARTIFACT_DNS_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        _RUNWAY_RESOLVE_ARTIFACT_DNS_ENV_VAR,
+                        direct=self._resolve_artifact_dns_direct,
+                        default=True,
+                    ),
+                    present=self._resolve_artifact_dns_direct
+                    or env_value(_RUNWAY_RESOLVE_ARTIFACT_DNS_ENV_VAR) is not None,
+                    detail="auto" if self._resolve_artifact_dns is None else "",
                 ),
             ),
         )
@@ -436,7 +457,7 @@ class RunwayProvider(RemoteProvider):
             provider_name=self.name,
             url_name="artifact URL",
             allow_local_network=self._allow_local_artifact_urls,
-            resolve_dns=not isinstance(self._transport, httpx.MockTransport),
+            resolve_dns=self._should_resolve_artifact_dns(),
         )
         with httpx.Client(transport=self._transport) as client:
             try:
@@ -461,6 +482,11 @@ class RunwayProvider(RemoteProvider):
         if not data:
             raise ProviderError(f"Provider '{self.name}' artifact download returned no bytes.")
         return data
+
+    def _should_resolve_artifact_dns(self) -> bool:
+        if self._resolve_artifact_dns is not None:
+            return self._resolve_artifact_dns
+        return self._transport is None or isinstance(self._transport, httpx.HTTPTransport)
 
     def generate(
         self,
