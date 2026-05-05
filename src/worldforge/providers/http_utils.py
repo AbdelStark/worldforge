@@ -6,6 +6,7 @@ import base64
 import ipaddress
 import mimetypes
 import multiprocessing
+import queue
 import socket
 from collections.abc import Callable
 from pathlib import Path
@@ -99,11 +100,14 @@ def _reject_local_resolved_addresses(
     timeout_seconds: float,
 ) -> None:
     try:
-        addresses = _getaddrinfo_with_timeout(
-            host,
-            port,
-            timeout_seconds=timeout_seconds,
-        )
+        addresses = [
+            ipaddress.ip_address(address)
+            for address in _getaddrinfo_with_timeout(
+                host,
+                port,
+                timeout_seconds=timeout_seconds,
+            )
+        ]
     except TimeoutError as exc:
         raise ProviderError(
             f"Provider '{provider_name}' {url_name} host resolution timed out: {host}."
@@ -112,9 +116,13 @@ def _reject_local_resolved_addresses(
         raise ProviderError(
             f"Provider '{provider_name}' {url_name} host could not be resolved: {host}."
         ) from exc
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ProviderError(
+            f"Provider '{provider_name}' {url_name} host resolution failed: {host}."
+        ) from exc
     for address in addresses:
         _reject_local_address(
-            ipaddress.ip_address(address),
+            address,
             provider_name=provider_name,
             url_name=url_name,
         )
@@ -149,26 +157,37 @@ def _getaddrinfo_with_timeout(
         args=(host, port, result_queue),
         name=f"worldforge-dns-resolver-{host}",
     )
-    resolver.start()
-    resolver.join(timeout_seconds)
-    if resolver.is_alive():
-        resolver.terminate()
-        resolver.join()
-        raise TimeoutError(f"DNS resolution exceeded {timeout_seconds:.1f}s.")
+    resolver_started = False
+    try:
+        resolver.start()
+        resolver_started = True
+        resolver.join(timeout_seconds)
+        if resolver.is_alive():
+            resolver.terminate()
+            resolver.join()
+            raise TimeoutError(f"DNS resolution exceeded {timeout_seconds:.1f}s.")
 
-    if resolver.exitcode not in (0, None):
-        raise socket.gaierror(
-            socket.EAI_FAIL,
-            f"DNS resolver process exited with code {resolver.exitcode}",
-        )
-    if result_queue.empty():
-        raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned no result")
-
-    status, value = result_queue.get()
-    if status == "gaierror":
-        error_number, error_text = value
-        raise socket.gaierror(error_number, error_text)
-    return list(value)
+        if resolver.exitcode not in (0, None):
+            raise socket.gaierror(
+                socket.EAI_FAIL,
+                f"DNS resolver process exited with code {resolver.exitcode}",
+            )
+        try:
+            status, value = result_queue.get(timeout=0.1)
+        except queue.Empty as exc:
+            raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned no result") from exc
+        if status == "gaierror":
+            error_number, error_text = value
+            raise socket.gaierror(error_number, error_text)
+        if status != "ok":
+            raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned an invalid result")
+        return list(value)
+    finally:
+        if resolver_started and resolver.is_alive():
+            resolver.terminate()
+            resolver.join()
+        result_queue.close()
+        result_queue.join_thread()
 
 
 def _reject_local_address(

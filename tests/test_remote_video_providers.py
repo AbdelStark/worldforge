@@ -959,6 +959,20 @@ def test_validate_remote_url_allows_public_https_without_dns_resolution() -> Non
     )
 
 
+def test_validate_remote_url_wraps_dns_worker_failures(monkeypatch) -> None:
+    def fail_resolution(*_args: object, **_kwargs: object) -> list[str]:
+        raise RuntimeError("resolver worker failed")
+
+    monkeypatch.setattr(http_utils_module, "_getaddrinfo_with_timeout", fail_resolution)
+
+    with pytest.raises(ProviderError, match="host resolution failed"):
+        validate_remote_url(
+            "https://downloads.example.com/generated.mp4",
+            provider_name="runway",
+            url_name="artifact URL",
+        )
+
+
 def test_runway_provider_rejects_provider_specific_limits(monkeypatch) -> None:
     monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
 
