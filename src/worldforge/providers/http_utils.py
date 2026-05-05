@@ -13,7 +13,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from time import perf_counter, sleep
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
@@ -740,12 +740,14 @@ def _emit_response_validation_event(
     response: httpx.Response,
     provider_name: str,
     operation_name: str,
-    phase: str,
+    phase: Literal["success", "failure"],
     method: str,
     target: str,
     policy: RequestOperationPolicy,
     message: str | None = None,
 ) -> None:
+    if phase not in {"success", "failure"}:
+        raise AssertionError("response validation event phase must be success or failure")
     if emit_event is None:
         return
     attempt = response.extensions.get("worldforge_attempt_number")

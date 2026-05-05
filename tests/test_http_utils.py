@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import multiprocessing
 
+import httpx
 import pytest
 
+from worldforge.models import ProviderEvent, RequestOperationPolicy
 from worldforge.providers import ProviderError, http_utils
 from worldforge.providers.http_utils import _getaddrinfo_with_timeout, validate_remote_base_url
 
@@ -110,6 +112,23 @@ def test_validate_remote_base_url_wraps_dns_worker_failures(monkeypatch) -> None
             provider_name="cosmos-policy",
             env_var="COSMOS_POLICY_BASE_URL",
         )
+
+
+def test_response_validation_event_rejects_unexpected_phase() -> None:
+    events: list[ProviderEvent] = []
+
+    with pytest.raises(AssertionError, match="success or failure"):
+        http_utils._emit_response_validation_event(
+            events.append,
+            response=httpx.Response(200),
+            provider_name="cosmos-policy",
+            operation_name="policy",
+            phase="retry",  # type: ignore[arg-type]
+            method="POST",
+            target="/act",
+            policy=RequestOperationPolicy(timeout_seconds=1.0),
+        )
+    assert events == []
 
 
 def test_dns_resolution_cache_evicts_oldest_entry(monkeypatch) -> None:
