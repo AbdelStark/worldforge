@@ -336,7 +336,14 @@ suite = EvaluationSuite.from_builtin("reasoning")
 report = suite.run_report(["mock"], forge=forge)
 print(report.results[0].passed)
 print(report.to_markdown())
+
+gallery = report.failure_gallery()
+print(gallery.to_json())
 ```
+
+Failed reports expose representative, sanitized gallery cases through `failure_gallery()` and
+through `report.artifacts()["failure_gallery.json"]` / `["failure_gallery.md"]`. The gallery is
+for deterministic contract triage; it does not rank providers or claim physical fidelity.
 
 ## Benchmarking
 

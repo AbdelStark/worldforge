@@ -9,6 +9,10 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added sanitized evaluation failure galleries. Failed evaluation reports now expose
+  representative fixture-level cases with expected contract notes, observed summaries, metrics
+  previews, and triage steps; `report.artifacts()` also exports `failure_gallery.json` and
+  `failure_gallery.md` for issue attachments.
 - Added benchmark budget calibration artifacts generated from preserved benchmark JSON reports.
   `scripts/calibrate_benchmark_budgets.py` writes a loadable `candidate-budgets.json`, a full
   `budget-calibration.json`, and a human-review Markdown report with source report digests,

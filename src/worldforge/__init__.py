@@ -44,6 +44,8 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "EvalResult": "worldforge.evaluation",
     "EvalScenario": "worldforge.evaluation",
     "EvalSuite": "worldforge.evaluation",
+    "EvaluationFailureCase": "worldforge.evaluation",
+    "EvaluationFailureGallery": "worldforge.evaluation",
     "EvaluationReport": "worldforge.evaluation",
     "EvaluationResult": "worldforge.evaluation",
     "EvaluationScenario": "worldforge.evaluation",
