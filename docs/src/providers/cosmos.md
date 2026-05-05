@@ -150,6 +150,11 @@ input shape summary, result digest, and artifact path. Hosts own retention of th
 copy the artifact out of temporary storage immediately when it is needed for release or issue
 evidence.
 
+Artifact lifetime assumption: Cosmos media evidence is durable only after the host has persisted
+the local output path. If a media workflow fails, first triage with
+`uv run worldforge provider health cosmos`; if health is ready, inspect the typed provider error
+for malformed inline media, failed-task payloads, or unsupported artifact references.
+
 ## Tests
 
 - `tests/test_remote_video_providers.py` covers Cosmos health parsing, generation success,

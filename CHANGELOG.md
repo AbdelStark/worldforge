@@ -64,6 +64,9 @@ releases may still include breaking changes when the public API needs to tighten
 
 - Preserved LeRobot loader provenance after lazy policy loading so real `from_pretrained` runs no
   longer report as `injected_policy` in policy result metadata or provider events.
+- Documented first triage commands for Cosmos and Runway media artifacts and added focused
+  provider-level regression tests for failed, malformed, unsupported, expired, and retry-exhausted
+  remote media paths.
 
 ## 0.5.0 - 2026-04-24
 
