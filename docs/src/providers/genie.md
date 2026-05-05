@@ -20,6 +20,11 @@ boundary.
 Until those boundaries exist, WorldForge must not present deterministic local surrogate behavior as
 a Genie implementation. Keeping the provider as `scaffold` is the accurate production behavior.
 
+Revisit trigger: a maintained upstream API, SDK, or local runtime must publish a callable
+artifact-generation contract with documented authentication, inputs, outputs, failure modes,
+licensing, and smoke evidence. A web-only interactive prototype is not enough to change the
+provider capability flags.
+
 References:
 
 - [Genie 3 - Google DeepMind](https://deepmind.google/models/genie/)
