@@ -1,0 +1,27 @@
+{
+  "schema_version": "1",
+  "kind": "worldforge.scene_artifact",
+  "provider": "fixture-scene",
+  "capability": "generate",
+  "units": "meter",
+  "coordinate_frame": {
+    "up_axis": "z",
+    "forward_axis": "x",
+    "handedness": "right"
+  },
+  "objects": [
+    {
+      "id": "non-finite",
+      "transform": {
+        "translation": [0.0, 1e999, 0.0],
+        "rotation_quat": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    }
+  ],
+  "assets": [],
+  "provenance": {
+    "input_digest": "sha256:input",
+    "result_digest": "sha256:result"
+  }
+}

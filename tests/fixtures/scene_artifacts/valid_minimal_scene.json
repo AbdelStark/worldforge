@@ -1,0 +1,67 @@
+{
+  "schema_version": "1",
+  "kind": "worldforge.scene_artifact",
+  "provider": "fixture-scene",
+  "capability": "generate",
+  "units": "meter",
+  "coordinate_frame": {
+    "up_axis": "z",
+    "forward_axis": "x",
+    "handedness": "right"
+  },
+  "objects": [
+    {
+      "id": "block-1",
+      "label": "block",
+      "transform": {
+        "translation": [0.0, 0.0, 0.05],
+        "rotation_quat": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "bbox": {
+        "min": [-0.05, -0.05, 0.0],
+        "max": [0.05, 0.05, 0.1]
+      },
+      "asset_refs": ["mesh-block-1"],
+      "metadata": {
+        "role": "fixture"
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "mesh-block-1",
+      "role": "mesh",
+      "mime_type": "model/gltf+json",
+      "uri": "artifacts/block-1.gltf",
+      "digest": "sha256:0123456789abcdef",
+      "size_bytes": 2048,
+      "local_only": false
+    }
+  ],
+  "media": [
+    {
+      "id": "preview-1",
+      "role": "preview",
+      "mime_type": "image/png",
+      "uri": "artifacts/block-1.png",
+      "digest": "sha256:abcdef0123456789",
+      "size_bytes": 1024,
+      "local_only": false
+    }
+  ],
+  "provenance": {
+    "runtime_manifest": "src/worldforge/providers/runtime_manifests/example-scene.json",
+    "command": "worldforge-smoke-example-scene --input prompt.json",
+    "input_digest": "sha256:input",
+    "result_digest": "sha256:result",
+    "event_count": 4,
+    "limitations": [
+      "fixture-only artifact",
+      "does not certify physical validity"
+    ]
+  },
+  "metadata": {
+    "fixture": "valid_minimal_scene"
+  }
+}

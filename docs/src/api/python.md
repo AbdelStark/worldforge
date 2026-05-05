@@ -160,6 +160,22 @@ session.close()
 Install with `worldforge-ai[rerun]`. Rerun is not a provider and does not advertise WorldForge
 capabilities.
 
+## Scene Artifact Validation
+
+Future spatial or 3D scene providers must validate their JSON artifact descriptor before returning
+or preserving evidence. The helper is dependency-free and does not fetch assets, render previews,
+or run simulators:
+
+```python
+from worldforge import validate_scene_artifact
+
+artifact = validate_scene_artifact(payload)
+```
+
+The validated artifact remains a JSON object. Invalid units, malformed transforms, non-finite
+numbers, tuple-shaped values, object instances, unsafe URLs, unmarked host-local paths,
+secret-like metadata keys, and oversized metadata raise `WorldForgeError`.
+
 ## Action Scoring
 
 Providers that expose the `score` capability can rank candidate action sequences without claiming
