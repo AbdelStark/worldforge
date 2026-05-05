@@ -829,7 +829,7 @@ def _display_path(path: Path) -> str:
 
 
 def _safe_source_display(source: str) -> str:
-    if _HOST_PATH_PATTERN.search(source):
+    if Path(source).is_absolute() or _HOST_PATH_PATTERN.search(source):
         return f"<host-local:{Path(source).name or 'path'}>"
     return source
 

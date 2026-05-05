@@ -132,6 +132,7 @@ def test_issue_bundle_marks_unsafe_metadata_local_only(tmp_path: Path) -> None:
         artifact_paths={
             "events": "logs/provider-events.jsonl",
             "local": str(local_path),
+            "linux_tmp": "/tmp/worldforge-local-result.json",
         },
     )
 
@@ -149,7 +150,9 @@ def test_issue_bundle_marks_unsafe_metadata_local_only(tmp_path: Path) -> None:
         "signed or credentialed URL detected",
     }
     assert excluded["runs/20260105T000000Z-00000005/artifacts/local"]["local_only"] is True
+    assert excluded["runs/20260105T000000Z-00000005/artifacts/linux_tmp"]["local_only"] is True
     assert str(tmp_path) not in json.dumps(manifest)
+    assert "/tmp/worldforge-local-result.json" not in json.dumps(manifest)
     assert result.issue_template_path is not None
     assert (
         "Review `evidence_manifest.json` before attaching"
