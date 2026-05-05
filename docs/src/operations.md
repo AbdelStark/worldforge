@@ -516,6 +516,24 @@ or `skipped` rather than being silently omitted, and the live-smoke registry rec
 missing-runtime and missing-credential skips. Attach the report and linked artifacts when a release
 note or provider promotion claims live-provider coverage.
 
+When release or issue triage needs the underlying evaluation and benchmark artifacts, generate a
+separate evidence bundle first:
+
+```bash
+uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
+uv run worldforge benchmark --preset mock-smoke --run-workspace .worldforge
+uv run python scripts/generate_evidence_bundle.py \
+  --workspace-dir .worldforge \
+  --output .worldforge/evidence-bundles/mock-planning
+uv run python scripts/generate_release_evidence.py \
+  --artifact .worldforge/evidence-bundles/mock-planning/evidence_manifest.json
+```
+
+Success signal: the bundle writes `evidence_manifest.json` and `summary.md`, every included file
+has a `sha256:<hex>` digest, and excluded files carry a reason such as unsupported suffix,
+host-local path, or secret-like material. First triage step on failure: inspect the run's
+`run_manifest.json` and remove or local-only mark unsafe artifacts before regenerating the bundle.
+
 The tag-triggered release workflow repeats the full quality gate before building distributions or
 publishing release artifacts.
 

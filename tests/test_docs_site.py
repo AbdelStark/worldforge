@@ -508,6 +508,32 @@ def test_claim_to_evidence_map_covers_issue_140_contract() -> None:
     assert "- [x] Every README-level capability claim" in continuation
 
 
+def test_evidence_bundle_docs_cover_issue_145_contract() -> None:
+    evaluation = (ROOT / "docs/src/evaluation.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+
+    for doc in (evaluation, operations, playbooks, claim_map):
+        assert "scripts/generate_evidence_bundle.py" in doc
+
+    for signal in (
+        "evidence_manifest.json",
+        "summary.md",
+        "safe_to_attach",
+        "SHA-256",
+        "secret-like",
+        "host-local",
+    ):
+        assert signal in evaluation or signal in operations
+
+    assert "--artifact .worldforge/evidence-bundles" in operations
+    assert "generated evidence bundles" in playbooks
+    assert "tests/test_evidence_bundle.py" in claim_map
+    assert "- [x] Bundle generation succeeds" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

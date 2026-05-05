@@ -28,6 +28,7 @@ DEFAULT_LIVE_SMOKE_REGISTRY = ROOT / "docs" / "src" / "live-smoke-evidence.json"
 DEFAULT_RUNS_DIR = ROOT / ".worldforge" / "runs"
 DEFAULT_REPORTS_DIR = ROOT / ".worldforge" / "reports"
 DEFAULT_DIST_DIR = ROOT / "dist"
+DEFAULT_EVIDENCE_BUNDLES_DIR = ROOT / ".worldforge" / "evidence-bundles"
 
 VALIDATION_COMMANDS = (
     ("Lockfile", "uv lock --check"),
@@ -128,7 +129,13 @@ def main(argv: list[str] | None = None) -> int:
     benchmark_artifacts = _dedupe_paths(
         [*args.benchmark_artifact, *_glob_existing(DEFAULT_REPORTS_DIR, "*.json")]
     )
-    artifacts = _dedupe_paths([*args.artifact, *_glob_existing(DEFAULT_DIST_DIR, "*")])
+    artifacts = _dedupe_paths(
+        [
+            *args.artifact,
+            *_glob_existing(DEFAULT_DIST_DIR, "*"),
+            *_glob_existing(DEFAULT_EVIDENCE_BUNDLES_DIR, "*/evidence_manifest.json"),
+        ]
+    )
     report = render_release_evidence(
         output=output,
         manifests=manifests,

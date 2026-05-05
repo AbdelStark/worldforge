@@ -533,10 +533,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Bundle generation succeeds for mock eval and benchmark runs in a clean checkout.
-- [ ] Bundle manifest includes file digests and safe-to-attach flags.
-- [ ] Unsafe or local-only artifacts are excluded or clearly marked.
-- [ ] Release evidence can link to the generated bundle.
+- [x] Bundle generation succeeds for mock eval and benchmark runs in a clean checkout.
+- [x] Bundle manifest includes file digests and safe-to-attach flags.
+- [x] Unsafe or local-only artifacts are excluded or clearly marked.
+- [x] Release evidence can link to the generated bundle.
 
 Validation:
 

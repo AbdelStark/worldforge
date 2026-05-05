@@ -11,6 +11,10 @@ releases may still include breaking changes when the public API needs to tighten
 
 - Added a claim-to-evidence map for public README-level claims, capability surfaces, runtime
   boundaries, preserved artifacts, and explicit non-claims.
+- Added a checkout-safe evidence bundle exporter for preserved eval and benchmark runs. The
+  bundle copies safe reports, run manifests, event logs, preset inputs, and budget fixtures,
+  records SHA-256 digests and `safe_to_attach` flags, excludes unsafe or local-only artifacts, and
+  can be linked from release evidence reports.
 - Added five named benchmark presets — `mock-smoke`, `parser-overhead`, `remote-media-dryrun`,
   `prepared-host`, and `release-evidence` — exposed through new `worldforge benchmark
   --list-presets`, `--show-preset`, and `--preset` flags. Presets bundle a deterministic input
