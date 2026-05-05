@@ -176,6 +176,20 @@ older directories; use `--dry-run` before deleting evidence attached to an incid
 For public issues, attach the manifest plus report files and redact any host-created artifacts that
 contain private paths, prompts, credentials, signed URLs, or provider-native payloads.
 
+Candidate benchmark budgets must be generated from preserved benchmark reports and reviewed before
+they replace release budget files:
+
+```bash
+uv run python scripts/calibrate_benchmark_budgets.py \
+  --report .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
+  --current-budget src/worldforge/benchmark_presets/_data/budget-release-evidence.json
+```
+
+The success signal is a `budget-calibration.md` review report plus a loadable
+`candidate-budgets.json`; the command does not weaken existing release gates automatically.
+Threshold loosening is allowed only with preserved report digests, machine-class context, observed
+baseline values, and reviewer rationale.
+
 ## Observability
 
 Attach a provider event handler at `WorldForge(event_handler=...)` or provider construction time.

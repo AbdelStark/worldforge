@@ -9,6 +9,11 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added benchmark budget calibration artifacts generated from preserved benchmark JSON reports.
+  `scripts/calibrate_benchmark_budgets.py` writes a loadable `candidate-budgets.json`, a full
+  `budget-calibration.json`, and a human-review Markdown report with source report digests,
+  machine context, old thresholds, candidate thresholds, observed baselines, and rationale fields
+  without modifying existing release budget files.
 - Added a claim-to-evidence map for public README-level claims, capability surfaces, runtime
   boundaries, preserved artifacts, and explicit non-claims.
 - Added a checkout-safe evidence bundle exporter for preserved eval and benchmark runs. The

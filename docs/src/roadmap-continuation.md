@@ -566,10 +566,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Candidate budget generation records source report digests.
-- [ ] Budget diffs show old threshold, candidate threshold, observed baseline, and rationale field.
-- [ ] Docs require review for threshold loosening.
-- [ ] Existing budget failure behavior remains non-zero.
+- [x] Candidate budget generation records source report digests.
+- [x] Budget diffs show old threshold, candidate threshold, observed baseline, and rationale field.
+- [x] Docs require review for threshold loosening.
+- [x] Existing budget failure behavior remains non-zero.
 
 Validation:
 

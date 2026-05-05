@@ -208,6 +208,44 @@ exits non-zero after printing violations such as latency, retry, error-count, su
 unmatched-budget checks. JSON output contains `benchmark` and `gate` objects; Markdown prints both
 reports; CSV prints the gate violation table.
 
+## Budget calibration
+
+Benchmark budgets should be calibrated from preserved baseline reports, not from console memory or
+one-off local observations. Generate candidate budget artifacts from one or more saved benchmark
+JSON reports:
+
+```bash
+uv run worldforge benchmark --preset release-evidence --format json --run-workspace .worldforge
+uv run python scripts/calibrate_benchmark_budgets.py \
+  --report .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
+  --current-budget src/worldforge/benchmark_presets/_data/budget-release-evidence.json \
+  --output .worldforge/benchmark-calibration/release-evidence-candidate \
+  --machine-class "macos-arm64-local"
+```
+
+The calibration command writes:
+
+- `budget-calibration.json`: full provenance, baseline context, source report digests, and diffs.
+- `candidate-budgets.json`: a loadable budget file using the existing benchmark budget schema.
+- `budget-calibration.md`: the human review report for pull requests or release notes.
+
+Success signal: the candidate budget file loads through the same parser used by
+`worldforge benchmark --budget-file`, and every diff row names the provider, operation, old
+threshold, candidate threshold, observed baseline, and rationale. The command never edits the
+current budget file.
+
+Threshold loosening requires human review. Reviewers should compare the source report digest,
+machine class, Python version, command, provider, operation, sample count, input fixture digest,
+old threshold, candidate threshold, observed baseline, and rationale before replacing any release
+budget file. Budget changes are allowed when they follow an intentional workload change, provider
+adapter change, dependency/runtime upgrade, or documented machine-class change. They are not allowed
+to mask a regression, create a machine-independent performance claim, or add flaky live-provider
+budgets to default CI.
+
+First triage step for a surprising candidate: open `budget-calibration.md`, confirm the source
+report digest matches the preserved benchmark JSON, then rerun the exact benchmark command on the
+same machine class before changing a release budget.
+
 ## Report contents
 
 - per-provider, per-operation success and error counts

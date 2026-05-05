@@ -347,6 +347,22 @@ Success signal:
 If a score changes, first check provider capability, test fixture changes, input data, and retry
 events. Do not rewrite claims around a one-off run without preserving the run artifact.
 
+When a preserved benchmark baseline justifies a budget update, generate review artifacts instead
+of editing release budgets directly:
+
+```bash
+uv run python scripts/calibrate_benchmark_budgets.py \
+  --report .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
+  --current-budget src/worldforge/benchmark_presets/_data/budget-release-evidence.json \
+  --output .worldforge/benchmark-calibration/release-evidence-candidate
+```
+
+Success signal: `candidate-budgets.json` loads through the benchmark budget parser, and
+`budget-calibration.md` shows source report digests, machine class, old threshold, candidate
+threshold, observed baseline, and rationale. First triage step on an unexpected candidate is to
+rerun the preserved benchmark command on the same machine class and compare report digests before
+loosening any release gate.
+
 ### 6a. Preserve Harness Reports
 
 TheWorldHarness Eval and Benchmark screens preserve completed reports automatically under the
