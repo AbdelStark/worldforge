@@ -151,6 +151,12 @@ the downloaded bytes immediately if the media is needed for issue evidence, benc
 or release notes. If an artifact has expired, rerun the task rather than attempting to reconstruct a
 signed URL from logs or manifests.
 
+Artifact lifetime assumption: downloaded bytes are durable only after the host writes or copies the
+local artifact path. First triage command for Runway media failures:
+`uv run worldforge provider health runway`. If health is ready, inspect provider events for
+`operation=="artifact download"` and sanitized `target` values, then rerun the task when the URL has
+expired.
+
 Separate benchmark input fixtures are provided for the two capabilities:
 
 ```bash
