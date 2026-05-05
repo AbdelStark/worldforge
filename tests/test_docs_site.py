@@ -443,6 +443,7 @@ def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     assert "Project Genie announcement" in provider_page
     assert "not a supported automation API" in provider_page
     assert "must not present deterministic local surrogate behavior" in provider_page
+    assert "Revisit trigger" in provider_page
     assert "fixture-backed parser tests" in provider_page
     assert "sanitized `run_manifest.json`" in provider_page
     assert "| [`genie`](./genie.md) | `scaffold` | scaffold | `GENIE_API_KEY` |" in provider_index
