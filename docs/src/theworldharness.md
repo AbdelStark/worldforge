@@ -154,7 +154,10 @@ Completed eval and benchmark TUI screens still write JSON under `.worldforge/rep
 the active state directory for the Home screen and `Ctrl+P` recent-report index. Use the run
 workspace when a full issue attachment needs manifest, reports, logs, and result summaries together.
 Use `runs compare --format json|markdown|csv` to export attachment-safe comparisons across
-preserved eval runs or preserved benchmark runs.
+preserved eval runs or preserved benchmark runs. The CLI and harness comparison path share one
+report model: compatible cross-provider runs keep metric deltas, event counts, budget status,
+fixture digest, suite version, missing evidence, and skip reasons; mismatched capability,
+operation, fixture, budget, or suite context fails before writing a comparison.
 
 ## Interface Contract
 

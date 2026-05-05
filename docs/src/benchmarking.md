@@ -92,9 +92,13 @@ uv run worldforge runs compare \
 ```
 
 `runs compare` accepts run directories, `run_manifest.json` files, or `reports/report.json` files.
-It refuses mixed eval and benchmark reports. Markdown includes each run command, provider,
-operation, UTC date, report artifact paths, and input or budget provenance references. JSON and CSV
-are stable enough to attach to issues.
+It refuses mixed eval and benchmark reports, and it also stops on capability mismatch, operation
+mismatch, fixture digest mismatch, budget mismatch, or suite version mismatch. Different providers
+are expected: each provider becomes a separate row only after the shared comparison context matches.
+Markdown starts with claim boundary language and the shared context; JSON, Markdown, and CSV rows
+include metric deltas, event counts, budget status, missing evidence, skip reasons, artifact paths,
+and input or budget provenance references. The output is stable enough to attach to issues, but it
+is not a public leaderboard or a ranking across different tasks or capabilities.
 
 Use `--input-file` when a benchmark result needs to be reproducible from preserved inputs. The
 file can contain input fields directly, or an `inputs` object plus metadata. The checked-in

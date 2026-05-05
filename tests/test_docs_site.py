@@ -589,6 +589,35 @@ def test_evaluation_failure_gallery_docs_cover_issue_147_contract() -> None:
     assert "- [x] Reports avoid raw secrets" in continuation
 
 
+def test_cross_provider_comparison_docs_cover_issue_150_contract() -> None:
+    benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
+    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+    claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for signal in (
+        "worldforge runs compare",
+        "fixture digest",
+        "budget status",
+        "suite version",
+        "capability mismatch",
+        "claim boundary",
+        "missing evidence",
+        "skip reasons",
+        "not a public leaderboard",
+    ):
+        assert signal in benchmarking or signal in harness
+
+    assert "tests/test_harness_report_compare.py" in claim_map
+    assert "cross-provider run comparisons" in changelog
+    assert "- [x] Compatible runs compare with provenance" in continuation
+    assert (
+        "- [x] Harness and CLI comparison paths use the same underlying report model"
+        in continuation
+    )
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
