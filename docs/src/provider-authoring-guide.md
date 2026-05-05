@@ -48,14 +48,19 @@ Before opening a provider PR, run the non-TUI workbench from a clean checkout:
 ```bash
 uv run worldforge provider workbench mock
 uv run worldforge provider workbench <provider> --format json
+uv run worldforge provider workbench jepa-wms --format markdown
 uv run python scripts/generate_provider_docs.py --check
 ```
 
-The report lists the conformance helper required for every advertised capability, validates
-`tests/fixtures/providers/<provider>_*.json` playback files when they exist, links this guide, and
-prints a pasteable issue summary. It invokes only deterministic local providers by default. Use
-`--live` only on a prepared host when credentials, optional dependencies, injected runtimes, and
-runtime-owned artifacts are intentionally available.
+The report lists the conformance helper required for every advertised capability, planned
+capabilities for scaffold/candidate adapters, runtime manifest status, docs/catalog drift status,
+redaction checks, safe artifact references, and validation commands. It validates
+`tests/fixtures/providers/<provider>_*.json` playback files when they exist, including module-safe
+prefixes such as `jepa_wms_*.json` for direct-construction candidates. It also names missing
+promotion evidence by future status (`experimental`, `beta`, `stable`) so a scaffold gap is visible
+without turning into an accidental capability claim. It invokes only deterministic local providers
+by default. Use `--live` only on a prepared host when credentials, optional dependencies, injected
+runtimes, and runtime-owned artifacts are intentionally available.
 
 ## Adapter Decision Tree
 

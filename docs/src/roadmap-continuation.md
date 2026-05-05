@@ -693,10 +693,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Workbench can run against `mock` and at least one scaffold/candidate in a clean checkout.
-- [ ] Output names missing evidence by promotion status.
-- [ ] Markdown output includes validation commands and safe artifact references.
-- [ ] TUI and CLI workbench views use the same non-Textual flow logic.
+- [x] Workbench can run against `mock` and at least one scaffold/candidate in a clean checkout.
+- [x] Output names missing evidence by promotion status.
+- [x] Markdown output includes validation commands and safe artifact references.
+- [x] TUI and CLI workbench views use the same non-Textual flow logic.
 
 Validation:
 

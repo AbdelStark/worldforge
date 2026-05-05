@@ -618,6 +618,29 @@ def test_cross_provider_comparison_docs_cover_issue_150_contract() -> None:
     )
 
 
+def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
+    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+    authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for signal in (
+        "worldforge harness --flow workbench",
+        "worldforge provider workbench jepa-wms",
+        "promotion evidence",
+        "runtime manifest status",
+        "safe artifact references",
+        "validation commands",
+        "missing evidence by promotion status",
+        "jepa_wms_*.json",
+    ):
+        assert signal in harness or signal in authoring
+
+    assert "adapter author workbench flow" in changelog
+    assert "- [x] Workbench can run against `mock`" in continuation
+    assert "- [x] TUI and CLI workbench views use the same non-Textual flow logic" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

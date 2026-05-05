@@ -67,6 +67,21 @@ FLOWS: tuple[HarnessFlow, ...] = (
             "mock provider benchmark matrix, and compare latency, throughput, and emitted events."
         ),
     ),
+    HarnessFlow(
+        id="workbench",
+        title="Adapter Author Workbench",
+        short_title="Workbench",
+        focus="adapter authoring evidence",
+        provider="Provider workbench",
+        capability="authoring",
+        command="uv run worldforge provider workbench mock",
+        accent="#f0a35e",
+        summary=(
+            "Run the checkout-safe provider workbench against the stable mock provider and the "
+            "direct-construction jepa-wms candidate, then collect promotion evidence, safe "
+            "artifact references, and validation commands."
+        ),
+    ),
 )
 
 
@@ -126,6 +141,50 @@ def _run_diagnostics_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
     return summary
 
 
+def _run_workbench_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
+    from worldforge.harness.workbench import (
+        provider_workbench_markdown,
+        provider_workbench_report,
+    )
+
+    reports = [
+        provider_workbench_report("mock", docs_root=Path.cwd()),
+        provider_workbench_report("jepa-wms", docs_root=Path.cwd()),
+    ]
+    providers = [str(report["provider"]) for report in reports]
+    passed = sum(1 for report in reports if report.get("status") == "passed")
+    safe_artifacts = [
+        artifact
+        for report in reports
+        for artifact in report.get("safe_artifacts", [])
+        if isinstance(artifact, dict)
+    ]
+    validation_commands = sorted(
+        {str(command) for report in reports for command in report.get("validation_commands", [])}
+    )
+    missing_by_provider = {
+        str(report["provider"]): report["promotion"]["missing_evidence_by_status"]
+        for report in reports
+    }
+    summary: JSONDict = {
+        "demo_kind": "provider_workbench",
+        "state_dir": str(state_dir),
+        "providers": providers,
+        "report_count": len(reports),
+        "passed_count": passed,
+        "failed_count": len(reports) - passed,
+        "reports": reports,
+        "safe_artifact_count": len(safe_artifacts),
+        "safe_artifacts": safe_artifacts,
+        "validation_commands": validation_commands,
+        "missing_evidence_by_provider": missing_by_provider,
+        "provider_events": [],
+    }
+    if emit:
+        print("\n\n".join(provider_workbench_markdown(report) for report in reports))
+    return summary
+
+
 # Demo modules import the optional-runtime provider classes at module scope, so
 # keep these imports lazy: loading the harness should not pull LeRobot/LeWorldModel
 # adapters into the base cold-start path.
@@ -145,6 +204,7 @@ _RUNNERS: dict[str, FlowRunner] = {
     "leworldmodel": _run_leworldmodel_demo,
     "lerobot": _run_lerobot_demo,
     "diagnostics": _run_diagnostics_demo,
+    "workbench": _run_workbench_demo,
 }
 
 
@@ -806,6 +866,43 @@ def _steps_for(flow_id: str, summary: JSONDict) -> tuple[HarnessStep, ...]:
                 "artifact=benchmark report json/markdown/csv",
             ),
         )
+    if flow_id == "workbench":
+        candidate_missing = summary["missing_evidence_by_provider"]["jepa-wms"]
+        return (
+            HarnessStep(
+                "Select authoring targets",
+                "Use one stable catalog provider and one direct-construction candidate.",
+                f"{', '.join(summary['providers'])} selected.",
+                "providers=mock,jepa-wms",
+            ),
+            HarnessStep(
+                "Run checkout-safe workbench",
+                "Invoke non-Textual provider_workbench_report without live provider calls.",
+                f"{summary['passed_count']}/{summary['report_count']} reports passed.",
+                "live=false",
+            ),
+            HarnessStep(
+                "Inspect promotion evidence",
+                "Group missing evidence by target promotion status.",
+                (
+                    "jepa-wms stable gaps: "
+                    f"{', '.join(candidate_missing.get('stable', [])) or 'none'}."
+                ),
+                "promotion=experimental,beta,stable",
+            ),
+            HarnessStep(
+                "Check runtime and fixtures",
+                "Read runtime manifest status and provider fixture coverage.",
+                f"{summary['safe_artifact_count']} safe artifact references collected.",
+                "fixtures=tests/fixtures/providers",
+            ),
+            HarnessStep(
+                "Render issue output",
+                "Preserve validation commands and safe artifact references for PRs or issues.",
+                f"{len(summary['validation_commands'])} validation commands listed.",
+                "format=markdown,json",
+            ),
+        )
     raise ValueError(f"unknown harness flow '{flow_id}'")
 
 
@@ -844,6 +941,36 @@ def _metrics_for(flow_id: str, summary: JSONDict) -> tuple[HarnessMetric, ...]:
                 "Events",
                 str(summary["benchmark_event_count"]),
                 "provider events captured during benchmark samples",
+            ),
+        )
+    if flow_id == "workbench":
+        candidate_missing = summary["missing_evidence_by_provider"]["jepa-wms"]
+        stable_missing = candidate_missing.get("stable", [])
+        return (
+            HarnessMetric(
+                "Targets",
+                str(summary["report_count"]),
+                ", ".join(summary["providers"]),
+            ),
+            HarnessMetric(
+                "Passed",
+                f"{summary['passed_count']}/{summary['report_count']}",
+                "checkout-safe reports",
+            ),
+            HarnessMetric(
+                "Candidate gaps",
+                str(len(stable_missing)),
+                ", ".join(stable_missing) or "none",
+            ),
+            HarnessMetric(
+                "Artifacts",
+                str(summary["safe_artifact_count"]),
+                "safe issue references",
+            ),
+            HarnessMetric(
+                "Commands",
+                str(len(summary["validation_commands"])),
+                "validation commands",
             ),
         )
 
@@ -885,6 +1012,16 @@ def _transcript_for(flow_id: str, summary: JSONDict) -> tuple[str, ...]:
             f"highest_throughput_operation: {summary['highest_throughput_operation']}",
             f"benchmark_event_count: {summary['benchmark_event_count']}",
             f"commands: {' | '.join(summary['commands'])}",
+        )
+    if flow_id == "workbench":
+        candidate_missing = summary["missing_evidence_by_provider"]["jepa-wms"]
+        return (
+            "flow: workbench",
+            f"providers: {', '.join(summary['providers'])}",
+            f"passed: {summary['passed_count']}/{summary['report_count']}",
+            f"jepa-wms_missing_stable: {', '.join(candidate_missing.get('stable', [])) or 'none'}",
+            f"safe_artifacts: {summary['safe_artifact_count']}",
+            f"validation_commands: {' | '.join(summary['validation_commands'])}",
         )
 
     lines = [

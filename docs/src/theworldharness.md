@@ -97,6 +97,7 @@ The diagnostics, eval, and benchmark screens map directly to non-TUI commands:
 uv run worldforge doctor --registered-only
 uv run worldforge provider list
 uv run worldforge provider workbench mock
+uv run worldforge harness --flow workbench
 uv run worldforge benchmark --provider mock --iterations 2 --format json
 uv run worldforge eval --suite planning --provider mock --format json
 ```
@@ -105,23 +106,32 @@ uv run worldforge eval --suite planning --provider mock --format json
 
 `worldforge provider workbench <provider>` is the checkout-safe adapter author loop behind the
 harness provider development workflow. It does not import Textual and does not make live provider
-calls unless `--live` is passed explicitly. The default report is designed to paste into GitHub
-issues: provider profile, required capability conformance helpers, fixture JSON status, docs/catalog
-drift hints, redaction-safe provider event status, and exact follow-up commands.
+calls unless `--live` is passed explicitly. The same non-Textual report model powers the
+`worldforge harness --flow workbench` TUI path. The default report is designed to paste into GitHub
+issues or PR descriptions: provider profile, target source, required capability conformance helpers,
+planned capability surface, runtime manifest status, fixture JSON status, docs/catalog drift hints,
+redaction-safe provider event status, promotion evidence grouped by future status, safe artifact
+references, and exact validation commands.
 
 ```bash
 uv run worldforge provider workbench mock
+uv run worldforge provider workbench jepa-wms --format markdown
+uv run worldforge provider workbench genie --format json
 uv run worldforge provider workbench runway --format json
 uv run worldforge provider workbench runway --live
+uv run worldforge harness --flow workbench
 ```
 
 For deterministic local providers such as `mock`, the workbench invokes the advertised capability
-helpers. For HTTP adapters it validates matching `tests/fixtures/providers/<provider>_*.json`
-playback files and lists the capability helpers that the provider test module must cover. For
-host-owned local runtimes such as LeRobot and LeWorldModel, the default path inspects profile,
-health, docs, and fixtures while leaving injected-runtime/live smoke execution to prepared hosts.
-Run `uv run python scripts/generate_provider_docs.py --check` before opening a provider PR so
-profile metadata and generated catalog tables stay in sync.
+helpers. For scaffold or direct-construction candidates such as `genie` and `jepa-wms`, it names
+missing evidence by promotion status instead of implying the provider is ready. For HTTP adapters it
+validates matching `tests/fixtures/providers/<provider>_*.json` or Python module-safe fixture
+prefixes such as `jepa_wms_*.json`, and lists the capability helpers that the provider test module
+must cover. For host-owned local runtimes such as LeRobot and LeWorldModel, the default path
+inspects profile, health, docs, runtime manifests, and fixtures while leaving injected-runtime/live
+smoke execution to prepared hosts. Run
+`uv run python scripts/generate_provider_docs.py --check` before opening a provider PR so profile
+metadata and generated catalog tables stay in sync.
 
 Completed checkout-safe flows also preserve a sanitized run workspace:
 

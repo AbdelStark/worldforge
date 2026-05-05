@@ -9,6 +9,11 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added an adapter author workbench flow for provider promotion evidence. The non-Textual
+  workbench now handles catalog providers, scaffold providers, and the direct-construction
+  `jepa-wms` candidate; reports include runtime manifest status, fixture coverage, docs/catalog
+  drift, redaction checks, promotion gaps by target status, safe artifact references, and validation
+  commands, and `worldforge harness --flow workbench` exposes the same logic through TheWorldHarness.
 - Added cross-provider run comparisons for preserved eval and benchmark workspaces. `worldforge
   runs compare` now exports a shared JSON/Markdown/CSV model with provider rows, capability and
   operation context, fixture digest, suite version, budget status, event counts, missing evidence,
