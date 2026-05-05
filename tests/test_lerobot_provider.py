@@ -535,6 +535,7 @@ def test_lerobot_provider_lazily_loads_via_loader_and_applies_device() -> None:
         }
     ]
     assert result.actions == [Action.move_to(0.42, 0.5, 0.0)]
+    assert result.metadata["loader_mode"] == "policy_loader"
 
 
 def test_lerobot_provider_lazily_imports_pretrained_policy(monkeypatch) -> None:
@@ -569,6 +570,7 @@ def test_lerobot_provider_lazily_imports_pretrained_policy(monkeypatch) -> None:
         }
     ]
     assert result.actions == [Action.move_to(0.2, 0.5, 0.0)]
+    assert result.metadata["loader_mode"] == "pretrained_policy"
 
 
 @pytest.mark.parametrize(
@@ -763,6 +765,7 @@ def test_lerobot_provider_lazily_imports_specific_policy_class(monkeypatch) -> N
         }
     ]
     assert result.actions == [Action.move_to(0.3, 0.5, 0.0)]
+    assert result.metadata["loader_mode"] == "typed_from_pretrained"
 
 
 def test_lerobot_provider_falls_back_to_common_path_for_policy_class(monkeypatch) -> None:

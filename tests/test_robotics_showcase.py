@@ -367,6 +367,8 @@ def test_robotics_showcase_auto_downloads_missing_checkpoint(
             [
                 "--stablewm-home",
                 str(tmp_path),
+                "--lewm-asset-cache-dir",
+                str(tmp_path / "hf-assets"),
                 "--lewm-revision",
                 "abc123",
                 "--allow-unsafe-pickle",
@@ -379,9 +381,52 @@ def test_robotics_showcase_auto_downloads_missing_checkpoint(
 
     assert build_calls["policy"] == "pusht/lewm"
     assert build_calls["stablewm_home"] == tmp_path
+    assert build_calls["cache_dir"] == tmp_path / "hf-assets"
     assert build_calls["repo_id"] == robotics_showcase.leworldmodel_checkpoint.DEFAULT_REPO_ID
     assert build_calls["revision"] == "abc123"
     assert build_calls["allow_unsafe_pickle"] is True
+
+
+def test_robotics_showcase_asset_cache_env_is_passed_to_checkpoint_builder(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    build_calls: dict[str, Any] = {}
+    asset_cache_dir = tmp_path / "assets"
+
+    def fake_build_checkpoint(**kwargs: Any) -> dict[str, Any]:
+        build_calls.update(kwargs)
+        target = kwargs["stablewm_home"] / f"{kwargs['policy']}_object.ckpt"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"stub")
+        return {"created": True, "output": str(target)}
+
+    def fake_low_level_main(argv: list[str]) -> int:
+        return 0
+
+    monkeypatch.setenv("LEWORLDMODEL_ASSET_CACHE_DIR", str(asset_cache_dir))
+    monkeypatch.setattr(
+        robotics_showcase.leworldmodel_checkpoint, "build_checkpoint", fake_build_checkpoint
+    )
+    monkeypatch.setattr(robotics_showcase.lerobot_leworldmodel, "main", fake_low_level_main)
+
+    assert (
+        robotics_showcase.main(
+            [
+                "--stablewm-home",
+                str(tmp_path / "stablewm"),
+                "--no-json-output",
+                "--no-tui",
+            ]
+        )
+        == 0
+    )
+
+    assert build_calls["cache_dir"] == asset_cache_dir
+    assert (
+        build_calls["revision"]
+        == robotics_showcase.leworldmodel_checkpoint.LEWORLDMODEL_HF_DEFAULT_REVISION
+    )
 
 
 def test_robotics_showcase_reports_checkpoint_validation_errors(

@@ -82,7 +82,13 @@ The command launches a staged Textual report by default, writes the same run dat
 Rerun. Use `--tui-stage-delay 0.1` for a faster reveal, `--no-tui-animation` to skip sleeps and
 arm motion, `--no-tui` for the plain terminal report, `--no-rerun` to skip the Rerun artifact,
 `--json-only` for automation, or `--health-only` for a non-mutating dependency/checkpoint
-preflight. Use `--lewm-revision <tag-or-commit>` to pin auto-built LeWorldModel assets.
+preflight. Use `--lewm-revision <40-char-commit-sha>` to pin auto-built LeWorldModel assets.
+
+The optional live robotics workflow, `.github/workflows/robotics-showcase.yml`, runs this same
+showcase in non-interactive JSON mode on every pull request run and on pushes to `main`. It caches
+Hugging Face downloads, LeWorldModel build assets, and the built object checkpoint with
+`actions/cache`; CI uploads `real-run.json`, `stdout.json`, and `run_manifest.json` as evidence,
+while checkpoint artifacts are not uploaded.
 
 Read the walkthrough and implementation notes: [Robotics Replay Showcase](https://abdelstark.github.io/worldforge/robotics-showcase/)
 and [Robotics Showcase Technical Deep Dive](https://abdelstark.github.io/worldforge/robotics-showcase-deep-dive/).

@@ -118,3 +118,24 @@ rm -f "$tmp_req"
 ```
 
 For release hardening, use the dependency audit in [Operations](./operations.md).
+
+## Optional Live Robotics CI
+
+The normal CI workflow stays checkout-safe and deterministic. Real LeRobot plus LeWorldModel
+inference runs in `.github/workflows/robotics-showcase.yml` because it downloads optional model
+assets, builds or restores a LeWorldModel object checkpoint, and exercises host-owned runtimes.
+
+That workflow runs on every pull request update and on pushes to `main`. It runs
+`scripts/robotics-showcase` in non-interactive mode with `--json-only --no-tui --no-rerun`, then
+validates the JSON summary and `run_manifest.json` for healthy providers, successful policy/score
+events, the PushT candidate tensor shape, score count, and selected candidate index.
+
+Checkpoint caching policy:
+
+- use `actions/cache` for Hugging Face policy downloads, LeWorldModel config/weights assets, the
+  built LeWorldModel object checkpoint, and uv package cache;
+- key caches by OS, Python 3.13, uv version, LeRobot version, pinned LeWorldModel Hugging Face
+  revision, and wrapper/checkpoint-builder source files;
+- upload `real-run.json`, `stdout.json`, and `run_manifest.json` as short-retention run evidence;
+- do not upload checkpoint artifacts from default CI; use `actions/cache` as the reusable
+  checkpoint mechanism.

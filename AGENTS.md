@@ -318,6 +318,11 @@ generated documentation surfaces.
   `WORLDFORGE_SHOW_RUNTIME_WARNINGS=1` to see raw third-party stderr. `--health-only` is
   non-mutating: it reports dependency and checkpoint status without auto-building, downloading a
   missing LeWorldModel object checkpoint, or writing a Rerun artifact.
+- `.github/workflows/robotics-showcase.yml` is the optional live robotics CI gate. It runs
+  `scripts/robotics-showcase --json-only --no-tui --no-rerun` on every pull request update and on
+  pushes to `main` for real LeRobot policy inference plus real LeWorldModel checkpoint scoring,
+  caches Hugging Face assets and the built object checkpoint with `actions/cache`, and uploads
+  JSON/run-manifest evidence. Checkpoint artifacts are not uploaded from default CI.
 - `lewm-lerobot-real` is an optional real policy-plus-score smoke. It requires a task-aligned
   LeRobot policy, observation builder, LeWorldModel score tensors, and candidate bridge. Do not
   pad, project, or otherwise reinterpret mismatched action spaces inside WorldForge.

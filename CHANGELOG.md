@@ -48,6 +48,17 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a roadmap continuation document that defines the next three GitHub issue streams:
   provider evidence and runtime cohorts, evaluation evidence and claim integrity, and operator
   workflow plus adapter authoring.
+- Added an optional live robotics showcase workflow for pull request and main-branch push
+  validation.
+  It runs real LeRobot policy inference plus real LeWorldModel checkpoint scoring in
+  non-interactive JSON mode, validates the resulting provider events and tensor contract, caches
+  Hugging Face/LeWorldModel checkpoint assets with `actions/cache`, and uploads sanitized run
+  evidence artifacts.
+
+### Fixed
+
+- Preserved LeRobot loader provenance after lazy policy loading so real `from_pretrained` runs no
+  longer report as `injected_policy` in policy result metadata or provider events.
 
 ## 0.5.0 - 2026-04-24
 

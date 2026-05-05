@@ -21,7 +21,7 @@ WorldForge is a Python integration layer and CLI for physical-AI world-model pro
 | Optional extra | rerun-sdk | `uv.lock`; extra `rerun`; LeRobot-resolved runtime in `scripts/robotics-showcase` | Optional event/artifact recording; not a provider capability |
 | Tests | pytest, pytest-cov | `uv.lock`: pytest `9.0.3`, pytest-cov `7.1.0` | Coverage gate: 90 percent |
 | Lint/format | ruff | `uv.lock`: `0.15.9`; target py313; line length 100 | Check and format `src tests examples scripts` |
-| CI | GitHub Actions | `.github/workflows/*.yml` | CI, release, security audit |
+| CI | GitHub Actions | `.github/workflows/*.yml` | CI, release, security audit, optional live robotics showcase |
 </stack>
 
 <structure>
@@ -139,6 +139,13 @@ Configuration cascade:
 2. Keep README front-door concise; route operational detail to `docs/src/playbooks.md` or provider pages.
 3. Public behavior changes require matching README/docs/API/changelog/AGENTS updates where relevant.
 </docs_change>
+
+<optional_live_robotics_ci>
+1. `.github/workflows/robotics-showcase.yml` runs on every pull request update and on pushes to `main`.
+2. It runs `scripts/robotics-showcase --json-only --no-tui --no-rerun` with real LeRobot plus real LeWorldModel inference.
+3. Use `actions/cache` for Hugging Face downloads, LeWM config/weights, and the built object checkpoint; upload JSON/run-manifest evidence by default.
+4. Do not upload checkpoint artifacts from default CI; `actions/cache` is the reusable checkpoint mechanism.
+</optional_live_robotics_ci>
 
 <release_or_public_branch>
 1. Verify no secrets, `.env`, checkpoints, datasets, `.worldforge/`, caches, `dist/`, or `build/` are staged.

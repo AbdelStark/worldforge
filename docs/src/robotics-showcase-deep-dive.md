@@ -433,6 +433,30 @@ builder loads the downloaded `weights.pt` with `torch.load(..., weights_only=Tru
 The `--allow-unsafe-pickle` flag is intentionally explicit and should be limited to trusted legacy
 weights or older torch environments that cannot perform safe weights-only deserialization.
 
+### CI Cache Contract
+
+The live robotics workflow is `.github/workflows/robotics-showcase.yml`. It runs the same showcase
+path on every pull request update and on pushes to `main` in non-interactive mode with
+`--json-only --no-tui --no-rerun`, then validates the JSON evidence for:
+
+- healthy LeRobot and LeWorldModel providers;
+- successful `lerobot.policy` and `leworldmodel.score` provider events;
+- the default PushT `1 x 3 x 4 x 10` action-candidate tensor contract;
+- three returned LeWorldModel scores and an integer selected candidate;
+- a passed `run_manifest.json`.
+
+The checkpoint cache is split into three explicit directories so CI can preserve the right layer:
+
+| Path | Contents | Cache policy |
+| --- | --- | --- |
+| `.cache/huggingface` | LeRobot policy snapshots and Hugging Face metadata | `actions/cache`, keyed by Python, LeRobot version, and LeWM revision. |
+| `.cache/worldforge/leworldmodel` | Downloaded LeWorldModel `config.json` and `weights.pt` assets | `actions/cache`, same immutable revision key. |
+| `.cache/stable-wm` | Built `pusht/lewm_object.ckpt` consumed by `AutoCostModel` | `actions/cache`, restored before each live smoke. |
+
+The run evidence is uploaded as a normal workflow artifact with short retention. The checkpoint
+artifacts are not uploaded because `actions/cache` is the right mechanism for reusable
+checkpoints; artifacts are better for preserving the exact JSON evidence attached to one run.
+
 ### 3. The Runner Forwards Packaged PushT Hooks
 
 The polished CLI does not implement the robotics loop itself. It forwards a complete set of PushT

@@ -222,6 +222,7 @@ class LeRobotPolicyProvider(BaseProvider):
             name="LeRobot embodiment_tag",
         )
         self._policy = policy
+        self._loaded_policy_mode = "injected_policy" if policy is not None else None
         self._policy_loader = policy_loader
         self._action_translator = action_translator
 
@@ -356,8 +357,8 @@ class LeRobotPolicyProvider(BaseProvider):
         )
 
     def _loader_mode(self) -> str:
-        if self._policy is not None:
-            return "injected_policy"
+        if self._loaded_policy_mode is not None:
+            return self._loaded_policy_mode
         if self._policy_loader is not None:
             return "policy_loader"
         if self.policy_type is not None:
@@ -392,6 +393,7 @@ class LeRobotPolicyProvider(BaseProvider):
             raise ProviderError(
                 f"Provider '{self.name}' is unavailable: set {LEROBOT_POLICY_PATH_ENV_VAR}."
             )
+        loader_mode = self._loader_mode()
         try:
             if self._policy_loader is not None:
                 loaded = self._policy_loader(
@@ -412,6 +414,7 @@ class LeRobotPolicyProvider(BaseProvider):
         if hasattr(loaded, "reset"):
             loaded.reset()
         self._policy = loaded
+        self._loaded_policy_mode = loader_mode
         return loaded
 
     def _load_policy_from_lerobot(self) -> Any:

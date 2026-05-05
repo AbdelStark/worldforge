@@ -538,6 +538,14 @@ warnings from the user-facing output while leaving runtime device fallback warni
 whether the checkpoint is present and exits before inference. Set `WORLDFORGE_SHOW_RUNTIME_WARNINGS=1`
 to see raw third-party stderr.
 
+Prepared-host CI uses `.github/workflows/robotics-showcase.yml` for this path on every pull
+request update and on pushes to `main`. That workflow keeps the run non-interactive with
+`--json-only --no-tui --no-rerun`, writes a JSON summary plus `run_manifest.json`, and verifies the
+real `lerobot.policy` and `leworldmodel.score` success events. Use `actions/cache` for Hugging
+Face policy downloads, LeWorldModel config/weights assets, and the built LeWorldModel object
+checkpoint. Checkpoint artifacts are not uploaded; normal CI artifacts should be run evidence, not
+reusable checkpoint storage.
+
 Use the lower-level runner when replacing the task observation, score tensors, translator, or
 candidate bridge:
 

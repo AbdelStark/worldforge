@@ -60,6 +60,7 @@ scripts/robotics-showcase --no-rerun          # skip the default Rerun .rrd arti
 scripts/robotics-showcase --rerun-output /tmp/pusht.rrd
 scripts/robotics-showcase --tui-stage-delay 0.1
 scripts/robotics-showcase --no-tui-animation
+scripts/robotics-showcase --lewm-asset-cache-dir ~/.cache/worldforge/leworldmodel
 scripts/robotics-showcase --lewm-revision 22b330c28c27ead4bfd1888615af1340e3fe9052
 ```
 
@@ -68,6 +69,36 @@ Open the Rerun artifact from the TUI with `o`, or from the shell with:
 ```bash
 uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 ```
+
+## CI Smoke Strategy
+
+The live optional-runtime workflow is `.github/workflows/robotics-showcase.yml`. It is separate
+from the normal checkout-safe CI gate because it downloads model assets and runs real LeRobot plus
+LeWorldModel inference on CPU. It runs on every pull request update and on pushes to `main`, with
+no manual dispatch, schedule, label gate, or path filter.
+
+The CI command is intentionally non-interactive:
+
+```bash
+scripts/robotics-showcase \
+  --json-only \
+  --no-tui \
+  --no-rerun \
+  --stablewm-home "$STABLEWM_HOME" \
+  --lewm-cache-dir "$STABLEWM_HOME" \
+  --lewm-asset-cache-dir "$LEWORLDMODEL_ASSET_CACHE_DIR" \
+  --lewm-revision "$LEWORLDMODEL_REVISION" \
+  --lerobot-cache-dir "$LEROBOT_CACHE_DIR" \
+  --json-output "$WORLDFORGE_ROBOTICS_RUN_DIR/real-run.json" \
+  --run-manifest "$WORLDFORGE_ROBOTICS_RUN_DIR/run_manifest.json"
+```
+
+The workflow uses `actions/cache` for Hugging Face policy downloads, LeWorldModel config/weights
+downloads, the built LeWorldModel object checkpoint, and uv package cache. The cache key includes
+Python 3.13, the pinned LeRobot runtime version, and the pinned Hugging Face LeWM revision. The
+workflow uploads only sanitized JSON evidence by default: `real-run.json`, `stdout.json`, and
+`run_manifest.json`. LeWorldModel checkpoint artifacts are not uploaded because GitHub Actions
+artifacts are per-run evidence, not the best long-lived checkpoint cache.
 
 ## What It Demonstrates
 

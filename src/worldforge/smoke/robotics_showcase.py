@@ -81,8 +81,24 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--lewm-cache-dir", type=Path, default=None)
     parser.add_argument(
+        "--lewm-asset-cache-dir",
+        type=Path,
+        default=(
+            Path(os.environ["LEWORLDMODEL_ASSET_CACHE_DIR"]).expanduser()
+            if os.environ.get("LEWORLDMODEL_ASSET_CACHE_DIR")
+            else None
+        ),
+        help=(
+            "Directory for downloaded Hugging Face config/weights used when auto-building "
+            "a missing LeWorldModel object checkpoint."
+        ),
+    )
+    parser.add_argument(
         "--lewm-revision",
-        default=os.environ.get("LEWORLDMODEL_REVISION"),
+        default=(
+            os.environ.get("LEWORLDMODEL_REVISION")
+            or leworldmodel_checkpoint.LEWORLDMODEL_HF_DEFAULT_REVISION
+        ),
         help=(
             "Optional pinned 40-character Hugging Face commit SHA for auto-built "
             "LeWorldModel assets."
@@ -210,6 +226,9 @@ def _ensure_checkpoint(args: argparse.Namespace) -> None:
             repo_id=leworldmodel_checkpoint.DEFAULT_REPO_ID,
             policy=args.lewm_policy,
             stablewm_home=cache_dir,
+            cache_dir=args.lewm_asset_cache_dir.expanduser()
+            if args.lewm_asset_cache_dir is not None
+            else None,
             revision=args.lewm_revision,
             allow_unsafe_pickle=args.allow_unsafe_pickle,
         )

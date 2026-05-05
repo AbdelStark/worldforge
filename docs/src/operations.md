@@ -73,6 +73,10 @@ Configuration comes from constructor arguments and environment variables documen
 - `RUNWAYML_BASE_URL` overrides the default Runway API endpoint.
 - `LEWORLDMODEL_POLICY` or `LEWM_POLICY` enables the optional LeWorldModel adapter.
 - `LEWORLDMODEL_CACHE_DIR` overrides the LeWorldModel checkpoint root.
+- `LEWORLDMODEL_REVISION` pins the Hugging Face LeWM commit used when the showcase auto-builds
+  a missing object checkpoint.
+- `LEWORLDMODEL_ASSET_CACHE_DIR` overrides the checkpoint builder's Hugging Face config/weights
+  cache directory.
 - `LEWORLDMODEL_DEVICE` selects the optional torch device for LeWorldModel scoring.
 - `GROOT_POLICY_HOST` enables the optional GR00T embodied-policy adapter.
 - `GROOT_POLICY_PORT` defaults to `5555`.
@@ -432,8 +436,9 @@ readiness, and safety certification.
   `LEWORLDMODEL_REVISION` to another audited immutable Hugging Face commit.
   The builder loads downloaded `weights.pt` with `torch.load(..., weights_only=True)` by default;
   `--allow-unsafe-pickle` exists only for trusted legacy weights and older torch environments. The
-  builder downloads assets to `~/.cache/worldforge/leworldmodel` by default and writes the object
-  checkpoint under `$STABLEWM_HOME`.
+  builder downloads assets to `~/.cache/worldforge/leworldmodel` by default, or to
+  `LEWORLDMODEL_ASSET_CACHE_DIR` / `--asset-cache-dir` when set, and writes the object checkpoint
+  under `$STABLEWM_HOME`.
 - To demonstrate the LeWorldModel planning flow without optional dependencies, run
   `uv run worldforge-demo-leworldmodel`. It uses the real `LeWorldModelProvider` interface
   with an injected deterministic cost runtime and exercises score planning, execution,
@@ -449,6 +454,11 @@ readiness, and safety certification.
   launches the packaged PushT policy-plus-score bridge, opens the Textual report by default, and
   writes `/tmp/worldforge-robotics-showcase/real-run.rrd` unless `--no-rerun` is passed. For the
   full walkthrough, see [Robotics Replay Showcase](./robotics-showcase.md).
+- To run the same path in CI, use `.github/workflows/robotics-showcase.yml`. It runs
+  `scripts/robotics-showcase --json-only --no-tui --no-rerun` on every pull request update and on
+  pushes to `main`, validates real policy/score events, caches Hugging Face assets and the
+  LeWorldModel object checkpoint with `actions/cache`, and uploads the JSON summary plus
+  `run_manifest.json` as evidence. Checkpoint artifacts are not uploaded.
 - To smoke-test a real GR00T policy server, install or check out NVIDIA Isaac-GR00T, prepare a
   host-specific observation factory and action translator, then run
   `uv run python scripts/smoke_gr00t_policy.py --gr00t-root /path/to/Isaac-GR00T --start-server ...`.
