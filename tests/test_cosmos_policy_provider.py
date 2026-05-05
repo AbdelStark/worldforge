@@ -395,6 +395,26 @@ def test_cosmos_policy_rejects_conflicting_action_horizon_option() -> None:
         provider.select_actions(info=info)
 
 
+@pytest.mark.parametrize("container", ["observation", "options"])
+def test_cosmos_policy_rejects_null_action_horizon(container: str) -> None:
+    provider = CosmosPolicyProvider(
+        base_url=PUBLIC_BASE_URL,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"actions": _actions(0.1)})
+        ),
+        action_translator=_translator,
+    )
+    info = _policy_info()
+    del info["action_horizon"]
+    if container == "options":
+        info["options"] = {"action_horizon": None}
+    else:
+        info[container]["action_horizon"] = None
+
+    with pytest.raises(WorldForgeError, match="action_horizon must be an integer"):
+        provider.select_actions(info=info)
+
+
 def test_cosmos_policy_blocks_local_base_url_without_opt_in() -> None:
     called = False
 
