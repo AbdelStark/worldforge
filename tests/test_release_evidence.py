@@ -99,3 +99,24 @@ def test_release_evidence_main_writes_default_shape(tmp_path: Path) -> None:
     report = output.read_text(encoding="utf-8")
     assert report.startswith("# WorldForge Release Evidence")
     assert "Release candidate only." in report
+
+
+def test_release_evidence_main_discovers_evidence_bundle_manifest(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    bundles_dir = tmp_path / "evidence-bundles"
+    bundle_manifest = bundles_dir / "mock" / "evidence_manifest.json"
+    bundle_manifest.parent.mkdir(parents=True)
+    bundle_manifest.write_text(
+        json.dumps({"schema_version": 1, "safe_to_attach": True}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(generate_release_evidence, "DEFAULT_EVIDENCE_BUNDLES_DIR", bundles_dir)
+    monkeypatch.setattr(generate_release_evidence, "DEFAULT_DIST_DIR", tmp_path / "dist")
+    output = tmp_path / "release-evidence.md"
+
+    assert main(["--output", str(output)]) == 0
+
+    report = output.read_text(encoding="utf-8")
+    assert "evidence_manifest.json" in report

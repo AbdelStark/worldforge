@@ -660,9 +660,13 @@ rm -f "$tmp_req"
 Finally generate the release evidence bundle:
 
 ```bash
+uv run python scripts/generate_evidence_bundle.py \
+  --workspace-dir .worldforge \
+  --output .worldforge/evidence-bundles/release-candidate
 uv run python scripts/generate_release_evidence.py \
   --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
+  --artifact .worldforge/evidence-bundles/release-candidate/evidence_manifest.json \
   --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
 ```
@@ -678,7 +682,7 @@ Success signal:
 - validation passes from a clean checkout.
 - generated provider docs have no drift and the Pages site builds in strict mode.
 - release evidence links validation expectations, optional live-smoke manifests, benchmark
-  artifacts, distribution artifacts, and known limitations.
+  artifacts, generated evidence bundles, distribution artifacts, and known limitations.
 - README, docs, changelog, and `AGENTS.md` reflect public behavior.
 - no optional runtime dependency, checkpoint, credential, generated artifact, or `.env` file is
   committed accidentally.
