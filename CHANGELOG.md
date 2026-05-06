@@ -9,6 +9,9 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a roadmap expansion plan for 30 structured GitHub issues across production-grade
+  quality/DevX/docs, demos and end-to-end showcases, and new features, explicitly excluding the
+  already assigned Nano World Model work.
 - Added contributor triage guidance for roadmap stream, capability, severity, and release-scope
   labels, and routed provider plus evaluation/benchmark issue templates to provider promotion,
   evidence, and private-security reporting expectations.

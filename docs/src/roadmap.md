@@ -36,6 +36,11 @@ For the next implementation batch, use the
 provider evidence and runtime cohorts, evaluation evidence and claim integrity, and operator
 workflow plus adapter authoring.
 
+For the expanded next roadmap batch, use the
+[Roadmap Expansion](./roadmap-expansion.md). It defines 30 structured issues across production
+grade quality/DevX/docs, demos and end-to-end showcases, and new features. Nano World Model work is
+excluded because that issue is already assigned.
+
 For the active provider evidence cohort, use the
 [Provider Cohort Selection Record](./provider-cohort-selection.md). It selects the next provider
 work items, records explicit deferrals, and keeps public provider capability claims unchanged until

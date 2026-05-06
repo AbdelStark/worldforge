@@ -39,6 +39,7 @@
 - [Changelog](./changelog.md)
 - [Citation](./citation.md)
 - [Roadmap](./roadmap.md)
+- [Roadmap Expansion](./roadmap-expansion.md)
 - [Roadmap Continuation](./roadmap-continuation.md)
 - [Provider And Platform Roadmap](./provider-platform-roadmap.md)
 - [Contributing](./contributing.md)
