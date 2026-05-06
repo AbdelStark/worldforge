@@ -895,6 +895,52 @@ def _build_parser() -> argparse.ArgumentParser:
         default="markdown",
         help="Output format for the issue bundle summary.",
     )
+    runs_index = runs_subparsers.add_parser(
+        "index",
+        help="Summarize preserved runs with filters and JSON/Markdown/CSV output.",
+    )
+    runs_index.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path(".worldforge"),
+        help="WorldForge workspace directory containing runs/.",
+    )
+    runs_index.add_argument(
+        "--format",
+        choices=("json", "markdown", "csv"),
+        default="json",
+        help="Output format for the run index.",
+    )
+    runs_index.add_argument(
+        "--output",
+        type=Path,
+        help="Optional path to write the index instead of stdout.",
+    )
+    runs_index.add_argument(
+        "--provider",
+        help="Filter to runs whose provider name contains this substring (case-insensitive).",
+    )
+    runs_index.add_argument(
+        "--capability",
+        help="Filter to runs that include this capability (exact match).",
+    )
+    runs_index.add_argument(
+        "--status",
+        help="Filter to runs whose status equals this value (case-insensitive).",
+    )
+    runs_index.add_argument(
+        "--created-from",
+        help="Filter to runs created on or after this YYYY-MM-DD date.",
+    )
+    runs_index.add_argument(
+        "--created-to",
+        help="Filter to runs created on or before this YYYY-MM-DD date.",
+    )
+    runs_index.add_argument(
+        "--artifact-type",
+        help="Filter to runs that include a safe artifact of this label or suffix.",
+    )
+
     runs_cleanup = runs_subparsers.add_parser("cleanup", help="Remove old preserved runs.")
     runs_cleanup.add_argument(
         "--workspace-dir",
@@ -1313,6 +1359,35 @@ def _cmd_runs(args: argparse.Namespace) -> int:
             if result.issue_template_path is None:
                 raise WorldForgeError("Issue bundle did not produce issue.md.")
             print(result.issue_template_path.read_text(encoding="utf-8"))
+        return 0
+
+    if args.runs_command == "index":
+        from worldforge.harness.run_history import RunHistoryFilter
+        from worldforge.harness.run_index import build_run_index
+
+        filters = RunHistoryFilter.from_strings(
+            provider=args.provider,
+            capability=args.capability,
+            status=args.status,
+            created_from=args.created_from,
+            created_to=args.created_to,
+            artifact_type=args.artifact_type,
+        )
+        index = build_run_index(args.workspace_dir, filters=filters)
+        if args.format == "json":
+            rendered = index.to_json()
+        elif args.format == "csv":
+            rendered = index.to_csv()
+        else:
+            rendered = index.to_markdown()
+        if args.output is not None:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(
+                rendered if rendered.endswith("\n") else rendered + "\n",
+                encoding="utf-8",
+            )
+            return 0
+        print(rendered, end="" if rendered.endswith("\n") else "\n")
         return 0
 
     if args.runs_command == "cleanup":
