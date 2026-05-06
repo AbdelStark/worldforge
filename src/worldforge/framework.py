@@ -75,6 +75,10 @@ from worldforge.providers import (
     validate_transfer_request,
 )
 from worldforge.providers.catalog import PROVIDER_CATALOG, create_known_providers
+from worldforge.providers.entry_points import (
+    EntryPointDiscoveryReport,
+    discover_entry_point_providers,
+)
 from worldforge.providers.observable import CAPABILITY_METHOD_MAP, _ObservableCapability
 
 if TYPE_CHECKING:
@@ -1372,6 +1376,7 @@ class WorldForge:
         state_dir: str | Path | None = None,
         auto_register_remote: bool = True,
         event_handler: Callable[[ProviderEvent], None] | None = None,
+        discover_entry_points: bool | None = None,
     ) -> None:
         self.state_dir = Path(state_dir or ".worldforge/worlds").expanduser().resolve()
         ensure_directory(self.state_dir)
@@ -1386,6 +1391,50 @@ class WorldForge:
             provider = entry.create(event_handler=self._event_handler)
             if entry.always_register or (auto_register_remote and provider.configured()):
                 self.register_provider(provider)
+        self._entry_point_discovery = discover_entry_point_providers(
+            enabled=discover_entry_points,
+            catalog=PROVIDER_CATALOG,
+        )
+        for entry in self._entry_point_discovery.entries:
+            try:
+                provider = entry.create(event_handler=self._event_handler)
+            except Exception as exc:
+                self._entry_point_discovery = self._entry_point_discovery_with_skip(
+                    entry.name,
+                    str(entry.runtime_ownership),
+                    f"factory raised: {exc}",
+                )
+                continue
+            if auto_register_remote and provider.configured():
+                self.register_provider(provider)
+
+    def _entry_point_discovery_with_skip(
+        self,
+        name: str,
+        value: str,
+        reason: str,
+    ) -> EntryPointDiscoveryReport:
+        from worldforge.providers.entry_points import EntryPointSkip
+
+        report = self._entry_point_discovery
+        return EntryPointDiscoveryReport(
+            enabled=report.enabled,
+            entries=tuple(entry for entry in report.entries if entry.name != name),
+            skipped=(*report.skipped, EntryPointSkip(name=name, value=value, reason=reason)),
+            group=report.group,
+        )
+
+    def entry_point_discovery(self) -> EntryPointDiscoveryReport:
+        """Return the entry-point discovery report captured at construction time.
+
+        The report enumerates every external provider factory found through the
+        ``worldforge.providers`` entry-point group, plus a typed skip reason for any factory
+        that could not be loaded (missing dependency, duplicate name, non-callable, factory
+        raised at instantiation, etc.). The report is provisional public API; downstream
+        tools should treat ``EntryPointSkip.reason`` strings as human-readable.
+        """
+
+        return self._entry_point_discovery
 
     def _known_providers(self) -> tuple[BaseProvider, ...]:
         return create_known_providers(event_handler=self._event_handler)

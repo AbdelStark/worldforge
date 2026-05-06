@@ -706,15 +706,15 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] External packages can expose provider factories through documented entry points.
-- [ ] Discovery reports skipped providers with explicit reasons.
-- [ ] Existing in-repo catalog behavior remains unchanged.
-- [ ] Tests cover valid entry point, missing dependency, duplicate name, and disabled discovery.
+- [x] External packages can expose provider factories through documented entry points.
+- [x] Discovery reports skipped providers with explicit reasons.
+- [x] Existing in-repo catalog behavior remains unchanged.
+- [x] Tests cover valid entry point, missing dependency, duplicate name, and disabled discovery.
 
 Validation:
 
 ```bash
-uv run pytest tests/test_provider_catalog.py tests/test_provider_config.py tests/test_docs_site.py
+uv run pytest tests/test_provider_catalog.py tests/test_provider_config.py tests/test_provider_entry_points.py tests/test_docs_site.py
 uv run mkdocs build --strict
 ```
 
