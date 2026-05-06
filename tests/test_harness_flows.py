@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from worldforge import WorldForge, WorldForgeError
+from worldforge.evaluation import EvaluationSuite
 from worldforge.harness import available_flows, flow_index, run_flow
 from worldforge.harness.flows import (
     benchmark_run_artifacts,
