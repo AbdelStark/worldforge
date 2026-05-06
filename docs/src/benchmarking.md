@@ -250,6 +250,25 @@ First triage step for a surprising candidate: open `budget-calibration.md`, conf
 report digest matches the preserved benchmark JSON, then rerun the exact benchmark command on the
 same machine class before changing a release budget.
 
+## Core checkout performance guard
+
+Use the core performance gate to detect regressions in framework paths that should stay cheap in a
+clean checkout:
+
+```bash
+uv run python scripts/check_core_performance.py \
+  --workspace-dir .worldforge/core-performance \
+  --output .worldforge/core-performance/core-performance.json
+```
+
+The command measures world persistence, benchmark input fixture loading, provider catalog
+diagnostics, evidence-bundle creation, and evaluation report rendering against local millisecond
+budgets. Success signal: the JSON report has `passed: true`, result rows include measured
+`duration_ms` and `budget_ms`, and preserved workspaces include artifact paths for each operation.
+First triage step: inspect the failing row, verify the artifact path and changed code path, then fix
+the regression before changing budgets. These budgets are checkout-safe regression guards only; they
+are not a leaderboard, cross-machine claim, or optional-runtime benchmark.
+
 ## Report contents
 
 - per-provider, per-operation success and error counts

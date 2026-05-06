@@ -99,6 +99,8 @@ uv lock --check
 uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
+uv run python scripts/check_docs_commands.py
+uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -106,9 +108,12 @@ bash scripts/test_package.sh
 uv build --out-dir dist --clear --no-build-logs
 ```
 
-The local gate runs the lock check, Ruff, generated-provider-doc drift check, strict MkDocs build,
-full pytest, harness coverage gate, wheel/sdist package contract, and distribution build. Before a
-release tag, also run:
+The local gate runs the lock check, Ruff, generated-provider-doc drift check, documented-command
+drift check, checkout-safe core performance budgets, strict MkDocs build, full pytest, harness
+coverage gate, wheel/sdist package contract, and distribution build. The core performance budget
+gate writes JSON with measured local paths and a claim boundary; it detects regressions in checkout
+paths and is not a cross-machine benchmark or optional-runtime performance claim. Before a release
+tag, also run:
 
 ```bash
 tmp_req="$(mktemp requirements-audit.XXXXXX)"

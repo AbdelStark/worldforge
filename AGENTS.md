@@ -112,6 +112,8 @@ uv lock --check
 uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
+uv run python scripts/check_docs_commands.py
+uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -358,9 +360,11 @@ generated documentation surfaces.
   when adding new provider environment variables.
 - Ruff commands run against `src tests examples scripts` to match CI and the commands documented
   in `README.md`. Do not drop `scripts` from either target.
-- `uv run python scripts/generate_provider_docs.py --check` plus
-  `uv run mkdocs build --strict` checks generated provider docs and builds the MkDocs Material
-  site. A warning in the published docs build is a release blocker.
+- `uv run python scripts/generate_provider_docs.py --check`,
+  `uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_core_performance.py`,
+  and `uv run mkdocs build --strict` check generated provider docs, documented command drift,
+  checkout-safe core performance budgets, and the MkDocs Material site. A warning in the published
+  docs build is a release blocker.
 - `worldforge benchmark --budget-file <path>` evaluates direct provider benchmark results against
   JSON thresholds and exits non-zero on violations. Keep benchmark budgets tied to preserved run
   artifacts when using them for release or paper claims.

@@ -19,5 +19,10 @@ Provider events and health details redact common bearer/API key/password/signatu
 query strings from URLs before serialization. Hosts should still avoid putting raw secrets into
 custom exception messages, artifact metadata, or issue attachments.
 
+Redaction regressions are guarded by the shared corpus at
+`tests/fixtures/redaction/provider_event_corpus.json`. New provider event sinks, run manifests,
+issue bundles, Rerun layers, metrics exporters, and OpenTelemetry bridges should exercise that
+corpus before their output is considered safe to attach.
+
 For scope, response targets, and supported versions, see the canonical
 [Security Policy](https://github.com/AbdelStark/worldforge/blob/main/SECURITY.md).
