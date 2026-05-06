@@ -244,6 +244,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "benchmark",
         "harness",
         "runs",
+        "drills",
     ):
         assert command in output
     for common_command in (
@@ -256,6 +257,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "worldforge harness --list",
         "worldforge eval --suite planning --provider mock --format json",
         "worldforge runs list",
+        "worldforge drills list",
     ):
         assert common_command in output
 

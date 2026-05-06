@@ -9,6 +9,10 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added checkout-safe operator failure drills through `worldforge drills`. The drills cover missing
+  credentials, missing optional dependencies, malformed provider output, benchmark budget
+  violations, corrupted local world state, expired artifacts, and unsafe event metadata while
+  preserving run manifests and optional issue bundles under the requested workspace.
 - Added reference host deployment recipes for the stdlib service, batch evaluation, and robotics
   operator hosts. The recipes cover env templates, process/readiness/smoke/logging/evidence
   commands, expected success signals, first triage and rollback steps, and the checkout-safe,

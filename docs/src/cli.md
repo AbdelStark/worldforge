@@ -15,6 +15,18 @@ uv run worldforge examples
 uv run worldforge examples --format json
 ```
 
+Operator failure drills:
+
+```bash
+uv run worldforge drills list
+uv run worldforge drills run missing-credentials --workspace-dir .worldforge/drills
+uv run worldforge drills run unsafe-event-metadata --workspace-dir .worldforge/drills --bundle
+```
+
+The drill command surface is checkout-safe by default. Each run preserves a manifest, records the
+expected failure and recovery command, and confines generated state to the requested temporary or
+documented workspace.
+
 ## Provider Diagnostics
 
 ```bash

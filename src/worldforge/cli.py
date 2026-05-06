@@ -36,6 +36,7 @@ from worldforge.benchmark_presets import (
 )
 from worldforge.evaluation import EvaluationSuite
 from worldforge.models import CAPABILITY_NAMES
+from worldforge.operator_drills import DRILL_IDS, DRILL_WORKSPACE_DEFAULT
 from worldforge.providers import ProviderError
 from worldforge.providers.catalog import provider_docs_index
 
@@ -63,6 +64,7 @@ CLI_EPILOG = """Common commands:
   worldforge eval --suite planning --provider mock --format json
   worldforge benchmark --provider mock --iterations 5 --format json
   worldforge runs list
+  worldforge drills list
 """
 
 EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
@@ -881,6 +883,52 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for cleanup results.",
     )
 
+    drills = subparsers.add_parser(
+        "drills",
+        help="List and run checkout-safe operator failure drills.",
+    )
+    drills_subparsers = drills.add_subparsers(
+        dest="drills_command",
+        required=True,
+        metavar="command",
+    )
+    drills_list = drills_subparsers.add_parser(
+        "list",
+        help="List deterministic operator failure drills.",
+    )
+    drills_list.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="markdown",
+        help="Output format for drill metadata.",
+    )
+    drills_run = drills_subparsers.add_parser(
+        "run",
+        help="Run one drill or all drills and preserve run manifests.",
+    )
+    drills_run.add_argument(
+        "drill",
+        choices=(*DRILL_IDS, "all"),
+        help="Drill id to run, or all.",
+    )
+    drills_run.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=DRILL_WORKSPACE_DEFAULT,
+        help="Workspace directory for drill run manifests.",
+    )
+    drills_run.add_argument(
+        "--bundle",
+        action="store_true",
+        help="Export an issue bundle for each drill run.",
+    )
+    drills_run.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for drill results.",
+    )
+
     doctor = subparsers.add_parser("doctor", help="Inspect the local WorldForge environment.")
     doctor.add_argument("--state-dir", default=".worldforge/worlds", help="World state directory.")
     doctor.add_argument(
@@ -1217,6 +1265,44 @@ def _cmd_runs(args: argparse.Namespace) -> int:
                 }
             )
         return 0
+
+    return 2
+
+
+def _cmd_drills(args: argparse.Namespace) -> int:
+    from worldforge.operator_drills import (
+        list_operator_drills,
+        render_operator_drill_result_markdown,
+        render_operator_drills_markdown,
+        run_all_operator_drills,
+        run_operator_drill,
+    )
+
+    if args.drills_command == "list":
+        drills = list_operator_drills()
+        if args.format == "json":
+            _print_json(drills)
+        else:
+            print(render_operator_drills_markdown(drills))
+        return 0
+
+    if args.drills_command == "run":
+        if args.drill == "all":
+            result = run_all_operator_drills(
+                workspace_dir=args.workspace_dir,
+                bundle=args.bundle,
+            )
+        else:
+            result = run_operator_drill(
+                args.drill,
+                workspace_dir=args.workspace_dir,
+                bundle=args.bundle,
+            )
+        if args.format == "markdown":
+            print(render_operator_drill_result_markdown(result))
+        else:
+            _print_json(result)
+        return 0 if result["status"] == "passed" else 1
 
     return 2
 
@@ -1998,6 +2084,12 @@ def main() -> int:
     if args.command == "runs":
         try:
             return _cmd_runs(args)
+        except (WorldForgeError, ValueError) as exc:
+            parser.exit(2, f"{exc}\n")
+
+    if args.command == "drills":
+        try:
+            return _cmd_drills(args)
         except (WorldForgeError, ValueError) as exc:
             parser.exit(2, f"{exc}\n")
 
