@@ -10,6 +10,12 @@ from worldforge.harness.run_history import (
     list_run_history,
     preserved_run_from_path,
 )
+from worldforge.harness.run_index import (
+    RUN_INDEX_SCHEMA_VERSION,
+    RunIndex,
+    RunIndexIssue,
+    build_run_index,
+)
 from worldforge.harness.workspace import (
     RunWorkspace,
     cleanup_run_workspaces,
@@ -18,14 +24,18 @@ from worldforge.harness.workspace import (
 )
 
 __all__ = [
+    "RUN_INDEX_SCHEMA_VERSION",
     "HarnessFlow",
     "HarnessMetric",
     "HarnessRun",
     "HarnessStep",
     "RunHistoryFilter",
     "RunHistoryRecord",
+    "RunIndex",
+    "RunIndexIssue",
     "RunWorkspace",
     "available_flows",
+    "build_run_index",
     "cleanup_run_workspaces",
     "create_run_workspace",
     "flow_index",

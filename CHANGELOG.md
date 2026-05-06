@@ -9,6 +9,16 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a local run artifact index. `worldforge runs index --workspace-dir <dir>`
+  walks `<dir>/runs/` read-only and emits a sanitized summary of every preserved
+  run workspace, with optional filters for provider (substring), capability,
+  status, date range, and safe-artifact type. Output is JSON, Markdown, or CSV.
+  Stale or malformed run directories surface as typed issue rows
+  (`manifest-missing`, `manifest-unreadable`, `manifest-invalid-json`,
+  `manifest-not-object`) instead of crashing the walk. New public surface:
+  `worldforge.harness.run_index.build_run_index`, `RunIndex`, `RunIndexIssue`,
+  `RUN_INDEX_SCHEMA_VERSION`. Documentation lives at `docs/src/run-index.md`,
+  including retention/cleanup interaction guidance.
 - Added Python entry-point discovery for external provider packages. Third-party adapters can
   register through the `worldforge.providers` entry-point group; `WorldForge` auto-registers
   the resulting providers when their `configured()` check passes and records typed skip

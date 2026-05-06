@@ -43,6 +43,7 @@
   - [Artifact Integrity](./artifact-integrity.md)
 - Operations And Quality
   - [User And Operator Playbooks](./playbooks.md)
+  - [Run Artifact Index](./run-index.md)
   - [Engineering Quality](./quality.md)
   - [Operations](./operations.md)
   - [Security](./security.md)
