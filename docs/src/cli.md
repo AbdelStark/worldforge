@@ -127,7 +127,9 @@ paper, or public claim.
 uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow leworldmodel
 uv run --extra harness worldforge-harness --flow lerobot
+uv run --extra harness worldforge-harness --flow cosmos-policy
 uv run --extra harness worldforge-harness --flow diagnostics
+uv run --extra harness worldforge-harness --flow workbench
 uv run --extra harness worldforge-harness --flow runs
 uv run worldforge harness --list
 uv run worldforge harness --connectors --format json

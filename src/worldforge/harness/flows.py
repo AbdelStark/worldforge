@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import struct
 import tempfile
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
@@ -54,6 +56,21 @@ FLOWS: tuple[HarnessFlow, ...] = (
         ),
     ),
     HarnessFlow(
+        id="cosmos-policy",
+        title="Cosmos-Policy ALOHA Replay",
+        short_title="Cosmos",
+        focus="saved ALOHA /act replay",
+        provider="CosmosPolicyProvider",
+        capability="policy",
+        command="uv run --extra harness worldforge-harness --flow cosmos-policy",
+        accent="#74d7f7",
+        summary=(
+            "Replay a sanitized NVIDIA Cosmos-Policy ALOHA /act response through the real "
+            "provider boundary, decode 50 x 14 json_numpy actions, translate them, and preserve "
+            "an inspectable run artifact without requiring a live GPU."
+        ),
+    ),
+    HarnessFlow(
         id="diagnostics",
         title="Provider Diagnostics + Benchmark",
         short_title="Diagnostics",
@@ -82,6 +99,20 @@ FLOWS: tuple[HarnessFlow, ...] = (
             "artifact references, and validation commands."
         ),
     ),
+)
+
+_COSMOS_POLICY_REPLAY_BASE_URL = "http://93.184.216.34"
+_COSMOS_POLICY_MODEL = "nvidia/Cosmos-Policy-ALOHA-Predict2-2B"
+_COSMOS_POLICY_ACTION_HORIZON = 50
+_COSMOS_POLICY_ACTION_DIM = 14
+_COSMOS_POLICY_VALUE_PREDICTION = 0.190714
+_COSMOS_POLICY_PREVIEW_ROWS = (
+    (0.01227, -0.02509, -0.00844, -0.04266, 0.05760, 0.01356),
+    (0.00180, -0.02080, -0.01734, -0.03035, 0.05673, 0.00983),
+    (0.01250, -0.02521, -0.00710, -0.04928, 0.05478, 0.01556),
+    (0.00418, -0.02012, -0.01506, -0.03610, 0.06206, 0.01546),
+    (0.01023, -0.02691, -0.01081, -0.05677, 0.06027, 0.01551),
+    (0.00377, -0.02269, -0.01370, -0.04925, 0.06735, 0.01213),
 )
 
 
@@ -185,6 +216,181 @@ def _run_workbench_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
     return summary
 
 
+def _run_cosmos_policy_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
+    import httpx
+
+    from worldforge.models import Action
+    from worldforge.providers import CosmosPolicyProvider
+
+    events: list[ProviderEvent] = []
+    request_count = 0
+    raw_rows = _cosmos_policy_action_rows()
+    encoded_rows = [_json_numpy_action_row(row) for row in raw_rows]
+    policy_info = _cosmos_policy_policy_info()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        payload = json.loads(request.content.decode("utf-8"))
+        assert request.method == "POST"
+        assert request.url.path == "/act"
+        assert payload.get("action_horizon") == _COSMOS_POLICY_ACTION_HORIZON
+        return httpx.Response(
+            200,
+            json={
+                "actions": encoded_rows,
+                "value_prediction": _COSMOS_POLICY_VALUE_PREDICTION,
+                "future_image_predictions": {
+                    "summary": "omitted from checkout-safe replay artifact",
+                    "source": "sanitized-live-shape",
+                },
+            },
+        )
+
+    def translator(raw_actions: object, _info: JSONDict, _provider_info: JSONDict):
+        assert isinstance(raw_actions, dict)
+        matrix = raw_actions.get("actions")
+        assert isinstance(matrix, list)
+        return [
+            Action.move_to(float(row[0]), float(row[1]), float(row[2]))
+            for row in matrix
+            if isinstance(row, list)
+        ]
+
+    provider = CosmosPolicyProvider(
+        base_url=_COSMOS_POLICY_REPLAY_BASE_URL,
+        model=_COSMOS_POLICY_MODEL,
+        transport=httpx.MockTransport(handler),
+        action_translator=translator,
+        event_handler=events.append,
+    )
+    forge = WorldForge(state_dir=state_dir, auto_register_remote=False)
+    forge.register_provider(provider)
+    health = provider.health()
+    result = forge.select_actions("cosmos-policy", info=policy_info)
+    metadata = result.metadata
+    provider_info = metadata.get("provider_info", {})
+    raw_action_summary = metadata.get("raw_action_summary", {})
+    raw_actions = result.raw_actions.get("actions", [])
+    raw_action_shape = list(raw_action_summary.get("actions_shape", []))
+    selected_action_preview = [action.to_dict() for action in result.actions[:6]]
+    raw_action_preview = _preview_action_rows(raw_actions)
+    replay_artifact = {
+        "schema_version": 1,
+        "source": "sanitized Cosmos-Policy smoke shape replay",
+        "provider": result.provider,
+        "model": metadata.get("model"),
+        "server_path": metadata.get("server_path"),
+        "runtime": metadata.get("runtime"),
+        "task_description": metadata.get("task_description"),
+        "request": {
+            "observation_fields": sorted(policy_info["observation"]),
+            "proprio_dim": len(policy_info["observation"]["proprio"]),
+            "action_horizon": policy_info["action_horizon"],
+            "embodiment_tag": policy_info["embodiment_tag"],
+        },
+        "response": {
+            "json_numpy_rows": True,
+            "raw_action_shape": raw_action_shape,
+            "value_prediction": provider_info.get("value_prediction"),
+            "translated_action_count": len(result.actions),
+            "raw_action_preview": raw_action_preview,
+            "selected_action_preview": selected_action_preview,
+        },
+    }
+    summary: JSONDict = {
+        "demo_kind": "cosmos_policy_saved_replay",
+        "state_dir": str(state_dir),
+        "providers": [result.provider],
+        "model": metadata.get("model"),
+        "task_description": metadata.get("task_description"),
+        "runtime": metadata.get("runtime"),
+        "server_path": metadata.get("server_path"),
+        "runtime_contract": "saved /act replay through CosmosPolicyProvider",
+        "health": health.to_dict(),
+        "request_count": request_count,
+        "raw_action_shape": raw_action_shape,
+        "translated_action_count": len(result.actions),
+        "action_horizon": result.action_horizon,
+        "selected_candidate_index": metadata.get("selected_candidate_index"),
+        "candidate_count": metadata.get("candidate_count"),
+        "value_prediction": provider_info.get("value_prediction"),
+        "selected_actions": [action.to_dict() for action in result.actions],
+        "selected_action_preview": selected_action_preview,
+        "raw_action_preview": raw_action_preview,
+        "event_phases": [event.phase for event in events],
+        "provider_events": [event.to_dict() for event in events],
+        "harness_artifacts": {
+            "cosmos_policy_replay": {
+                "path": "artifacts/cosmos-policy-replay.json",
+                "payload": replay_artifact,
+            },
+        },
+    }
+    if emit:
+        print("\n".join(_transcript_for("cosmos-policy", summary)))
+    return summary
+
+
+def _cosmos_policy_policy_info() -> JSONDict:
+    return {
+        "observation": {
+            "primary_image": [[[[0, 0, 0]]]],
+            "left_wrist_image": [[[[1, 1, 1]]]],
+            "right_wrist_image": [[[[2, 2, 2]]]],
+            "proprio": [0.0 for _ in range(_COSMOS_POLICY_ACTION_DIM)],
+        },
+        "task_description": "fold shirt",
+        "embodiment_tag": "aloha",
+        "action_horizon": _COSMOS_POLICY_ACTION_HORIZON,
+    }
+
+
+def _cosmos_policy_action_rows() -> list[list[float]]:
+    rows: list[list[float]] = []
+    for index in range(_COSMOS_POLICY_ACTION_HORIZON):
+        if index < len(_COSMOS_POLICY_PREVIEW_ROWS):
+            prefix = list(_COSMOS_POLICY_PREVIEW_ROWS[index])
+        else:
+            prefix = [
+                _bounded_action_value(index, dimension)
+                for dimension in range(len(_COSMOS_POLICY_PREVIEW_ROWS[0]))
+            ]
+        row = list(prefix)
+        row.extend(
+            _bounded_action_value(index, dimension)
+            for dimension in range(len(prefix), _COSMOS_POLICY_ACTION_DIM)
+        )
+        rows.append(row)
+    return rows
+
+
+def _bounded_action_value(index: int, dimension: int) -> float:
+    magnitude = ((index * 17 + dimension * 31) % 90 + 5) / 1500.0
+    sign = -1.0 if dimension in {1, 2, 3, 6, 8, 11, 13} else 1.0
+    return round(sign * magnitude, 5)
+
+
+def _json_numpy_action_row(row: Sequence[float]) -> JSONDict:
+    raw = struct.pack(f"<{_COSMOS_POLICY_ACTION_DIM}f", *row)
+    return {
+        "__numpy__": base64.b64encode(raw).decode("ascii"),
+        "dtype": "<f4",
+        "shape": [_COSMOS_POLICY_ACTION_DIM],
+    }
+
+
+def _preview_action_rows(rows: object, *, limit: int = 6, columns: int = 6) -> list[list[float]]:
+    if not isinstance(rows, list):
+        return []
+    preview: list[list[float]] = []
+    for row in rows[:limit]:
+        if not isinstance(row, list):
+            continue
+        preview.append([round(float(value), 5) for value in row[:columns]])
+    return preview
+
+
 # Demo modules import the optional-runtime provider classes at module scope, so
 # keep these imports lazy: loading the harness should not pull LeRobot/LeWorldModel
 # adapters into the base cold-start path.
@@ -203,6 +409,7 @@ def _run_lerobot_demo(**kwargs: object) -> JSONDict:
 _RUNNERS: dict[str, FlowRunner] = {
     "leworldmodel": _run_leworldmodel_demo,
     "lerobot": _run_lerobot_demo,
+    "cosmos-policy": _run_cosmos_policy_demo,
     "diagnostics": _run_diagnostics_demo,
     "workbench": _run_workbench_demo,
 }
@@ -665,6 +872,7 @@ def _write_flow_workspace(workspace: RunWorkspace, run: HarnessRun) -> None:
         "transcript": str(transcript_path.relative_to(workspace.path)),
         "inspector": str(inspector_path.relative_to(workspace.path)),
     }
+    artifact_paths.update(_write_flow_artifacts(workspace, run.summary))
     write_run_manifest(
         workspace,
         kind="flow",
@@ -694,6 +902,25 @@ def _inspector_payload(run: HarnessRun) -> JSONDict:
         "validation_errors": list(run.validation_errors),
         "workspace_path": str(run.workspace_path) if run.workspace_path is not None else None,
     }
+
+
+def _write_flow_artifacts(workspace: RunWorkspace, summary: JSONDict) -> dict[str, str]:
+    descriptors = summary.get("harness_artifacts")
+    if not isinstance(descriptors, dict):
+        return {}
+    paths: dict[str, str] = {}
+    for name, descriptor in descriptors.items():
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("harness artifact names must be non-empty strings")
+        if not isinstance(descriptor, dict):
+            raise ValueError(f"harness artifact '{name}' descriptor must be a JSON object")
+        relative_path = descriptor.get("path")
+        payload = descriptor.get("payload")
+        if not isinstance(relative_path, str) or not relative_path.startswith("artifacts/"):
+            raise ValueError(f"harness artifact '{name}' path must be under artifacts/")
+        path = workspace.write_json(relative_path, payload)
+        paths[name] = str(path.relative_to(workspace.path))
+    return paths
 
 
 def _write_report_artifacts(workspace: RunWorkspace, artifacts: dict[str, str]) -> dict[str, str]:
@@ -807,6 +1034,45 @@ def _steps_for(flow_id: str, summary: JSONDict) -> tuple[HarnessStep, ...]:
                 "Capture provider phases and policy lifecycle calls.",
                 _event_result(summary),
                 f"reset_calls={summary['policy_reset_calls']}",
+            ),
+        )
+    if flow_id == "cosmos-policy":
+        return (
+            HarnessStep(
+                "Load saved /act replay",
+                "Use a sanitized Cosmos-Policy response shape from a prepared smoke replay.",
+                "Checkout-safe replay loaded; no GPU or network call is required.",
+                f"task={summary['task_description']}",
+            ),
+            HarnessStep(
+                "Check provider boundary",
+                "Instantiate CosmosPolicyProvider with the same remote-server contract.",
+                "Provider health is configured for /act.",
+                f"model={summary['model']}",
+            ),
+            HarnessStep(
+                "Call Cosmos adapter",
+                "Route the replay through the real HTTP policy adapter and event path.",
+                f"{summary['request_count']} POST /act request handled.",
+                f"server_path={summary['server_path']}",
+            ),
+            HarnessStep(
+                "Decode action rows",
+                "Validate and decode json_numpy ALOHA action rows before translation.",
+                f"raw action shape {summary['raw_action_shape']}.",
+                "json_numpy_rows=true",
+            ),
+            HarnessStep(
+                "Translate ALOHA actions",
+                "Map raw 14D bimanual rows into executable WorldForge Action objects.",
+                f"{summary['translated_action_count']} move_to actions produced.",
+                f"value_prediction={float(summary['value_prediction']):.6f}",
+            ),
+            HarnessStep(
+                "Preserve replay artifact",
+                "Write the inspector state, provider events, and sanitized replay artifact.",
+                "artifact=artifacts/cosmos-policy-replay.json",
+                f"events={', '.join(summary['event_phases'])}",
             ),
         )
     if flow_id == "diagnostics":
@@ -973,6 +1239,31 @@ def _metrics_for(flow_id: str, summary: JSONDict) -> tuple[HarnessMetric, ...]:
                 "validation commands",
             ),
         )
+    if flow_id == "cosmos-policy":
+        return (
+            HarnessMetric("Flow", "policy", "Cosmos-Policy /act contract replay"),
+            HarnessMetric(
+                "Raw shape",
+                " x ".join(str(item) for item in summary["raw_action_shape"]),
+                "decoded json_numpy action rows",
+            ),
+            HarnessMetric(
+                "Translated",
+                str(summary["translated_action_count"]),
+                "WorldForge Action objects",
+            ),
+            HarnessMetric(
+                "Value",
+                f"{float(summary['value_prediction']):.6f}",
+                "provider value_prediction",
+            ),
+            HarnessMetric(
+                "Events",
+                str(len(summary["event_phases"])),
+                ", ".join(summary["event_phases"]),
+            ),
+            HarnessMetric("Artifact", "replay", "artifacts/cosmos-policy-replay.json"),
+        )
 
     flow_label = "score" if flow_id == "leworldmodel" else "policy+score"
     return (
@@ -1022,6 +1313,20 @@ def _transcript_for(flow_id: str, summary: JSONDict) -> tuple[str, ...]:
             f"jepa-wms_missing_stable: {', '.join(candidate_missing.get('stable', [])) or 'none'}",
             f"safe_artifacts: {summary['safe_artifact_count']}",
             f"validation_commands: {' | '.join(summary['validation_commands'])}",
+        )
+    if flow_id == "cosmos-policy":
+        return (
+            "flow: cosmos-policy",
+            f"provider: {', '.join(summary['providers'])}",
+            f"model: {summary['model']}",
+            f"server_path: {summary['server_path']}",
+            f"task: {summary['task_description']}",
+            f"health: {summary['health']['healthy']}",
+            f"raw_action_shape: {summary['raw_action_shape']}",
+            f"translated_actions: {summary['translated_action_count']}",
+            f"value_prediction: {float(summary['value_prediction']):.6f}",
+            "saved_replay_artifact: artifacts/cosmos-policy-replay.json",
+            f"events: {', '.join(summary['event_phases'])}",
         )
 
     lines = [

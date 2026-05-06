@@ -12,6 +12,7 @@ SCREEN_CASES = (
     ("eval", "eval", "leworldmodel"),
     ("benchmark", "benchmark", "leworldmodel"),
     ("run-inspector", "run-inspector", "leworldmodel"),
+    ("cosmos-policy", "run-inspector", "cosmos-policy"),
     ("diagnostics", "run-inspector", "diagnostics"),
 )
 

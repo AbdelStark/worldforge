@@ -30,14 +30,21 @@ from worldforge.harness.workspace import create_run_workspace, write_run_manifes
 
 def test_harness_flow_metadata_is_available_without_textual() -> None:
     flows = available_flows()
-    assert [flow.id for flow in flows] == ["leworldmodel", "lerobot", "diagnostics", "workbench"]
+    assert [flow.id for flow in flows] == [
+        "leworldmodel",
+        "lerobot",
+        "cosmos-policy",
+        "diagnostics",
+        "workbench",
+    ]
     assert flow_index()["leworldmodel"].provider == "LeWorldModelProvider"
 
     payload = flow_to_dicts()
     assert payload[0]["command"] == "uv run worldforge-demo-leworldmodel"
     assert payload[1]["focus"] == "policy plus score planning"
-    assert payload[2]["command"] == "uv run worldforge harness --flow diagnostics"
-    assert payload[3]["command"] == "uv run worldforge provider workbench mock"
+    assert payload[2]["command"] == "uv run --extra harness worldforge-harness --flow cosmos-policy"
+    assert payload[3]["command"] == "uv run worldforge harness --flow diagnostics"
+    assert payload[4]["command"] == "uv run worldforge provider workbench mock"
 
 
 def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
@@ -68,6 +75,146 @@ def test_harness_runs_lerobot_flow(tmp_path) -> None:
     assert run.summary["selected_candidate_index"] == 1
     assert run.summary["policy_select_calls"] == 2
     assert "policy_select_calls: 2" in run.transcript
+
+
+def test_harness_runs_cosmos_policy_flow(tmp_path) -> None:
+    run = run_flow("cosmos-policy", state_dir=tmp_path)
+
+    assert run.flow.id == "cosmos-policy"
+    assert len(run.steps) == 6
+    assert len(run.metrics) == 6
+    assert run.summary["model"] == "nvidia/Cosmos-Policy-ALOHA-Predict2-2B"
+    assert run.summary["server_path"] == "/act"
+    assert run.summary["raw_action_shape"] == [50, 14]
+    assert run.summary["translated_action_count"] == 50
+    assert run.summary["action_horizon"] == 50
+    assert run.summary["value_prediction"] == 0.190714
+    assert run.summary["selected_candidate_index"] == 0
+    assert run.summary["selected_action_preview"][0]["type"] == "move_to"
+    assert [event["phase"] for event in run.provider_events] == ["success"]
+    assert "raw_action_shape: [50, 14]" in run.transcript
+    assert "saved_replay_artifact: artifacts/cosmos-policy-replay.json" in run.transcript
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["artifact_paths"]["cosmos_policy_replay"] == (
+        "artifacts/cosmos-policy-replay.json"
+    )
+    replay = json.loads((run.workspace_path / "artifacts/cosmos-policy-replay.json").read_text())
+    assert replay["response"]["json_numpy_rows"] is True
+    assert replay["response"]["raw_action_shape"] == [50, 14]
+    assert replay["request"]["observation_fields"] == [
+        "left_wrist_image",
+        "primary_image",
+        "proprio",
+        "right_wrist_image",
+    ]
+
+
+def test_harness_cosmos_policy_flow_can_emit_transcript(tmp_path, capsys) -> None:
+    from worldforge.harness import flows
+
+    summary = flows._run_cosmos_policy_demo(state_dir=tmp_path, emit=True)
+
+    output = capsys.readouterr().out
+    assert summary["raw_action_shape"] == [50, 14]
+    assert "flow: cosmos-policy" in output
+    assert "translated_actions: 50" in output
+
+
+def test_harness_rejects_unknown_flow(tmp_path) -> None:
+    with pytest.raises(ValueError, match="unknown harness flow 'unknown'"):
+        run_flow("unknown", state_dir=tmp_path)
+
+
+def test_harness_flow_artifact_descriptors_are_validated(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="flow",
+        command="worldforge harness --flow demo",
+        provider="demo",
+        operation="demo",
+    )
+
+    assert flows._write_flow_artifacts(workspace, {"harness_artifacts": {}}) == {}
+
+    with pytest.raises(ValueError, match="artifact names"):
+        flows._write_flow_artifacts(
+            workspace,
+            {"harness_artifacts": {"": {"path": "artifacts/demo.json"}}},
+        )
+    with pytest.raises(ValueError, match="descriptor"):
+        flows._write_flow_artifacts(workspace, {"harness_artifacts": {"demo": "bad"}})
+    with pytest.raises(ValueError, match="under artifacts"):
+        flows._write_flow_artifacts(
+            workspace,
+            {"harness_artifacts": {"demo": {"path": "results/demo.json"}}},
+        )
+
+
+def test_harness_private_helpers_cover_invalid_and_emit_paths(tmp_path, capsys) -> None:
+    from worldforge.harness import flows
+
+    assert flows._preview_action_rows("not rows") == []
+    assert flows._preview_action_rows([[1, 2], "bad", [3]]) == [[1.0, 2.0], [3.0]]
+
+    with pytest.raises(ValueError, match="unknown harness flow"):
+        flows._steps_for("unknown", {})
+
+    forge = WorldForge(state_dir=tmp_path)
+    with pytest.raises(ValueError, match="must include a json entry"):
+        write_report(forge, "missing-json", {})
+
+    unsupported_path = tmp_path / "unsupported-report.json"
+    unsupported_path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="unsupported harness report payload"):
+        report_run_from_path(unsupported_path, state_dir=tmp_path)
+
+    def broken_glob(_self: Path, _pattern: str):
+        raise OSError("cannot scan")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(Path, "glob", broken_glob)
+    try:
+        assert recent_report_paths(tmp_path) == ()
+    finally:
+        monkeypatch.undo()
+
+    assert flows._provider_events_for("diagnostics", {}) == ()
+    assert [
+        event["phase"]
+        for event in flows._provider_events_for(
+            "diagnostics",
+            {"event_phases": ["success"]},
+        )
+    ] == ["success"]
+    events = flows._provider_events_for(
+        "diagnostics",
+        {
+            "benchmark_results": [
+                "bad",
+                {"operation_metrics": "bad"},
+                {
+                    "provider": "mock",
+                    "operation": "predict",
+                    "operation_metrics": {
+                        "events": [
+                            "bad",
+                            {"request_count": 1, "retry_count": 1, "error_count": 0},
+                        ],
+                    },
+                },
+            ],
+        },
+    )
+    assert [event["phase"] for event in events] == ["retry"]
+
+    flows._run_diagnostics_demo(state_dir=tmp_path / "diagnostics", emit=True)
+    flows._run_workbench_demo(state_dir=tmp_path / "workbench", emit=True)
+    output = capsys.readouterr().out
+    assert "Benchmark Report" in output
+    assert "Provider Workbench" in output
 
 
 def test_harness_failed_flow_preserves_manifest_and_inspector(
