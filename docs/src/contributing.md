@@ -8,6 +8,9 @@ uv lock --check
 uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
+uv run python scripts/check_docs_commands.py
+uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -16,10 +19,25 @@ uv build --out-dir dist --clear --no-build-logs
 ```
 
 Before tags or package publishing, also run the locked dependency audit from
-[Operations](./operations.md). `uv run python scripts/generate_provider_docs.py --check` plus
-`uv run mkdocs build --strict` verifies generated provider docs and builds the MkDocs Material site
-in strict mode. `bash scripts/test_package.sh` checks the wheel/sdist contents before installing
-the built wheel and running tests against the installed package.
+[Operations](./operations.md). If setup fails before the gate starts, run:
+
+```bash
+uv run python scripts/contributor_doctor.py --format markdown
+uv run python scripts/contributor_doctor.py --format json
+```
+
+The contributor doctor checks Python 3.13, uv, source-tree shape, docs tooling, GitHub CLI auth
+status, and optional runtime skip reasons without installing dependencies, reading secrets, or
+assuming LeWorldModel, LeRobot, GR00T, or Rerun are present. Its Markdown output is safe to paste
+into public issues.
+
+`uv run python scripts/generate_provider_docs.py --check`,
+`uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_wrapper_portability.py`,
+and `uv run mkdocs build --strict` verify generated provider docs, documented command drift,
+wrapper portability, and the MkDocs Material site in strict mode. `bash scripts/test_package.sh`
+checks the wheel/sdist contents before installing the built wheel and running tests against the
+installed package. See [Artifact Integrity](./artifact-integrity.md) for the release artifact
+hashing and evidence-linking contract.
 
 Before changing public imports, CLI flags, provider capabilities, or artifact schemas, classify the
 surface through [Public API Stability](./api-stability.md). Stable and provisional surfaces need a

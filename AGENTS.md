@@ -113,6 +113,7 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -342,13 +343,15 @@ generated documentation surfaces.
   legacy artifact explicitly requires `--allow-unsafe-pickle`. Do not add those dependencies to
   WorldForge's base package or commit downloaded assets/checkpoints.
 - `scripts/smoke_gr00t_policy.py` is an optional live PolicyClient smoke. It can start
-  `gr00t/eval/run_gr00t_server.py` from a host-owned Isaac-GR00T checkout, but it still requires
-  the host to provide real observations and an embodiment-specific action translator.
+  `gr00t/eval/run_gr00t_server.py` from a host-owned Isaac-GR00T checkout via
+  `uv run python scripts/smoke_gr00t_policy.py --help`, but it still requires the host to provide
+  real observations and an embodiment-specific action translator.
 - Starting the upstream GR00T server requires a compatible NVIDIA/Linux runtime for CUDA and
   TensorRT dependencies. On unsupported hosts, connect to an already running remote GR00T policy
   server.
 - `scripts/smoke_lerobot_policy.py` is an optional live LeRobot policy smoke. It requires the host
-  to provide real observations and an embodiment-specific action translator.
+  to provide real observations and an embodiment-specific action translator. Use
+  `uv run python scripts/smoke_lerobot_policy.py --help` to inspect host-owned arguments.
 - If GitHub Actions checks fail before execution because repository/account billing or spending
   limits prevent jobs from starting, treat local `uv`/package validation as the available gate.
 - `JEPA_WMS_MODEL_PATH`, `JEPA_WMS_MODEL_NAME`, and `JEPA_WMS_DEVICE` are documented by the
@@ -361,10 +364,12 @@ generated documentation surfaces.
 - Ruff commands run against `src tests examples scripts` to match CI and the commands documented
   in `README.md`. Do not drop `scripts` from either target.
 - `uv run python scripts/generate_provider_docs.py --check`,
-  `uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_core_performance.py`,
-  and `uv run mkdocs build --strict` check generated provider docs, documented command drift,
-  checkout-safe core performance budgets, and the MkDocs Material site. A warning in the published
-  docs build is a release blocker.
+  `uv run python scripts/check_docs_commands.py`,
+  `uv run python scripts/check_wrapper_portability.py`,
+  `uv run python scripts/check_core_performance.py`, and `uv run mkdocs build --strict` check
+  generated provider docs, documented command drift, wrapper portability, checkout-safe core
+  performance budgets, and the MkDocs Material site. A warning in the published docs build is a
+  release blocker.
 - `worldforge benchmark --budget-file <path>` evaluates direct provider benchmark results against
   JSON thresholds and exits non-zero on violations. Keep benchmark budgets tied to preserved run
   artifacts when using them for release or paper claims.

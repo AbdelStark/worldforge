@@ -101,6 +101,12 @@ CHECKOUT_SAFE_GATES = (
         "Fix stale command references or document the missing public entry point, then rerun.",
     ),
     ReleaseGate(
+        "Wrapper portability",
+        "uv run python scripts/check_wrapper_portability.py",
+        "Fix the named wrapper shebang, executable bit, documented command, or Python 3.13 uv "
+        "invocation.",
+    ),
+    ReleaseGate(
         "Core performance budgets",
         "uv run python scripts/check_core_performance.py",
         "Inspect the JSON report row, confirm the measured path, and fix regressions before "

@@ -553,13 +553,19 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
 bash scripts/test_package.sh
 uv build --out-dir dist --clear --no-build-logs
+shasum -a 256 dist/worldforge_ai-*.whl dist/worldforge_ai-*.tar.gz
 ```
+
+The artifact integrity contract is documented in [Artifact Integrity](./artifact-integrity.md). It
+covers package hashes, current package/evidence checks, unsafe artifact exclusions, and future SBOM,
+provenance, and attestation work that is not claimed today.
 
 Then run the locked dependency audit:
 
@@ -596,6 +602,12 @@ rendering. Success signal: `passed` is true and each result row has a preserved 
 `--workspace-dir <path>` is supplied. First triage step: inspect the failing row's measured path and
 fix the regression before changing a budget. These budgets are local regression guards, not
 cross-machine or optional-runtime performance claims.
+
+`uv run python scripts/check_wrapper_portability.py` checks shell wrappers and optional-runtime
+smoke commands without installing host-owned runtimes. Success signal: the report passes for
+`scripts/robotics-showcase`, `scripts/lewm-real`, `scripts/lewm-lerobot-real`, GR00T and LeRobot
+smoke helpers, and `scripts/test_package.sh`. First triage step: fix the named script's shebang,
+executable bit, documented command, or Python 3.13 uv invocation.
 
 When release or issue triage needs the underlying evaluation and benchmark artifacts, generate a
 separate evidence bundle first:

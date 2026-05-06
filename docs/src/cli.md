@@ -15,6 +15,20 @@ uv run worldforge examples
 uv run worldforge examples --format json
 ```
 
+Contributor setup and static release-support checks:
+
+```bash
+uv run python scripts/contributor_doctor.py --format markdown
+uv run python scripts/contributor_doctor.py --format json
+uv run python scripts/check_docs_commands.py
+uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_core_performance.py
+```
+
+`contributor_doctor.py` reports missing required tools as setup failures, optional runtime
+dependencies as skips, and missing GitHub CLI auth as a publishing warning rather than a local
+validation failure.
+
 Operator failure drills:
 
 ```bash

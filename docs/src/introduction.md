@@ -24,6 +24,8 @@ multi-writer persistence.
 
 ## Documentation Map
 
+For the complete reader-path map, use [Documentation Map](./docs-map.md).
+
 | Need | Start here |
 | --- | --- |
 | Install, create a world, and run the mock provider | [Quick Start](./quickstart.md) |

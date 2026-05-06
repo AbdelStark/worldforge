@@ -1108,6 +1108,158 @@ def test_core_performance_budget_docs_cover_issue_184_contract() -> None:
         assert implementation_signal in checker
 
 
+def test_contributor_bootstrap_doctor_docs_cover_issue_185_contract() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    contributing = (ROOT / "docs/src/contributing.md").read_text(encoding="utf-8")
+    cli = (ROOT / "docs/src/cli.md").read_text(encoding="utf-8")
+    doctor = (ROOT / "scripts/contributor_doctor.py").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for doc in (readme, contributing, cli):
+        assert "uv run python scripts/contributor_doctor.py --format markdown" in doc
+
+    for signal in (
+        "Python 3.13",
+        "uv",
+        "docs tooling",
+        "GitHub CLI auth",
+        "optional runtime skip reasons",
+        "safe to paste",
+    ):
+        assert signal in contributing
+
+    for implementation_signal in (
+        "run_contributor_doctor",
+        "render_contributor_doctor_markdown",
+        "overall_status",
+        "needs_attention",
+        "skipped",
+        "gh auth status",
+        "stable_worldmodel",
+        "lerobot",
+        "gr00t",
+        "rerun",
+    ):
+        assert implementation_signal in doctor
+
+    assert "contributor bootstrap doctor" in changelog
+
+
+def test_artifact_integrity_docs_cover_issue_186_contract() -> None:
+    integrity = (ROOT / "docs/src/artifact-integrity.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    contributing = (ROOT / "docs/src/contributing.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    distribution = (ROOT / "scripts/check_distribution.py").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for signal in (
+        "bash scripts/test_package.sh",
+        "uv run python scripts/check_distribution.py dist",
+        "uvx --from pip-audit pip-audit",
+        "shasum -a 256",
+        "scripts/generate_evidence_bundle.py",
+        "worldforge runs bundle <run-id>",
+        "SBOM",
+        "build provenance attestation",
+        "trusted publishing",
+        "signed artifacts",
+        "do not claim",
+    ):
+        assert signal in integrity
+
+    for unsafe in (
+        ".env",
+        "credentials",
+        "signed URL",
+        "checkpoint archives",
+        "downloaded datasets",
+    ):
+        assert unsafe in integrity
+
+    assert "[Artifact Integrity](./artifact-integrity.md)" in summary
+    assert "Artifact Integrity: artifact-integrity.md" in mkdocs
+    assert "[Artifact Integrity](./artifact-integrity.md)" in operations
+    assert "[Artifact Integrity](./artifact-integrity.md)" in contributing
+    assert "docs/src/artifact-integrity.md" in distribution
+    assert "supply-chain and artifact integrity documentation" in changelog
+
+
+def test_wrapper_portability_docs_cover_issue_187_contract() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    quality = (ROOT / "docs/src/quality.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    release_script = (ROOT / "scripts/generate_release_evidence.py").read_text(encoding="utf-8")
+    checker = (ROOT / "scripts/check_wrapper_portability.py").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for doc in (readme, agents, quality, operations, playbooks, ci):
+        assert "uv run python scripts/check_wrapper_portability.py" in doc
+
+    assert "Wrapper portability" in release_script
+    assert "claim Windows" in checker
+    assert "support" in checker
+    for script in (
+        "scripts/robotics-showcase",
+        "scripts/lewm-real",
+        "scripts/lewm-lerobot-real",
+        "scripts/smoke_gr00t_policy.py",
+        "scripts/smoke_lerobot_policy.py",
+        "scripts/test_package.sh",
+    ):
+        assert script in checker
+
+    for signal in ("shebang", "executable", "uv run --python 3.13", "host-owned"):
+        assert signal in checker or signal in quality or signal in operations
+
+    assert "wrapper portability checker" in changelog
+
+
+def test_documentation_information_architecture_cover_issue_188_contract() -> None:
+    docs_map = (ROOT / "docs/src/docs-map.md").read_text(encoding="utf-8")
+    introduction = (ROOT / "docs/src/introduction.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for reader in (
+        "Provider author",
+        "Operator",
+        "Evaluator or research user",
+        "Release maintainer",
+        "Demo or showcase user",
+    ):
+        assert reader in docs_map
+
+    for route in (
+        "Provider Authoring Guide",
+        "Operations",
+        "Benchmarking",
+        "Artifact Integrity",
+        "Robotics Replay Showcase",
+    ):
+        assert route in docs_map
+
+    for roadmap_page in (
+        "Roadmap Expansion",
+        "Roadmap Continuation",
+        "Provider And Platform Roadmap",
+    ):
+        assert roadmap_page in docs_map
+
+    assert "[Documentation Map](./docs-map.md)" in summary
+    assert "Documentation Map: docs-map.md" in mkdocs
+    assert "Planning Records:" in mkdocs
+    assert "[Documentation Map](./docs-map.md)" in introduction
+    assert "Docs Map" in readme
+    assert "public docs information architecture" in changelog
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
