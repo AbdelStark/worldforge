@@ -176,6 +176,29 @@ The stdlib service reference uses the same model: `/healthz` is process-only liv
 decision of `accept` or `drain`. Alert routing, paging policy, retry orchestration outside a single
 provider call, and upstream SLA ownership remain host responsibilities.
 
+## 4b. Deploy Reference Hosts
+
+Use this before handing the stdlib service host, batch evaluation host, or robotics operator host to
+another host process owner.
+
+```bash
+uv run python examples/hosts/service/app.py --provider mock --port 8080
+uv run python examples/hosts/batch-eval/app.py benchmark --provider mock --operation generate --iterations 1
+uv run python examples/hosts/robotics-operator/app.py review --sample-translator --approve-dry-run \
+  --check workspace_clear --check emergency_stop_available --check operator_present --check controller_isolated
+```
+
+Success signal: the service host returns `/readyz` with `status: ready` and `traffic: accept`; the
+batch host prints `status: passed` and a `run_manifest`; the robotics operator host prints
+`status: passed`, a `run_manifest`, and `controller_executed: false`.
+
+If it fails: use the [Reference Host Deployment Recipes](./examples.md#reference-host-deployment-recipes)
+first. They include env templates, process commands, readiness commands, smoke commands, logging
+commands, evidence export commands, and first rollback or triage steps for checkout-safe,
+prepared-host, credentialed, GPU-bound, and robotics-lab paths. Deployment, auth, queueing,
+durable storage, controller integration, alerting, uptime, and safety certification stay
+host-owned.
+
 ## 5. Operate Local JSON Persistence
 
 Use this for local jobs, demos, tests, and single-writer workflows.
