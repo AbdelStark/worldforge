@@ -141,9 +141,15 @@ def test_eval_run_artifacts_match_canonical_renderer(tmp_path) -> None:
     artifacts, report = eval_run_artifacts(forge, "planning", "mock")
 
     direct = EvaluationSuite.from_builtin("planning").run_report("mock", forge=forge)
-    assert artifacts["json"] == direct.to_json()
+    artifact_payload = json.loads(artifacts["json"])
+    direct_payload = json.loads(direct.to_json())
+    assert artifact_payload["provenance"]["created_at"]
+    assert direct_payload["provenance"]["created_at"]
+    artifact_payload["provenance"]["created_at"] = "<created-at>"
+    direct_payload["provenance"]["created_at"] = "<created-at>"
+    assert artifact_payload == direct_payload
     assert artifacts["markdown"] == report.to_markdown()
-    assert json.loads(artifacts["json"])["suite_id"] == "planning"
+    assert artifact_payload["suite_id"] == "planning"
 
 
 def test_benchmark_run_artifacts_invokes_sample_callback(tmp_path) -> None:
