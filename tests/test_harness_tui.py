@@ -573,6 +573,94 @@ def test_command_palette_lists_screens_and_flows(tmp_path) -> None:
     asyncio.run(scenario())
 
 
+def test_runs_screen_filters_and_opens_preserved_run(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from textual.widgets import DataTable, Input
+
+    from worldforge.harness.tui import RunInspectorScreen, RunsScreen, TheWorldHarnessApp
+    from worldforge.harness.workspace import create_run_workspace, write_run_manifest
+
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="benchmark",
+        command="worldforge benchmark --provider mock --operation predict --secret super-secret",
+        provider="mock",
+        operation="predict",
+        run_id="20260102T000000Z-00000002",
+        input_summary={
+            "providers": ["mock"],
+            "operations": ["predict"],
+            "capabilities": ["predict"],
+        },
+    )
+    workspace.write_json(
+        "reports/report.json",
+        {
+            "run_metadata": {},
+            "results": [
+                {
+                    "provider": "mock",
+                    "operation": "predict",
+                    "iterations": 1,
+                    "success_count": 0,
+                    "error_count": 1,
+                    "retry_count": 0,
+                    "total_time_ms": 1.0,
+                    "average_latency_ms": 1.0,
+                    "min_latency_ms": 1.0,
+                    "max_latency_ms": 1.0,
+                    "p50_latency_ms": 1.0,
+                    "p95_latency_ms": 1.0,
+                    "throughput_per_second": 1.0,
+                    "operation_metrics": {"events": [{"request_count": 1}]},
+                    "errors": ["budget failed"],
+                }
+            ],
+        },
+    )
+    write_run_manifest(
+        workspace,
+        kind="benchmark",
+        command="worldforge benchmark --provider mock --operation predict --secret super-secret",
+        provider="mock",
+        operation="predict",
+        status="failed",
+        input_summary={
+            "providers": ["mock"],
+            "operations": ["predict"],
+            "capabilities": ["predict"],
+        },
+        result_summary={"failure_reason": "budget failed"},
+        artifact_paths={"json": "reports/report.json"},
+        event_count=1,
+    )
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(state_dir=tmp_path, initial_screen="runs")
+        async with app.run_test(size=(150, 44)) as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, RunsScreen)
+            table = app.screen.query_one("#runs-table", DataTable)
+            assert table.row_count == 1
+            detail = app.screen.query_one("#runs-detail")
+            assert "worldforge runs bundle" in detail.render().plain  # type: ignore[union-attr]
+            provider_filter = app.screen.query_one("#runs-provider-filter", Input)
+            provider_filter.value = "none"
+            await pilot.pause()
+            assert table.row_count == 0
+            provider_filter.value = "mock"
+            await pilot.pause()
+            assert table.row_count == 1
+            await pilot.press("enter")
+            await pilot.pause()
+            assert isinstance(app.screen, RunInspectorScreen)
+            assert app.screen._fixed_run is not None
+            assert app.screen._fixed_run.workspace_path == workspace.path.resolve()
+
+    asyncio.run(scenario())
+
+
 def test_home_jump_card_keyboard_activation(tmp_path) -> None:
     pytest.importorskip("textual")
 

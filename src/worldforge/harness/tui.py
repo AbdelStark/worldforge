@@ -71,6 +71,12 @@ from worldforge.harness.flows import (
     write_report,
 )
 from worldforge.harness.models import HarnessFlow, HarnessMetric, HarnessRun, HarnessStep
+from worldforge.harness.run_history import (
+    RunHistoryFilter,
+    RunHistoryRecord,
+    list_run_history,
+    preserved_run_from_path,
+)
 from worldforge.harness.theme import (
     FLOW_CAPABILITY_FALLBACKS,
     THEME_NAME_DARK,
@@ -80,6 +86,7 @@ from worldforge.harness.theme import (
     WORLDFORGE_HIGH_CONTRAST_PALETTE,
     WORLDFORGE_LIGHT_PALETTE,
 )
+from worldforge.harness.workspace import workspace_root_for_state_dir
 from worldforge.harness.worlds_view import (
     SceneObjectSpec,
     WorldSpec,
@@ -92,7 +99,7 @@ from worldforge.models import CAPABILITY_NAMES, JSONDict, ProviderEvent
 from worldforge.providers.base import ProviderError
 from worldforge.providers.mock import MockProvider
 
-InitialScreen = Literal["home", "run-inspector", "worlds", "providers", "eval", "benchmark"]
+InitialScreen = Literal["home", "run-inspector", "worlds", "providers", "eval", "benchmark", "runs"]
 
 
 def _build_theme(name: str, palette: dict[str, str], *, dark: bool) -> Theme:
@@ -161,6 +168,20 @@ def _maybe_query(node, selector: str, expected_type):
         return node.query_one(selector, expected_type)
     except NoMatches:
         return None
+
+
+def _input_value(input_widget: Input | None) -> str | None:
+    if input_widget is None:
+        return None
+    value = input_widget.value.strip()
+    return value or None
+
+
+def _select_value(select_widget: Select | None) -> str | None:
+    if select_widget is None or select_widget.value is Select.BLANK:
+        return None
+    value = str(select_widget.value).strip()
+    return value or None
 
 
 class Breadcrumb(Static):
@@ -590,6 +611,7 @@ class HomeScreen(Screen):
         Binding("n", "jump('worlds')", "Create a world", show=True),
         Binding("p", "jump('providers')", "Run a provider", show=True),
         Binding("e", "jump('eval')", "Run an eval", show=True),
+        Binding("u", "jump('runs')", "Review runs", show=True),
     ]
 
     DEFAULT_CSS = """
@@ -665,6 +687,13 @@ class HomeScreen(Screen):
                     description="Execute a deterministic evaluation suite against a provider.",
                     widget_id="jump-run-eval",
                 )
+                yield JumpCard(
+                    target="runs",
+                    title="Review runs",
+                    binding="u",
+                    description="Filter preserved runs and open recovery actions.",
+                    widget_id="jump-review-runs",
+                )
             yield Static(
                 "No recent items yet — jump targets will appear here once you open them.",
                 id="home-recent",
@@ -704,6 +733,9 @@ class HomeScreen(Screen):
         if event.target == "eval":
             self.app.action_switch_screen("eval")
             return
+        if event.target == "runs":
+            self.app.action_switch_screen("runs")
+            return
         self.app.push_screen(
             PlaceholderScreen(target_milestone="?", next_action="Target not yet routed.")
         )
@@ -724,7 +756,8 @@ class HomeScreen(Screen):
             reverse=True,
         )[:5]
         reports = recent_report_paths(forge.state_dir, limit=5)
-        if not world_ids and not reports:
+        runs = list_run_history(workspace_root_for_state_dir(forge.state_dir), limit=5)
+        if not world_ids and not reports and not runs:
             target.update(
                 "No recent worlds or runs — press [b]n[/] to create a world "
                 "or [b]e[/] to run an eval."
@@ -736,10 +769,276 @@ class HomeScreen(Screen):
         else:
             lines.append("Worlds: none yet")
         if reports:
-            lines.append("Runs: " + ", ".join(path.name for path in reports))
+            lines.append("Reports: " + ", ".join(path.name for path in reports))
+        else:
+            lines.append("Reports: none yet")
+        if runs:
+            lines.append("Runs: " + ", ".join(record.run_id for record in runs))
         else:
             lines.append("Runs: none yet")
         target.update("\n".join(lines))
+
+
+class RunsScreen(Screen):
+    """Filter and open preserved run workspaces."""
+
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("enter", "open_selected", "Open", show=True),
+        Binding("f", "focus_provider_filter", "Filter", show=True),
+        Binding("escape", "clear_filters", "Clear", show=True),
+    ]
+
+    DEFAULT_CSS = """
+    RunsScreen {
+        background: $background;
+        color: $foreground;
+    }
+
+    #runs-root {
+        padding: 1 2;
+        height: 1fr;
+    }
+
+    #runs-filter-row {
+        height: auto;
+        margin-bottom: 1;
+    }
+
+    #runs-filter-row Input, #runs-filter-row Select {
+        width: 1fr;
+        margin-right: 1;
+    }
+
+    #runs-body {
+        height: 1fr;
+    }
+
+    #runs-table-wrap {
+        width: 2fr;
+        margin-right: 1;
+    }
+
+    #runs-table {
+        height: 1fr;
+    }
+
+    #runs-empty {
+        height: 1fr;
+        align: center middle;
+        color: $text-muted;
+    }
+
+    #runs-empty.hidden {
+        display: none;
+    }
+
+    #runs-table.hidden {
+        display: none;
+    }
+
+    #runs-detail {
+        width: 1fr;
+        padding: 1 2;
+        border: round $panel;
+        background: $surface;
+        color: $foreground;
+    }
+    """
+
+    selected_run_id: reactive[str | None] = reactive(None, init=False)
+
+    def __init__(self, *, state_dir: Path) -> None:
+        super().__init__()
+        self._state_dir = state_dir
+        self._records: dict[str, RunHistoryRecord] = {}
+        self._ordered_ids: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with Horizontal(id="chrome"):
+            yield Breadcrumb(id="breadcrumb")
+            yield ProviderStatusPill(id="provider-pill")
+        with Container(id="runs-root"):
+            with Horizontal(id="runs-filter-row"):
+                yield Input(placeholder="provider", id="runs-provider-filter")
+                yield Input(placeholder="capability", id="runs-capability-filter")
+                yield Select(
+                    [
+                        ("any status", ""),
+                        ("completed", "completed"),
+                        ("failed", "failed"),
+                        ("skipped", "skipped"),
+                        ("cancelled", "cancelled"),
+                    ],
+                    value="",
+                    allow_blank=False,
+                    id="runs-status-filter",
+                )
+                yield Input(placeholder="from YYYY-MM-DD", id="runs-created-from-filter")
+                yield Input(placeholder="artifact type", id="runs-artifact-filter")
+            with Horizontal(id="runs-body"):
+                with Container(id="runs-table-wrap"):
+                    yield DataTable(zebra_stripes=True, cursor_type="row", id="runs-table")
+                    yield Static("No preserved runs match the active filters.", id="runs-empty")
+                yield Static("Select a run to see recovery commands.", id="runs-detail")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one("#runs-table", DataTable)
+        table.add_columns("run", "status", "provider", "capability", "artifacts")
+        table.focus()
+        self._update_chrome()
+        self.refresh_runs()
+
+    def on_screen_resume(self) -> None:
+        self._update_chrome()
+        table = _maybe_query(self, "#runs-table", DataTable)
+        if table is not None:
+            table.focus()
+
+    def watch_selected_run_id(self, _old: str | None, _new: str | None) -> None:
+        self._refresh_detail()
+        self._update_chrome()
+
+    def _update_chrome(self) -> None:
+        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
+        if breadcrumb is not None:
+            breadcrumb.path = ("worldforge", "runs")
+        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
+        if pill is not None:
+            record = self._records.get(self.selected_run_id or "")
+            pill.label = record.provider if record else ""
+
+    def refresh_runs(self) -> None:
+        filters = self._filters()
+        records = list_run_history(
+            workspace_root_for_state_dir(self._state_dir),
+            filters=filters,
+        )
+        self._records = {record.run_id: record for record in records}
+        self._ordered_ids = [record.run_id for record in records]
+        self._rebuild_table_rows()
+
+    def _filters(self) -> RunHistoryFilter:
+        status = _select_value(_maybe_query(self, "#runs-status-filter", Select))
+        try:
+            return RunHistoryFilter.from_strings(
+                provider=_input_value(_maybe_query(self, "#runs-provider-filter", Input)),
+                capability=_input_value(_maybe_query(self, "#runs-capability-filter", Input)),
+                status=status,
+                created_from=_input_value(_maybe_query(self, "#runs-created-from-filter", Input)),
+                artifact_type=_input_value(_maybe_query(self, "#runs-artifact-filter", Input)),
+            )
+        except WorldForgeError as exc:
+            self.notify(str(exc), severity="error", title="Run filter")
+            return RunHistoryFilter()
+
+    def _rebuild_table_rows(self) -> None:
+        table = _maybe_query(self, "#runs-table", DataTable)
+        empty = _maybe_query(self, "#runs-empty", Static)
+        if table is None:
+            return
+        table.clear()
+        for run_id in self._ordered_ids:
+            record = self._records[run_id]
+            table.add_row(
+                record.run_id,
+                record.status or "-",
+                record.provider or "-",
+                record.capability or "-",
+                ", ".join(record.safe_artifact_types) or "-",
+                key=record.run_id,
+            )
+        if not self._ordered_ids:
+            if empty is not None:
+                empty.remove_class("hidden")
+            table.add_class("hidden")
+            self.selected_run_id = None
+        else:
+            if empty is not None:
+                empty.add_class("hidden")
+            table.remove_class("hidden")
+            self.selected_run_id = self._ordered_ids[0]
+
+    def _refresh_detail(self) -> None:
+        detail = _maybe_query(self, "#runs-detail", Static)
+        if detail is None:
+            return
+        record = self._records.get(self.selected_run_id or "")
+        if record is None:
+            detail.update("Select a run to see recovery commands.")
+            return
+        lines = [
+            f"[bold]{record.run_id}[/]",
+            f"status: {record.status or '-'}",
+            f"kind: {record.kind or '-'}",
+            f"provider: {record.provider or '-'}",
+            f"capability: {record.capability or '-'}",
+            f"rerun: [dim]{record.rerun_command}[/]",
+            f"issue bundle: [dim]{record.issue_bundle_command}[/]",
+        ]
+        if record.comparison_command:
+            lines.append(f"compare: [dim]{record.comparison_command}[/]")
+        if record.recovery_command:
+            lines.append(f"recovery: [bold]{record.recovery_command}[/]")
+        if record.failure_summary:
+            lines.append(f"failure: {record.failure_summary}")
+        detail.update("\n".join(lines))
+
+    @on(DataTable.RowHighlighted, "#runs-table")
+    def _on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        key = event.row_key.value if event.row_key else None
+        if isinstance(key, str):
+            self.selected_run_id = key
+
+    @on(DataTable.RowSelected, "#runs-table")
+    def _on_row_selected(self, event: DataTable.RowSelected) -> None:
+        key = event.row_key.value if event.row_key else None
+        if isinstance(key, str):
+            self.selected_run_id = key
+            self.action_open_selected()
+
+    @on(Input.Changed, "#runs-provider-filter")
+    @on(Input.Changed, "#runs-capability-filter")
+    @on(Input.Changed, "#runs-created-from-filter")
+    @on(Input.Changed, "#runs-artifact-filter")
+    def _on_filter_changed(self, event: Input.Changed) -> None:
+        del event
+        self.refresh_runs()
+
+    @on(Select.Changed, "#runs-status-filter")
+    def _on_status_changed(self) -> None:
+        self.refresh_runs()
+
+    def action_focus_provider_filter(self) -> None:
+        provider_filter = _maybe_query(self, "#runs-provider-filter", Input)
+        if provider_filter is not None:
+            provider_filter.focus()
+
+    def action_clear_filters(self) -> None:
+        for selector in (
+            "#runs-provider-filter",
+            "#runs-capability-filter",
+            "#runs-created-from-filter",
+            "#runs-artifact-filter",
+        ):
+            field = _maybe_query(self, selector, Input)
+            if field is not None:
+                field.value = ""
+        status = _maybe_query(self, "#runs-status-filter", Select)
+        if status is not None:
+            status.value = ""
+        self.refresh_runs()
+        table = _maybe_query(self, "#runs-table", DataTable)
+        if table is not None:
+            table.focus()
+
+    def action_open_selected(self) -> None:
+        record = self._records.get(self.selected_run_id or "")
+        if record is None:
+            return
+        if hasattr(self.app, "_open_run_workspace"):
+            self.app._open_run_workspace(record.path)  # type: ignore[attr-defined]
 
 
 class RunInspectorScreen(Screen):
@@ -4042,6 +4341,14 @@ class WorldForgeCommandProvider(  # pragma: no cover - exercised by Pilot/provid
             )
             for path in recent_report_paths(forge.state_dir, limit=50)
         )
+        items.extend(
+            (
+                f"Run workspace: {record.run_id}",
+                "Open the preserved run workspace",
+                lambda path=record.path: app._open_run_workspace(path),  # type: ignore[attr-defined]
+            )
+            for record in list_run_history(workspace_root_for_state_dir(forge.state_dir), limit=50)
+        )
         return items
 
 
@@ -4061,6 +4368,7 @@ class TheWorldHarnessApp(App[None]):
         Binding("g,p", "switch_screen('providers')", "Jump: Providers", show=False),
         Binding("g,e", "switch_screen('eval')", "Jump: Eval", show=False),
         Binding("g,b", "switch_screen('benchmark')", "Jump: Benchmark", show=False),
+        Binding("g,u", "switch_screen('runs')", "Jump: Runs", show=False),
     ]
     SCREENS: ClassVar[dict[str, type[Screen[Any]]]] = {
         "home": HomeScreen,
@@ -4069,6 +4377,7 @@ class TheWorldHarnessApp(App[None]):
         "providers": ProvidersScreen,
         "eval": EvalScreen,
         "benchmark": BenchmarkScreen,
+        "runs": RunsScreen,
     }
     CSS = """
     Header {
@@ -4150,6 +4459,9 @@ class TheWorldHarnessApp(App[None]):
     def _make_benchmark(self) -> BenchmarkScreen:
         return BenchmarkScreen(forge=self._get_forge())
 
+    def _make_runs(self) -> RunsScreen:
+        return RunsScreen(state_dir=self._get_forge().state_dir)
+
     def _record_provider_event(self, event: ProviderEvent) -> None:
         self._provider_event_queue.put(event)
 
@@ -4186,6 +4498,8 @@ class TheWorldHarnessApp(App[None]):
             await self.push_screen(self._make_eval())
         elif self._initial_screen == "benchmark":
             await self.push_screen(self._make_benchmark())
+        elif self._initial_screen == "runs":
+            await self.push_screen(self._make_runs())
         else:
             await self.push_screen(self._make_home())
 
@@ -4232,6 +4546,8 @@ class TheWorldHarnessApp(App[None]):
             self.switch_screen(self._make_eval())
         elif screen_name == "benchmark":
             self.switch_screen(self._make_benchmark())
+        elif screen_name == "runs":
+            self.switch_screen(self._make_runs())
         else:  # pragma: no cover - defensive
             self.switch_screen(screen_name)
 
@@ -4250,6 +4566,8 @@ class TheWorldHarnessApp(App[None]):
             return self._make_eval()
         if screen_name == "benchmark":
             return self._make_benchmark()
+        if screen_name == "runs":
+            return self._make_runs()
         return screen_name
 
     async def _switch_screen_and_wait(  # pragma: no cover - exercised through command callbacks.
@@ -4304,6 +4622,11 @@ class TheWorldHarnessApp(App[None]):
             lambda: self.action_switch_screen("benchmark"),
         )
         yield SystemCommand(
+            "Jump: Runs",
+            "Open preserved run history",
+            lambda: self.action_switch_screen("runs"),
+        )
+        yield SystemCommand(
             "New world",
             "Open the Worlds screen and start a new world",
             self._command_new_world,
@@ -4355,6 +4678,12 @@ class TheWorldHarnessApp(App[None]):
 
     def _open_report_path(self, path: Path) -> None:
         run = report_run_from_path(path, state_dir=self._get_forge().state_dir)
+        while isinstance(self.screen, ModalScreen):
+            self.pop_screen()
+        self.switch_screen(RunInspectorScreen(state_dir=self._get_forge().state_dir, run=run))
+
+    def _open_run_workspace(self, path: Path) -> None:
+        run = preserved_run_from_path(path, state_dir=self._get_forge().state_dir)
         while isinstance(self.screen, ModalScreen):
             self.pop_screen()
         self.switch_screen(RunInspectorScreen(state_dir=self._get_forge().state_dir, run=run))

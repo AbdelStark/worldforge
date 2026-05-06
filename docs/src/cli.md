@@ -91,15 +91,17 @@ uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow leworldmodel
 uv run --extra harness worldforge-harness --flow lerobot
 uv run --extra harness worldforge-harness --flow diagnostics
+uv run --extra harness worldforge-harness --flow runs
 uv run worldforge harness --list
 uv run worldforge harness --connectors --format json
+uv run worldforge harness --runs --status failed --artifact-type json
 ```
 
 TheWorldHarness is optional and Textual-backed. It keeps Textual out of the base package while
 providing a visual workspace for checkout-safe flows, provider diagnostics, local worlds, evals, and
-benchmarks. The connector metadata command is checkout-safe and works without Textual; it reports
-provider readiness categories, missing env-var names, optional runtime dependencies, and first smoke
-commands without printing secret values.
+benchmarks. The connector and run-history metadata commands are checkout-safe and work without
+Textual; they report provider readiness, preserved-run filters, sanitized rerun commands, and first
+recovery actions without printing secret values.
 
 ## Packaged Demos
 

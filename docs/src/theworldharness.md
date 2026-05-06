@@ -24,10 +24,12 @@ uv run --extra harness worldforge-harness --flow lerobot
 uv run --extra harness worldforge-harness --flow diagnostics
 uv run --extra harness worldforge-harness --flow eval
 uv run --extra harness worldforge-harness --flow benchmark
+uv run --extra harness worldforge-harness --flow runs
 uv run worldforge harness --list
 uv run worldforge harness --list --format json
 uv run worldforge harness --connectors
 uv run worldforge harness --connectors --format json
+uv run worldforge harness --runs --provider mock --status failed --artifact-type json
 ```
 
 Installed package:
@@ -158,11 +160,24 @@ uv run worldforge benchmark --provider mock --operation predict --run-workspace 
 uv run worldforge runs list
 uv run worldforge runs compare .worldforge/runs/<run-a> .worldforge/runs/<run-b>
 uv run worldforge runs cleanup --keep 20
+uv run worldforge harness --runs --provider mock --capability predict --status failed
 ```
 
 Completed eval and benchmark TUI screens still write JSON under `.worldforge/reports/` relative to
 the active state directory for the Home screen and `Ctrl+P` recent-report index. Use the run
 workspace when a full issue attachment needs manifest, reports, logs, and result summaries together.
+The Runs screen and `worldforge harness --runs` read the preserved run manifests directly without
+optional model runtimes. They filter by provider, capability, status, created date, and safe
+artifact type; each row exposes a sanitized rerun command, issue-bundle export command, and
+comparison command where the run type supports comparison. Failed, skipped, and cancelled rows show
+the recovery command first:
+
+```bash
+uv run --extra harness worldforge-harness --flow runs
+uv run worldforge harness --runs --status failed --artifact-type json --format json
+uv run worldforge runs bundle <run-id> --workspace-dir .worldforge
+```
+
 Use `runs compare --format json|markdown|csv` to export attachment-safe comparisons across
 preserved eval runs or preserved benchmark runs. The CLI and harness comparison path share one
 report model: compatible cross-provider runs keep metric deltas, event counts, budget status,
@@ -194,7 +209,9 @@ provider health, benchmark latency, benchmark throughput, and provider event pha
 - `g p`: jump to Providers.
 - `g e`: jump to Eval.
 - `g b`: jump to Benchmark.
-- `Ctrl+P`: search static commands plus worlds, providers, and recent report files.
+- `g u`: jump to Runs.
+- `Ctrl+P`: search static commands plus worlds, providers, recent report files, and preserved run
+  workspaces.
 - `Ctrl+T`: cycle `worldforge-dark`, `worldforge-light`, and `worldforge-high-contrast`.
 - `q`: quit.
 

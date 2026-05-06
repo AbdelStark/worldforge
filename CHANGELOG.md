@@ -13,6 +13,10 @@ releases may still include breaking changes when the public API needs to tighten
   exports one run to `evidence_manifest.json`, `summary.md`, and `issue.md`, prints a short issue
   template, preserves SHA-256 digests and `safe_to_attach` flags, and marks unsafe or host-local
   artifacts before attachment.
+- Added preserved-run history actions to TheWorldHarness. The Runs screen and
+  `worldforge harness --runs` can filter run workspaces by provider, capability, status, date, and
+  safe artifact type; rows expose sanitized rerun commands plus issue-bundle and comparison actions,
+  with failed/skipped/cancelled runs surfacing the recovery bundle command first.
 - Provider scaffolding now generates a fuller fail-closed contract pack: an explicit
   `--implementation-status scaffold` maturity claim, provider/profile tests for disabled
   capability calls, placeholder fixtures marked as non-evidence, an incomplete `.json.stub`

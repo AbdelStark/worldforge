@@ -1026,7 +1026,15 @@ def _build_parser() -> argparse.ArgumentParser:
     harness = subparsers.add_parser("harness", help="Launch TheWorldHarness TUI.")
     harness.add_argument(
         "--flow",
-        choices=("leworldmodel", "lerobot", "diagnostics"),
+        choices=(
+            "leworldmodel",
+            "lerobot",
+            "diagnostics",
+            "workbench",
+            "eval",
+            "benchmark",
+            "runs",
+        ),
         default="leworldmodel",
         help="Harness flow to open.",
     )
@@ -1047,10 +1055,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List provider connector readiness without launching the TUI.",
     )
     harness.add_argument(
+        "--runs",
+        action="store_true",
+        help="List preserved run history without launching the TUI.",
+    )
+    harness.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path(".worldforge"),
+        help="Workspace root for --runs. Defaults to .worldforge.",
+    )
+    harness.add_argument("--provider", help="Filter --runs output by provider substring.")
+    harness.add_argument("--capability", help="Filter --runs output by capability.")
+    harness.add_argument("--status", help="Filter --runs output by run status.")
+    harness.add_argument("--created-from", help="Filter --runs output from YYYY-MM-DD.")
+    harness.add_argument("--created-to", help="Filter --runs output through YYYY-MM-DD.")
+    harness.add_argument("--artifact-type", help="Filter --runs output by safe artifact type.")
+    harness.add_argument(
         "--format",
         choices=("markdown", "json"),
         default="markdown",
-        help="Output format for --list and --connectors.",
+        help="Output format for --list, --connectors, and --runs.",
     )
     harness.add_argument("--no-animation", action="store_true", help="Disable step reveal delays.")
 
@@ -1102,6 +1127,14 @@ def _cmd_harness(args: argparse.Namespace) -> int:
         state_dir=args.state_dir,
         list_only=args.list,
         connectors=args.connectors,
+        runs=args.runs,
+        workspace_dir=args.workspace_dir,
+        provider=args.provider,
+        capability=args.capability,
+        status=args.status,
+        created_from=args.created_from,
+        created_to=args.created_to,
+        artifact_type=args.artifact_type,
         output_format=args.format,
         animate=not args.no_animation,
     )
