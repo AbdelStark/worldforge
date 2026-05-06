@@ -18,6 +18,7 @@ uv run worldforge doctor
 uv run worldforge examples
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_wrapper_portability.py
 uv run mkdocs build --strict
 uv run pytest tests/test_cli_help_snapshots.py tests/test_provider_catalog_docs.py
 ```
@@ -756,12 +757,14 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
 bash scripts/test_package.sh
 uv build --out-dir dist --clear --no-build-logs
+shasum -a 256 dist/worldforge_ai-*.whl dist/worldforge_ai-*.tar.gz
 ```
 
 The package contract checks both distribution artifacts: the wheel must contain only runtime package
@@ -783,6 +786,17 @@ benchmark fixture loading, provider catalog diagnostics, evidence-bundle creatio
 rendering. First triage step: inspect the failing row's artifact path and rerun the single changed
 code path before loosening a budget. The report is a local regression guard, not a public
 performance claim.
+
+Run the wrapper portability checker whenever shell wrappers, optional-runtime smoke commands, or
+documented host commands change:
+
+```bash
+uv run python scripts/check_wrapper_portability.py
+```
+
+Success signal: every wrapper row passes, including `scripts/robotics-showcase`, LeWorldModel
+wrappers, GR00T and LeRobot smoke helpers, and `scripts/test_package.sh`. First triage step: repair
+the exact script named in the failure before editing docs around it.
 
 Then run the locked dependency audit:
 

@@ -23,6 +23,14 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a checkout-safe core performance budget checker for world persistence, benchmark fixture
   loading, provider diagnostics, evidence-bundle creation, and report rendering, and wired it into
   release-readiness documentation.
+- Added a contributor bootstrap doctor for Python, uv, docs tooling, GitHub CLI auth, source-tree
+  shape, and optional runtime skip reasons.
+- Added supply-chain and artifact integrity documentation covering current package/evidence gates,
+  hashes, unsafe artifact exclusions, and future SBOM/provenance/attestation boundaries.
+- Added a wrapper portability checker for shell wrappers and optional-runtime smoke commands, and
+  wired it into CI and release-readiness gates.
+- Reworked the public docs information architecture around reader paths for provider authors,
+  operators, evaluators, release maintainers, demos, and roadmap history.
 - Added a roadmap expansion plan for 30 structured GitHub issues across production-grade
   quality/DevX/docs, demos and end-to-end showcases, and new features, explicitly excluding the
   already assigned Nano World Model work.

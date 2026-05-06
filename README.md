@@ -24,6 +24,7 @@ controllers, and deployment host-owned.
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 [**Quickstart**](#quickstart) ·
+[**Docs Map**](https://abdelstark.github.io/worldforge/docs-map/) ·
 [**CLI**](https://abdelstark.github.io/worldforge/cli/) ·
 [**Providers**](#provider-surfaces) ·
 [**Rerun**](https://abdelstark.github.io/worldforge/rerun/) ·
@@ -482,6 +483,7 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -492,6 +494,8 @@ uv build --out-dir dist --clear --no-build-logs
 
 Before a tag, also run the locked dependency audit. The expanded gate and triage steps live in the
 [operator playbooks](https://abdelstark.github.io/worldforge/playbooks/#9-prepare-a-release-or-public-branch).
+If local setup fails before the gate starts, run
+`uv run python scripts/contributor_doctor.py --format markdown` for a safe-to-attach diagnosis.
 
 Scaffold a new provider:
 
