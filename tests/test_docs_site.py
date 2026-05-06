@@ -860,6 +860,51 @@ def test_contributor_triage_docs_cover_issue_131_contract() -> None:
     assert "- [x] Security-sensitive reports still route privately" in continuation
 
 
+def test_roadmap_expansion_documents_three_streams_and_thirty_issues() -> None:
+    expansion = (ROOT / "docs/src/roadmap-expansion.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert "Roadmap Expansion" in roadmap
+    assert "[Roadmap Expansion](./roadmap-expansion.md)" in summary
+    assert "Roadmap Expansion: roadmap-expansion.md" in mkdocs
+    assert "30 structured GitHub issues" in changelog
+    assert "Nano World Model remains excluded" in expansion
+
+    streams = (
+        "Production Grade, Quality, DevX, And Docs",
+        "Demos, End-to-End Showcases, And Use Cases",
+        "New Features",
+    )
+    for stream in streams:
+        assert stream in expansion
+
+    assert expansion.count("### WF-PQDX-") == 10
+    assert expansion.count("### WF-DEMO-") == 10
+    assert expansion.count("### WF-FEAT-") == 10
+    assert "GitHub issue: pending" not in expansion
+    assert expansion.count("https://github.com/AbdelStark/worldforge/issues/") == 30
+
+    for label in (
+        "stream: production-quality",
+        "stream: demos-showcases",
+        "stream: new-features",
+    ):
+        assert label in expansion
+
+    required_sections = (
+        "Problem:",
+        "Scope:",
+        "Out of scope:",
+        "Acceptance criteria:",
+        "Validation:",
+    )
+    for section in required_sections:
+        assert expansion.count(section) >= 30
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
