@@ -40,6 +40,34 @@ If it fails:
 | optional provider appears registered unexpectedly | check local `.env` and shell environment | operator |
 | tests try to reach live services | replace with fixture, fake transport, or injected runtime | contributor |
 
+### 1a. Preserve Checkout-Safe Demo Evidence
+
+Use this when you need a reproducible demo run for a bug report, roadmap issue, release note, or
+maintainer review without requiring credentials or optional runtimes.
+
+```bash
+uv run python scripts/demo_showcases.py list
+uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases --format json --overwrite
+```
+
+Success signal: the top-level status is `passed`; individual workflows are either `passed` or an
+intentional `skipped` for a missing optional extra. Each workflow writes
+`.worldforge/demo-showcases/<workflow>/workflow-result.json` and a preserved
+`.worldforge/demo-showcases/<workflow>/runs/<run-id>/run_manifest.json`.
+
+If it fails:
+
+| Symptom | First check | Likely owner |
+| --- | --- | --- |
+| `first-run` fails | run `uv run worldforge world preflight --state-dir .worldforge/demo-showcases/first-run/worlds` | contributor |
+| diagnostics bundle is not safe to attach | open `issue-bundle/evidence_manifest.json` and inspect excluded files | reporter |
+| robotics replay fails | run `uv run worldforge-demo-lerobot` and inspect provider event phases | contributor |
+| remote media dry-run leaks a query string | inspect `remote-media-events.json` and the provider-event redaction corpus | contributor |
+| batch benchmark status changes | inspect copied budget and benchmark report before editing thresholds | performance maintainer |
+
+The runner does not install LeRobot, LeWorldModel, GR00T, torch, Rerun, checkpoints, simulators, or
+provider credentials. It does not make paid API calls, control hardware, or claim physical fidelity.
+
 ## 2. Choose The Right Provider Surface
 
 Use this before writing application code or adding an adapter. Start from the operation, not the

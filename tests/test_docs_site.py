@@ -1260,6 +1260,68 @@ def test_documentation_information_architecture_cover_issue_188_contract() -> No
     assert "public docs information architecture" in changelog
 
 
+def test_demo_showcase_docs_cover_issues_189_to_198_contract() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    cli = (ROOT / "docs/src/cli.md").read_text(encoding="utf-8")
+    examples = (ROOT / "docs/src/examples.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs/src/quickstart.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    docs_map = (ROOT / "docs/src/docs-map.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    showcase_docs = (ROOT / "docs/src/demo-showcases.md").read_text(encoding="utf-8")
+    cookbook = (ROOT / "docs/src/use-case-cookbook.md").read_text(encoding="utf-8")
+    script = (ROOT / "scripts/demo_showcases.py").read_text(encoding="utf-8")
+    distribution = (ROOT / "scripts/check_distribution.py").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert "[Demo Showcase Workflows](./demo-showcases.md)" in summary
+    assert "[Use Case Cookbook](./use-case-cookbook.md)" in summary
+    assert "Demo Showcase Workflows: demo-showcases.md" in mkdocs
+    assert "Use Case Cookbook: use-case-cookbook.md" in mkdocs
+    assert "docs/src/demo-showcases.md" in distribution
+    assert "docs/src/use-case-cookbook.md" in distribution
+    assert "scripts/demo_showcases.py" in distribution
+    assert "checkout-safe demo showcase runner" in changelog
+
+    for doc in (readme, cli, examples, quickstart, playbooks):
+        assert "uv run python scripts/demo_showcases.py" in doc
+
+    assert "Demo Showcase Workflows" in docs_map
+    assert "Use Case Cookbook" in docs_map
+    assert "run_manifest.json" in showcase_docs
+    assert "safe_to_attach" in showcase_docs
+    assert "First triage step" in showcase_docs
+    assert "without installing optional model runtimes" in showcase_docs
+    assert cookbook.count("### Recipe") >= 7
+
+    workflows = (
+        ("first-run", 189),
+        ("diagnostics-issue-bundle", 190),
+        ("robotics-replay", 191),
+        ("remote-media-dry-run", 192),
+        ("adapter-author", 193),
+        ("batch-eval", 194),
+        ("service-host", 195),
+        ("rerun-gallery", 196),
+        ("failure-lab", 197),
+        ("use-case-cookbook", 198),
+    )
+    for workflow, issue in workflows:
+        assert workflow in script
+        assert workflow in showcase_docs
+        assert f"#{issue}" in showcase_docs
+
+    for boundary in (
+        "no paid API calls",
+        "robot hardware",
+        "Rerun",
+        "scaffold is intentionally fail-closed",
+        "physical-fidelity",
+    ):
+        assert boundary in showcase_docs or boundary in cookbook
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

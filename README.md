@@ -26,6 +26,7 @@ controllers, and deployment host-owned.
 [**Quickstart**](#quickstart) ·
 [**Docs Map**](https://abdelstark.github.io/worldforge/docs-map/) ·
 [**CLI**](https://abdelstark.github.io/worldforge/cli/) ·
+[**Showcases**](https://abdelstark.github.io/worldforge/demo-showcases/) ·
 [**Providers**](#provider-surfaces) ·
 [**Rerun**](https://abdelstark.github.io/worldforge/rerun/) ·
 [**Capability Model**](#capability-model) ·
@@ -441,6 +442,8 @@ surface and runtime-specific entrypoints:
 | --- | --- |
 | Full CLI command map | [CLI reference](https://abdelstark.github.io/worldforge/cli/) |
 | Runnable example index | [Examples and CLI commands](https://abdelstark.github.io/worldforge/examples/) or `uv run worldforge examples` |
+| Checkout-safe demo evidence workflows | [Demo showcase workflows](https://abdelstark.github.io/worldforge/demo-showcases/) or `uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases` |
+| Task-oriented demo recipes | [Use case cookbook](https://abdelstark.github.io/worldforge/use-case-cookbook/) |
 | LeRobot + LeWorldModel replay showcase | [Robotics showcase walkthrough](https://abdelstark.github.io/worldforge/robotics-showcase/) |
 | Checkout-safe visual flows | [TheWorldHarness](https://abdelstark.github.io/worldforge/theworldharness/) |
 | Rerun event and artifact recording | [Rerun integration](https://abdelstark.github.io/worldforge/rerun/) or `uv run --extra rerun worldforge-demo-rerun` |

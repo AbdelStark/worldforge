@@ -9,6 +9,24 @@ uv run worldforge examples --format json
 
 For the full command surface, see the [CLI Reference](./cli.md).
 
+## Demo Showcase Runner
+
+| Workflow | Surface | Command |
+| --- | --- | --- |
+| `demo-showcases` | Ten checkout-safe issue-backed workflows for first-run, diagnostics, replay, remote dry-run, adapter authoring, batch eval, service host, Rerun gallery, failure lab, and cookbook evidence | `uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases` |
+
+```bash
+uv run python scripts/demo_showcases.py list
+uv run python scripts/demo_showcases.py run first-run --workspace-dir .worldforge/demo-showcases
+uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases --format json --overwrite
+```
+
+Each selected workflow writes a preserved `run_manifest.json`, `results/summary.json`, and
+`reports/summary.md` under `.worldforge/demo-showcases/<workflow>/runs/<run-id>/`. The runner does
+not install optional model runtimes, call paid providers, open a GUI, or control robots. See
+[Demo Showcase Workflows](./demo-showcases.md) for the artifact matrix and
+[Use Case Cookbook](./use-case-cookbook.md) for task-oriented recipes.
+
 ## Visual Harness
 
 | Example | Surface | Command |

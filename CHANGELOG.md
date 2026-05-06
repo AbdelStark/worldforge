@@ -31,6 +31,10 @@ releases may still include breaking changes when the public API needs to tighten
   wired it into CI and release-readiness gates.
 - Reworked the public docs information architecture around reader paths for provider authors,
   operators, evaluators, release maintainers, demos, and roadmap history.
+- Added a checkout-safe demo showcase runner with ten issue-backed workflows covering first-run
+  local worlds, diagnostic issue bundles, robotics replay, remote media dry-runs, adapter authoring,
+  batch eval, stdlib service host, Rerun gallery manifests, failure recovery labs, and cookbook
+  validation, plus public docs and recipes for the preserved artifacts and triage steps.
 - Added a roadmap expansion plan for 30 structured GitHub issues across production-grade
   quality/DevX/docs, demos and end-to-end showcases, and new features, explicitly excluding the
   already assigned Nano World Model work.
