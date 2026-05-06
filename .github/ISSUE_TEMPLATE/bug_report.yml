@@ -3,6 +3,23 @@ description: Report a reproducible WorldForge bug.
 title: "[Bug]: "
 labels: ["bug"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not file vulnerabilities, credentials, signed URLs, private endpoints, or host-local
+        artifacts here. Use the private Security tab for security-sensitive reports.
+  - type: dropdown
+    id: triage_stream
+    attributes:
+      label: Triage stream
+      description: Pick the roadmap stream that best matches the bug.
+      options:
+        - Provider evidence or runtime contract
+        - Evidence integrity, evaluation, benchmark, or artifact
+        - Operator workflow, harness, persistence, or adapter authoring
+        - Unsure
+    validations:
+      required: true
   - type: textarea
     id: summary
     attributes:

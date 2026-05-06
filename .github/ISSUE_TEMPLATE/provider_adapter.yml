@@ -1,12 +1,31 @@
 name: Provider adapter proposal
 description: Propose or promote a provider adapter.
 title: "[Provider]: "
-labels: ["provider"]
+labels: ["provider", "stream: provider-evidence"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for provider runtime work. New runtime families or unclear upstream
+        contracts need a provider selection record before implementation. Promotion work should
+        cite the provider authoring guide promotion gate, runtime manifest, fixtures, docs, and
+        live-smoke evidence or explicit blockers.
   - type: input
     id: provider
     attributes:
       label: Provider or runtime
+    validations:
+      required: true
+  - type: dropdown
+    id: triage_path
+    attributes:
+      label: Triage path
+      description: Pick the path that best matches this provider work.
+      options:
+        - New provider/runtime family; needs selection record
+        - Scaffold or experimental adapter
+        - Promotion to beta or stable
+        - Runtime hardening or bug fix
     validations:
       required: true
   - type: checkboxes
@@ -32,9 +51,19 @@ body:
     id: validation
     attributes:
       label: Validation plan
-      description: Contract tests, fixtures, docs, and commands that prove each advertised capability.
+      description: Contract tests, fixtures, docs, smoke evidence, and commands that prove each advertised capability.
     validations:
       required: true
+  - type: checkboxes
+    id: promotion_evidence
+    attributes:
+      label: Promotion and evidence requirements
+      options:
+        - label: Selection record or existing provider-cohort record is linked when this adds a new runtime family.
+        - label: Provider authoring guide promotion gate is cited for the requested status.
+        - label: Runtime manifest and provider docs are updated or the blocker is explicit.
+        - label: Fixture-backed parser/contract tests are planned for each advertised capability.
+        - label: Prepared-host smoke, live-smoke evidence, or explicit blocker is named when promotion depends on a real runtime.
   - type: textarea
     id: failure_modes
     attributes:
@@ -42,3 +71,8 @@ body:
       description: Expected provider errors, missing dependency behavior, and first triage step.
     validations:
       required: true
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, signed URLs, private endpoints, or host-local artifacts. Use the
+        private Security tab for vulnerabilities or secret exposure.

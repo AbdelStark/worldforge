@@ -814,6 +814,52 @@ def test_local_state_preflight_docs_cover_issue_153_contract() -> None:
     assert "- [x] Diagnostics are safe to attach" in continuation
 
 
+def test_contributor_triage_docs_cover_issue_131_contract() -> None:
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    docs_contributing = (ROOT / "docs/src/contributing.md").read_text(encoding="utf-8")
+    provider_template = (ROOT / ".github/ISSUE_TEMPLATE/provider_adapter.yml").read_text(
+        encoding="utf-8"
+    )
+    eval_template = (ROOT / ".github/ISSUE_TEMPLATE/eval_benchmark.yml").read_text(encoding="utf-8")
+    bug_template = (ROOT / ".github/ISSUE_TEMPLATE/bug_report.yml").read_text(encoding="utf-8")
+    config_template = (ROOT / ".github/ISSUE_TEMPLATE/config.yml").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for stream in (
+        "stream: provider-evidence",
+        "stream: evidence-integrity",
+        "stream: ops-authoring",
+    ):
+        assert stream in contributing
+        assert stream in docs_contributing
+
+    for signal in (
+        "capability labels",
+        "severity: blocking",
+        "release: provider-hardening-rc",
+        "selection record",
+        "promotion gate",
+        "release evidence",
+        "Security tab",
+    ):
+        assert signal in contributing or signal in docs_contributing
+
+    assert 'labels: ["provider", "stream: provider-evidence"]' in provider_template
+    assert "Triage path" in provider_template
+    assert "Promotion and evidence requirements" in provider_template
+    assert "Selection record or existing provider-cohort record" in provider_template
+    assert 'labels: ["evaluation", "benchmark", "stream: evidence-integrity"]' in eval_template
+    assert "Evidence requirements" in eval_template
+    assert "Triage stream" in bug_template
+    assert "private Security tab" in bug_template
+    assert "Report vulnerabilities privately" in config_template
+    assert "contributor triage guidance" in changelog
+    assert "- [x] Labels exist for the three roadmap streams" in continuation
+    assert "- [x] Issue templates route provider runtime work" in continuation
+    assert "- [x] Security-sensitive reports still route privately" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

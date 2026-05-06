@@ -930,10 +930,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Labels exist for the three roadmap streams or existing labels are explicitly mapped to them.
-- [ ] Contributor docs explain how to classify provider, evidence, and operator workflow issues.
-- [ ] Issue templates route provider runtime work to promotion criteria and evidence requirements.
-- [ ] Security-sensitive reports still route privately, not to public issues.
+- [x] Labels exist for the three roadmap streams or existing labels are explicitly mapped to them.
+- [x] Contributor docs explain how to classify provider, evidence, and operator workflow issues.
+- [x] Issue templates route provider runtime work to promotion criteria and evidence requirements.
+- [x] Security-sensitive reports still route privately, not to public issues.
 
 Validation:
 

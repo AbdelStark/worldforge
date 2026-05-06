@@ -9,6 +9,9 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added contributor triage guidance for roadmap stream, capability, severity, and release-scope
+  labels, and routed provider plus evaluation/benchmark issue templates to provider promotion,
+  evidence, and private-security reporting expectations.
 - Added read-only local state preflight through `worldforge world preflight`. It checks world state
   directories, file-safe requested IDs, corrupted world JSON, invalid histories, object bounding
   boxes, preserved run manifests, stale run workspaces, unsafe artifact paths, and retention
