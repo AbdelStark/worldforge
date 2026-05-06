@@ -52,6 +52,7 @@ CLI_EPILOG = """Common commands:
   worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0
   worldforge world predict <world-id> --object-id <object-id> --x 0.4 --y 0.5 --z 0
   worldforge world list
+  worldforge world preflight
   worldforge world objects <world-id>
   worldforge world history <world-id>
   worldforge world delete <world-id>
@@ -793,6 +794,42 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("json", "markdown"),
         default="json",
         help="Output format for the forked world summary.",
+    )
+
+    world_preflight = world_subparsers.add_parser(
+        "preflight",
+        help="Check local world JSON state and run workspaces without mutating them.",
+    )
+    world_preflight.add_argument(
+        "--state-dir",
+        type=Path,
+        default=Path(".worldforge/worlds"),
+        help="World state directory.",
+    )
+    world_preflight.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path(".worldforge"),
+        help="WorldForge workspace directory containing runs/.",
+    )
+    world_preflight.add_argument(
+        "--world-id",
+        dest="world_ids",
+        action="append",
+        default=None,
+        help="World identifier to validate without loading. Can be repeated.",
+    )
+    world_preflight.add_argument(
+        "--retention-keep",
+        type=int,
+        default=20,
+        help="Number of newest valid run workspaces to keep before warning.",
+    )
+    world_preflight.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the preflight report.",
     )
 
     runs = subparsers.add_parser("runs", help="List, bundle, compare, and clean preserved runs.")
@@ -1590,6 +1627,25 @@ def _cmd_world_fork(args: argparse.Namespace, forge: WorldForge) -> int:
     return 0
 
 
+def _cmd_world_preflight(args: argparse.Namespace) -> int:
+    from worldforge.persistence_preflight import (
+        preflight_local_state,
+        render_state_preflight_markdown,
+    )
+
+    report = preflight_local_state(
+        state_dir=args.state_dir,
+        workspace_dir=args.workspace_dir,
+        world_ids=tuple(args.world_ids or ()),
+        retention_keep=args.retention_keep,
+    )
+    if args.format == "markdown":
+        print(render_state_preflight_markdown(report))
+    else:
+        _print_json(report)
+    return 1 if report["status"] == "failed" else 0
+
+
 def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
     world_dispatch = {
         "list": _cmd_world_list,
@@ -2090,6 +2146,12 @@ def main() -> int:
     if args.command == "drills":
         try:
             return _cmd_drills(args)
+        except (WorldForgeError, ValueError) as exc:
+            parser.exit(2, f"{exc}\n")
+
+    if args.command == "world" and args.world_command == "preflight":
+        try:
+            return _cmd_world_preflight(args)
         except (WorldForgeError, ValueError) as exc:
             parser.exit(2, f"{exc}\n")
 

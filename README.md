@@ -305,6 +305,7 @@ uv run worldforge world predict <world-id> --object-id <object-id> --x 0.4 --y 0
 uv run worldforge world list                                            # persisted worlds
 uv run worldforge world objects <world-id>                              # scene objects
 uv run worldforge world history <world-id>                              # object edits + predictions
+uv run worldforge world preflight                                       # read-only local state diagnostics
 uv run worldforge world export <world-id> --output world.json           # portable state JSON
 uv run worldforge world delete <world-id>                               # remove local JSON state
 uv run worldforge provider list                                         # registered providers

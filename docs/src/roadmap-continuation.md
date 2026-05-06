@@ -896,11 +896,11 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Preflight identifies corrupted worlds, traversal-shaped IDs, invalid history entries, stale
+- [x] Preflight identifies corrupted worlds, traversal-shaped IDs, invalid history entries, stale
       run workspaces, and unsafe artifact paths.
-- [ ] Recovery commands are explicit and do not silently delete user data.
-- [ ] Diagnostics are safe to attach to issues by default.
-- [ ] Existing local JSON behavior remains authoritative.
+- [x] Recovery commands are explicit and do not silently delete user data.
+- [x] Diagnostics are safe to attach to issues by default.
+- [x] Existing local JSON behavior remains authoritative.
 
 Validation:
 

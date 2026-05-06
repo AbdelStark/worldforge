@@ -247,6 +247,7 @@ uv run worldforge world list
 uv run worldforge world objects <world-id>
 uv run worldforge world show <world-id>
 uv run worldforge world history <world-id>
+uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name lab-copy
 uv run worldforge world fork <world-id> --history-index 0 --name lab-start
@@ -282,10 +283,20 @@ Success signal:
   prediction without replacing the local JSON file.
 - imported state rejects malformed scene objects, invalid history, negative steps, and traversal
   shaped IDs.
+- `world preflight` reports corrupted world JSON, traversal-shaped requested IDs, invalid history
+  entries, incoherent object bounding boxes, stale run workspaces, unsafe artifact paths, and
+  retention pressure without mutating local files.
 
 Recovery guidance:
 
+- run `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
+  --format json > worldforge-state-preflight.json` before moving or deleting any local state.
 - if local JSON is corrupted, restore from the host application's backup of exported world JSON.
+- if the report names stale run workspaces or unsafe artifact paths, export a run bundle when a
+  manifest is valid; otherwise quarantine the run directory after preserving the preflight report.
+- if retention pressure is the only issue, run `uv run worldforge runs cleanup --workspace-dir
+  .worldforge --keep 20 --dry-run` and remove evidence only after incident or release references
+  no longer need it.
 - if multiple workers need writes, move persistence into host-owned storage with locking,
   migrations, backups, and recovery drills.
 - do not add a lock file, SQLite store, or service adapter to WorldForge without the

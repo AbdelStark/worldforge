@@ -9,6 +9,11 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added read-only local state preflight through `worldforge world preflight`. It checks world state
+  directories, file-safe requested IDs, corrupted world JSON, invalid histories, object bounding
+  boxes, preserved run manifests, stale run workspaces, unsafe artifact paths, and retention
+  pressure while returning safe-to-attach diagnostics and explicit quarantine or dry-run recovery
+  commands.
 - Added checkout-safe operator failure drills through `worldforge drills`. The drills cover missing
   credentials, missing optional dependencies, malformed provider output, benchmark budget
   violations, corrupted local world state, expired artifacts, and unsafe event metadata while

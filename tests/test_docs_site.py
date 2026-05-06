@@ -785,6 +785,35 @@ def test_scaffold_provider_docs_cover_issue_142_contract() -> None:
     assert "- [x] Generated manifest stubs are clearly marked incomplete" in continuation
 
 
+def test_local_state_preflight_docs_cover_issue_153_contract() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    cli = (ROOT / "docs/src/cli.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for signal in (
+        "worldforge world preflight",
+        "corrupted world JSON",
+        "traversal-shaped",
+        "invalid history entries",
+        "object bounding-box coherence",
+        "stale run workspaces",
+        "unsafe artifact paths",
+        "retention pressure",
+        "safe to attach",
+        "--dry-run",
+        ".worldforge/quarantine/",
+    ):
+        assert signal in cli or signal in operations or signal in playbooks or signal in changelog
+
+    assert "read-only local state diagnostics" in readme
+    assert "- [x] Preflight identifies corrupted worlds" in continuation
+    assert "- [x] Recovery commands are explicit" in continuation
+    assert "- [x] Diagnostics are safe to attach" in continuation
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
