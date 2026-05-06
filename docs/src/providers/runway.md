@@ -41,6 +41,12 @@ The host owns:
 - `RUNWAY_API_SECRET`: legacy credential alias.
 - `RUNWAYML_BASE_URL`: optional API endpoint override; defaults to
   `https://api.dev.runwayml.com`.
+- `RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS`: optional test-only escape hatch. When unset, Runway task
+  output URLs that point at localhost, private, link-local, reserved, multicast, or unresolved
+  local destinations are rejected before download.
+- `RUNWAYML_RESOLVE_ARTIFACT_DNS`: optional override for artifact URL DNS checks when using a
+  custom HTTP transport. Auto mode checks DNS for normal HTTP clients and avoids system DNS for
+  deterministic offline transports.
 
 Runtime manifest:
 `src/worldforge/providers/runtime_manifests/runway.json` records the credential aliases, optional
@@ -142,13 +148,16 @@ Terminal task behavior:
 - timeout after `max_polls`: raise `ProviderError`
 
 Artifact downloads accept video content types and `application/octet-stream`. Explicit non-video
-content types such as `text/html` are rejected. Empty downloads fail explicitly. Expired or
-unavailable artifact URLs are surfaced as provider errors.
+content types such as `text/html` are rejected. Empty downloads fail explicitly. Downloads are
+streamed with a hard size cap, and `Content-Length` values above that cap fail before the body is
+read. Expired or unavailable artifact URLs are surfaced as provider errors.
 
 Runway output URLs can be temporary signed URLs. WorldForge uses the raw URL only for the immediate
-download request, then records `artifact_url` metadata without query strings or fragments. Persist
-the downloaded bytes immediately if the media is needed for issue evidence, benchmark comparisons,
-or release notes. If an artifact has expired, rerun the task rather than attempting to reconstruct a
+download request after validating that the URL uses HTTP(S), has no embedded credentials, and does
+not target local/private infrastructure unless the host explicitly opts in for trusted local tests.
+WorldForge then records `artifact_url` metadata without query strings or fragments. Persist the
+downloaded bytes immediately if the media is needed for issue evidence, benchmark comparisons, or
+release notes. If an artifact has expired, rerun the task rather than attempting to reconstruct a
 signed URL from logs or manifests.
 
 Artifact lifetime assumption: downloaded bytes are durable only after the host writes or copies the
@@ -185,7 +194,14 @@ Pass a custom `request_policy=` when the host needs different timeout or retry b
 - Polling fails when status payloads are malformed or the response id does not match the requested
   task.
 - Completed tasks without output URLs fail explicitly.
+- Local/private/link-local artifact URLs fail before any download unless
+  `RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS=1` or the constructor opt-in is used for a trusted local
+  test deployment.
+- Custom network transports that need hostname-to-IP validation should set
+  `RUNWAYML_RESOLVE_ARTIFACT_DNS=1` or use the constructor override; offline deterministic
+  transports can leave auto mode in place.
 - Expired, unavailable, empty, or wrong-content-type artifacts fail before returning `VideoClip`.
+- Oversized artifacts fail from `Content-Length` or while streaming the body.
 - Result metadata and run manifests keep only sanitized artifact URLs; signed query strings and
   fragments are not retained.
 - Invalid ratios, durations, dimensions, FPS, polling intervals, or poll counts fail before or

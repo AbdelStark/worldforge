@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import mimetypes
+import multiprocessing
+import queue
+import socket
 from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter, sleep
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -22,6 +27,197 @@ from worldforge.models import (
 from .base import ProviderBudgetExceededError, ProviderError
 
 _RETRYABLE_EXCEPTIONS = (httpx.TransportError,)
+_LOCAL_HOST_NAMES = frozenset({"localhost", "localhost.localdomain"})
+_DNS_RESOLUTION_TIMEOUT_SECONDS = 2.0
+_DNS_RESULT_QUEUE_TIMEOUT_SECONDS = 1.0
+_ERROR_SUMMARY_BYTES = 512
+
+
+def validate_remote_url(
+    url: str,
+    *,
+    provider_name: str,
+    url_name: str,
+    allow_local_network: bool = False,
+    resolve_dns: bool = True,
+    dns_resolution_timeout_seconds: float = _DNS_RESOLUTION_TIMEOUT_SECONDS,
+) -> str:
+    """Return a stripped HTTP URL after blocking local/private destinations."""
+
+    if not isinstance(url, str) or not url.strip():
+        raise ProviderError(f"Provider '{provider_name}' {url_name} must be a non-empty URL.")
+    normalized_url = url.strip()
+    parsed = urlparse(normalized_url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ProviderError(f"Provider '{provider_name}' {url_name} must use an http or https URL.")
+    if not parsed.hostname:
+        raise ProviderError(f"Provider '{provider_name}' {url_name} must include a hostname.")
+    if parsed.username or parsed.password:
+        raise ProviderError(
+            f"Provider '{provider_name}' {url_name} must not include embedded credentials."
+        )
+
+    host = parsed.hostname.strip().lower()
+    if not allow_local_network:
+        _reject_local_hostname(host, provider_name=provider_name, url_name=url_name)
+        is_ip_literal = _reject_local_ip_literal(
+            host,
+            provider_name=provider_name,
+            url_name=url_name,
+        )
+        if resolve_dns and not is_ip_literal:
+            _reject_local_resolved_addresses(
+                host,
+                port=parsed.port or (443 if parsed.scheme.lower() == "https" else 80),
+                provider_name=provider_name,
+                url_name=url_name,
+                timeout_seconds=dns_resolution_timeout_seconds,
+            )
+    return normalized_url
+
+
+def _reject_local_hostname(host: str, *, provider_name: str, url_name: str) -> None:
+    if host in _LOCAL_HOST_NAMES or host.endswith(".localhost"):
+        raise ProviderError(
+            f"Provider '{provider_name}' {url_name} resolves to a local/private destination."
+        )
+
+
+def _reject_local_ip_literal(host: str, *, provider_name: str, url_name: str) -> bool:
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    _reject_local_address(address, provider_name=provider_name, url_name=url_name)
+    return True
+
+
+def _reject_local_resolved_addresses(
+    host: str,
+    *,
+    port: int,
+    provider_name: str,
+    url_name: str,
+    timeout_seconds: float,
+) -> None:
+    try:
+        addresses = [
+            ipaddress.ip_address(address)
+            for address in _getaddrinfo_with_timeout(
+                host,
+                port,
+                timeout_seconds=timeout_seconds,
+            )
+        ]
+    except TimeoutError as exc:
+        raise ProviderError(
+            f"Provider '{provider_name}' {url_name} host resolution timed out: {host}."
+        ) from exc
+    except socket.gaierror as exc:
+        raise ProviderError(
+            f"Provider '{provider_name}' {url_name} host could not be resolved: {host}."
+        ) from exc
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ProviderError(
+            f"Provider '{provider_name}' {url_name} host resolution failed: {host}."
+        ) from exc
+    for address in addresses:
+        _reject_local_address(
+            address,
+            provider_name=provider_name,
+            url_name=url_name,
+        )
+
+
+def _resolve_getaddrinfo_worker(
+    host: str,
+    port: int,
+    result_queue: multiprocessing.Queue,
+) -> None:
+    try:
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        result_queue.put(("gaierror", (exc.errno, exc.strerror)))
+        return
+    result_queue.put(("ok", [address[4][0] for address in addresses]))
+
+
+def _getaddrinfo_with_timeout(
+    host: str,
+    port: int,
+    *,
+    timeout_seconds: float,
+) -> list[str]:
+    if timeout_seconds <= 0:
+        raise TimeoutError("DNS resolution timeout must be greater than 0.")
+
+    context = multiprocessing.get_context("spawn")
+    result_queue = context.Queue(maxsize=1)
+    resolver = context.Process(
+        target=_resolve_getaddrinfo_worker,
+        args=(host, port, result_queue),
+        name=f"worldforge-dns-resolver-{host}",
+    )
+    resolver_started = False
+    started = perf_counter()
+    try:
+        resolver.start()
+        resolver_started = True
+        resolver.join(timeout_seconds)
+        if resolver.is_alive():
+            resolver.terminate()
+            resolver.join()
+            raise TimeoutError(f"DNS resolution exceeded {timeout_seconds:.1f}s.")
+
+        if resolver.exitcode not in (0, None):
+            raise socket.gaierror(
+                socket.EAI_FAIL,
+                f"DNS resolver process exited with code {resolver.exitcode}",
+            )
+        elapsed_seconds = perf_counter() - started
+        remaining_seconds = timeout_seconds - elapsed_seconds
+        try:
+            if remaining_seconds <= 0:
+                status, value = result_queue.get_nowait()
+            else:
+                status, value = result_queue.get(
+                    timeout=min(_DNS_RESULT_QUEUE_TIMEOUT_SECONDS, remaining_seconds)
+                )
+        except queue.Empty as exc:
+            if perf_counter() - started >= timeout_seconds:
+                raise TimeoutError(f"DNS resolution exceeded {timeout_seconds:.1f}s.") from exc
+            raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned no result") from exc
+        if status == "gaierror":
+            error_number, error_text = value
+            raise socket.gaierror(error_number, error_text)
+        if status != "ok":
+            raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned an invalid result")
+        return list(value)
+    finally:
+        if resolver_started and resolver.is_alive():
+            resolver.terminate()
+            resolver.join()
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def _reject_local_address(
+    address: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    *,
+    provider_name: str,
+    url_name: str,
+) -> None:
+    if (
+        address.is_loopback
+        or address.is_private
+        or address.is_link_local
+        or address.is_unspecified
+        or address.is_reserved
+        or address.is_multicast
+    ):
+        raise ProviderError(
+            f"Provider '{provider_name}' {url_name} resolves to a local/private destination."
+        )
 
 
 def asset_to_uri(value: str | None, *, default_content_type: str) -> str | None:
@@ -480,34 +676,353 @@ def request_bytes_with_policy(
     policy: RequestOperationPolicy,
     emit_event: Callable[[ProviderEvent], None] | None = None,
     accepted_content_types: tuple[str, ...] | None = None,
+    max_bytes: int | None = None,
     **kwargs: Any,
 ) -> bytes:
-    """Send an HTTP request and return the raw response bytes."""
+    """Send an HTTP request and stream raw response bytes with an optional hard cap."""
 
-    response = request_with_policy(
-        client,
-        method=method,
-        url=url,
-        provider_name=provider_name,
-        operation_name=operation_name,
-        policy=policy,
-        emit_event=emit_event,
-        **kwargs,
-    )
-    content_type = response.headers.get("content-type")
-    if (
-        content_type
-        and accepted_content_types
-        and not _content_type_is_allowed(
-            content_type,
-            accepted_content_types,
-        )
-    ):
+    if max_bytes is not None and max_bytes <= 0:
         raise ProviderError(
-            f"Provider '{provider_name}' {operation_name} returned unsupported "
-            f"content type '{content_type}'."
+            f"Provider '{provider_name}' {operation_name} max_bytes must be greater than 0."
         )
-    return response.content
+
+    operation_started = perf_counter()
+    for attempt_number in range(1, policy.retry.max_attempts + 1):
+        remaining_seconds = _remaining_budget_seconds(policy, started=operation_started)
+        if remaining_seconds is not None and remaining_seconds <= 0.0:
+            elapsed_seconds = _elapsed_seconds(operation_started)
+            _emit_budget_exceeded(
+                provider_name=provider_name,
+                operation_name=operation_name,
+                method=method,
+                url=url,
+                attempt=attempt_number,
+                max_attempts=policy.retry.max_attempts,
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=policy.max_elapsed_seconds,
+                emit_event=emit_event,
+            )
+            _raise_budget_exceeded(
+                provider_name=provider_name,
+                operation_name=operation_name,
+                elapsed_seconds=elapsed_seconds,
+                max_elapsed_seconds=policy.max_elapsed_seconds,
+            )
+        started = perf_counter()
+        try:
+            with client.stream(
+                method,
+                url,
+                timeout=(
+                    policy.timeout_seconds
+                    if remaining_seconds is None
+                    else min(policy.timeout_seconds, max(remaining_seconds, 0.001))
+                ),
+                **kwargs,
+            ) as response:
+                duration_ms = max(0.0, (perf_counter() - started) * 1000)
+                if response.status_code in policy.retry.retryable_status_codes:
+                    if attempt_number >= policy.retry.max_attempts:
+                        summary = _stream_response_summary(response)
+                        if emit_event is not None:
+                            emit_event(
+                                ProviderEvent(
+                                    provider=provider_name,
+                                    operation=operation_name,
+                                    phase="failure",
+                                    attempt=attempt_number,
+                                    max_attempts=policy.retry.max_attempts,
+                                    method=method,
+                                    target=url,
+                                    status_code=response.status_code,
+                                    duration_ms=duration_ms,
+                                    message=summary,
+                                )
+                            )
+                        raise ProviderError(
+                            f"Provider '{provider_name}' {operation_name} failed with "
+                            f"status {response.status_code}: {summary}"
+                        )
+                    delay = policy.retry.delay_for_attempt(attempt_number + 1)
+                    elapsed_after_delay = _elapsed_seconds(operation_started) + delay
+                    if (
+                        policy.max_elapsed_seconds is not None
+                        and elapsed_after_delay > policy.max_elapsed_seconds
+                    ):
+                        elapsed_seconds = _elapsed_seconds(operation_started)
+                        _emit_budget_exceeded(
+                            provider_name=provider_name,
+                            operation_name=operation_name,
+                            method=method,
+                            url=url,
+                            attempt=attempt_number,
+                            max_attempts=policy.retry.max_attempts,
+                            elapsed_seconds=elapsed_seconds,
+                            max_elapsed_seconds=policy.max_elapsed_seconds,
+                            emit_event=emit_event,
+                            status_code=response.status_code,
+                        )
+                        _raise_budget_exceeded(
+                            provider_name=provider_name,
+                            operation_name=operation_name,
+                            elapsed_seconds=elapsed_seconds,
+                            max_elapsed_seconds=policy.max_elapsed_seconds,
+                        )
+                    if emit_event is not None:
+                        emit_event(
+                            ProviderEvent(
+                                provider=provider_name,
+                                operation=operation_name,
+                                phase="retry",
+                                attempt=attempt_number,
+                                max_attempts=policy.retry.max_attempts,
+                                method=method,
+                                target=url,
+                                status_code=response.status_code,
+                                duration_ms=duration_ms,
+                                message=_stream_response_summary(response),
+                                metadata={"next_delay_seconds": delay},
+                            )
+                        )
+                    if delay > 0.0:
+                        response.close()
+                        sleep(delay)
+                    continue
+
+                if response.status_code >= 400:
+                    summary = _stream_response_summary(response)
+                    if emit_event is not None:
+                        emit_event(
+                            ProviderEvent(
+                                provider=provider_name,
+                                operation=operation_name,
+                                phase="failure",
+                                attempt=attempt_number,
+                                max_attempts=policy.retry.max_attempts,
+                                method=method,
+                                target=url,
+                                status_code=response.status_code,
+                                duration_ms=duration_ms,
+                                message=summary,
+                            )
+                        )
+                    raise ProviderError(
+                        f"Provider '{provider_name}' {operation_name} failed with "
+                        f"status {response.status_code}: {summary}"
+                    )
+
+                content_type = response.headers.get("content-type")
+                if (
+                    content_type
+                    and accepted_content_types
+                    and not _content_type_is_allowed(
+                        content_type,
+                        accepted_content_types,
+                    )
+                ):
+                    message = (
+                        f"Provider '{provider_name}' {operation_name} returned unsupported "
+                        f"content type '{content_type}'."
+                    )
+                    if emit_event is not None:
+                        emit_event(
+                            ProviderEvent(
+                                provider=provider_name,
+                                operation=operation_name,
+                                phase="failure",
+                                attempt=attempt_number,
+                                max_attempts=policy.retry.max_attempts,
+                                method=method,
+                                target=url,
+                                status_code=response.status_code,
+                                duration_ms=duration_ms,
+                                message=message,
+                            )
+                        )
+                    raise ProviderError(message)
+
+                _reject_oversized_content_length(
+                    response,
+                    provider_name=provider_name,
+                    operation_name=operation_name,
+                    max_bytes=max_bytes,
+                )
+                data = _read_response_bytes(
+                    response,
+                    provider_name=provider_name,
+                    operation_name=operation_name,
+                    max_bytes=max_bytes,
+                )
+                duration_ms = max(0.0, (perf_counter() - started) * 1000)
+                if emit_event is not None:
+                    emit_event(
+                        ProviderEvent(
+                            provider=provider_name,
+                            operation=operation_name,
+                            phase="success",
+                            attempt=attempt_number,
+                            max_attempts=policy.retry.max_attempts,
+                            method=method,
+                            target=url,
+                            status_code=response.status_code,
+                            duration_ms=duration_ms,
+                            metadata={"bytes": len(data)},
+                        )
+                    )
+                return data
+        except _RETRYABLE_EXCEPTIONS as exc:
+            duration_ms = max(0.0, (perf_counter() - started) * 1000)
+            if attempt_number >= policy.retry.max_attempts:
+                if emit_event is not None:
+                    emit_event(
+                        ProviderEvent(
+                            provider=provider_name,
+                            operation=operation_name,
+                            phase="failure",
+                            attempt=attempt_number,
+                            max_attempts=policy.retry.max_attempts,
+                            method=method,
+                            target=url,
+                            duration_ms=duration_ms,
+                            message=str(exc),
+                        )
+                    )
+                raise ProviderError(
+                    f"Provider '{provider_name}' {operation_name} failed after "
+                    f"{attempt_number} attempt(s): {exc}"
+                ) from exc
+            delay = policy.retry.delay_for_attempt(attempt_number + 1)
+            elapsed_after_delay = _elapsed_seconds(operation_started) + delay
+            if (
+                policy.max_elapsed_seconds is not None
+                and elapsed_after_delay > policy.max_elapsed_seconds
+            ):
+                elapsed_seconds = _elapsed_seconds(operation_started)
+                _emit_budget_exceeded(
+                    provider_name=provider_name,
+                    operation_name=operation_name,
+                    method=method,
+                    url=url,
+                    attempt=attempt_number,
+                    max_attempts=policy.retry.max_attempts,
+                    elapsed_seconds=elapsed_seconds,
+                    max_elapsed_seconds=policy.max_elapsed_seconds,
+                    emit_event=emit_event,
+                )
+                _raise_budget_exceeded(
+                    provider_name=provider_name,
+                    operation_name=operation_name,
+                    elapsed_seconds=elapsed_seconds,
+                    max_elapsed_seconds=policy.max_elapsed_seconds,
+                )
+            if emit_event is not None:
+                emit_event(
+                    ProviderEvent(
+                        provider=provider_name,
+                        operation=operation_name,
+                        phase="retry",
+                        attempt=attempt_number,
+                        max_attempts=policy.retry.max_attempts,
+                        method=method,
+                        target=url,
+                        duration_ms=duration_ms,
+                        message=str(exc),
+                        metadata={"next_delay_seconds": delay},
+                    )
+                )
+            if delay > 0.0:
+                sleep(delay)
+            continue
+        except httpx.HTTPError as exc:
+            duration_ms = max(0.0, (perf_counter() - started) * 1000)
+            if emit_event is not None:
+                emit_event(
+                    ProviderEvent(
+                        provider=provider_name,
+                        operation=operation_name,
+                        phase="failure",
+                        attempt=attempt_number,
+                        max_attempts=policy.retry.max_attempts,
+                        method=method,
+                        target=url,
+                        duration_ms=duration_ms,
+                        message=str(exc),
+                    )
+                )
+            raise ProviderError(
+                f"Provider '{provider_name}' {operation_name} failed: {exc}"
+            ) from exc
+
+    raise AssertionError("request_bytes_with_policy exhausted retries without returning or raising")
+
+
+def _stream_response_summary(response: httpx.Response) -> str:
+    data = bytearray()
+    try:
+        for chunk in response.iter_bytes():
+            remaining = _ERROR_SUMMARY_BYTES - len(data)
+            if remaining <= 0:
+                break
+            data.extend(chunk[:remaining])
+            if len(data) >= _ERROR_SUMMARY_BYTES:
+                break
+    except httpx.HTTPError:
+        return "unreadable response body"
+    if not data:
+        return "empty response body"
+    text = bytes(data).decode("utf-8", errors="replace").strip()
+    if not text:
+        return "empty response body"
+    if len(text) > 200:
+        text = f"{text[:197]}..."
+    return _redact_observable_text(text)
+
+
+def _reject_oversized_content_length(
+    response: httpx.Response,
+    *,
+    provider_name: str,
+    operation_name: str,
+    max_bytes: int | None,
+) -> None:
+    if max_bytes is None:
+        return
+    content_length = response.headers.get("content-length")
+    if content_length is None:
+        return
+    try:
+        size = int(content_length)
+    except ValueError as exc:
+        raise ProviderError(
+            f"Provider '{provider_name}' {operation_name} returned invalid Content-Length."
+        ) from exc
+    if size < 0:
+        raise ProviderError(
+            f"Provider '{provider_name}' {operation_name} returned invalid Content-Length."
+        )
+    if size > max_bytes:
+        raise ProviderError(
+            f"Provider '{provider_name}' {operation_name} exceeded download size limit "
+            f"of {max_bytes} bytes from Content-Length {size}."
+        )
+
+
+def _read_response_bytes(
+    response: httpx.Response,
+    *,
+    provider_name: str,
+    operation_name: str,
+    max_bytes: int | None,
+) -> bytes:
+    data = bytearray()
+    for chunk in response.iter_bytes():
+        data.extend(chunk)
+        if max_bytes is not None and len(data) > max_bytes:
+            raise ProviderError(
+                f"Provider '{provider_name}' {operation_name} exceeded download size limit "
+                f"of {max_bytes} bytes."
+            )
+    return bytes(data)
 
 
 def poll_json_task(

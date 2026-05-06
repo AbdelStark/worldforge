@@ -561,6 +561,9 @@ Operational rules:
 - budget failures raise `ProviderBudgetExceededError` and emit `phase=="budget_exceeded"` so
   alerts can distinguish an exhausted host budget from an upstream HTTP failure.
 - returned artifacts are validated before `VideoClip` is returned.
+- provider-returned artifact URLs are treated as untrusted input: HTTP(S) only, no embedded
+  credentials, no local/private/link-local destinations by default, and streamed with a maximum
+  byte cap.
 - signed URLs and temporary artifact URLs are not durable storage. Download or persist them in
   host-owned storage immediately after completion.
 - provider errors should include operation and provider context without leaking credentials,

@@ -7,8 +7,11 @@ import httpx
 import pytest
 
 from worldforge import GenerationOptions, ProviderEvent, ProviderRequestPolicy, VideoClip
-from worldforge.models import WorldForgeError
+from worldforge.models import JSONDict, WorldForgeError
 from worldforge.providers import CosmosProvider, ProviderError, RunwayProvider
+from worldforge.providers import http_utils as http_utils_module
+from worldforge.providers import runway as runway_module
+from worldforge.providers.http_utils import request_bytes_with_policy, validate_remote_url
 from worldforge.testing import assert_provider_contract
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "providers"
@@ -682,6 +685,357 @@ def test_runway_provider_rejects_expired_artifacts_and_bad_content_types(monkeyp
     )
     with pytest.raises(ProviderError, match="unsupported content type"):
         provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+
+@pytest.mark.parametrize(
+    "artifact_url",
+    [
+        "http://127.0.0.1:8777/generated.mp4",
+        "http://localhost:8777/generated.mp4",
+        "http://169.254.169.254/latest/meta-data",
+        "ftp://downloads.example.com/generated.mp4",
+        "https://user:pass@downloads.example.com/generated.mp4",
+    ],
+)
+def test_runway_provider_rejects_unsafe_artifact_urls(monkeypatch, artifact_url: str) -> None:
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json=_fixture("runway_create_success.json"))
+        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "task_generate",
+                    "status": "SUCCEEDED",
+                    "output": [artifact_url],
+                },
+            )
+        raise AssertionError(f"Unexpected request after artifact validation: {request.url}")
+
+    provider = RunwayProvider(
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+    )
+
+    with pytest.raises(ProviderError, match="artifact URL"):
+        provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+
+def test_runway_provider_allows_local_artifact_urls_only_when_explicit(monkeypatch) -> None:
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+    artifact_url = "http://127.0.0.1:8777/generated.mp4"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json=_fixture("runway_create_success.json"))
+        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "task_generate",
+                    "status": "SUCCEEDED",
+                    "output": [artifact_url],
+                },
+            )
+        if request.method == "GET" and request.url.host == "127.0.0.1":
+            return httpx.Response(200, content=b"local-artifact")
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = RunwayProvider(
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+        allow_local_artifact_urls=True,
+    )
+
+    generated = provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+    assert generated.blob() == b"local-artifact"
+
+
+def test_runway_provider_rejects_artifacts_over_size_limit(monkeypatch) -> None:
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json=_fixture("runway_create_success.json"))
+        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "task_generate",
+                    "status": "SUCCEEDED",
+                    "output": ["https://downloads.example.com/generated.mp4"],
+                },
+            )
+        if request.method == "GET" and request.url.host == "downloads.example.com":
+            return httpx.Response(
+                200,
+                content=b"too-large",
+                headers={"content-length": "9", "content-type": "video/mp4"},
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = RunwayProvider(
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+        max_artifact_bytes=8,
+    )
+
+    with pytest.raises(ProviderError, match="download size limit"):
+        provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+
+@pytest.mark.parametrize(
+    ("resolve_artifact_dns", "expected_resolve_dns"),
+    (
+        (None, False),
+        (True, True),
+        (False, False),
+    ),
+)
+def test_runway_provider_artifact_dns_policy_with_custom_transport(
+    monkeypatch,
+    resolve_artifact_dns: bool | None,
+    expected_resolve_dns: bool,
+) -> None:
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+    artifact_url = "https://downloads.example.com/generated.mp4"
+    resolve_dns_values: list[bool] = []
+
+    class CustomTransport(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/v1/image_to_video":
+                return httpx.Response(200, json=_fixture("runway_create_success.json"))
+            if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "task_generate",
+                        "status": "SUCCEEDED",
+                        "output": [artifact_url],
+                    },
+                )
+            if request.method == "GET" and request.url.host == "downloads.example.com":
+                return httpx.Response(
+                    200,
+                    content=b"artifact",
+                    headers={"content-type": "video/mp4"},
+                )
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    def capture_validate_remote_url(
+        url: str,
+        *,
+        provider_name: str,
+        url_name: str,
+        allow_local_network: bool = False,
+        resolve_dns: bool = True,
+        dns_resolution_timeout_seconds: float = 2.0,
+    ) -> str:
+        del provider_name, url_name, allow_local_network, dns_resolution_timeout_seconds
+        resolve_dns_values.append(resolve_dns)
+        return url
+
+    monkeypatch.setattr(runway_module, "validate_remote_url", capture_validate_remote_url)
+    kwargs = {}
+    if resolve_artifact_dns is not None:
+        kwargs["resolve_artifact_dns"] = resolve_artifact_dns
+
+    provider = RunwayProvider(
+        transport=CustomTransport(),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+        **kwargs,
+    )
+
+    generated = provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+    assert generated.blob() == b"artifact"
+    assert resolve_dns_values == [expected_resolve_dns]
+
+
+def test_runway_config_summary_reports_effective_artifact_dns_policy(monkeypatch) -> None:
+    monkeypatch.delenv("RUNWAYML_RESOLVE_ARTIFACT_DNS", raising=False)
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+
+    def artifact_dns_detail(provider: RunwayProvider) -> str:
+        summary: JSONDict = provider.config_summary().to_dict()
+        field = next(
+            item for item in summary["fields"] if item["name"] == "RUNWAYML_RESOLVE_ARTIFACT_DNS"
+        )
+        return str(field["detail"])
+
+    assert artifact_dns_detail(RunwayProvider()) == "auto; effective resolve_dns=true"
+    assert (
+        artifact_dns_detail(
+            RunwayProvider(transport=httpx.MockTransport(lambda request: httpx.Response(500)))
+        )
+        == "auto; effective resolve_dns=false"
+    )
+    assert (
+        artifact_dns_detail(RunwayProvider(resolve_artifact_dns=False))
+        == "effective resolve_dns=false"
+    )
+
+
+def test_request_bytes_with_policy_caps_streamed_body_without_content_length() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=httpx.ByteStream(b"abcdef"))
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(ProviderError, match="download size limit"),
+    ):
+        request_bytes_with_policy(
+            client,
+            method="GET",
+            url="https://downloads.example.com/generated.mp4",
+            provider_name="runway",
+            operation_name="artifact download",
+            policy=ProviderRequestPolicy.remote_defaults(
+                request_timeout_seconds=30.0,
+                read_retry_attempts=1,
+            ).download,
+            max_bytes=5,
+        )
+
+
+def test_request_bytes_with_policy_closes_retry_stream_before_backoff(monkeypatch) -> None:
+    events: list[str] = []
+    attempts = 0
+
+    class ObservedRetryStream(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b"retry later"
+
+        def close(self) -> None:
+            events.append("closed")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503, stream=ObservedRetryStream())
+        return httpx.Response(200, content=b"ok")
+
+    def record_sleep(delay: float) -> None:
+        del delay
+        events.append("sleep")
+
+    monkeypatch.setattr(http_utils_module, "sleep", record_sleep)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        data = request_bytes_with_policy(
+            client,
+            method="GET",
+            url="https://downloads.example.com/generated.mp4",
+            provider_name="runway",
+            operation_name="artifact download",
+            policy=ProviderRequestPolicy.remote_defaults(
+                request_timeout_seconds=30.0,
+                read_retry_attempts=2,
+            ).download,
+        )
+
+    assert data == b"ok"
+    assert attempts == 2
+    assert events == ["closed", "sleep"]
+
+
+def test_validate_remote_url_allows_public_https_without_dns_resolution() -> None:
+    assert (
+        validate_remote_url(
+            "https://downloads.example.com/generated.mp4?signature=temporary",
+            provider_name="runway",
+            url_name="artifact URL",
+            resolve_dns=False,
+        )
+        == "https://downloads.example.com/generated.mp4?signature=temporary"
+    )
+
+
+def test_validate_remote_url_wraps_dns_worker_failures(monkeypatch) -> None:
+    def fail_resolution(*_args: object, **_kwargs: object) -> list[str]:
+        raise RuntimeError("resolver worker failed")
+
+    monkeypatch.setattr(http_utils_module, "_getaddrinfo_with_timeout", fail_resolution)
+
+    with pytest.raises(ProviderError, match="host resolution failed"):
+        validate_remote_url(
+            "https://downloads.example.com/generated.mp4",
+            provider_name="runway",
+            url_name="artifact URL",
+        )
+
+
+def test_getaddrinfo_caps_result_queue_timeout_to_remaining_budget(monkeypatch) -> None:
+    class CompletedProcess:
+        exitcode = 0
+
+        def start(self) -> None:
+            pass
+
+        def join(self, _timeout: float | None = None) -> None:
+            pass
+
+        def is_alive(self) -> bool:
+            return False
+
+        def terminate(self) -> None:
+            raise AssertionError("completed process should not be terminated")
+
+    class ResultQueue:
+        timeout_seen: float | None = None
+
+        def get(self, *, timeout: float) -> tuple[str, list[str]]:
+            self.timeout_seen = timeout
+            return ("ok", ["93.184.216.34"])
+
+        def get_nowait(self) -> tuple[str, list[str]]:
+            raise AssertionError("remaining budget should allow a bounded blocking read")
+
+        def close(self) -> None:
+            pass
+
+        def join_thread(self) -> None:
+            pass
+
+    class CompletedContext:
+        def __init__(self) -> None:
+            self.queue = ResultQueue()
+
+        def Queue(self, *args: object, **kwargs: object) -> ResultQueue:
+            del args, kwargs
+            return self.queue
+
+        def Process(self, *args: object, **kwargs: object) -> CompletedProcess:
+            del args, kwargs
+            return CompletedProcess()
+
+    context = CompletedContext()
+
+    def fake_get_context(_method: str) -> CompletedContext:
+        return context
+
+    monkeypatch.setattr(http_utils_module.multiprocessing, "get_context", fake_get_context)
+    perf_counter_values = iter([100.0, 101.75])
+    monkeypatch.setattr(
+        http_utils_module,
+        "perf_counter",
+        lambda: next(perf_counter_values),
+    )
+
+    assert http_utils_module._getaddrinfo_with_timeout(
+        "downloads.example.com",
+        443,
+        timeout_seconds=2.0,
+    ) == ["93.184.216.34"]
+    assert context.queue.timeout_seen == pytest.approx(0.25)
 
 
 def test_runway_provider_rejects_provider_specific_limits(monkeypatch) -> None:
