@@ -21,6 +21,13 @@ from .base import (
 from .catalog import PROVIDER_CATALOG, ProviderCatalogEntry, create_known_providers
 from .cosmos import CosmosProvider
 from .embodiment import EmbodimentActionTranslator, EmbodimentTranslatorContract
+from .entry_points import (
+    ENTRY_POINT_DISABLE_ENV_VAR,
+    ENTRY_POINT_GROUP,
+    EntryPointDiscoveryReport,
+    EntryPointSkip,
+    discover_entry_point_providers,
+)
 from .gr00t import GrootPolicyClientProvider
 from .lerobot import LeRobotPolicyProvider
 from .leworldmodel import LeWorldModelProvider
@@ -29,12 +36,16 @@ from .remote import GenieProvider, JepaProvider, StubRemoteProvider
 from .runway import RunwayProvider
 
 __all__ = [
+    "ENTRY_POINT_DISABLE_ENV_VAR",
+    "ENTRY_POINT_GROUP",
     "PROVIDER_CATALOG",
     "BaseProvider",
     "ConfigFieldSummary",
     "CosmosProvider",
     "EmbodimentActionTranslator",
     "EmbodimentTranslatorContract",
+    "EntryPointDiscoveryReport",
+    "EntryPointSkip",
     "GenieProvider",
     "GrootPolicyClientProvider",
     "JepaProvider",
@@ -55,6 +66,7 @@ __all__ = [
     "RunwayProvider",
     "StubRemoteProvider",
     "create_known_providers",
+    "discover_entry_point_providers",
     "validate_generation_request",
     "validate_transfer_request",
 ]

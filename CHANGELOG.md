@@ -9,6 +9,15 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added Python entry-point discovery for external provider packages. Third-party adapters can
+  register through the `worldforge.providers` entry-point group; `WorldForge` auto-registers
+  the resulting providers when their `configured()` check passes and records typed skip
+  reasons (missing dependency, duplicate name, non-callable factory, factory raised) on the
+  new `WorldForge.entry_point_discovery()` report. A constructor flag and the
+  `WORLDFORGE_DISABLE_ENTRY_POINTS` environment variable both turn discovery off. New public
+  surface: `discover_entry_point_providers`, `EntryPointDiscoveryReport`, `EntryPointSkip`,
+  `ENTRY_POINT_GROUP`, and `ENTRY_POINT_DISABLE_ENV_VAR`. Documentation lives at
+  `docs/src/external-providers.md`.
 - Upgraded the release evidence generator into a release-readiness command that writes Markdown and
   JSON summaries, can execute checkout-safe gates with `--run-gates`, records skipped and failed
   gate triage steps, and marks optional live-provider evidence as host-owned unless a prepared-host
