@@ -156,6 +156,20 @@ options:
   --state-dir STATE_DIR
                         World state directory.
 """,
+    ("negotiate", "--help"): """\
+usage: worldforge negotiate [-h] [--workflow WORKFLOW] [--list]
+                            [--format {markdown,json}] [--state-dir STATE_DIR]
+
+options:
+  -h, --help            show this help message and exit
+  --workflow WORKFLOW   Workflow name to negotiate. Repeat with --workflow
+                        each time, or omit to cover every workflow.
+  --list                List known workflows and exit.
+  --format {markdown,json}
+                        Output format.
+  --state-dir STATE_DIR
+                        World state directory.
+""",
     ("eval", "--help"): """\
 usage: worldforge eval [-h]
                        [--suite {generation,physics,planning,reasoning,transfer}]
@@ -259,6 +273,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "provider",
         "world",
         "doctor",
+        "negotiate",
         "generate",
         "transfer",
         "predict",

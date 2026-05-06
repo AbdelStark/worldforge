@@ -1001,15 +1001,15 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Report distinguishes registered, configured, dependency-ready, and capability-compatible.
-- [ ] Policy-plus-score workflows name both policy and score providers.
-- [ ] Output is JSON and Markdown capable.
-- [ ] Tests cover ready, missing config, missing dependency, and unsupported capability cases.
+- [x] Report distinguishes registered, configured, dependency-ready, and capability-compatible.
+- [x] Policy-plus-score workflows name both policy and score providers.
+- [x] Output is JSON and Markdown capable.
+- [x] Tests cover ready, missing config, missing dependency, and unsupported capability cases.
 
 Validation:
 
 ```bash
-uv run pytest tests/test_cli_doctor.py tests/test_provider_profiles.py tests/test_runtime_profiles.py tests/test_docs_site.py
+uv run pytest tests/test_capability_negotiation.py tests/test_cli_doctor.py tests/test_provider_profiles.py tests/test_runtime_profiles.py tests/test_docs_site.py
 uv run mkdocs build --strict
 ```
 

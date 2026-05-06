@@ -34,6 +34,7 @@
   - [Python API](./api/python.md)
   - [Public API Stability](./api-stability.md)
   - [Capability Fixture Corpus](./fixtures.md)
+  - [Capability Negotiation](./capability-negotiation.md)
 - Evidence And Evaluation
   - [Evaluation](./evaluation.md)
   - [Benchmarking](./benchmarking.md)
