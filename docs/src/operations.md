@@ -82,6 +82,11 @@ Configuration comes from constructor arguments and environment variables documen
 
 - `COSMOS_BASE_URL` enables the Cosmos adapter.
 - `NVIDIA_API_KEY` is optional bearer auth for Cosmos.
+- `COSMOS_POLICY_BASE_URL` enables the optional Cosmos-Policy embodied-policy adapter.
+- `COSMOS_POLICY_API_TOKEN`, `COSMOS_POLICY_TIMEOUT_SECONDS`, `COSMOS_POLICY_EMBODIMENT_TAG`,
+  `COSMOS_POLICY_MODEL`, `COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS`,
+  `COSMOS_POLICY_ALLOW_LOCAL_BASE_URL`, and `COSMOS_POLICY_ALLOWED_HOSTS` are optional
+  Cosmos-Policy `/act` settings.
 - `RUNWAYML_API_SECRET` enables the Runway adapter.
 - `RUNWAY_API_SECRET` remains supported as the legacy Runway alias.
 - `RUNWAYML_BASE_URL` overrides the default Runway API endpoint.
@@ -539,6 +544,18 @@ readiness, and safety certification.
 - Starting the upstream GR00T server requires a compatible NVIDIA/Linux runtime for its CUDA and
   TensorRT dependencies. On unsupported hosts, point WorldForge at an already running remote GR00T
   policy server.
+- To smoke-test a real Cosmos-Policy ALOHA server, run the upstream server on a compatible
+  Linux/NVIDIA host, prepare ALOHA policy info and an action translator, then run
+  `COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 uv run worldforge-smoke-cosmos-policy --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions --allow-translator-code --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json`.
+  For the configuration-only path, run
+  `COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 uv run worldforge-smoke-cosmos-policy --health-only --run-manifest .worldforge/runs/cosmos-policy-health/run_manifest.json`.
+  `--health-only` validates WorldForge configuration only because the targeted upstream server has
+  no non-mutating health endpoint and does not call `/act`.
+  Expected success for `--health-only`: the process exits 0 and the run manifest records
+  `capability=policy` with `status=skipped`.
+  Expected success: the process exits 0 and the run manifest records `capability=policy` with
+  `status=passed`. First triage: run `uv run worldforge provider health cosmos-policy` to confirm
+  configuration, then run the smoke command to verify the host can reach `/act`.
 - Pytest live runtime coverage is opt-in. Use `uv run pytest` or `uv run pytest -m "not live"` for
   deterministic checkout validation. Prepared hosts can select one live provider profile at a time
   with markers such as `live`, `network`, `credentialed`, `gpu`, `robotics`, and

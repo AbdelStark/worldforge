@@ -26,6 +26,13 @@ def test_doctor_and_provider_info_cli(tmp_path, monkeypatch, capsys) -> None:
     for env_var in (
         "COSMOS_BASE_URL",
         "NVIDIA_API_KEY",
+        "COSMOS_POLICY_BASE_URL",
+        "COSMOS_POLICY_API_TOKEN",
+        "COSMOS_POLICY_TIMEOUT_SECONDS",
+        "COSMOS_POLICY_EMBODIMENT_TAG",
+        "COSMOS_POLICY_MODEL",
+        "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
+        "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",

@@ -154,6 +154,7 @@ VALIDATION_COMMANDS = tuple((gate.name, gate.command) for gate in CHECKOUT_SAFE_
 
 LIVE_PROVIDER_ENV = {
     "cosmos": ("COSMOS_BASE_URL",),
+    "cosmos-policy": ("COSMOS_POLICY_BASE_URL",),
     "runway": ("RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"),
     "leworldmodel": ("LEWORLDMODEL_POLICY", "LEWM_POLICY"),
     "gr00t": ("GROOT_POLICY_HOST",),

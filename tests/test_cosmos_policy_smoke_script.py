@@ -1,0 +1,310 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import httpx
+import pytest
+
+from worldforge.smoke import cosmos_policy
+
+PUBLIC_BASE_URL = "http://93.184.216.34"
+
+
+def _policy_info() -> dict[str, object]:
+    return {
+        "observation": {
+            "primary_image": [[[[0, 0, 0]]]],
+            "left_wrist_image": [[[[1, 1, 1]]]],
+            "right_wrist_image": [[[[2, 2, 2]]]],
+            "proprio": [0.0 for _ in range(14)],
+        },
+        "task_description": "move the cube",
+        "action_horizon": 1,
+    }
+
+
+def test_cosmos_policy_smoke_writes_sanitized_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("COSMOS_POLICY_API_TOKEN", "cosmos-policy-secret")
+    policy_path = tmp_path / "policy_info.json"
+    policy_path.write_text(json.dumps(_policy_info()), encoding="utf-8")
+    translator_path = tmp_path / "translator.py"
+    translator_path.write_text(
+        "from worldforge import Action\n"
+        "def translate_actions(raw_actions, info, provider_info):\n"
+        "    return [Action.move_to(0.1, 0.2, 0.3)]\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "runs" / "cosmos-policy-live" / "run_manifest.json"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/act"
+        assert request.headers["authorization"] == "Bearer cosmos-policy-secret"
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["task_description"] == "move the cube"
+        return httpx.Response(
+            200,
+            json={
+                "actions": [[0.1 for _ in range(14)]],
+                "value_prediction": 0.75,
+            },
+        )
+
+    class StubCosmosPolicyProvider(cosmos_policy.CosmosPolicyProvider):
+        def __init__(self, *args, **kwargs) -> None:
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(cosmos_policy, "CosmosPolicyProvider", StubCosmosPolicyProvider)
+
+    assert (
+        cosmos_policy.main(
+            [
+                "--base-url",
+                PUBLIC_BASE_URL,
+                "--policy-info-json",
+                str(policy_path),
+                "--translator",
+                f"{translator_path}:translate_actions",
+                "--allow-translator-code",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+        == 0
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    exported = json.dumps(manifest, sort_keys=True)
+    assert manifest["provider_profile"] == "cosmos-policy"
+    assert manifest["capability"] == "policy"
+    assert manifest["status"] == "passed"
+    assert manifest["event_count"] == 1
+    assert "cosmos-policy-secret" not in exported
+
+
+def test_cosmos_policy_smoke_health_only_skips_policy_request(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "runs" / "cosmos-policy-health" / "run_manifest.json"
+
+    assert (
+        cosmos_policy.main(
+            [
+                "--base-url",
+                PUBLIC_BASE_URL,
+                "--health-only",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+        == 0
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["provider_profile"] == "cosmos-policy"
+    assert manifest["status"] == "skipped"
+    assert manifest["event_count"] == 0
+
+
+def test_cosmos_policy_smoke_manifest_path_without_parent_has_run_id(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        cosmos_policy.main(
+            [
+                "--base-url",
+                PUBLIC_BASE_URL,
+                "--health-only",
+                "--run-manifest",
+                "run_manifest.json",
+            ]
+        )
+        == 0
+    )
+
+    manifest = json.loads(Path("run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["run_id"] == "run_manifest"
+    assert manifest["status"] == "skipped"
+
+
+def test_cosmos_policy_smoke_writes_failed_manifest_on_unhealthy_provider(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "runs" / "cosmos-policy-health-failed" / "run_manifest.json"
+
+    with pytest.raises(SystemExit, match="local/private destination"):
+        cosmos_policy.main(
+            [
+                "--base-url",
+                "http://127.0.0.1:8777",
+                "--health-only",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["provider_profile"] == "cosmos-policy"
+    assert manifest["status"] == "failed"
+    assert manifest["event_count"] == 0
+
+
+def test_cosmos_policy_smoke_health_only_allows_localhost_opt_in(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("COSMOS_POLICY_ALLOW_LOCAL_BASE_URL", "1")
+    manifest_path = tmp_path / "runs" / "cosmos-policy-health-local" / "run_manifest.json"
+
+    assert (
+        cosmos_policy.main(
+            [
+                "--base-url",
+                "http://127.0.0.1:8777",
+                "--health-only",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+        == 0
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["provider_profile"] == "cosmos-policy"
+    assert manifest["status"] == "skipped"
+    assert manifest["result_digest"] is not None
+
+
+def test_cosmos_policy_smoke_redacts_failed_exception_text(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("COSMOS_POLICY_API_TOKEN", "cosmos-policy-secret")
+    policy_path = tmp_path / "policy_info.json"
+    policy_path.write_text(json.dumps(_policy_info()), encoding="utf-8")
+    translator_path = tmp_path / "translator.py"
+    translator_path.write_text(
+        "def translate_actions(raw_actions, info, provider_info):\n"
+        "    raise RuntimeError('token=cosmos-policy-secret')\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "runs" / "cosmos-policy-error-failed" / "run_manifest.json"
+
+    class StubCosmosPolicyProvider(cosmos_policy.CosmosPolicyProvider):
+        def __init__(self, *args, **kwargs) -> None:
+            kwargs["transport"] = httpx.MockTransport(
+                lambda _request: httpx.Response(
+                    200,
+                    json={"actions": [[0.1 for _ in range(14)]]},
+                )
+            )
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(cosmos_policy, "CosmosPolicyProvider", StubCosmosPolicyProvider)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cosmos_policy.main(
+            [
+                "--base-url",
+                PUBLIC_BASE_URL,
+                "--policy-info-json",
+                str(policy_path),
+                "--translator",
+                f"{translator_path}:translate_actions",
+                "--allow-translator-code",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+
+    assert "cosmos-policy-secret" not in str(exc_info.value)
+    assert "token=" not in str(exc_info.value)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    exported = json.dumps(manifest, sort_keys=True)
+    assert manifest["status"] == "failed"
+    assert "cosmos-policy-secret" not in exported
+    assert "token=" not in exported
+
+
+def test_cosmos_policy_smoke_writes_failed_manifest_on_translator_error(
+    tmp_path: Path,
+) -> None:
+    policy_path = tmp_path / "policy_info.json"
+    policy_path.write_text(json.dumps(_policy_info()), encoding="utf-8")
+    manifest_path = tmp_path / "runs" / "cosmos-policy-translator-failed" / "run_manifest.json"
+
+    with pytest.raises(SystemExit, match="Python module file does not exist"):
+        cosmos_policy.main(
+            [
+                "--base-url",
+                PUBLIC_BASE_URL,
+                "--policy-info-json",
+                str(policy_path),
+                "--translator",
+                f"{tmp_path / 'missing_translator.py'}:translate_actions",
+                "--allow-translator-code",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["provider_profile"] == "cosmos-policy"
+    assert manifest["status"] == "failed"
+    assert manifest["event_count"] == 0
+
+
+def test_cosmos_policy_smoke_requires_translator_code_opt_in(tmp_path: Path) -> None:
+    policy_path = tmp_path / "policy_info.json"
+    policy_path.write_text(json.dumps(_policy_info()), encoding="utf-8")
+    translator_path = tmp_path / "translator.py"
+    translator_path.write_text(
+        "def translate_actions(raw_actions, info, provider_info):\n    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="allow-translator-code"):
+        cosmos_policy.main(
+            [
+                "--base-url",
+                PUBLIC_BASE_URL,
+                "--policy-info-json",
+                str(policy_path),
+                "--translator",
+                f"{translator_path}:translate_actions",
+            ]
+        )
+
+
+def test_cosmos_policy_translator_loader_requires_code_opt_in(tmp_path: Path) -> None:
+    translator_path = tmp_path / "translator.py"
+    translator_path.write_text(
+        "def translate_actions(raw_actions, info, provider_info):\n    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="allow-translator-code"):
+        cosmos_policy._load_callable(
+            f"{translator_path}:translate_actions",
+            name="translator",
+        )
+
+
+def test_cosmos_policy_smoke_requires_explicit_base_url(monkeypatch) -> None:
+    monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
+
+    with pytest.raises(SystemExit, match="COSMOS_POLICY_BASE_URL"):
+        cosmos_policy.main(["--health-only"])
+
+
+def test_cosmos_policy_smoke_rejects_invalid_timeout_env(monkeypatch) -> None:
+    monkeypatch.setenv("COSMOS_POLICY_TIMEOUT_SECONDS", "not-a-number")
+
+    with pytest.raises(SystemExit, match="COSMOS_POLICY_TIMEOUT_SECONDS"):
+        cosmos_policy.main(["--base-url", PUBLIC_BASE_URL, "--health-only"])

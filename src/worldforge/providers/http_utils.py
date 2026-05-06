@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import base64
+import fnmatch
 import ipaddress
 import mimetypes
 import multiprocessing
 import queue
 import socket
-from collections.abc import Callable
+from collections import OrderedDict
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from time import perf_counter, sleep
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
@@ -30,6 +32,9 @@ _RETRYABLE_EXCEPTIONS = (httpx.TransportError,)
 _LOCAL_HOST_NAMES = frozenset({"localhost", "localhost.localdomain"})
 _DNS_RESOLUTION_TIMEOUT_SECONDS = 2.0
 _DNS_RESULT_QUEUE_TIMEOUT_SECONDS = 1.0
+_DNS_RESOLUTION_CACHE_SECONDS = 5.0
+_DNS_RESOLUTION_CACHE_MAX_ENTRIES = 256
+_DNS_RESOLUTION_CACHE: OrderedDict[tuple[str, int], tuple[float, tuple[str, ...]]] = OrderedDict()
 _ERROR_SUMMARY_BYTES = 512
 
 
@@ -59,36 +64,111 @@ def validate_remote_url(
 
     host = parsed.hostname.strip().lower()
     if not allow_local_network:
-        _reject_local_hostname(host, provider_name=provider_name, url_name=url_name)
+        _reject_local_hostname(host, provider_name=provider_name, env_var=url_name)
         is_ip_literal = _reject_local_ip_literal(
             host,
             provider_name=provider_name,
-            url_name=url_name,
+            env_var=url_name,
         )
         if resolve_dns and not is_ip_literal:
             _reject_local_resolved_addresses(
                 host,
                 port=parsed.port or (443 if parsed.scheme.lower() == "https" else 80),
                 provider_name=provider_name,
-                url_name=url_name,
+                env_var=url_name,
                 timeout_seconds=dns_resolution_timeout_seconds,
             )
     return normalized_url
 
 
-def _reject_local_hostname(host: str, *, provider_name: str, url_name: str) -> None:
+def validate_remote_base_url(
+    base_url: str,
+    *,
+    provider_name: str,
+    env_var: str,
+    allow_local_network: bool = False,
+    resolve_dns: bool = True,
+    allowed_hosts: Sequence[str] | None = None,
+    dns_resolution_timeout_seconds: float = _DNS_RESOLUTION_TIMEOUT_SECONDS,
+) -> str:
+    """Return a normalized HTTP base URL after preflight destination checks."""
+
+    parsed = urlparse(base_url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ProviderError(f"Provider '{provider_name}' {env_var} must use an http or https URL.")
+    if not parsed.hostname:
+        raise ProviderError(f"Provider '{provider_name}' {env_var} must include a hostname.")
+    if parsed.username or parsed.password:
+        raise ProviderError(
+            f"Provider '{provider_name}' {env_var} must not include embedded credentials."
+        )
+    if parsed.query or parsed.fragment:
+        raise ProviderError(
+            f"Provider '{provider_name}' {env_var} must not include query parameters or fragments."
+        )
+
+    host = parsed.hostname.strip().lower()
+    _reject_unlisted_host(
+        host,
+        allowed_hosts=allowed_hosts,
+        provider_name=provider_name,
+        env_var=env_var,
+    )
+    if not allow_local_network:
+        _reject_local_hostname(host, provider_name=provider_name, env_var=env_var)
+        is_ip_literal = _reject_local_ip_literal(
+            host,
+            provider_name=provider_name,
+            env_var=env_var,
+        )
+        if resolve_dns and not is_ip_literal:
+            _reject_local_resolved_addresses(
+                host,
+                port=parsed.port or (443 if parsed.scheme.lower() == "https" else 80),
+                provider_name=provider_name,
+                env_var=env_var,
+                timeout_seconds=dns_resolution_timeout_seconds,
+            )
+    return base_url.rstrip("/")
+
+
+def _reject_unlisted_host(
+    host: str,
+    *,
+    allowed_hosts: Sequence[str] | None,
+    provider_name: str,
+    env_var: str,
+) -> None:
+    if allowed_hosts is None:
+        return
+    normalized_patterns = tuple(
+        pattern.strip().lower() for pattern in allowed_hosts if pattern.strip()
+    )
+    if not normalized_patterns:
+        raise ProviderError(
+            f"Provider '{provider_name}' {env_var} allowed hosts must not be empty."
+        )
+    if any(fnmatch.fnmatchcase(host, pattern) for pattern in normalized_patterns):
+        return
+    raise ProviderError(
+        f"Provider '{provider_name}' {env_var} host '{host}' is not in the allowed host list."
+    )
+
+
+def _reject_local_hostname(host: str, *, provider_name: str, env_var: str) -> None:
     if host in _LOCAL_HOST_NAMES or host.endswith(".localhost"):
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} resolves to a local/private destination."
+            f"Provider '{provider_name}' {env_var} resolves to a local/private destination. "
+            "Set the provider's explicit local-network opt-in only for trusted local servers."
         )
 
 
-def _reject_local_ip_literal(host: str, *, provider_name: str, url_name: str) -> bool:
+def _reject_local_ip_literal(host: str, *, provider_name: str, env_var: str) -> bool:
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
         return False
-    _reject_local_address(address, provider_name=provider_name, url_name=url_name)
+    _reject_local_address(address, provider_name=provider_name, env_var=env_var)
     return True
 
 
@@ -97,7 +177,7 @@ def _reject_local_resolved_addresses(
     *,
     port: int,
     provider_name: str,
-    url_name: str,
+    env_var: str,
     timeout_seconds: float,
 ) -> None:
     try:
@@ -111,21 +191,21 @@ def _reject_local_resolved_addresses(
         ]
     except TimeoutError as exc:
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} host resolution timed out: {host}."
+            f"Provider '{provider_name}' {env_var} host resolution timed out: {host}."
         ) from exc
     except socket.gaierror as exc:
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} host could not be resolved: {host}."
+            f"Provider '{provider_name}' {env_var} host could not be resolved: {host}."
         ) from exc
     except (OSError, RuntimeError, ValueError) as exc:
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} host resolution failed: {host}."
+            f"Provider '{provider_name}' {env_var} host resolution failed: {host}."
         ) from exc
     for address in addresses:
         _reject_local_address(
             address,
             provider_name=provider_name,
-            url_name=url_name,
+            env_var=env_var,
         )
 
 
@@ -150,6 +230,16 @@ def _getaddrinfo_with_timeout(
 ) -> list[str]:
     if timeout_seconds <= 0:
         raise TimeoutError("DNS resolution timeout must be greater than 0.")
+
+    cache_key = (host, port)
+    cached = _DNS_RESOLUTION_CACHE.get(cache_key)
+    now = perf_counter()
+    if cached is not None:
+        cached_at, cached_addresses = cached
+        if now - cached_at <= _DNS_RESOLUTION_CACHE_SECONDS:
+            _DNS_RESOLUTION_CACHE.move_to_end(cache_key)
+            return list(cached_addresses)
+        del _DNS_RESOLUTION_CACHE[cache_key]
 
     context = multiprocessing.get_context("spawn")
     result_queue = context.Queue(maxsize=1)
@@ -192,7 +282,9 @@ def _getaddrinfo_with_timeout(
             raise socket.gaierror(error_number, error_text)
         if status != "ok":
             raise socket.gaierror(socket.EAI_FAIL, "DNS resolver returned an invalid result")
-        return list(value)
+        addresses = tuple(value)
+        _cache_dns_resolution(cache_key, addresses)
+        return list(addresses)
     finally:
         if resolver_started and resolver.is_alive():
             resolver.terminate()
@@ -201,11 +293,18 @@ def _getaddrinfo_with_timeout(
         result_queue.join_thread()
 
 
+def _cache_dns_resolution(cache_key: tuple[str, int], addresses: tuple[str, ...]) -> None:
+    _DNS_RESOLUTION_CACHE[cache_key] = (perf_counter(), addresses)
+    _DNS_RESOLUTION_CACHE.move_to_end(cache_key)
+    while len(_DNS_RESOLUTION_CACHE) > _DNS_RESOLUTION_CACHE_MAX_ENTRIES:
+        _DNS_RESOLUTION_CACHE.popitem(last=False)
+
+
 def _reject_local_address(
     address: ipaddress.IPv4Address | ipaddress.IPv6Address,
     *,
     provider_name: str,
-    url_name: str,
+    env_var: str,
 ) -> None:
     if (
         address.is_loopback
@@ -216,7 +315,8 @@ def _reject_local_address(
         or address.is_multicast
     ):
         raise ProviderError(
-            f"Provider '{provider_name}' {url_name} resolves to a local/private destination."
+            f"Provider '{provider_name}' {env_var} resolves to a local/private destination. "
+            "Set the provider's explicit local-network opt-in only for trusted local servers."
         )
 
 
@@ -398,6 +498,7 @@ def request_with_policy(
     operation_name: str,
     policy: RequestOperationPolicy,
     emit_event: Callable[[ProviderEvent], None] | None = None,
+    emit_success_event: bool = True,
     **kwargs: Any,
 ) -> httpx.Response:
     """Send an HTTP request using the configured timeout and retry policy."""
@@ -611,7 +712,10 @@ def request_with_policy(
                 f"Provider '{provider_name}' {operation_name} failed with "
                 f"status {response.status_code}: {_response_summary(response)}"
             ) from exc
-        if emit_event is not None:
+        response.extensions["worldforge_attempt_number"] = attempt_number
+        response.extensions["worldforge_max_attempts"] = policy.retry.max_attempts
+        response.extensions["worldforge_duration_ms"] = duration_ms
+        if emit_success_event and emit_event is not None:
             emit_event(
                 ProviderEvent(
                     provider=provider_name,
@@ -630,6 +734,45 @@ def request_with_policy(
     raise AssertionError("request_with_policy exhausted retries without returning or raising")
 
 
+def _emit_response_validation_event(
+    emit_event: Callable[[ProviderEvent], None] | None,
+    *,
+    response: httpx.Response,
+    provider_name: str,
+    operation_name: str,
+    phase: Literal["success", "failure"],
+    method: str,
+    target: str,
+    policy: RequestOperationPolicy,
+    message: str | None = None,
+) -> None:
+    if phase not in {"success", "failure"}:
+        raise AssertionError("response validation event phase must be success or failure")
+    if emit_event is None:
+        return
+    attempt = response.extensions.get("worldforge_attempt_number")
+    max_attempts = response.extensions.get("worldforge_max_attempts")
+    duration = response.extensions.get("worldforge_duration_ms")
+    emit_event(
+        ProviderEvent(
+            provider=provider_name,
+            operation=operation_name,
+            phase=phase,
+            attempt=attempt if isinstance(attempt, int) and not isinstance(attempt, bool) else 1,
+            max_attempts=max_attempts
+            if isinstance(max_attempts, int) and not isinstance(max_attempts, bool)
+            else policy.retry.max_attempts,
+            method=method,
+            target=target,
+            status_code=response.status_code,
+            duration_ms=duration
+            if isinstance(duration, int | float) and not isinstance(duration, bool)
+            else None,
+            message=message or "",
+        )
+    )
+
+
 def request_json_with_policy(
     client: httpx.Client,
     *,
@@ -639,6 +782,7 @@ def request_json_with_policy(
     operation_name: str,
     policy: RequestOperationPolicy,
     emit_event: Callable[[ProviderEvent], None] | None = None,
+    accepted_content_types: tuple[str, ...] | None = None,
     **kwargs: Any,
 ) -> dict[str, object]:
     """Send an HTTP request and decode a JSON object response."""
@@ -651,18 +795,71 @@ def request_json_with_policy(
         operation_name=operation_name,
         policy=policy,
         emit_event=emit_event,
+        emit_success_event=False,
         **kwargs,
     )
+    content_type = response.headers.get("content-type")
+    if (
+        content_type
+        and accepted_content_types
+        and not _content_type_is_allowed(
+            content_type,
+            accepted_content_types,
+        )
+    ):
+        message = f"returned unsupported content type '{content_type}'."
+        _emit_response_validation_event(
+            emit_event,
+            response=response,
+            provider_name=provider_name,
+            operation_name=operation_name,
+            phase="failure",
+            method=method,
+            target=url,
+            policy=policy,
+            message=message,
+        )
+        raise ProviderError(f"Provider '{provider_name}' {operation_name} {message}")
     try:
         payload = response.json()
     except ValueError as exc:
-        raise ProviderError(
-            f"Provider '{provider_name}' {operation_name} returned invalid JSON."
-        ) from exc
-    if not isinstance(payload, dict):
-        raise ProviderError(
-            f"Provider '{provider_name}' {operation_name} returned a non-object JSON payload."
+        message = "returned invalid JSON."
+        _emit_response_validation_event(
+            emit_event,
+            response=response,
+            provider_name=provider_name,
+            operation_name=operation_name,
+            phase="failure",
+            method=method,
+            target=url,
+            policy=policy,
+            message=message,
         )
+        raise ProviderError(f"Provider '{provider_name}' {operation_name} {message}") from exc
+    if not isinstance(payload, dict):
+        message = "returned a non-object JSON payload."
+        _emit_response_validation_event(
+            emit_event,
+            response=response,
+            provider_name=provider_name,
+            operation_name=operation_name,
+            phase="failure",
+            method=method,
+            target=url,
+            policy=policy,
+            message=message,
+        )
+        raise ProviderError(f"Provider '{provider_name}' {operation_name} {message}")
+    _emit_response_validation_event(
+        emit_event,
+        response=response,
+        provider_name=provider_name,
+        operation_name=operation_name,
+        phase="success",
+        method=method,
+        target=url,
+        policy=policy,
+    )
     return dict(payload)
 
 

@@ -49,6 +49,13 @@ def test_worldforge_harness_console_entry_lists_flows(capsys) -> None:
 def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatch, capsys) -> None:
     for name in (
         "COSMOS_BASE_URL",
+        "COSMOS_POLICY_BASE_URL",
+        "COSMOS_POLICY_API_TOKEN",
+        "COSMOS_POLICY_TIMEOUT_SECONDS",
+        "COSMOS_POLICY_EMBODIMENT_TAG",
+        "COSMOS_POLICY_MODEL",
+        "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
+        "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",
@@ -73,6 +80,7 @@ def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatc
     assert set(payload) >= {
         "mock",
         "cosmos",
+        "cosmos-policy",
         "runway",
         "leworldmodel",
         "gr00t",
@@ -82,6 +90,8 @@ def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatc
     }
     assert payload["mock"]["status"] == "configured"
     assert payload["cosmos"]["status"] == "missing_credentials"
+    assert payload["cosmos-policy"]["status"] == "missing_credentials"
+    assert payload["cosmos-policy"]["missing_env_vars"] == ["COSMOS_POLICY_BASE_URL"]
     assert payload["runway"]["missing_env_vars"] == ["RUNWAYML_API_SECRET"]
     assert payload["jepa"]["status"] == "missing_credentials"
     assert payload["jepa"]["capabilities"] == ["score"]

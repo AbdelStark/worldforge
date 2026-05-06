@@ -29,6 +29,8 @@ evaluation harnesses, and testable prototypes.
   contract checks.
 - `src/worldforge/providers/cosmos.py` and `runway.py`: real HTTP adapters with typed timeout,
   retry, polling, download policies, and response parsers.
+- `src/worldforge/providers/cosmos_policy.py`: host-owned NVIDIA Cosmos-Policy ALOHA `/act`
+  server adapter for selecting embodied action chunks through the `policy` capability.
 - `src/worldforge/providers/leworldmodel.py`: real optional LeWorldModel JEPA cost-model adapter
   for scoring action candidates through `stable_worldmodel.policy.AutoCostModel`.
 - `src/worldforge/providers/gr00t.py`: experimental host-owned NVIDIA Isaac GR00T PolicyClient
@@ -85,6 +87,8 @@ evaluation harnesses, and testable prototypes.
   `uv run --python 3.13 --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" --with "datasets>=2.21" worldforge-smoke-leworldmodel`.
 - `scripts/smoke_gr00t_policy.py`: optional live GR00T PolicyClient smoke for host environments
   with Isaac-GR00T or a reachable policy server.
+- `scripts/smoke_cosmos_policy.py`: optional live Cosmos-Policy `/act` smoke for host
+  environments with a reachable ALOHA policy server.
 - `scripts/smoke_lerobot_policy.py`: optional live LeRobot `PreTrainedPolicy` smoke for host
   environments with LeRobot and robot-specific dependencies.
 
@@ -100,6 +104,9 @@ evaluation harnesses, and testable prototypes.
   environment only when using `leworldmodel`.
 - Optional GR00T runtime: `gr00t.policy.server_client.PolicyClient`, CUDA/TensorRT/checkpoints,
   and robot-specific dependencies supplied by the host environment only when using `gr00t`.
+- Optional Cosmos-Policy runtime: NVIDIA `cosmos-policy` server, Docker/CUDA/GPU host,
+  checkpoints, ALOHA observations, and robot-specific dependencies supplied by the host
+  environment only when using `cosmos-policy`.
 - Optional LeRobot runtime: `lerobot.policies.pretrained.PreTrainedPolicy`, torch/checkpoints, and
   robot-specific dependencies supplied by the host environment only when using `lerobot`.
 - Development tools: `pytest`, `pytest-cov`, `ruff`, `pip-audit` in CI.
@@ -275,6 +282,9 @@ generated documentation surfaces.
   dependency set or repository. Keep LeWorldModel optional and host-owned.
 - Do not add Isaac GR00T, CUDA, TensorRT, robot checkpoints, or robot controller dependencies to
   the base dependency set. Keep GR00T host-owned and require explicit action translators.
+- Do not add Cosmos-Policy, Docker, CUDA, robot checkpoints, downloaded datasets, or robot
+  controller dependencies to the base dependency set. Keep Cosmos-Policy host-owned and require
+  explicit action translators.
 - Do not add LeRobot, torch, robot checkpoints, simulation packages, or robot controller
   dependencies to the base dependency set. Keep LeRobot host-owned and require explicit action
   translators.
@@ -318,9 +328,14 @@ generated documentation surfaces.
 - LeRobot returns embodiment-specific raw policy actions. WorldForge preserves those raw actions
   but requires a host-supplied `action_translator` before it can return executable `Action`
   objects.
-- Policy+score planning uses `policy_provider="gr00t"` or `policy_provider="lerobot"` plus
-  `score_provider="leworldmodel"` or another score provider; score tensors remain
-  host-preprocessed and provider-native.
+- Cosmos-Policy returns ALOHA-shaped, embodiment-specific raw action arrays from a host-owned
+  `/act` server. WorldForge preserves those raw actions but requires a host-supplied
+  `action_translator` before it can return executable `Action` objects.
+- A catalog/default `CosmosPolicyProvider` created without `action_translator` must not advertise
+  `policy`; direct construction with the translator is required before policy routing.
+- Policy+score planning uses `policy_provider="cosmos-policy"`, `policy_provider="gr00t"`, or
+  `policy_provider="lerobot"` plus `score_provider="leworldmodel"` or another score provider;
+  score tensors remain host-preprocessed and provider-native.
 - `scripts/robotics-showcase` is the prominent PushT real robotics entrypoint. It installs the
   optional host-owned runtime packages for the process, uses packaged PushT hooks, writes a Rerun
   `.rrd` visual artifact by default for normal runs, and filters common macOS native-library
@@ -358,6 +373,10 @@ generated documentation surfaces.
 - `scripts/smoke_lerobot_policy.py` is an optional live LeRobot policy smoke. It requires the host
   to provide real observations and an embodiment-specific action translator. Use
   `uv run python scripts/smoke_lerobot_policy.py --help` to inspect host-owned arguments.
+- `worldforge-smoke-cosmos-policy` is an optional live Cosmos-Policy smoke. It requires a
+  configured `COSMOS_POLICY_BASE_URL`, a host-owned ALOHA `/act` server, real observations, and an
+  embodiment-specific action translator. Its health-only mode validates WorldForge configuration
+  only because the targeted upstream server does not expose a non-mutating health endpoint.
 - If GitHub Actions checks fail before execution because repository/account billing or spending
   limits prevent jobs from starting, treat local `uv`/package validation as the available gate.
 - `JEPA_WMS_MODEL_PATH`, `JEPA_WMS_MODEL_NAME`, and `JEPA_WMS_DEVICE` are documented by the

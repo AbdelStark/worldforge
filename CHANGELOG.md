@@ -125,6 +125,10 @@ releases may still include breaking changes when the public API needs to tighten
   so a claim can be reproduced and cited without console logs. CSV output, the existing
   `run_metadata.input_file`, and `run_metadata.budget_file` fields are unchanged for
   backward compatibility.
+- Added `cosmos-policy` as a host-owned NVIDIA Cosmos-Policy ALOHA `/act` server adapter for the
+  `policy` capability, including a runtime manifest, live-smoke CLI, provider docs, configuration
+  summaries, and policy-plus-score planning coverage without adding CUDA, Docker, torch, or
+  Cosmos-Policy dependencies to the base package.
 - Added an optional OpenTelemetry provider-event sink that maps sanitized provider events to
   host-owned tracing spans without adding OpenTelemetry to the base dependency set.
 - Added an optional Rerun integration for sanitized `ProviderEvent` streams, world snapshots,

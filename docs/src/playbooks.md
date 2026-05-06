@@ -609,6 +609,35 @@ COSMOS_BASE_URL=http://localhost:8000 \
     --summary-json .worldforge/runs/cosmos-live/results/summary.json \
     --run-manifest .worldforge/runs/cosmos-live/run_manifest.json
 
+# Cosmos-Policy: requires COSMOS_POLICY_BASE_URL and a reachable ALOHA /act server.
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
+  uv run pytest -m "live and network and robotics and provider_profile" \
+    --run-live --run-network --run-robotics --provider-profile cosmos-policy
+# Expected success: pytest completes the selected live profile without failures.
+# First triage: run `uv run worldforge provider health cosmos-policy` to confirm
+# configuration only; use the smoke command below to verify `/act` reachability.
+
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
+  uv run worldforge-smoke-cosmos-policy \
+    --health-only \
+    --run-manifest .worldforge/runs/cosmos-policy-health/run_manifest.json
+# Expected success: run_manifest.json records capability=policy with status=skipped.
+# First triage: run `uv run worldforge provider health cosmos-policy` to confirm
+# configuration only, then use the full `/act` smoke below for endpoint behavior.
+
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
+  uv run worldforge-smoke-cosmos-policy \
+    --policy-info-json /path/to/policy_info.json \
+    --translator /path/to/translator.py:translate_actions \
+    --allow-translator-code \
+    --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json
+# Expected success: run_manifest.json records capability=policy with status=passed.
+# First triage: verify the `/act` server is reachable and recheck the translator path plus
+# policy_info.json shape.
+
 # Runway: requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET.
 RUNWAYML_API_SECRET=... \
   uv run pytest -m "live and network and credentialed and provider_profile" \

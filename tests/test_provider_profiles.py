@@ -9,6 +9,13 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     for env_var in (
         "COSMOS_BASE_URL",
         "NVIDIA_API_KEY",
+        "COSMOS_POLICY_BASE_URL",
+        "COSMOS_POLICY_API_TOKEN",
+        "COSMOS_POLICY_TIMEOUT_SECONDS",
+        "COSMOS_POLICY_EMBODIMENT_TAG",
+        "COSMOS_POLICY_MODEL",
+        "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
+        "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",
@@ -46,6 +53,7 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert {
         "mock",
         "cosmos",
+        "cosmos-policy",
         "runway",
         "leworldmodel",
         "gr00t",
@@ -58,6 +66,12 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert builtin_profiles["cosmos"].request_policy is not None
     assert builtin_profiles["cosmos"].request_policy.request.retry.max_attempts == 1
     assert builtin_profiles["cosmos"].request_policy.health.retry.max_attempts == 3
+    assert builtin_profiles["cosmos-policy"].implementation_status == "beta"
+    assert builtin_profiles["cosmos-policy"].capabilities.enabled_names() == []
+    assert builtin_profiles["cosmos-policy"].capabilities.predict is False
+    assert builtin_profiles["cosmos-policy"].required_env_vars == ["COSMOS_POLICY_BASE_URL"]
+    assert builtin_profiles["cosmos-policy"].request_policy is not None
+    assert builtin_profiles["cosmos-policy"].request_policy.request.retry.max_attempts == 1
     assert builtin_profiles["runway"].required_env_vars == [
         "RUNWAYML_API_SECRET",
         "RUNWAY_API_SECRET",
@@ -96,6 +110,9 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     assert provider_statuses["cosmos"].registered is False
     assert provider_statuses["cosmos"].health.healthy is False
     assert any("COSMOS_BASE_URL" in issue for issue in report.issues)
+    assert provider_statuses["cosmos-policy"].registered is False
+    assert provider_statuses["cosmos-policy"].health.healthy is False
+    assert any("COSMOS_POLICY_BASE_URL" in issue for issue in report.issues)
 
     with pytest.raises(WorldForgeError, match="Unknown provider capability"):
         forge.provider_healths(capability="generation")

@@ -335,7 +335,7 @@ model's branding.
 | --- | --- | --- |
 | `predict` | `state + action → predicted state` | `mock` |
 | `score` | `observations + goal + candidates → ranked candidates` | `leworldmodel` |
-| `policy` | `observation + instruction → action chunks` | `gr00t`, `lerobot` |
+| `policy` | `observation + instruction → action chunks` | `cosmos-policy`, `gr00t`, `lerobot` |
 | `generate` | `prompt + options → media artifact` | `cosmos`, `runway`, `mock` |
 | `transfer` | `artifact + prompt/options → artifact` | `runway`, `mock` |
 | `reason` | structured reasoning over state | `mock` |
@@ -348,9 +348,9 @@ declare `name`, optional profile metadata, and the one method behind the adverti
 Registered protocol implementations are visible through diagnostics, planning, and benchmarks
 without forcing unrelated provider methods into the adapter.
 
-LeWorldModel is a score provider, not a video generator. GR00T and LeRobot are policy providers,
-not predictive world models. Cosmos and Runway are media generators, not controllable physical
-planning.
+LeWorldModel is a score provider, not a video generator. Cosmos-Policy, GR00T, and LeRobot are
+policy providers, not predictive world models. Cosmos and Runway are media generators, not
+controllable physical planning.
 
 The canonical loop:
 
@@ -370,6 +370,7 @@ observe state
 | --- | --- | --- | --- | --- |
 | `mock` | `stable` | `predict`, `generate`, `transfer`, `reason`, `embed` | always registered | in-repo deterministic local provider |
 | [`cosmos`](https://abdelstark.github.io/worldforge/providers/cosmos/) | `beta` | `generate` | `COSMOS_BASE_URL` | host supplies a reachable Cosmos deployment and optional `NVIDIA_API_KEY` |
+| [`cosmos-policy`](https://abdelstark.github.io/worldforge/providers/cosmos-policy/) | `beta` | none (`policy` requires host `action_translator`) | `COSMOS_POLICY_BASE_URL` | WorldForge validates `/act` request/response and planning composition; host owns Cosmos-Policy reachability/CUDA/runtime, ALOHA observation construction, and translation of raw 14D rows into executable `Action` objects |
 | [`runway`](https://abdelstark.github.io/worldforge/providers/runway/) | `beta` | `generate`, `transfer` | `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` | host supplies Runway credentials and persists returned artifacts |
 | [`leworldmodel`](https://abdelstark.github.io/worldforge/providers/leworldmodel/) | `stable` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
 | [`gr00t`](https://abdelstark.github.io/worldforge/providers/gr00t/) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |
@@ -421,7 +422,7 @@ coverage, request limits, and docs.
 | `src/worldforge/framework.py` | `WorldForge`, `World`, persistence, planning, prediction, comparison, diagnostics |
 | `src/worldforge/providers/catalog.py` | In-repo provider factories and auto-registration policy |
 | `src/worldforge/providers/base.py` | Provider interfaces, `ProviderError`, remote-provider behavior, `PredictionPayload` |
-| `src/worldforge/providers/` | Concrete adapters: mock, Cosmos, Runway, LeWorldModel, GR00T, LeRobot, JEPA, Genie |
+| `src/worldforge/providers/` | Concrete adapters: mock, Cosmos, Cosmos-Policy, Runway, LeWorldModel, GR00T, LeRobot, JEPA, Genie |
 | `src/worldforge/evaluation/` | Deterministic evaluation suites and report renderers |
 | `src/worldforge/benchmark.py` | Capability-aware latency, retry, throughput, and event benchmark harness |
 | `src/worldforge/observability.py` | `ProviderEvent` sinks for logs, recording, and metrics |
@@ -463,8 +464,8 @@ surface and runtime-specific entrypoints:
 
 - Capabilities are contracts. Don't advertise an operation unless the adapter implements it and
   returns the typed WorldForge result.
-- Optional runtimes remain host-owned. No torch, LeWorldModel, LeRobot, GR00T, CUDA, TensorRT,
-  controllers, checkpoints, or datasets in base dependencies.
+- Optional runtimes remain host-owned. No torch, LeWorldModel, LeRobot, GR00T, Cosmos-Policy,
+  CUDA, TensorRT, controllers, checkpoints, or datasets in base dependencies.
 - Embodiment-specific action translation is host-owned. Policy providers preserve raw actions; the
   caller converts them into executable `Action` objects.
 - Local JSON persistence is single-writer and available through both Python APIs and
