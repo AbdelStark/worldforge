@@ -9,6 +9,20 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Upgraded the release evidence generator into a release-readiness command that writes Markdown and
+  JSON summaries, can execute checkout-safe gates with `--run-gates`, records skipped and failed
+  gate triage steps, and marks optional live-provider evidence as host-owned unless a prepared-host
+  run manifest is linked.
+- Added a public API stability and deprecation policy covering stable, provisional, experimental,
+  and internal surfaces, with migration expectations for provider capabilities and artifact
+  schemas.
+- Added a troubleshooting matrix for public error families, provider contract failures, benchmark
+  budget exits, and docs-build warnings with owner, command, artifact, and first-triage guidance.
+- Added a documented-command drift checker for README, CLI docs, examples, operations, playbooks,
+  and AGENTS command surfaces, and wired it into the release-readiness gate.
+- Added a checkout-safe core performance budget checker for world persistence, benchmark fixture
+  loading, provider diagnostics, evidence-bundle creation, and report rendering, and wired it into
+  release-readiness documentation.
 - Added a roadmap expansion plan for 30 structured GitHub issues across production-grade
   quality/DevX/docs, demos and end-to-end showcases, and new features, explicitly excluding the
   already assigned Nano World Model work.

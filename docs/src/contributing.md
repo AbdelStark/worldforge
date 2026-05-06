@@ -21,6 +21,11 @@ Before tags or package publishing, also run the locked dependency audit from
 in strict mode. `bash scripts/test_package.sh` checks the wheel/sdist contents before installing
 the built wheel and running tests against the installed package.
 
+Before changing public imports, CLI flags, provider capabilities, or artifact schemas, classify the
+surface through [Public API Stability](./api-stability.md). Stable and provisional surfaces need a
+deprecation or migration plan unless the change fixes a security exposure, false capability claim,
+or persisted-state incoherence.
+
 Key directories:
 
 - `src/worldforge/models.py`: public data contracts and validation.

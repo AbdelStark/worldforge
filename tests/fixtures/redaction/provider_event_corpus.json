@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "signed_url_and_bearer",
+      "event": {
+        "provider": "runway",
+        "operation": "artifact download",
+        "phase": "failure",
+        "method": "get",
+        "target": "https://user:pass@downloads.example.test/video.mp4?X-Amz-Signature=wf-signature-secret&token=wf-token-secret#fragment",
+        "status_code": 403,
+        "duration_ms": 12.5,
+        "message": "download failed with Authorization=wf-auth-secret and Bearer wf-bearer-secret",
+        "metadata": {
+          "capability": "generate",
+          "api_token": "wf-metadata-token",
+          "nested": {
+            "signed_url": "https://downloads.example.test/video.mp4?signature=wf-nested-signature",
+            "safe_url": "https://downloads.example.test/video.mp4?signature=wf-safe-signature"
+          },
+          "request_headers": {
+            "Authorization": "Bearer wf-header-secret"
+          }
+        },
+        "request_id": "token=wf-request-secret",
+        "artifact_id": "https://downloads.example.test/video.mp4?token=wf-artifact-secret"
+      },
+      "forbidden": [
+        "wf-signature-secret",
+        "wf-token-secret",
+        "wf-auth-secret",
+        "wf-bearer-secret",
+        "wf-metadata-token",
+        "wf-nested-signature",
+        "wf-safe-signature",
+        "wf-header-secret",
+        "wf-request-secret",
+        "wf-artifact-secret",
+        "user:pass"
+      ]
+    },
+    {
+      "id": "private_endpoint_and_json_text",
+      "event": {
+        "provider": "cosmos",
+        "operation": "task poll",
+        "phase": "retry",
+        "method": "post",
+        "target": "https://internal.example.test/tasks/123?api_key=wf-query-key",
+        "status_code": 429,
+        "duration_ms": 27.0,
+        "message": "retrying password=wf-password-secret for {\"api_key\":\"wf-json-key\"}",
+        "metadata": {
+          "capability": "generate",
+          "private_endpoint": "https://internal.example.test/tasks/123?token=wf-private-token",
+          "json_text": "{\"secret\":\"wf-json-secret\",\"token\":\"wf-json-token\"}"
+        },
+        "trace_id": "Bearer wf-trace-secret"
+      },
+      "forbidden": [
+        "wf-query-key",
+        "wf-password-secret",
+        "wf-json-key",
+        "wf-private-token",
+        "wf-json-secret",
+        "wf-json-token",
+        "wf-trace-secret"
+      ]
+    }
+  ]
+}

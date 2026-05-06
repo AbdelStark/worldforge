@@ -481,6 +481,8 @@ uv lock --check
 uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
+uv run python scripts/check_docs_commands.py
+uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90

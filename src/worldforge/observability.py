@@ -16,6 +16,7 @@ from worldforge.models import (
     ProviderEvent,
     WorldForgeError,
     _redact_observable_value,
+    _sanitize_observable_id,
     dump_json,
     require_json_dict,
 )
@@ -144,7 +145,12 @@ class RunJsonLogSink:
     def __post_init__(self) -> None:
         if not isinstance(self.run_id, str) or not self.run_id.strip():
             raise WorldForgeError("RunJsonLogSink run_id must be a non-empty string.")
-        self.run_id = self.run_id.strip()
+        self.run_id = _sanitize_observable_id(
+            self.run_id,
+            name="RunJsonLogSink run_id",
+        )
+        if self.run_id is None:
+            raise WorldForgeError("RunJsonLogSink run_id must be a non-empty string.")
         self._path = Path(self.path)
         self.extra_fields = _redacted_extra_fields(
             self.extra_fields,

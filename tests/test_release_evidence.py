@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from subprocess import CompletedProcess
 
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 
@@ -16,8 +17,10 @@ assert SPEC.loader is not None
 sys.modules["generate_release_evidence"] = generate_release_evidence
 SPEC.loader.exec_module(generate_release_evidence)
 ManifestEvidence = generate_release_evidence.ManifestEvidence
+ReleaseGate = generate_release_evidence.ReleaseGate
 main = generate_release_evidence.main
 render_release_evidence = generate_release_evidence.render_release_evidence
+release_gate_results = generate_release_evidence.release_gate_results
 
 
 def test_release_evidence_renders_without_credentials(
@@ -47,12 +50,11 @@ def test_release_evidence_renders_without_credentials(
         known_limitations=("No prepared-host smokes were run for this branch.",),
     )
 
-    assert (
-        "| `runway` | not configured | missing `RUNWAYML_API_SECRET`, `RUNWAY_API_SECRET` |"
-        in report
-    )
+    assert "| `runway` | host-owned |" in report
+    assert "missing host-owned configuration: `RUNWAYML_API_SECRET`, `RUNWAY_API_SECRET`" in report
     assert "uv run python scripts/generate_provider_docs.py --check" in report
     assert "uv run --extra harness pytest --cov=src/worldforge" in report
+    assert "Run with `--run-gates` to execute this checkout-safe gate." in report
     assert "[`" in report
     assert "benchmark.json" in report
     assert "No prepared-host smokes were run for this branch." in report
@@ -97,8 +99,66 @@ def test_release_evidence_main_writes_default_shape(tmp_path: Path) -> None:
     assert main(["--output", str(output), "--known-limitation", "Release candidate only."]) == 0
 
     report = output.read_text(encoding="utf-8")
+    payload = json.loads(output.with_suffix(".json").read_text(encoding="utf-8"))
     assert report.startswith("# WorldForge Release Evidence")
     assert "Release candidate only." in report
+    assert payload["schema_version"] == 1
+    assert payload["validation_summary"]["skipped"] >= 1
+    assert payload["live_provider_evidence"][0]["status"] == "host-owned"
+
+
+def test_release_evidence_gate_runner_records_pass_fail_and_skip() -> None:
+    gates = (
+        ReleaseGate("Pass", "pass-command", "inspect pass"),
+        ReleaseGate("Fail", "fail-command", "inspect fail"),
+        ReleaseGate("Skip", "skip-command", "inspect skip"),
+    )
+
+    def runner(command: str, **kwargs) -> CompletedProcess[str]:
+        assert kwargs["shell"] is True
+        if command == "fail-command":
+            return CompletedProcess(command, 7, stdout="ok", stderr="broken\n" * 2000)
+        return CompletedProcess(command, 0, stdout="passed", stderr="")
+
+    results = release_gate_results(
+        gates,
+        run=True,
+        skip_gates=("Skip",),
+        skip_reason="host skipped intentionally",
+        runner=runner,
+    )
+
+    assert [result.status for result in results] == ["passed", "failed", "skipped"]
+    assert results[0].exit_code == 0
+    assert results[1].exit_code == 7
+    assert len(results[1].stderr_tail) <= generate_release_evidence.MAX_CAPTURE_CHARS
+    assert results[2].triage_step == "host skipped intentionally"
+
+
+def test_release_evidence_json_payload_contains_gate_and_host_owned_statuses() -> None:
+    gate_results = release_gate_results(
+        (ReleaseGate("Docs", "uv run mkdocs build --strict", "fix docs"),),
+        run=False,
+    )
+
+    payload = generate_release_evidence.release_evidence_payload(
+        manifests=(),
+        benchmark_artifacts=(),
+        artifacts=(),
+        gate_results=gate_results,
+        known_limitations=("No live smokes.",),
+    )
+
+    assert payload["validation_gates"][0]["status"] == "skipped"
+    assert payload["validation_gates"][0]["triage_step"].startswith("Run with")
+    assert payload["validation_summary"] == {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "host-owned": 0,
+    }
+    assert {item["status"] for item in payload["live_provider_evidence"]} == {"host-owned"}
+    assert payload["known_limitations"] == ["No live smokes."]
 
 
 def test_release_evidence_main_discovers_evidence_bundle_manifest(

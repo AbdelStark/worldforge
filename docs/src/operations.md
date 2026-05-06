@@ -552,6 +552,8 @@ uv lock --check
 uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
+uv run python scripts/check_docs_commands.py
+uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -568,21 +570,32 @@ uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-
 rm -f "$tmp_req"
 ```
 
-Generate the release evidence bundle after local gates and optional smokes finish:
+Generate the release-readiness evidence after local gates and optional smokes finish. The command
+writes both Markdown and JSON summaries by default; use `--run-gates` when the evidence run itself
+should execute the checkout-safe gates instead of recording them as skipped.
 
 ```bash
 uv run python scripts/generate_release_evidence.py \
+  --run-gates \
   --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
   --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
 ```
 
-The report defaults to `.worldforge/release-evidence/release-evidence.md`. It can be generated
-without credentials; providers without linked live-smoke manifests are recorded as `not configured`
-or `skipped` rather than being silently omitted, and the live-smoke registry records
-missing-runtime and missing-credential skips. Attach the report and linked artifacts when a release
-note or provider promotion claims live-provider coverage.
+The report defaults to `.worldforge/release-evidence/release-evidence.md` and the JSON summary
+defaults to `.worldforge/release-evidence/release-evidence.json`. Gate rows are explicit
+`passed`, `failed`, or `skipped`; each row includes the command, exit code when available, and first
+triage step. Optional live provider evidence is `host-owned` unless a prepared-host
+`run_manifest.json` is linked. Attach the Markdown report, JSON summary, and linked artifacts when a
+release note or provider promotion claims live-provider coverage.
+
+`uv run python scripts/check_core_performance.py` writes a checkout-safe JSON report for world
+persistence, benchmark fixture loading, provider diagnostics, evidence-bundle creation, and report
+rendering. Success signal: `passed` is true and each result row has a preserved artifact path when
+`--workspace-dir <path>` is supplied. First triage step: inspect the failing row's measured path and
+fix the regression before changing a budget. These budgets are local regression guards, not
+cross-machine or optional-runtime performance claims.
 
 When release or issue triage needs the underlying evaluation and benchmark artifacts, generate a
 separate evidence bundle first:

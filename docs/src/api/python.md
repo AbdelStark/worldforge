@@ -1,5 +1,8 @@
 # Python API
 
+For compatibility tiers, deprecation expectations, and artifact-schema migration rules, see
+[Public API Stability](../api-stability.md).
+
 ## Entry points
 
 ```python

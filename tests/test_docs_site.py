@@ -905,6 +905,209 @@ def test_roadmap_expansion_documents_three_streams_and_thirty_issues() -> None:
         assert expansion.count(section) >= 30
 
 
+def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    release_script = (ROOT / "scripts/generate_release_evidence.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "--run-gates",
+        ".worldforge/release-evidence/release-evidence.md",
+        ".worldforge/release-evidence/release-evidence.json",
+        "`passed`, `failed`, or `skipped`",
+        "first triage step",
+        "`host-owned`",
+    ):
+        assert signal in operations or signal in playbooks
+
+    for implementation_signal in (
+        "class ReleaseGateResult",
+        "release_evidence_payload",
+        "validation_summary",
+        "stdout_tail",
+        "stderr_tail",
+    ):
+        assert implementation_signal in release_script
+
+
+def test_public_api_stability_docs_cover_issue_180_contract() -> None:
+    policy = (ROOT / "docs/src/api-stability.md").read_text(encoding="utf-8")
+    python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
+    contributing = (ROOT / "docs/src/contributing.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for tier in ("Stable", "Provisional", "Experimental", "Internal"):
+        assert f"| {tier} |" in policy
+
+    for signal in (
+        "WorldForgeError",
+        "ProviderError",
+        "CLI command or flag",
+        "provider capability",
+        "artifact schema",
+        "schema version bump",
+        "changelog entry",
+        "earliest release where removal may happen",
+        "truthful capability advertising",
+    ):
+        assert signal in policy
+
+    assert "[Public API Stability](../api-stability.md)" in python_api
+    assert "[Public API Stability](./api-stability.md)" in contributing
+    assert "[Public API Stability](./api-stability.md)" in summary
+    assert "Public API Stability: api-stability.md" in mkdocs
+    assert "public API stability and deprecation policy" in changelog
+
+
+def test_redaction_corpus_docs_cover_issue_181_contract() -> None:
+    security = (ROOT / "docs/src/security.md").read_text(encoding="utf-8")
+    corpus = (ROOT / "tests/fixtures/redaction/provider_event_corpus.json").read_text(
+        encoding="utf-8"
+    )
+    redaction_tests = (ROOT / "tests/test_redaction_corpus.py").read_text(encoding="utf-8")
+
+    assert "tests/fixtures/redaction/provider_event_corpus.json" in security
+    for sink in (
+        "provider event sinks",
+        "run manifests",
+        "issue bundles",
+        "Rerun layers",
+        "metrics exporters",
+        "OpenTelemetry bridges",
+    ):
+        assert sink in security
+
+    for secret_shape in (
+        "X-Amz-Signature",
+        "Bearer wf-bearer-secret",
+        "Authorization",
+        "api_key",
+        "token=wf-request-secret",
+    ):
+        assert secret_shape in corpus
+
+    for covered_path in (
+        "JsonLoggerSink",
+        "RunJsonLogSink",
+        "provider_event_metric_labels",
+        "provider_event_span_attributes",
+        "OpenTelemetryProviderEventSink",
+        "RerunEventSink",
+        "build_run_manifest",
+        "validate_run_manifest",
+        "generate_issue_bundle",
+    ):
+        assert covered_path in redaction_tests
+
+
+def test_troubleshooting_matrix_docs_cover_issue_182_contract() -> None:
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+
+    assert "### 4a. Troubleshoot Error Families" in playbooks
+    assert (
+        "| Error family | Common symptom | Likely owner | First command | "
+        "Expected artifact or signal | First triage step |"
+    ) in playbooks
+
+    for error_family in (
+        "`WorldForgeError`",
+        "`WorldStateError`",
+        "`ProviderError`",
+        "`AssertionError` from `worldforge.testing`",
+    ):
+        assert error_family in playbooks
+
+    for command in (
+        "uv run worldforge doctor --registered-only",
+        "uv run worldforge world preflight --state-dir .worldforge/worlds",
+        "uv run worldforge provider info <provider>",
+        "uv run pytest tests/test_provider_contracts.py -q",
+        "uv run worldforge benchmark --preset mock-smoke",
+        "uv run mkdocs build --strict",
+        "worldforge runs bundle <run-id>",
+        "scripts/generate_evidence_bundle.py",
+    ):
+        assert command in playbooks
+
+    for signal in (
+        "safe_to_attach",
+        "run_manifest.json",
+        "budget status",
+        "private Security tab",
+        "do not replace helper checks with bare `assert`",
+    ):
+        assert signal in playbooks
+
+
+def test_docs_command_drift_checker_docs_cover_issue_183_contract() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    quality = (ROOT / "docs/src/quality.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    release_script = (ROOT / "scripts/generate_release_evidence.py").read_text(encoding="utf-8")
+    checker = (ROOT / "scripts/check_docs_commands.py").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for doc in (readme, agents, quality, operations, playbooks):
+        assert "uv run python scripts/check_docs_commands.py" in doc
+
+    assert "Docs command drift" in release_script
+    assert "documented-command drift checker" in changelog
+
+    for implementation_signal in (
+        "DEFAULT_DOCS",
+        "README.md",
+        "docs/src/cli.md",
+        "docs/src/examples.md",
+        "docs/src/operations.md",
+        "docs/src/playbooks.md",
+        "AGENTS.md",
+        "missing_entry_points",
+        "stale_commands",
+        "undocumented_worldforge_subcommands",
+    ):
+        assert implementation_signal in checker
+
+
+def test_core_performance_budget_docs_cover_issue_184_contract() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    quality = (ROOT / "docs/src/quality.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
+    release_script = (ROOT / "scripts/generate_release_evidence.py").read_text(encoding="utf-8")
+    checker = (ROOT / "scripts/check_core_performance.py").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for doc in (readme, agents, quality, operations, playbooks):
+        assert "uv run python scripts/check_core_performance.py" in doc
+
+    assert "Core performance budgets" in release_script
+    assert "checkout-safe core performance budget checker" in changelog
+
+    for doc in (quality, operations, playbooks, benchmarking):
+        assert "regression" in doc
+        assert "not" in doc
+        assert "performance claim" in doc
+
+    for implementation_signal in (
+        "DEFAULT_BUDGETS_MS",
+        "world_persistence",
+        "benchmark_fixture_loading",
+        "provider_catalog_diagnostics",
+        "evidence_bundle_creation",
+        "report_rendering",
+        "claim_boundary",
+        "--workspace-dir",
+        "--budget-file",
+    ):
+        assert implementation_signal in checker
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

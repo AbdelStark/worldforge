@@ -72,6 +72,8 @@ uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0
 uv run worldforge world remove-object <world-id> cube-1
 uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
+uv run worldforge generate "A cube rolling across a table" --provider mock --duration 1
+uv run worldforge transfer input.mp4 --provider mock --prompt "make it slower"
 ```
 
 Scene mutations append typed history entries. Position patches keep bounding boxes translated with
@@ -155,6 +157,9 @@ uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-
 Live GR00T and LeRobot policy smoke helpers:
 
 ```bash
+uv run worldforge-smoke-runway --help
+uv run worldforge-smoke-jepa-wms --help
+uv run worldforge-smoke-lerobot-leworldmodel --help
 uv run python scripts/smoke_gr00t_policy.py --help
 uv run python scripts/smoke_lerobot_policy.py --help
 ```

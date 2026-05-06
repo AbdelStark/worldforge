@@ -29,6 +29,7 @@
 - [Live Smoke Evidence Registry](./live-smoke-evidence.md)
 - [Claim-To-Evidence Map](./claim-evidence-map.md)
 - [Python API](./api/python.md)
+- [Public API Stability](./api-stability.md)
 - [Evaluation](./evaluation.md)
 - [Benchmarking](./benchmarking.md)
 - [Capability Fixture Corpus](./fixtures.md)

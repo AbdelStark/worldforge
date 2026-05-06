@@ -17,6 +17,7 @@ uv lock --check
 uv run worldforge doctor
 uv run worldforge examples
 uv run python scripts/generate_provider_docs.py --check
+uv run python scripts/check_docs_commands.py
 uv run mkdocs build --strict
 uv run pytest tests/test_cli_help_snapshots.py tests/test_provider_catalog_docs.py
 ```
@@ -158,7 +159,26 @@ If it fails:
 | provider is registered but unhealthy | optional dependency, endpoint, or credential is invalid | run provider-specific docs and health command |
 | provider lacks capability | capability flag is truthful and workflow picked the wrong provider | choose another provider or implement the capability end to end |
 
-### 4a. Map Health And Readiness During Incidents
+### 4a. Troubleshoot Error Families
+
+Use this matrix when an issue, run manifest, or operator log reports a public WorldForge exception.
+Do not catch these errors and continue with coerced state; each family points to a specific owner
+and first artifact.
+
+| Error family | Common symptom | Likely owner | First command | Expected artifact or signal | First triage step |
+| --- | --- | --- | --- | --- | --- |
+| `WorldForgeError` | invalid public input, unknown capability, unsupported output format, non-finite number, unsafe artifact reference | caller or contributor | `uv run worldforge doctor --registered-only` | JSON diagnostics with framework and provider configuration state | fix the caller input or add a regression test for the rejected public boundary |
+| `WorldStateError` | corrupted local world JSON, traversal-shaped world id, invalid history entry, incoherent object bounding box | host operator for local state; contributor if the CLI wrote it | `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge --format json` | `worldforge-state-preflight.json` with `status`, `safe_to_attach`, `error_count`, and recovery commands | export diagnostics, then quarantine invalid files only after reviewing the report |
+| `ProviderError` | missing credentials, missing optional dependency, malformed upstream response, unsupported provider capability, expired artifact URL | host runtime owner first; adapter maintainer if parser or docs are wrong | `uv run worldforge provider info <provider>` | redacted config summary, provider profile, capability flags, health, and typed provider details | attach a sanitized run manifest or issue bundle; never paste raw credentials or signed URLs |
+| `AssertionError` from `worldforge.testing` | provider conformance helper reports a contract failure | adapter contributor | `uv run pytest tests/test_provider_contracts.py -q` | explicit helper failure naming the missing capability behavior | fix the adapter or its fixtures; do not replace helper checks with bare `assert` |
+| non-zero benchmark budget exit | benchmark gate failed against a JSON budget | release or performance maintainer | `uv run worldforge benchmark --preset mock-smoke --run-workspace .worldforge --format json` | preserved run workspace with `run_manifest.json`, report JSON, and budget status | inspect the budget row and preserved inputs before changing thresholds |
+| MkDocs strict warning | bad link, nav drift, or generated docs mismatch | docs contributor | `uv run mkdocs build --strict` | strict build output naming the page or link | sync `mkdocs.yml`, `docs/src/SUMMARY.md`, and source page links |
+
+Public issues should attach `worldforge runs bundle <run-id>` or
+`scripts/generate_evidence_bundle.py` output when available. Security-sensitive failures still go
+through the private Security tab.
+
+### 4b. Map Health And Readiness During Incidents
 
 Use this when a service host, batch job, or operator dashboard needs to decide whether to send
 traffic to a provider-backed workflow. Keep process liveness separate from provider readiness.
@@ -176,7 +196,7 @@ The stdlib service reference uses the same model: `/healthz` is process-only liv
 decision of `accept` or `drain`. Alert routing, paging policy, retry orchestration outside a single
 provider call, and upstream SLA ownership remain host responsibilities.
 
-## 4b. Deploy Reference Hosts
+## 4c. Deploy Reference Hosts
 
 Use this before handing the stdlib service host, batch evaluation host, or robotics operator host to
 another host process owner.
@@ -199,7 +219,7 @@ prepared-host, credentialed, GPU-bound, and robotics-lab paths. Deployment, auth
 durable storage, controller integration, alerting, uptime, and safety certification stay
 host-owned.
 
-## 4c. Rehearse Operator Failure Drills
+## 4d. Rehearse Operator Failure Drills
 
 Use this before relying on an incident runbook. The drills are deterministic and checkout-safe; each
 one writes a preserved run manifest under a temporary or documented workspace and records the
@@ -735,6 +755,8 @@ uv lock --check
 uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
+uv run python scripts/check_docs_commands.py
+uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -747,6 +769,21 @@ files, the `py.typed` marker, capability protocols, observable capability wrappe
 scripts; the sdist must contain docs, tests, examples, scripts, and release metadata needed to
 rebuild and audit the source package.
 
+Run the core performance budget gate with a preserved workspace before claiming release
+readiness:
+
+```bash
+uv run python scripts/check_core_performance.py \
+  --workspace-dir .worldforge/core-performance \
+  --output .worldforge/core-performance/core-performance.json
+```
+
+Success signal: `core-performance.json` has `passed: true` and result rows for world persistence,
+benchmark fixture loading, provider catalog diagnostics, evidence-bundle creation, and report
+rendering. First triage step: inspect the failing row's artifact path and rerun the single changed
+code path before loosening a budget. The report is a local regression guard, not a public
+performance claim.
+
 Then run the locked dependency audit:
 
 ```bash
@@ -756,13 +793,17 @@ uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-
 rm -f "$tmp_req"
 ```
 
-Finally generate the release evidence bundle:
+Finally generate the release-readiness evidence. This command writes
+`.worldforge/release-evidence/release-evidence.md` and
+`.worldforge/release-evidence/release-evidence.json`; add `--run-gates` when the evidence run
+should execute the checkout-safe gates itself.
 
 ```bash
 uv run python scripts/generate_evidence_bundle.py \
   --workspace-dir .worldforge \
   --output .worldforge/evidence-bundles/release-candidate
 uv run python scripts/generate_release_evidence.py \
+  --run-gates \
   --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
   --artifact .worldforge/evidence-bundles/release-candidate/evidence_manifest.json \
@@ -770,18 +811,20 @@ uv run python scripts/generate_release_evidence.py \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
 ```
 
-The default report path is `.worldforge/release-evidence/release-evidence.md`. The generator does
-not require provider credentials; absent live smokes are listed explicitly as `not configured` or
-`skipped`, the registry records missing-runtime and missing-credential skips, and
-passed/failed/skipped live runs link back to their preserved `run_manifest.json` files and artifact
-summaries. Use `--known-limitation` for release-scoped caveats that should travel with the bundle.
+The generator does not require provider credentials; optional live smokes without linked manifests
+are listed explicitly as `host-owned`, the registry records missing-runtime and missing-credential
+skips, and passed/failed/skipped live runs link back to their preserved `run_manifest.json` files
+and artifact summaries. Gate rows are explicit `passed`, `failed`, or `skipped` and include the
+first triage step. Use `--known-limitation` for release-scoped caveats that should travel with the
+bundle.
 
 Success signal:
 
 - validation passes from a clean checkout.
 - generated provider docs have no drift and the Pages site builds in strict mode.
 - release evidence links validation expectations, optional live-smoke manifests, benchmark
-  artifacts, generated evidence bundles, distribution artifacts, and known limitations.
+  artifacts, generated evidence bundles, distribution artifacts, JSON summaries, first triage
+  steps, and known limitations.
 - README, docs, changelog, and `AGENTS.md` reflect public behavior.
 - no optional runtime dependency, checkpoint, credential, generated artifact, or `.env` file is
   committed accidentally.
