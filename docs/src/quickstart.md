@@ -123,9 +123,12 @@ Packaged checkout-safe demos:
 uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
 uv run --extra rerun worldforge-demo-rerun
+uv run python scripts/demo_showcases.py run first-run --workspace-dir .worldforge/demo-showcases
 ```
 
-Both demos use real WorldForge provider surfaces with injected deterministic runtimes. They verify
-the adapter, planning, execution, persistence, and reload path without installing optional model
-runtimes or downloading checkpoints. The Rerun demo also writes a local `.rrd` artifact with event,
-world, plan, and benchmark layers.
+These demos use real WorldForge provider surfaces with injected deterministic runtimes where
+applicable. They verify the adapter, planning, execution, persistence, and reload path without
+installing optional model runtimes or downloading checkpoints. The Rerun demo also writes a local
+`.rrd` artifact with event, world, plan, and benchmark layers. The demo showcase runner preserves
+first-run, diagnostics, replay, dry-run, host, gallery, failure-lab, and cookbook artifacts for
+issue and release evidence.

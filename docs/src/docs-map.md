@@ -11,7 +11,7 @@ while routing active work to the pages that own executable contracts.
 | Provider author | [Provider Authoring Guide](./provider-authoring-guide.md) | [Providers](./providers/README.md), [Capability Fixture Corpus](./fixtures.md), [Public API Stability](./api-stability.md) | provider capability, profile, fixtures, docs, and tests agree |
 | Operator | [Operations](./operations.md) | [User And Operator Playbooks](./playbooks.md), [Security](./security.md), [Artifact Integrity](./artifact-integrity.md) | diagnostics, run manifests, safe bundles, and recovery commands are available |
 | Evaluator or research user | [Evaluation](./evaluation.md) | [Benchmarking](./benchmarking.md), [Claim-To-Evidence Map](./claim-evidence-map.md), [Live Smoke Evidence Registry](./live-smoke-evidence.md) | claims point to preserved reports and clear claim boundaries |
-| Demo or showcase user | [Examples And CLI Commands](./examples.md) | [Robotics Replay Showcase](./robotics-showcase.md), [TheWorldHarness](./theworldharness.md), [Rerun Integration](./rerun.md) | checkout-safe demos or prepared-host showcase commands produce artifacts |
+| Demo or showcase user | [Examples And CLI Commands](./examples.md) | [Demo Showcase Workflows](./demo-showcases.md), [Use Case Cookbook](./use-case-cookbook.md), [Robotics Replay Showcase](./robotics-showcase.md), [TheWorldHarness](./theworldharness.md), [Rerun Integration](./rerun.md) | checkout-safe demos or prepared-host showcase commands produce artifacts |
 | Release maintainer | [Engineering Quality](./quality.md) | [Artifact Integrity](./artifact-integrity.md), [Operations](./operations.md), [Changelog](./changelog.md) | local gates, package checks, audit, evidence JSON, and release notes line up |
 
 ## Roadmap History

@@ -7,6 +7,8 @@
   - [CLI Reference](./cli.md)
   - [Examples And CLI Commands](./examples.md)
 - Showcases
+  - [Demo Showcase Workflows](./demo-showcases.md)
+  - [Use Case Cookbook](./use-case-cookbook.md)
   - [Robotics Replay Showcase](./robotics-showcase.md)
   - [Robotics Showcase Deep Dive](./robotics-showcase-deep-dive.md)
   - [TheWorldHarness](./theworldharness.md)

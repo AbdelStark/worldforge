@@ -145,12 +145,17 @@ Checkout-safe demos use injected deterministic runtimes:
 uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
 uv run --extra rerun worldforge-demo-rerun
+uv run python scripts/demo_showcases.py list
+uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases
 ```
 
 They validate WorldForge's provider adapters, planning, execution, persistence, reload, and event
 paths without installing optional model runtimes or downloading checkpoints. The Rerun demo
 requires the `rerun` extra and records events, worlds, plans, 3D object boxes, and benchmark
-metrics to a `.rrd` artifact.
+metrics to a `.rrd` artifact. The demo showcase runner preserves ten issue-backed workflows with
+`run_manifest.json`, JSON summaries, Markdown summaries, safe issue bundles, and first triage
+steps. See [Demo Showcase Workflows](./demo-showcases.md) and
+[Use Case Cookbook](./use-case-cookbook.md).
 
 ## Optional Runtime Smokes
 

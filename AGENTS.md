@@ -55,6 +55,9 @@ evaluation harnesses, and testable prototypes.
   through `uv run worldforge-demo-lerobot`.
 - `src/worldforge/demos/rerun_showcase.py`: packaged Rerun observability and artifact showcase
   exposed through `uv run --extra rerun worldforge-demo-rerun`.
+- `scripts/demo_showcases.py`: checkout-safe demo evidence runner for the first-run, diagnostics,
+  robotics replay, remote dry-run, adapter authoring, batch eval, service host, Rerun gallery,
+  failure lab, and cookbook workflows.
 - `src/worldforge/harness/`: optional TheWorldHarness TUI package. Keep flow metadata and runners
   independent from Textual; `tui.py` is the only Textual-dependent module. Current flows cover
   LeWorldModel score planning, LeRobot policy-plus-score planning, and provider diagnostics plus
@@ -139,6 +142,7 @@ uv run --extra harness worldforge-harness
 uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
 uv run --extra rerun worldforge-demo-rerun
+uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases
 scripts/robotics-showcase
 uvx --from rerun-sdk rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 scripts/lewm-lerobot-real --help
@@ -174,6 +178,8 @@ rm -f "$tmp_req"
 - `docs/src/playbooks.md`: checkout validation, provider capability selection, adapter promotion,
   provider diagnostics, local persistence recovery, remote artifacts, optional runtime smokes,
   benchmarks, incident triage, and release gates.
+- `docs/src/demo-showcases.md` and `docs/src/use-case-cookbook.md`: checkout-safe showcase
+  workflow matrix, artifact contract, first triage steps, and task-oriented demo recipes.
 - `docs/src/operations.md`: configuration, operational modes, persistence, observability, failure
   modes, recovery, release checklist, and provider hardening criteria.
 - `docs/src/provider-authoring-guide.md`: provider taxonomy, capability, validation,
