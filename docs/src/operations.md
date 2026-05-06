@@ -24,6 +24,14 @@ uv run worldforge doctor --registered-only
 uv run worldforge provider health
 ```
 
+The [Reference Host Deployment Recipes](./examples.md#reference-host-deployment-recipes) cover the
+stdlib service host, batch evaluation host, and robotics operator host with env templates, process
+commands, readiness checks, smoke commands, logging commands, evidence export commands, expected
+success signals, first triage or rollback steps, and owned boundaries. The recipes distinguish
+checkout-safe, prepared-host, credentialed, GPU-bound, and robotics-lab paths without moving
+deployment, auth, queueing, durable storage, controller integration, alerting, uptime, or safety
+certification into WorldForge.
+
 ## Health And Readiness
 
 Host applications should expose liveness separately from readiness. Liveness answers whether the

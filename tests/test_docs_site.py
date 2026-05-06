@@ -583,6 +583,77 @@ def test_harness_run_history_docs_cover_issue_149_contract() -> None:
     assert "- [x] Rerun commands are generated from sanitized manifests" in continuation
 
 
+def test_reference_host_deployment_recipes_cover_issue_151_contract() -> None:
+    examples = (ROOT / "docs/src/examples.md").read_text(encoding="utf-8")
+    examples_readme = (ROOT / "examples/README.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for recipe in (
+        "Stdlib Service Host Recipe",
+        "Batch Eval Host Recipe",
+        "Robotics Operator Host Recipe",
+    ):
+        assert recipe in examples
+
+    for signal in (
+        "Env template:",
+        "Process command:",
+        "Readiness command:",
+        "Smoke command:",
+        "Logging command:",
+        "Evidence export command:",
+        "Expected success signal:",
+        "First failure triage step:",
+        "First rollback step:",
+        "Owned boundary:",
+    ):
+        assert signal in examples
+
+    for path in (
+        "checkout-safe",
+        "prepared-host",
+        "credentialed",
+        "GPU-bound",
+        "robotics-lab",
+    ):
+        assert path in examples
+        assert path in examples_readme or path in operations or path in playbooks
+
+    for command in (
+        "uv run python examples/hosts/service/app.py",
+        "curl -fsS http://127.0.0.1:8080/readyz",
+        "uv run python examples/hosts/batch-eval/app.py",
+        "uv run worldforge runs bundle <run-id>",
+        "uv run python examples/hosts/robotics-operator/app.py",
+        "scripts/robotics-showcase --health-only",
+    ):
+        assert command in examples or command in playbooks
+
+    for boundary in (
+        "deployment, authentication, queueing",
+        "durable storage",
+        "alerting",
+        "uptime",
+        "safety certification",
+        "does not certify robot",
+    ):
+        assert boundary in examples or boundary in operations or boundary in playbooks
+
+    assert "No new provider environment variables are introduced" in examples
+    assert "`.env.example` stays" in examples
+    assert "unchanged" in examples
+    assert "reference host deployment recipes" in changelog
+    assert "- [x] Each recipe includes command, expected success signal" in continuation
+    assert "- [x] Recipes distinguish checkout-safe, prepared-host, credentialed" in continuation
+    assert "- [x] `.env.example` changes are tracked only when new provider variables" in (
+        continuation
+    )
+    assert "- [x] Docs do not imply WorldForge owns uptime" in continuation
+
+
 def test_benchmark_budget_calibration_docs_cover_issue_146_contract() -> None:
     benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")

@@ -82,6 +82,12 @@ writes selected action chunks, score rationale, provider events, and a replay ar
 `.worldforge/robotics-operator/runs/<run-id>/`. Controller execution is only an application hook:
 WorldForge does not certify robot safety, controller semantics, interlocks, or deployment readiness.
 
+Deployment recipes for the service host, batch evaluation host, and robotics operator host live in
+the public examples documentation. Each recipe includes an env template, process command, readiness
+command, smoke command, logging command, evidence export command, expected success signal, first
+triage step, and owned boundary for checkout-safe, prepared-host, credentialed, GPU-bound, and
+robotics-lab paths.
+
 ## Optional Runtime Smoke
 
 | Example | Surface | Command |

@@ -827,12 +827,12 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Each recipe includes command, expected success signal, first failure triage step, and owned
+- [x] Each recipe includes command, expected success signal, first failure triage step, and owned
       boundary.
-- [ ] Recipes distinguish checkout-safe, prepared-host, credentialed, GPU-bound, and robotics-lab
+- [x] Recipes distinguish checkout-safe, prepared-host, credentialed, GPU-bound, and robotics-lab
       paths.
-- [ ] `.env.example` changes are tracked only when new provider variables are introduced.
-- [ ] Docs do not imply WorldForge owns uptime, safety certification, or durable storage.
+- [x] `.env.example` changes are tracked only when new provider variables are introduced.
+- [x] Docs do not imply WorldForge owns uptime, safety certification, or durable storage.
 
 Validation:
 

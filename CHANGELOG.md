@@ -9,6 +9,10 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added reference host deployment recipes for the stdlib service, batch evaluation, and robotics
+  operator hosts. The recipes cover env templates, process/readiness/smoke/logging/evidence
+  commands, expected success signals, first triage and rollback steps, and the checkout-safe,
+  prepared-host, credentialed, GPU-bound, and robotics-lab ownership boundaries.
 - Added issue-ready bundles for preserved run workspaces. `worldforge runs bundle <run-id>` now
   exports one run to `evidence_manifest.json`, `summary.md`, and `issue.md`, prints a short issue
   template, preserves SHA-256 digests and `safe_to_attach` flags, and marks unsafe or host-local
