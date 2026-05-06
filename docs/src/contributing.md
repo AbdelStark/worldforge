@@ -57,6 +57,40 @@ report = assert_provider_contract(
 )
 ```
 
+## Contributor Triage And Labels
+
+Use labels to make an issue's roadmap stream and evidence contract clear before work starts.
+
+| Axis | Labels | Use when |
+| --- | --- | --- |
+| Roadmap stream | `stream: provider-evidence` | provider selection, runtime contracts, provider promotion, runtime manifests, upstream validation |
+| Roadmap stream | `stream: evidence-integrity` | evals, benchmarks, budgets, preserved run evidence, release evidence, provenance, public claims |
+| Roadmap stream | `stream: ops-authoring` | operator workflows, TheWorldHarness, adapter authoring loops, reference hosts, persistence, runbooks |
+| Capability | `predict`, `generate`, `reason`, `embed`, `transfer`, `score`, `policy` | the issue changes or validates that public capability surface |
+| Severity | `severity: blocking`, `severity: quality`, `type: hardening` | release blockers, quality regressions, validation/redaction/recovery hardening |
+| Release scope | `release`, `release: provider-hardening-rc` | release process or named release-candidate scope |
+
+Provider runtime issues should use the provider adapter template, `stream: provider-evidence`,
+`provider`, the claimed capability labels, and any relevant `optional-dependency`, `robotics`,
+`security`, or `research` labels. New runtime families or unclear upstream contracts need a
+selection record before implementation. Provider promotion work must cite the provider authoring
+guide promotion gate, runtime manifest, fixtures, docs, and live-smoke or explicit blocker
+evidence.
+
+Evaluation, benchmark, artifact, budget, report, or claim issues should use the eval/benchmark
+template with `stream: evidence-integrity`. Release-candidate or public-claim issues need preserved
+run evidence, an evidence bundle, or release evidence before closure.
+
+Operator workflow issues should use `stream: ops-authoring` plus `operations`, `harness`,
+`developer-experience`, `persistence`, `reliability`, or `examples` as appropriate. The issue should
+name the command to run, expected success signal, first triage step, and recovery command.
+
+Architecture, persistence-boundary, provider-selection, or runtime-ownership changes need a design
+record or selection record before broad implementation.
+
+Security-sensitive reports still route through the private Security tab. Do not open public issues
+containing vulnerabilities, credentials, signed URLs, private endpoints, or host-local artifacts.
+
 Before publishing a branch:
 
 - run the full release gate from [User And Operator Playbooks](./playbooks.md).

@@ -106,6 +106,55 @@ Public behavior changes need docs in the same branch. Use this routing:
 - `CHANGELOG.md` for user-visible changes.
 - `AGENTS.md` for repo commands, constraints, gotchas, and agent-facing context.
 
+## Contributor Triage And Labels
+
+Use labels to make the roadmap stream, capability surface, severity, and release scope visible
+before implementation starts.
+
+Roadmap stream labels:
+
+- `stream: provider-evidence`: provider selection, adapter runtime contracts, provider promotion,
+  runtime manifests, provider docs, optional runtime smokes, and upstream research validation.
+- `stream: evidence-integrity`: evaluation suites, benchmarks, budgets, reports, preserved run
+  evidence, release evidence, artifact bundles, provenance, and claim-supporting docs.
+- `stream: ops-authoring`: operator workflows, TheWorldHarness, adapter authoring loops,
+  reference hosts, local persistence, runbooks, drills, and contributor experience.
+
+Capability labels are `predict`, `generate`, `reason`, `embed`, `transfer`, `score`, and `policy`.
+Use them only when the issue touches that public capability surface. Common domain labels include
+`provider`, `research`, `artifacts`, `evaluation`, `benchmark`, `harness`, `operations`,
+`observability`, `persistence`, `security`, `examples`, `developer-experience`, `robotics`, and
+`optional-dependency`.
+
+Severity and release-scope labels:
+
+- `severity: blocking`: blocks release-candidate readiness, a public contract, or operator safety.
+- `severity: quality`: degrades quality or evidence but does not block all development.
+- `type: hardening`: reliability, validation, redaction, recovery, or safety hardening.
+- `release` and `release: provider-hardening-rc`: release process or named release-candidate scope.
+
+Triage rules:
+
+- Provider runtime or promotion work uses the provider template, `stream: provider-evidence`,
+  `provider`, the capability labels it claims, and any relevant `optional-dependency`, `robotics`,
+  `security`, or `research` labels. New runtime families or unclear upstream contracts need a
+  selection record before implementation. Promotion work must cite the provider authoring guide
+  promotion gate, runtime manifest, fixtures, provider docs, and live-smoke or explicit blocker
+  evidence.
+- Evaluation, benchmark, claim, report, budget, or artifact work uses the eval/benchmark template,
+  `stream: evidence-integrity`, and the relevant `evaluation`, `benchmark`, `artifacts`, or
+  `observability` labels. Public claims and release-candidate gates need preserved run evidence or
+  release evidence before the issue can be closed.
+- Operator workflow, local persistence, run workspace, harness, drill, reference host, and adapter
+  authoring workflow work uses `stream: ops-authoring` plus `operations`, `harness`,
+  `developer-experience`, `persistence`, `reliability`, or `examples` as appropriate. These issues
+  should name the command to run, expected success signal, first triage step, and recovery command.
+- Architecture, persistence-boundary, provider-selection, or runtime-ownership changes need a
+  design record or selection record before broad implementation.
+- Security-sensitive reports still route through the private Security tab. Do not open public
+  issues containing vulnerabilities, credentials, signed URLs, private endpoints, or host-local
+  artifacts.
+
 ## Pull Request Checklist
 
 - lint, docs check, tests, coverage, package check, and build pass.

@@ -1,8 +1,14 @@
 name: Evaluation or benchmark issue
 description: Report a problem with eval suites, benchmark inputs, budgets, or reports.
 title: "[Eval/Benchmark]: "
-labels: ["evaluation", "benchmark"]
+labels: ["evaluation", "benchmark", "stream: evidence-integrity"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for evaluation, benchmark, report, budget, artifact, provenance, or public
+        claim evidence work. Release-candidate or public-claim issues need preserved run evidence,
+        an evidence bundle, or release evidence before closure.
   - type: textarea
     id: command
     attributes:
@@ -15,7 +21,7 @@ body:
     id: artifact
     attributes:
       label: Artifact
-      description: JSON, CSV, Markdown, input file, or budget file involved.
+      description: JSON, CSV, Markdown, input file, budget file, run manifest, or evidence bundle involved.
       render: json
   - type: textarea
     id: claim
@@ -24,6 +30,14 @@ body:
       description: What number, score, gate, or report behavior looks wrong?
     validations:
       required: true
+  - type: checkboxes
+    id: evidence_requirements
+    attributes:
+      label: Evidence requirements
+      options:
+        - label: Preserved run manifest, report artifact, evidence bundle, or release evidence is linked when this affects a public claim or release gate.
+        - label: Provider, capability, suite or preset, budget file, and input fixture are named when relevant.
+        - label: Unsafe host-local artifacts, credentials, signed URLs, and private paths are excluded or redacted.
   - type: textarea
     id: environment
     attributes:
