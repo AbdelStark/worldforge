@@ -18,6 +18,16 @@ releases may still include breaking changes when the public API needs to tighten
   surface: `discover_entry_point_providers`, `EntryPointDiscoveryReport`, `EntryPointSkip`,
   `ENTRY_POINT_GROUP`, and `ENTRY_POINT_DISABLE_ENV_VAR`. Documentation lives at
   `docs/src/external-providers.md`.
+- Added capability negotiation reports through the new `worldforge negotiate` CLI subcommand
+  and `worldforge.capability_negotiation` Python surface. Reports state — before a workflow
+  runs — whether the registered and known providers can satisfy a capability set such as
+  `generate-only`, `score-only`, `policy-plus-score`, `transfer-only`, or one of the
+  evaluation suites' required-capability shapes. For each capability slot the report lists
+  every candidate provider's registration, configuration, health, capability compatibility,
+  readiness state (`ready`, `missing-config`, `missing-dependency`, `unsupported`,
+  `not-registered`), and a typed reason; blocked workflows surface focused recommended
+  actions. Output is JSON + Markdown; the CLI exits non-zero when at least one workflow is
+  blocked, which makes it suitable as a CI guard.
 - Upgraded the release evidence generator into a release-readiness command that writes Markdown and
   JSON summaries, can execute checkout-safe gates with `--run-gates`, records skipped and failed
   gate triage steps, and marks optional live-provider evidence as host-owned unless a prepared-host

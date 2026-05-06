@@ -49,11 +49,14 @@ uv run worldforge provider list
 uv run worldforge provider info mock
 uv run worldforge provider docs
 uv run worldforge provider health mock
+uv run worldforge negotiate --list
+uv run worldforge negotiate --workflow policy-plus-score
 ```
 
 Use `doctor` first when a provider is missing. Optional providers such as LeWorldModel, LeRobot,
 GR00T, Cosmos, and Runway only register when their host-owned environment variables and runtimes are
-available.
+available. `worldforge negotiate` answers the higher-level question "can my providers satisfy this
+workflow before I run it?" — see [Capability Negotiation](./capability-negotiation.md).
 
 ## Local Worlds
 

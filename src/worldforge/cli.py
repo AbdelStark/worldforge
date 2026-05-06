@@ -979,6 +979,37 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Filter providers by capability name.",
     )
 
+    negotiate = subparsers.add_parser(
+        "negotiate",
+        help="Report whether providers can satisfy a capability workflow before it runs.",
+    )
+    negotiate.add_argument(
+        "--workflow",
+        dest="workflow",
+        default=None,
+        help=(
+            "Workflow name to negotiate. Repeat with --workflow each time, "
+            "or omit to cover every workflow."
+        ),
+    )
+    negotiate.add_argument(
+        "--list",
+        dest="list_workflows",
+        action="store_true",
+        help="List known workflows and exit.",
+    )
+    negotiate.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="Output format.",
+    )
+    negotiate.add_argument(
+        "--state-dir",
+        default=".worldforge/worlds",
+        help="World state directory.",
+    )
+
     generate = subparsers.add_parser("generate", help="Generate a clip with a provider.")
     generate.add_argument("prompt", help="Generation prompt.")
     generate.add_argument("--provider", default="mock", help="Provider name.")
@@ -1678,6 +1709,41 @@ def _cmd_doctor(args: argparse.Namespace, forge: WorldForge) -> int:
     return 0
 
 
+def _cmd_negotiate(args: argparse.Namespace, forge: WorldForge) -> int:
+    from worldforge.capability_negotiation import (
+        get_workflow,
+        list_workflows,
+    )
+    from worldforge.capability_negotiation import (
+        negotiate as run_negotiation,
+    )
+
+    if args.list_workflows:
+        workflows = list_workflows()
+        if args.format == "json":
+            _print_json({"workflows": [workflow.to_dict() for workflow in workflows]})
+        else:
+            lines = ["# Known Workflows", ""]
+            for workflow in workflows:
+                lines.extend(
+                    [
+                        f"- **{workflow.name}** — {workflow.title}",
+                        f"  required: {', '.join(workflow.required_capabilities)}",
+                        f"  {workflow.description}",
+                    ]
+                )
+            print("\n".join(lines))
+        return 0
+
+    workflows = (get_workflow(args.workflow),) if args.workflow else None
+    report = run_negotiation(workflows=workflows, forge=forge)
+    if args.format == "json":
+        _print_json(report.to_dict())
+    else:
+        print(report.to_markdown())
+    return 0 if all(negotiation.ready for negotiation in report.workflows) else 1
+
+
 def _cmd_generate(args: argparse.Namespace, forge: WorldForge) -> int:
     options = _build_generation_options(args)
     clip = forge.generate(
@@ -2110,6 +2176,7 @@ _FORGE_COMMANDS: dict[str, _ForgeHandler] = {
     "provider": _cmd_provider,
     "world": _cmd_world,
     "doctor": _cmd_doctor,
+    "negotiate": _cmd_negotiate,
     "generate": _cmd_generate,
     "transfer": _cmd_transfer,
     "predict": _cmd_predict,
