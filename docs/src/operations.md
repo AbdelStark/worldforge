@@ -32,6 +32,12 @@ checkout-safe, prepared-host, credentialed, GPU-bound, and robotics-lab paths wi
 deployment, auth, queueing, durable storage, controller integration, alerting, uptime, or safety
 certification into WorldForge.
 
+Operator failure drills are available from `worldforge drills`. They rehearse missing credentials,
+missing optional dependencies, malformed provider output, budget violations, corrupted local world
+state, expired artifacts, and unsafe event metadata with mock providers or fixtures. Drill runs
+write manifests under `.worldforge/drills/runs/<run-id>/`, can export an issue bundle with
+`--bundle`, and keep generated state inside the requested temporary or documented workspace.
+
 ## Health And Readiness
 
 Host applications should expose liveness separately from readiness. Liveness answers whether the

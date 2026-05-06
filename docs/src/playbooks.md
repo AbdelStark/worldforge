@@ -199,6 +199,38 @@ prepared-host, credentialed, GPU-bound, and robotics-lab paths. Deployment, auth
 durable storage, controller integration, alerting, uptime, and safety certification stay
 host-owned.
 
+## 4c. Rehearse Operator Failure Drills
+
+Use this before relying on an incident runbook. The drills are deterministic and checkout-safe; each
+one writes a preserved run manifest under a temporary or documented workspace and records the
+expected failure plus recovery command.
+
+```bash
+uv run worldforge drills list
+uv run worldforge drills run missing-credentials --workspace-dir .worldforge/drills
+uv run worldforge drills run unsafe-event-metadata --workspace-dir .worldforge/drills --bundle
+uv run worldforge drills run all --workspace-dir .worldforge/drills
+```
+
+| Drill | Expected failure | Recovery command |
+| --- | --- | --- |
+| `missing-credentials` | required provider credentials are absent in a value-free config summary | load the required env var, then run `uv run worldforge provider health runway` |
+| `missing-optional-dependency` | optional runtime import is missing | install the provider optional runtime on a prepared host, then rerun its smoke command |
+| `malformed-provider-output` | the Runway task parser rejects a fixture without a task id | attach the sanitized fixture and fix the parser or upstream contract |
+| `budget-violation` | a mock benchmark violates an intentionally impossible latency budget | inspect the run bundle, then rerun `uv run worldforge benchmark --provider mock --operation predict --iterations 1` |
+| `corrupted-world-state` | a malformed local world JSON file raises `WorldStateError` | export diagnostics, quarantine the bad file, then recreate or import a valid world |
+| `expired-artifact` | an artifact descriptor has an expiry timestamp in the past | rerun the provider workflow to refresh the artifact, then export a new issue bundle |
+| `unsafe-event-metadata` | non-JSON-native event metadata is rejected and secret-shaped fields are redacted | remove object or tuple metadata, keep JSON-native fields only, then rerun the workflow |
+
+Success signal: the drill command exits `0`, prints `status: passed`, and writes a run manifest
+whose status is `failed` because the rehearsed incident was observed. With `--bundle`, the command
+also writes `.worldforge/drills/issue-bundles/<run-id>/issue.md`.
+
+If it fails unexpectedly: inspect `<workspace>/runs/<run-id>/results/drill.json` first, then run
+`uv run worldforge runs bundle <run-id> --workspace-dir <workspace>` before changing fixtures.
+Drills must not mutate user worlds; corrupted-state input files are written under the drill run's
+workspace.
+
 ## 5. Operate Local JSON Persistence
 
 Use this for local jobs, demos, tests, and single-writer workflows.

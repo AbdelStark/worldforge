@@ -863,10 +863,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Drill commands run in a clean checkout with mock or fixtures.
-- [ ] Each drill has a documented expected failure and recovery command.
-- [ ] Unsafe metadata drills prove redaction gates fail closed.
-- [ ] Drills do not leave persistent state outside a temporary or documented workspace.
+- [x] Drill commands run in a clean checkout with mock or fixtures.
+- [x] Each drill has a documented expected failure and recovery command.
+- [x] Unsafe metadata drills prove redaction gates fail closed.
+- [x] Drills do not leave persistent state outside a temporary or documented workspace.
 
 Validation:
 
