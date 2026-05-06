@@ -78,6 +78,27 @@ options:
   --format {json,markdown}
                         Output format for history entries.
 """,
+    ("world", "preflight", "--help"): """\
+usage: worldforge world preflight [-h] [--state-dir STATE_DIR]
+                                  [--workspace-dir WORKSPACE_DIR]
+                                  [--world-id WORLD_IDS]
+                                  [--retention-keep RETENTION_KEEP]
+                                  [--format {json,markdown}]
+
+options:
+  -h, --help            show this help message and exit
+  --state-dir STATE_DIR
+                        World state directory.
+  --workspace-dir WORKSPACE_DIR
+                        WorldForge workspace directory containing runs/.
+  --world-id WORLD_IDS  World identifier to validate without loading. Can be
+                        repeated.
+  --retention-keep RETENTION_KEEP
+                        Number of newest valid run workspaces to keep before
+                        warning.
+  --format {json,markdown}
+                        Output format for the preflight report.
+""",
     ("harness", "--help"): """\
 usage: worldforge harness [-h]
                           [--flow {leworldmodel,lerobot,diagnostics,workbench,eval,benchmark,runs}]
@@ -212,6 +233,7 @@ WORLD_HELP_COMMANDS: tuple[tuple[str, str], ...] = (
     ("export", "Export a persisted world as JSON."),
     ("import", "Import and save exported world JSON."),
     ("fork", "Fork a world from a history entry."),
+    ("preflight", "Check local world JSON state and run workspaces without"),
 )
 
 
@@ -251,6 +273,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "worldforge examples",
         "worldforge world create lab --provider mock",
         "worldforge world history <world-id>",
+        "worldforge world preflight",
         "worldforge provider list",
         "worldforge provider docs",
         "worldforge provider info mock",

@@ -49,6 +49,7 @@ uv run worldforge world list
 uv run worldforge world show <world-id>
 uv run worldforge world objects <world-id>
 uv run worldforge world history <world-id>
+uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name imported-lab
 uv run worldforge world fork <world-id> --name forked-lab
@@ -57,6 +58,11 @@ uv run worldforge world delete <world-id>
 
 World IDs are local JSON file stems. Values with path separators or traversal-shaped input are
 rejected before filesystem access.
+
+`world preflight` is read-only. It checks the world state directory, requested `--world-id` values,
+corrupted world JSON, invalid history entries, object bounding-box coherence, preserved run
+manifests, stale run directories, unsafe artifact paths, and run-retention pressure. JSON output is
+safe to attach by default; the command exits non-zero when it finds error-severity state.
 
 ## Scene Mutations And Prediction
 

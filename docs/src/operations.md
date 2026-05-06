@@ -129,6 +129,7 @@ uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --
 uv run worldforge world list
 uv run worldforge world objects <world-id>
 uv run worldforge world history <world-id>
+uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name lab-copy
 uv run worldforge world fork <world-id> --history-index 0 --name lab-start
@@ -164,9 +165,33 @@ Supported persistence invariants:
   summaries, malformed serialized actions, and invalid historical snapshot states.
 - `save_world(...)` validates the serialized world before writing and replaces the destination file
   atomically through a temporary file in the same directory.
+- `world preflight` is read-only and does not create, rewrite, delete, or silently coerce state. It
+  reports missing state directories, unsafe requested IDs, corrupted worlds, invalid histories,
+  incoherent object bounding boxes, stale run workspaces, unsafe run artifact paths, and retention
+  pressure.
 - README and operations docs state that multi-writer persistence is host-owned.
 - Any future built-in persistence backend must be introduced as an explicit adapter with its own
   locking, migration, and recovery documentation.
+
+Local state preflight is the first operator command before quarantining user data:
+
+```bash
+uv run worldforge world preflight \
+  --state-dir .worldforge/worlds \
+  --workspace-dir .worldforge \
+  --world-id <world-id> \
+  --retention-keep 20 \
+  --format json > worldforge-state-preflight.json
+```
+
+Success signal: `status` is `passed`, `safe_to_attach` is `true`, and `error_count` is `0`. Warning
+status is allowed for absent local state or retention pressure; failed status means at least one
+world file, requested ID, run manifest, or artifact reference needs operator action.
+
+Recovery commands in the report export diagnostics before moving invalid files into
+`.worldforge/quarantine/`. They do not run `rm` or silently delete user data. For retention pressure,
+the first command is `uv run worldforge runs cleanup --workspace-dir .worldforge --keep 20 --dry-run`;
+remove `--dry-run` only after the preserved evidence is no longer needed.
 
 ## Run Workspaces
 
