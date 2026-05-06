@@ -31,6 +31,7 @@
 - Authoring And API
   - [Provider Authoring Guide](./provider-authoring-guide.md)
   - [External Provider Packages](./external-providers.md)
+  - [Provider Routing And Fallback](./provider-routing.md)
   - [Python API](./api/python.md)
   - [Public API Stability](./api-stability.md)
   - [Capability Fixture Corpus](./fixtures.md)

@@ -19,6 +19,19 @@ releases may still include breaking changes when the public API needs to tighten
   `worldforge.harness.run_index.build_run_index`, `RunIndex`, `RunIndexIssue`,
   `RUN_INDEX_SCHEMA_VERSION`. Documentation lives at `docs/src/run-index.md`,
   including retention/cleanup interaction guidance.
+- Added typed provider routing and fallback policies. The new
+  `worldforge.provider_routing` module ships `ProviderRoutingPolicy`,
+  `RoutingAttempt`, `RoutingResult`, and `route_capability(policy, forge, *,
+  invoke)`. Routing tries a preferred provider followed by an ordered fallback
+  list, validates capability compatibility before invoking each provider, and
+  records every attempt — succeeded, failed, skipped-not-registered, or
+  skipped-incompatible — in the returned result. Failures are captured with the
+  exception class name and `str(exc)` and never silently masked; the underlying
+  observable-capability `ProviderEvent` stream is preserved unchanged. New
+  public surface: `ProviderRoutingPolicy`, `RoutingAttempt`, `RoutingResult`,
+  `ROUTING_ATTEMPT_STATUSES`, `route_capability`. Documentation lives at
+  `docs/src/provider-routing.md`, including guidance on when fallback is and is
+  not appropriate.
 - Added Python entry-point discovery for external provider packages. Third-party adapters can
   register through the `worldforge.providers` entry-point group; `WorldForge` auto-registers
   the resulting providers when their `configured()` check passes and records typed skip
