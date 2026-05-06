@@ -13,6 +13,11 @@ from worldforge.harness.connectors import (
     provider_connector_summary_markdown,
 )
 from worldforge.harness.flows import available_flows, flow_to_dicts
+from worldforge.harness.run_history import (
+    RunHistoryFilter,
+    list_run_history,
+    run_history_markdown,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -22,11 +27,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--flow",
-        choices=[flow.id for flow in available_flows()] + ["eval", "benchmark"],
+        choices=[flow.id for flow in available_flows()] + ["eval", "benchmark", "runs"],
         default=None,
         help=(
             "Harness flow or screen to open. When omitted the harness opens on the Home screen; "
-            "eval and benchmark open those screens directly."
+            "eval, benchmark, and runs open those screens directly."
         ),
     )
     parser.add_argument(
@@ -45,6 +50,23 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="List provider connector readiness without launching the TUI.",
     )
+    parser.add_argument(
+        "--runs",
+        action="store_true",
+        help="List preserved run history without launching the TUI.",
+    )
+    parser.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path(".worldforge"),
+        help="Workspace root for --runs. Defaults to .worldforge.",
+    )
+    parser.add_argument("--provider", help="Filter --runs output by provider substring.")
+    parser.add_argument("--capability", help="Filter --runs output by capability.")
+    parser.add_argument("--status", help="Filter --runs output by run status.")
+    parser.add_argument("--created-from", help="Filter --runs output from YYYY-MM-DD.")
+    parser.add_argument("--created-to", help="Filter --runs output through YYYY-MM-DD.")
+    parser.add_argument("--artifact-type", help="Filter --runs output by safe artifact type.")
     parser.add_argument(
         "--format",
         choices=("markdown", "json"),
@@ -89,6 +111,21 @@ def print_connector_index(
     print(provider_connector_summary_markdown(rows))
 
 
+def print_run_history(
+    *,
+    workspace_dir: Path,
+    filters: RunHistoryFilter | None = None,
+    output_format: str = "markdown",
+) -> None:
+    """Print preserved run history without importing the TUI."""
+
+    rows = list_run_history(workspace_dir, filters=filters)
+    if output_format == "json":
+        print(json.dumps([row.to_dict() for row in rows], indent=2))
+        return
+    print(run_history_markdown(rows), end="")
+
+
 def launch_harness(
     *,
     flow_id: str | None = None,
@@ -115,7 +152,7 @@ def launch_harness(
             return 2
         raise
 
-    if flow_id in {"eval", "benchmark"}:
+    if flow_id in {"eval", "benchmark", "runs"}:
         initial_screen = flow_id
         resolved_flow_id = "leworldmodel"
     else:
@@ -169,8 +206,16 @@ def run_from_args(
     state_dir: Path | None,
     list_only: bool,
     connectors: bool,
-    output_format: str,
-    animate: bool,
+    runs: bool = False,
+    workspace_dir: Path = Path(".worldforge"),
+    provider: str | None = None,
+    capability: str | None = None,
+    status: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
+    artifact_type: str | None = None,
+    output_format: str = "markdown",
+    animate: bool = True,
 ) -> int:
     """Run harness behavior from an already-parsed command namespace."""
 
@@ -179,6 +224,21 @@ def run_from_args(
         return 0
     if connectors:
         print_connector_index(state_dir=state_dir, output_format=output_format)
+        return 0
+    if runs:
+        filters = RunHistoryFilter.from_strings(
+            provider=provider,
+            capability=capability,
+            status=status,
+            created_from=created_from,
+            created_to=created_to,
+            artifact_type=artifact_type,
+        )
+        print_run_history(
+            workspace_dir=workspace_dir,
+            filters=filters,
+            output_format=output_format,
+        )
         return 0
     return launch_harness(flow_id=flow_id, state_dir=state_dir, animate=animate)
 
@@ -190,6 +250,14 @@ def main(argv: list[str] | None = None) -> int:
         state_dir=args.state_dir,
         list_only=args.list,
         connectors=args.connectors,
+        runs=args.runs,
+        workspace_dir=args.workspace_dir,
+        provider=args.provider,
+        capability=args.capability,
+        status=args.status,
+        created_from=args.created_from,
+        created_to=args.created_to,
+        artifact_type=args.artifact_type,
         output_format=args.format,
         animate=not args.no_animation,
     )

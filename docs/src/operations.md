@@ -164,6 +164,7 @@ operator evidence bundles, not a database.
 uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
 uv run worldforge benchmark --provider mock --operation predict --run-workspace .worldforge
 uv run worldforge runs list
+uv run worldforge harness --runs --provider mock --status failed --artifact-type json
 uv run worldforge runs bundle <run-id>
 uv run worldforge runs cleanup --keep 20
 ```
@@ -178,6 +179,12 @@ command writes `.worldforge/issue-bundles/<run-id>/evidence_manifest.json`, `sum
 manifest clearly lists excluded/local-only files with a reason. First triage step after export:
 open `evidence_manifest.json`; if anything is excluded or local-only, remove or replace the unsafe
 artifact before attaching the bundle.
+
+For repeated local operations, use `worldforge harness --runs` or the TheWorldHarness Runs screen
+before opening individual artifacts. It reads preserved manifests without optional model runtimes,
+filters by provider, capability, status, created date, and safe artifact type, and prints sanitized
+rerun, comparison, and issue-bundle commands. Failed, skipped, and cancelled rows surface the
+`worldforge runs bundle <run-id>` recovery command first.
 
 Retention is host-owned. `worldforge runs cleanup --keep <n>` keeps the newest run IDs and removes
 older directories; use `--dry-run` before deleting evidence attached to an incident or release gate.

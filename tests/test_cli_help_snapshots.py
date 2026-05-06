@@ -79,13 +79,19 @@ options:
                         Output format for history entries.
 """,
     ("harness", "--help"): """\
-usage: worldforge harness [-h] [--flow {leworldmodel,lerobot,diagnostics}]
+usage: worldforge harness [-h]
+                          [--flow {leworldmodel,lerobot,diagnostics,workbench,eval,benchmark,runs}]
                           [--state-dir STATE_DIR] [--list] [--connectors]
+                          [--runs] [--workspace-dir WORKSPACE_DIR]
+                          [--provider PROVIDER] [--capability CAPABILITY]
+                          [--status STATUS] [--created-from CREATED_FROM]
+                          [--created-to CREATED_TO]
+                          [--artifact-type ARTIFACT_TYPE]
                           [--format {markdown,json}] [--no-animation]
 
 options:
   -h, --help            show this help message and exit
-  --flow {leworldmodel,lerobot,diagnostics}
+  --flow {leworldmodel,lerobot,diagnostics,workbench,eval,benchmark,runs}
                         Harness flow to open.
   --state-dir STATE_DIR
                         Directory for persisted demo worlds. Defaults to a
@@ -94,8 +100,21 @@ options:
                         TUI.
   --connectors          List provider connector readiness without launching
                         the TUI.
+  --runs                List preserved run history without launching the TUI.
+  --workspace-dir WORKSPACE_DIR
+                        Workspace root for --runs. Defaults to .worldforge.
+  --provider PROVIDER   Filter --runs output by provider substring.
+  --capability CAPABILITY
+                        Filter --runs output by capability.
+  --status STATUS       Filter --runs output by run status.
+  --created-from CREATED_FROM
+                        Filter --runs output from YYYY-MM-DD.
+  --created-to CREATED_TO
+                        Filter --runs output through YYYY-MM-DD.
+  --artifact-type ARTIFACT_TYPE
+                        Filter --runs output by safe artifact type.
   --format {markdown,json}
-                        Output format for --list and --connectors.
+                        Output format for --list, --connectors, and --runs.
   --no-animation        Disable step reveal delays.
 """,
     ("predict", "--help"): """\

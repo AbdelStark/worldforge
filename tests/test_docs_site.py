@@ -559,6 +559,30 @@ def test_issue_bundle_docs_cover_issue_148_contract() -> None:
     assert "- [x] Unsafe metadata causes a clear error or local-only marking" in continuation
 
 
+def test_harness_run_history_docs_cover_issue_149_contract() -> None:
+    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for signal in (
+        "worldforge harness --runs",
+        "--artifact-type json",
+        "sanitized rerun command",
+        "issue-bundle",
+        "provider, capability, status, created date, and safe artifact type",
+    ):
+        assert signal in harness or signal in operations or signal in playbooks
+
+    assert "Runs screen" in harness
+    assert "preserved-run history actions" in changelog
+    assert "- [x] Harness can filter and open preserved runs without optional model runtimes" in (
+        continuation
+    )
+    assert "- [x] Rerun commands are generated from sanitized manifests" in continuation
+
+
 def test_benchmark_budget_calibration_docs_cover_issue_146_contract() -> None:
     benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")

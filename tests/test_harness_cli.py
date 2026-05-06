@@ -7,6 +7,7 @@ import pytest
 
 from worldforge.cli import main as worldforge_main
 from worldforge.harness.cli import main as harness_main
+from worldforge.harness.workspace import create_run_workspace, write_run_manifest
 
 
 def test_worldforge_harness_lists_flows_without_textual(monkeypatch, capsys) -> None:
@@ -87,6 +88,69 @@ def test_worldforge_harness_lists_connector_readiness_without_textual(monkeypatc
     assert payload["jepa"]["missing_env_vars"] == ["JEPA_MODEL_NAME"]
     assert payload["genie"]["status"] == "scaffold"
     assert "worldforge-smoke-runway" in payload["runway"]["smoke_command"]
+
+
+def test_worldforge_harness_lists_filtered_run_history_without_textual(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="benchmark",
+        command="worldforge benchmark --provider mock --operation predict --token super-secret",
+        provider="mock",
+        operation="predict",
+        run_id="20260102T000000Z-00000002",
+        input_summary={
+            "providers": ["mock"],
+            "operations": ["predict"],
+            "capabilities": ["predict"],
+        },
+    )
+    workspace.write_json("reports/report.json", {"results": []})
+    write_run_manifest(
+        workspace,
+        kind="benchmark",
+        command="worldforge benchmark --provider mock --operation predict --token super-secret",
+        provider="mock",
+        operation="predict",
+        status="failed",
+        input_summary={
+            "providers": ["mock"],
+            "operations": ["predict"],
+            "capabilities": ["predict"],
+        },
+        result_summary={"failure_reason": "budget failed"},
+        artifact_paths={"json": "reports/report.json"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "harness",
+            "--runs",
+            "--workspace-dir",
+            str(tmp_path),
+            "--provider",
+            "mock",
+            "--status",
+            "failed",
+            "--artifact-type",
+            "json",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert worldforge_main() == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload[0]["run_id"] == "20260102T000000Z-00000002"
+    assert payload[0]["recovery_command"].startswith("worldforge runs bundle")
+    assert "super-secret" not in payload[0]["rerun_command"]
+    assert "<redacted>" in payload[0]["rerun_command"]
 
 
 def test_connector_readiness_distinguishes_missing_dependency(monkeypatch, tmp_path) -> None:

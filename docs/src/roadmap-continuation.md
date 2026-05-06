@@ -793,10 +793,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Harness can filter and open preserved runs without optional model runtimes.
-- [ ] Rerun commands are generated from sanitized manifests and omit secret values.
-- [ ] Failed runs show recovery command and issue-bundle export path.
-- [ ] Tests cover flow logic without importing Textual outside `worldforge.harness.tui`.
+- [x] Harness can filter and open preserved runs without optional model runtimes.
+- [x] Rerun commands are generated from sanitized manifests and omit secret values.
+- [x] Failed runs show recovery command and issue-bundle export path.
+- [x] Tests cover flow logic without importing Textual outside `worldforge.harness.tui`.
 
 Validation:
 
