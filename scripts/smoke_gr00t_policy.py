@@ -8,6 +8,7 @@ import importlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -28,6 +29,10 @@ DEFAULT_PORT = 5555
 DEFAULT_TIMEOUT_MS = 15_000
 DEFAULT_STARTUP_TIMEOUT_SECONDS = 300.0
 _SECRET_ARG_FLAGS = {"--api-token"}
+_SECRET_ARG_NAME_PATTERN = re.compile(
+    r"(api[-_]?key|authorization|credential|password|secret|token)",
+    re.IGNORECASE,
+)
 _MANIFEST_ENV_VARS = (
     "GROOT_POLICY_HOST",
     "GROOT_POLICY_PORT",
@@ -387,20 +392,34 @@ def _sanitized_command_argv(command_argv: Sequence[str]) -> tuple[str, ...]:
     for raw_arg in command_argv:
         arg = str(raw_arg)
         if redact_next:
+            if arg == "--server-arg":
+                redacted.append(arg)
+                continue
             redacted.append("[redacted]")
             redact_next = False
             continue
 
-        flag, separator, _value = arg.partition("=")
-        if flag in _SECRET_ARG_FLAGS and separator:
+        flag, separator, value = arg.partition("=")
+        if _looks_secret_arg_flag(flag) and separator:
             redacted.append(f"{flag}=[redacted]")
+            continue
+        if flag == "--server-arg" and separator and _looks_secret_arg_flag(value):
+            redacted.append(arg)
+            redact_next = True
             continue
 
         safe_arg = _redact_observable_text(arg)
         redacted.append(safe_arg if safe_arg.strip() else "[redacted]")
-        if arg in _SECRET_ARG_FLAGS:
+        if _looks_secret_arg_flag(arg):
             redact_next = True
     return tuple(redacted)
+
+
+def _looks_secret_arg_flag(arg: str) -> bool:
+    if not arg.startswith("-"):
+        return False
+    flag = arg.split("=", maxsplit=1)[0]
+    return flag in _SECRET_ARG_FLAGS or _SECRET_ARG_NAME_PATTERN.search(flag) is not None
 
 
 def _command_argv_from_input(argv: Sequence[str] | None) -> tuple[str, ...]:
@@ -473,7 +492,7 @@ def main(argv: list[str] | None = None) -> int:
         args = _parser().parse_args(argv)
     except (Exception, SystemExit) as exc:
         redacted_error = _redacted_exit_message(exc)
-        output = {"error": redacted_error}
+        output: JSONDict = {"error": redacted_error}
         manifest_path = _manifest_path_from_command_argv(command_argv)
         if manifest_path is not None:
             _write_manifest(
