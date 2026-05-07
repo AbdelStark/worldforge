@@ -82,6 +82,23 @@ from gr00t.policy.server_client import PolicyClient
 
 and creates a client from `GROOT_POLICY_*` settings.
 
+If the full Isaac GR00T package is not importable in the WorldForge process, the provider falls
+back to a small ZMQ/msgpack client for the documented PolicyServer protocol. That fallback is useful
+for the normal remote-GPU shape because NVIDIA's full `gr00t` runtime is currently Python-3.10
+pinned while WorldForge runs on Python 3.13. The fallback still requires host-installed optional
+client packages:
+
+```bash
+GROOT_POLICY_HOST=127.0.0.1 \
+GROOT_POLICY_PORT=5555 \
+uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py \
+  --health-only \
+  --run-manifest .worldforge/runs/gr00t-health/run_manifest.json
+```
+
+The GPU server still owns the full Isaac GR00T install, CUDA runtime, checkpoints, and robot-specific
+dependencies.
+
 ## Input Contract
 
 ```python
@@ -172,7 +189,7 @@ Connect to an existing GR00T policy server:
 ```bash
 GROOT_POLICY_HOST=127.0.0.1 \
 GROOT_POLICY_PORT=5555 \
-uv run python scripts/smoke_gr00t_policy.py \
+uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py \
   --policy-info-json /path/to/policy_info.json \
   --translator /path/to/translator.py:translate_actions \
   --allow-translator-code \
@@ -189,7 +206,7 @@ Prepared hosts can run a configuration and connectivity check without a policy r
 ```bash
 GROOT_POLICY_HOST=127.0.0.1 \
 GROOT_POLICY_PORT=5555 \
-uv run python scripts/smoke_gr00t_policy.py \
+uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py \
   --health-only \
   --run-manifest .worldforge/runs/gr00t-health/run_manifest.json
 ```

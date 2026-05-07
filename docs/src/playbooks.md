@@ -675,7 +675,7 @@ GROOT_POLICY_HOST=127.0.0.1 \
 
 GROOT_POLICY_HOST=127.0.0.1 \
 GROOT_POLICY_PORT=5555 \
-  uv run python scripts/smoke_gr00t_policy.py \
+  uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py \
     --health-only \
     --run-manifest .worldforge/runs/gr00t-health/run_manifest.json
 # Expected success: run_manifest.json records capability=policy with status=skipped.
@@ -684,7 +684,7 @@ GROOT_POLICY_PORT=5555 \
 
 GROOT_POLICY_HOST=127.0.0.1 \
 GROOT_POLICY_PORT=5555 \
-  uv run python scripts/smoke_gr00t_policy.py \
+  uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py \
     --policy-info-json /path/to/policy_info.json \
     --translator /path/to/translator.py:translate_actions \
     --allow-translator-code \

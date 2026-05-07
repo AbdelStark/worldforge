@@ -15,6 +15,7 @@ from worldforge.providers import (
     ProviderError,
     ProviderProfileSpec,
 )
+from worldforge.providers.gr00t import _GrootZmqPolicyClient
 from worldforge.testing import assert_provider_contract
 
 
@@ -63,6 +64,29 @@ class FakeArray:
 
     def tolist(self) -> object:
         return self.value
+
+
+class FakeZmqSocket:
+    def __init__(self, responses: list[object]) -> None:
+        self.responses = responses
+        self.sent: list[object] = []
+        self.options: list[tuple[int, object]] = []
+        self.targets: list[str] = []
+
+    def setsockopt(self, option: int, value: object) -> None:
+        self.options.append((option, value))
+
+    def connect(self, target: str) -> None:
+        self.targets.append(target)
+
+    def send(self, payload: object) -> None:
+        self.sent.append(payload)
+
+    def recv(self) -> object:
+        response = self.responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
 
 class FakeScoreProvider(BaseProvider):
@@ -327,6 +351,7 @@ def test_gr00t_provider_reads_env_configuration_and_reports_missing_dependency(
     assert provider.embodiment_tag == "SO100"
     assert provider.health().healthy is False
     assert "gr00t.policy.server_client" in provider.health().details
+    assert "fallback client packages" in provider.health().details
 
 
 def test_gr00t_provider_health_reports_native_import_failures(monkeypatch) -> None:
@@ -419,6 +444,304 @@ def test_gr00t_provider_lazily_constructs_policy_client_from_import(monkeypatch)
         }
     ]
     assert result.raw_actions == {"arm": [[[0.2, 0.5, 0.0]]]}
+
+
+def test_gr00t_provider_uses_zmq_fallback_when_full_client_is_unavailable(monkeypatch) -> None:
+    created: list[dict[str, object]] = []
+
+    class FallbackPolicyClient(FakeGrootClient):
+        def __init__(self, **kwargs: object) -> None:
+            created.append(kwargs)
+            super().__init__(({"eef_9d": FakeArray([[[0.4, 0.1, 0.2]]])}, {"step": 8}))
+
+    def fake_import(name: str) -> object:
+        if name == "gr00t.policy.server_client":
+            raise ImportError("full gr00t package is not installed")
+        if name in {"msgpack", "numpy", "zmq"}:
+            return types.SimpleNamespace()
+        return __import__(name)
+
+    monkeypatch.setattr("worldforge.providers.gr00t.importlib.import_module", fake_import)
+    monkeypatch.setattr(
+        "worldforge.providers.gr00t._GrootZmqPolicyClient",
+        FallbackPolicyClient,
+    )
+
+    provider = GrootPolicyClientProvider(
+        host="38.128.233.36",
+        port=5555,
+        timeout_ms=20_000,
+        embodiment_tag="OXE_DROID_RELATIVE_EEF_RELATIVE_JOINT",
+        action_translator=lambda *_args: [Action.move_to(0.4, 0.1, 0.2)],
+    )
+
+    assert provider.health().healthy is True
+    result = provider.select_actions(info=_policy_info())
+
+    assert created == [
+        {
+            "host": "38.128.233.36",
+            "port": 5555,
+            "timeout_ms": 20_000,
+            "api_token": None,
+            "strict": False,
+        }
+    ]
+    assert result.raw_actions == {"eef_9d": [[[0.4, 0.1, 0.2]]]}
+    assert result.metadata["provider_info"] == {"step": 8}
+
+
+def test_gr00t_zmq_fallback_matches_official_get_action_tuple_conversion() -> None:
+    client = object.__new__(_GrootZmqPolicyClient)
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def call_endpoint(endpoint: str, data: dict[str, object]) -> object:
+        calls.append((endpoint, data))
+        return [{"eef_9d": [[[0.1, 0.2, 0.3]]]}, {"current_step": 0}]
+
+    client.call_endpoint = call_endpoint  # type: ignore[method-assign]
+
+    response = client.get_action({"language": {"task": [["replay"]]}})
+
+    assert response == (
+        {"eef_9d": [[[0.1, 0.2, 0.3]]]},
+        {"current_step": 0},
+    )
+    assert calls == [
+        (
+            "get_action",
+            {"observation": {"language": {"task": [["replay"]]}}},
+        )
+    ]
+
+
+def test_gr00t_zmq_fallback_calls_policy_server_endpoints(monkeypatch) -> None:
+    sockets: list[FakeZmqSocket] = []
+
+    class FakeContext:
+        def socket(self, kind: int) -> FakeZmqSocket:
+            assert kind == 1
+            socket = FakeZmqSocket(
+                [
+                    {"status": "ok"},
+                    [{"eef_9d": [[[0.1, 0.2, 0.3]]]}, {"current_step": 0}],
+                    {"episode_index": 2},
+                    {"video": {"modality_keys": ["front"]}},
+                ]
+            )
+            sockets.append(socket)
+            return socket
+
+    class FakeZmq:
+        REQ = 1
+        RCVTIMEO = 2
+        SNDTIMEO = 3
+
+        @staticmethod
+        def Context() -> FakeContext:
+            return FakeContext()
+
+    class FakeMsgpack:
+        @staticmethod
+        def packb(payload: object, *, default: object) -> object:
+            return payload
+
+        @staticmethod
+        def unpackb(
+            payload: object,
+            *,
+            object_hook: object,
+            raw: bool,
+        ) -> object:
+            assert raw is False
+            if isinstance(payload, dict):
+                return object_hook(payload)  # type: ignore[misc]
+            return payload
+
+    class FakeNumpy:
+        class ndarray:
+            pass
+
+        @staticmethod
+        def save(output: object, _obj: object, *, allow_pickle: bool) -> None:
+            assert allow_pickle is False
+            output.write(b"array-bytes")
+
+        @staticmethod
+        def load(_payload: object, *, allow_pickle: bool) -> list[str]:
+            assert allow_pickle is False
+            return ["decoded-array"]
+
+    def fake_import(name: str) -> object:
+        if name == "msgpack":
+            return FakeMsgpack
+        if name == "numpy":
+            return FakeNumpy
+        if name == "zmq":
+            return FakeZmq
+        return __import__(name)
+
+    monkeypatch.setattr("worldforge.providers.gr00t.importlib.import_module", fake_import)
+
+    client = _GrootZmqPolicyClient(
+        host="gpu.example.test",
+        port=5555,
+        timeout_ms=321,
+        api_token="client-token",
+        strict=True,
+    )
+
+    assert client.ping() is True
+    assert client.get_action({"language": {"task": [["replay"]]}}, options={"step": 0}) == (
+        {"eef_9d": [[[0.1, 0.2, 0.3]]]},
+        {"current_step": 0},
+    )
+    assert client.reset({"episode_index": 2}) == {"episode_index": 2}
+    assert client.get_modality_config() == {"video": {"modality_keys": ["front"]}}
+
+    socket = sockets[0]
+    assert socket.options == [(2, 321), (3, 321)]
+    assert socket.targets == ["tcp://gpu.example.test:5555"]
+    assert socket.sent == [
+        {"endpoint": "ping", "api_token": "client-token"},
+        {
+            "endpoint": "get_action",
+            "data": {
+                "observation": {"language": {"task": [["replay"]]}},
+                "options": {"step": 0},
+            },
+            "api_token": "client-token",
+        },
+        {
+            "endpoint": "reset",
+            "data": {"options": {"episode_index": 2}},
+            "api_token": "client-token",
+        },
+        {
+            "endpoint": "get_modality_config",
+            "api_token": "client-token",
+        },
+    ]
+
+    encoded = client._encode_custom(FakeNumpy.ndarray())
+    assert encoded == {"__ndarray_class__": True, "as_npy": b"array-bytes"}
+    assert client._encode_custom({"plain": True}) == {"plain": True}
+    assert client._decode_custom("plain") == "plain"
+    assert client._decode_custom({"__ndarray_class__": True, "as_npy": b"array-bytes"}) == [
+        "decoded-array"
+    ]
+    assert client._decode_custom(
+        {"__ModalityConfig_class__": True, "as_json": {"delta_indices": [0]}}
+    ) == {"delta_indices": [0]}
+
+
+def test_gr00t_zmq_fallback_raises_protocol_server_errors() -> None:
+    client = object.__new__(_GrootZmqPolicyClient)
+    client.api_token = None
+    client._socket = FakeZmqSocket([{"error": "bad observation"}])
+    client._to_bytes = lambda payload: payload  # type: ignore[method-assign]
+    client._from_bytes = lambda payload: payload  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="Server error: bad observation"):
+        client.call_endpoint("get_action", {"observation": {}})
+
+    assert client._socket.sent == [
+        {"endpoint": "get_action", "data": {"observation": {}}},
+    ]
+
+
+def test_gr00t_zmq_fallback_ping_reinitializes_socket_after_failure(monkeypatch) -> None:
+    sockets: list[FakeZmqSocket] = []
+
+    class FakeContext:
+        def socket(self, _kind: int) -> FakeZmqSocket:
+            response = RuntimeError("timeout") if not sockets else {"status": "ok"}
+            socket = FakeZmqSocket([response])
+            sockets.append(socket)
+            return socket
+
+    class FakeZmq:
+        REQ = 1
+        RCVTIMEO = 2
+        SNDTIMEO = 3
+
+        @staticmethod
+        def Context() -> FakeContext:
+            return FakeContext()
+
+    class FakeMsgpack:
+        @staticmethod
+        def packb(payload: object, *, default: object) -> object:
+            return payload
+
+        @staticmethod
+        def unpackb(payload: object, **_kwargs: object) -> object:
+            return payload
+
+    class FakeNumpy:
+        class ndarray:
+            pass
+
+    def fake_import(name: str) -> object:
+        if name == "msgpack":
+            return FakeMsgpack
+        if name == "numpy":
+            return FakeNumpy
+        if name == "zmq":
+            return FakeZmq
+        return __import__(name)
+
+    monkeypatch.setattr("worldforge.providers.gr00t.importlib.import_module", fake_import)
+
+    client = _GrootZmqPolicyClient(host="gpu.example.test", port=5555, timeout_ms=321)
+
+    assert client.ping() is False
+    assert len(sockets) == 2
+    assert sockets[0].sent == [{"endpoint": "ping"}]
+    assert sockets[1].targets == ["tcp://gpu.example.test:5555"]
+
+
+def test_gr00t_provider_reports_fallback_dependency_import_failure(monkeypatch) -> None:
+    def fake_import(name: str) -> object:
+        if name == "gr00t.policy.server_client":
+            raise ImportError("full gr00t package missing")
+        if name == "msgpack":
+            raise RuntimeError("native msgpack loader failed")
+        return types.SimpleNamespace()
+
+    monkeypatch.setattr("worldforge.providers.gr00t.importlib.import_module", fake_import)
+
+    provider = GrootPolicyClientProvider(
+        host="127.0.0.1",
+        action_translator=lambda *_args: [Action("noop")],
+    )
+    health = provider.health()
+
+    assert health.healthy is False
+    assert "fallback ZMQ client optional dependency import failed" in health.details
+    assert "native msgpack loader failed" in health.details
+
+    with pytest.raises(
+        ProviderError, match="fallback ZMQ client optional dependency import failed"
+    ):
+        provider.select_actions(info=_policy_info())
+
+
+def test_gr00t_provider_wraps_policy_client_import_runtime_failures(monkeypatch) -> None:
+    def fake_import(name: str) -> object:
+        if name == "gr00t.policy.server_client":
+            raise RuntimeError("loader leaked api_token=secret")
+        return __import__(name)
+
+    monkeypatch.setattr("worldforge.providers.gr00t.importlib.import_module", fake_import)
+
+    provider = GrootPolicyClientProvider(
+        host="127.0.0.1",
+        action_translator=lambda *_args: [Action("noop")],
+    )
+
+    with pytest.raises(ProviderError, match="Failed to import GR00T PolicyClient"):
+        provider.select_actions(info=_policy_info())
 
 
 def test_gr00t_policy_events_include_sanitized_remote_target_and_redacted_failures() -> None:

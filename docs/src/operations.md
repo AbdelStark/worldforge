@@ -538,11 +538,11 @@ readiness, and safety certification.
   `run_manifest.json` as evidence. Checkpoint artifacts are not uploaded.
 - To smoke-test a real GR00T policy server, install or check out NVIDIA Isaac-GR00T on a prepared
   NVIDIA/Linux host, prepare a host-specific observation fixture and action translator, then run
-  `GROOT_POLICY_HOST=127.0.0.1 GROOT_POLICY_PORT=5555 uv run python scripts/smoke_gr00t_policy.py --health-only --run-manifest .worldforge/runs/gr00t-health/run_manifest.json`.
+  `GROOT_POLICY_HOST=127.0.0.1 GROOT_POLICY_PORT=5555 uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py --health-only --run-manifest .worldforge/runs/gr00t-health/run_manifest.json`.
   Expected success for `--health-only`: the process exits 0 and the run manifest records
   `capability=policy` with `status=skipped`.
   For a full policy request, run
-  `GROOT_POLICY_HOST=127.0.0.1 GROOT_POLICY_PORT=5555 uv run python scripts/smoke_gr00t_policy.py --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions --allow-translator-code --run-manifest .worldforge/runs/gr00t-live/run_manifest.json`.
+  `GROOT_POLICY_HOST=127.0.0.1 GROOT_POLICY_PORT=5555 uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions --allow-translator-code --run-manifest .worldforge/runs/gr00t-live/run_manifest.json`.
   Expected success: the process exits 0 and the run manifest records `capability=policy` with
   `status=passed`. First triage: run `uv run worldforge provider health gr00t` to confirm the
   client can reach the remote PolicyClient server, then recheck the observation fixture and

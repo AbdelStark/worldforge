@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import io
 from collections.abc import Callable, Sequence
 from time import perf_counter
 from typing import Any
@@ -40,11 +41,123 @@ GROOT_POLICY_STRICT_ENV_VAR = "GROOT_POLICY_STRICT"
 GROOT_EMBODIMENT_TAG_ENV_VAR = "GROOT_EMBODIMENT_TAG"
 DEFAULT_GROOT_POLICY_PORT = 5555
 DEFAULT_GROOT_POLICY_TIMEOUT_MS = 15_000
+_FALLBACK_CLIENT_IMPORTS = {
+    "msgpack": "msgpack",
+    "numpy": "numpy",
+    "pyzmq": "zmq",
+}
 
 ActionTranslator = Callable[
     [object, JSONDict, JSONDict],
     Sequence[Action] | Sequence[Sequence[Action]],
 ]
+
+
+class _GrootZmqPolicyClient:
+    """Small GR00T PolicyClient-compatible fallback for Python 3.13 clients.
+
+    NVIDIA's full `gr00t` package is currently pinned to Python 3.10, while WorldForge is
+    packaged for Python 3.13. This fallback implements the documented ZMQ/msgpack client protocol
+    so a WorldForge process can call a host-owned GR00T server without installing the full runtime.
+    """
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        timeout_ms: int,
+        api_token: str | None = None,
+        strict: bool = False,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.timeout_ms = timeout_ms
+        self.api_token = api_token
+        self.strict = strict
+        self._msgpack = importlib.import_module("msgpack")
+        self._np = importlib.import_module("numpy")
+        self._zmq = importlib.import_module("zmq")
+        self._context = self._zmq.Context()
+        self._init_socket()
+
+    def _init_socket(self) -> None:
+        self._socket = self._context.socket(self._zmq.REQ)
+        self._socket.setsockopt(self._zmq.RCVTIMEO, self.timeout_ms)
+        self._socket.setsockopt(self._zmq.SNDTIMEO, self.timeout_ms)
+        self._socket.connect(f"tcp://{self.host}:{self.port}")
+
+    def _encode_custom(self, obj: object) -> object:
+        if isinstance(obj, self._np.ndarray):
+            output = io.BytesIO()
+            self._np.save(output, obj, allow_pickle=False)
+            return {"__ndarray_class__": True, "as_npy": output.getvalue()}
+        return obj
+
+    def _decode_custom(self, obj: object) -> object:
+        if not isinstance(obj, dict):
+            return obj
+        if "__ndarray_class__" in obj:
+            return self._np.load(io.BytesIO(obj["as_npy"]), allow_pickle=False)
+        if "__ModalityConfig_class__" in obj:
+            return obj["as_json"]
+        return obj
+
+    def _to_bytes(self, payload: object) -> bytes:
+        return self._msgpack.packb(payload, default=self._encode_custom)
+
+    def _from_bytes(self, payload: bytes) -> object:
+        return self._msgpack.unpackb(
+            payload,
+            object_hook=self._decode_custom,
+            raw=False,
+        )
+
+    def call_endpoint(
+        self,
+        endpoint: str,
+        data: dict[str, object] | None = None,
+        *,
+        requires_input: bool = True,
+    ) -> object:
+        request: dict[str, object] = {"endpoint": endpoint}
+        if requires_input:
+            request["data"] = dict(data or {})
+        if self.api_token is not None:
+            request["api_token"] = self.api_token
+        self._socket.send(self._to_bytes(request))
+        response = self._from_bytes(self._socket.recv())
+        if isinstance(response, dict) and "error" in response:
+            raise RuntimeError(f"Server error: {response['error']}")
+        return response
+
+    def ping(self) -> bool:
+        try:
+            self.call_endpoint("ping", requires_input=False)
+            return True
+        except Exception:
+            self._init_socket()
+            return False
+
+    def get_action(
+        self,
+        observation: object,
+        options: dict[str, object] | None = None,
+    ) -> object:
+        payload: dict[str, object] = {"observation": observation}
+        if options is not None:
+            payload["options"] = options
+        response = self.call_endpoint("get_action", payload)
+        return tuple(response) if isinstance(response, list) else response
+
+    def reset(self, options: dict[str, object] | None = None) -> object:
+        payload: dict[str, object] = {}
+        if options is not None:
+            payload["options"] = options
+        return self.call_endpoint("reset", payload)
+
+    def get_modality_config(self) -> object:
+        return self.call_endpoint("get_modality_config", requires_input=False)
 
 
 class GrootPolicyClientProvider(BaseProvider):
@@ -277,7 +390,7 @@ class GrootPolicyClientProvider(BaseProvider):
         try:
             policy_module = importlib.import_module("gr00t.policy.server_client")
         except ImportError:
-            return missing_optional_dependency_detail("gr00t", "gr00t.policy.server_client")
+            return self._fallback_dependency_error()
         except Exception as exc:
             message = str(exc).strip()
             suffix = f": {message}" if message else ""
@@ -287,6 +400,28 @@ class GrootPolicyClientProvider(BaseProvider):
             )
         if not hasattr(policy_module, "PolicyClient"):
             return "gr00t.policy.server_client.PolicyClient is unavailable"
+        return None
+
+    def _fallback_dependency_error(self) -> str | None:
+        missing: list[str] = []
+        for package, module_name in _FALLBACK_CLIENT_IMPORTS.items():
+            try:
+                importlib.import_module(module_name)
+            except ImportError:
+                missing.append(package)
+            except Exception as exc:
+                message = str(exc).strip()
+                suffix = f": {message}" if message else ""
+                return (
+                    "GR00T fallback ZMQ client optional dependency import failed "
+                    f"({module_name}: {type(exc).__name__}{suffix})"
+                )
+        if missing:
+            packages = ", ".join(missing)
+            return (
+                missing_optional_dependency_detail("gr00t", "gr00t.policy.server_client")
+                + f"; alternatively install fallback client packages: {packages}"
+            )
         return None
 
     def _load_client(self) -> Any:
@@ -299,6 +434,16 @@ class GrootPolicyClientProvider(BaseProvider):
         try:
             policy_module = importlib.import_module("gr00t.policy.server_client")
             client_type = policy_module.PolicyClient
+        except ImportError as exc:
+            dependency_error = self._fallback_dependency_error()
+            if dependency_error is not None:
+                raise ProviderError(dependency_error) from exc
+            client_type = _GrootZmqPolicyClient
+        except Exception as exc:
+            detail = _redact_observable_text(str(exc)).strip()
+            suffix = f": {detail}" if detail else ""
+            raise ProviderError(f"Failed to import GR00T PolicyClient{suffix}") from exc
+        try:
             self._policy_client = client_type(
                 host=self.host,
                 port=self.port,
