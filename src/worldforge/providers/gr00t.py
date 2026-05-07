@@ -41,6 +41,8 @@ GROOT_POLICY_STRICT_ENV_VAR = "GROOT_POLICY_STRICT"
 GROOT_EMBODIMENT_TAG_ENV_VAR = "GROOT_EMBODIMENT_TAG"
 DEFAULT_GROOT_POLICY_PORT = 5555
 DEFAULT_GROOT_POLICY_TIMEOUT_MS = 15_000
+DEFAULT_GROOT_POLICY_MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+DEFAULT_GROOT_POLICY_MAX_ARRAY_BYTES = 64 * 1024 * 1024
 _FALLBACK_CLIENT_IMPORTS = {
     "msgpack": "msgpack",
     "numpy": "numpy",
@@ -69,12 +71,16 @@ class _GrootZmqPolicyClient:
         timeout_ms: int,
         api_token: str | None = None,
         strict: bool = False,
+        max_response_bytes: int = DEFAULT_GROOT_POLICY_MAX_RESPONSE_BYTES,
+        max_array_bytes: int = DEFAULT_GROOT_POLICY_MAX_ARRAY_BYTES,
     ) -> None:
         self.host = host
         self.port = port
         self.timeout_ms = timeout_ms
         self.api_token = api_token
         self.strict = strict
+        self.max_response_bytes = max_response_bytes
+        self.max_array_bytes = max_array_bytes
         self._msgpack = importlib.import_module("msgpack")
         self._np = importlib.import_module("numpy")
         self._zmq = importlib.import_module("zmq")
@@ -85,6 +91,8 @@ class _GrootZmqPolicyClient:
         self._socket = self._context.socket(self._zmq.REQ)
         self._socket.setsockopt(self._zmq.RCVTIMEO, self.timeout_ms)
         self._socket.setsockopt(self._zmq.SNDTIMEO, self.timeout_ms)
+        if hasattr(self._zmq, "MAXMSGSIZE"):
+            self._socket.setsockopt(self._zmq.MAXMSGSIZE, self.max_response_bytes)
         self._socket.connect(f"tcp://{self.host}:{self.port}")
 
     def _encode_custom(self, obj: object) -> object:
@@ -98,7 +106,14 @@ class _GrootZmqPolicyClient:
         if not isinstance(obj, dict):
             return obj
         if "__ndarray_class__" in obj:
-            return self._np.load(io.BytesIO(obj["as_npy"]), allow_pickle=False)
+            as_npy = obj.get("as_npy")
+            if not isinstance(as_npy, bytes | bytearray | memoryview):
+                raise RuntimeError("GR00T PolicyServer returned an invalid ndarray payload.")
+            if len(as_npy) > self.max_array_bytes:
+                raise RuntimeError(
+                    f"GR00T PolicyServer ndarray payload exceeds {self.max_array_bytes} bytes."
+                )
+            return self._np.load(io.BytesIO(as_npy), allow_pickle=False)
         if "__ModalityConfig_class__" in obj:
             return obj["as_json"]
         return obj
@@ -107,6 +122,12 @@ class _GrootZmqPolicyClient:
         return self._msgpack.packb(payload, default=self._encode_custom)
 
     def _from_bytes(self, payload: bytes) -> object:
+        if isinstance(payload, bytes | bytearray | memoryview) and (
+            len(payload) > self.max_response_bytes
+        ):
+            raise RuntimeError(
+                f"GR00T PolicyServer response exceeds {self.max_response_bytes} bytes."
+            )
         return self._msgpack.unpackb(
             payload,
             object_hook=self._decode_custom,
@@ -128,7 +149,8 @@ class _GrootZmqPolicyClient:
         self._socket.send(self._to_bytes(request))
         response = self._from_bytes(self._socket.recv())
         if isinstance(response, dict) and "error" in response:
-            raise RuntimeError(f"Server error: {response['error']}")
+            detail = _redact_observable_text(str(response["error"])).strip()
+            raise RuntimeError(f"Server error: {detail}")
         return response
 
     def ping(self) -> bool:

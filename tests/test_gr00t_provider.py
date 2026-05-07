@@ -536,6 +536,7 @@ def test_gr00t_zmq_fallback_calls_policy_server_endpoints(monkeypatch) -> None:
         REQ = 1
         RCVTIMEO = 2
         SNDTIMEO = 3
+        MAXMSGSIZE = 4
 
         @staticmethod
         def Context() -> FakeContext:
@@ -600,7 +601,7 @@ def test_gr00t_zmq_fallback_calls_policy_server_endpoints(monkeypatch) -> None:
     assert client.get_modality_config() == {"video": {"modality_keys": ["front"]}}
 
     socket = sockets[0]
-    assert socket.options == [(2, 321), (3, 321)]
+    assert socket.options == [(2, 321), (3, 321), (4, 64 * 1024 * 1024)]
     assert socket.targets == ["tcp://gpu.example.test:5555"]
     assert socket.sent == [
         {"endpoint": "ping", "api_token": "client-token"},
@@ -638,16 +639,36 @@ def test_gr00t_zmq_fallback_calls_policy_server_endpoints(monkeypatch) -> None:
 def test_gr00t_zmq_fallback_raises_protocol_server_errors() -> None:
     client = object.__new__(_GrootZmqPolicyClient)
     client.api_token = None
-    client._socket = FakeZmqSocket([{"error": "bad observation"}])
+    client._socket = FakeZmqSocket([{"error": "bad observation api_token=server-secret"}])
     client._to_bytes = lambda payload: payload  # type: ignore[method-assign]
     client._from_bytes = lambda payload: payload  # type: ignore[method-assign]
 
-    with pytest.raises(RuntimeError, match="Server error: bad observation"):
+    with pytest.raises(RuntimeError) as exc_info:
         client.call_endpoint("get_action", {"observation": {}})
 
+    message = str(exc_info.value)
+    assert "Server error: bad observation" in message
+    assert "api_token=[redacted]" in message
+    assert "server-secret" not in message
     assert client._socket.sent == [
         {"endpoint": "get_action", "data": {"observation": {}}},
     ]
+
+
+def test_gr00t_zmq_fallback_bounds_response_and_ndarray_payloads() -> None:
+    client = object.__new__(_GrootZmqPolicyClient)
+    client.max_response_bytes = 4
+    client.max_array_bytes = 4
+    client._msgpack = None
+
+    with pytest.raises(RuntimeError, match="response exceeds 4 bytes"):
+        client._from_bytes(b"12345")
+
+    with pytest.raises(RuntimeError, match="invalid ndarray payload"):
+        client._decode_custom({"__ndarray_class__": True, "as_npy": "not-bytes"})
+
+    with pytest.raises(RuntimeError, match="ndarray payload exceeds 4 bytes"):
+        client._decode_custom({"__ndarray_class__": True, "as_npy": b"12345"})
 
 
 def test_gr00t_zmq_fallback_ping_reinitializes_socket_after_failure(monkeypatch) -> None:
