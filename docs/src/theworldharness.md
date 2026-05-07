@@ -78,7 +78,9 @@ For the GR00T replay, run
 `translated_actions: 40`, raw tensor shapes for `eef_9d`, `gripper_position`, and
 `joint_position`, and `saved_replay_artifact: artifacts/gr00t-replay.json`. The committed artifact
 is deterministic and checkout-safe; the live RTX A6000 validation is mentioned as provenance, not
-stored as GPU logs, checkpoints, private endpoints, or raw observations.
+stored as GPU logs, checkpoints, private endpoints, or raw observations. If it fails, start with
+the preserved run workspace: inspect `logs/provider-events.jsonl` for provider events/errors and
+`artifacts/gr00t-replay.json` for the saved replay request/response/translated-action artifact.
 
 ## Provider Connector Workspace
 

@@ -149,10 +149,10 @@ recovery actions without printing secret values.
 Expected success signal: the selected flow reaches a completed run workspace and the inspector
 shows its saved artifact paths. For `cosmos-policy`, the replay should report
 `raw_action_shape: [50, 14]`, `translated_actions: 50`, and
-`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. First triage step: open the saved
-run workspace and inspect `logs/provider-events.jsonl` plus `artifacts/cosmos-policy-replay.json`;
-for `gr00t-replay`, expect `translated_actions: 40` and
-`saved_replay_artifact: artifacts/gr00t-replay.json`;
+`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. For `gr00t-replay`, expect
+`translated_actions: 40` and `saved_replay_artifact: artifacts/gr00t-replay.json`. First triage
+step: open the saved run workspace and inspect `logs/provider-events.jsonl` plus the flow-specific
+artifact, either `artifacts/cosmos-policy-replay.json` or `artifacts/gr00t-replay.json`;
 for live-provider readiness checks, run `uv run worldforge harness --connectors --format json`.
 
 ## Packaged Demos

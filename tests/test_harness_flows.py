@@ -282,6 +282,21 @@ def test_harness_rejects_raw_groot_replay_observation(tmp_path) -> None:
         )
 
 
+def test_harness_rejects_groot_replay_observation_summary_extra_keys(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    extra_summary_key = _copy_json_payload(payload)
+    extra_summary_key["request"]["observation_summary"]["video"]["raw_tensor"] = {
+        "some_raw": [[[[[0]]]]],
+    }
+
+    with pytest.raises(WorldStateError, match="unsupported fields"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "extra-summary-key.json", extra_summary_key)
+        )
+
+
 def test_harness_rejects_extra_groot_replay_artifact_fields(tmp_path) -> None:
     from worldforge.harness import flows
 
