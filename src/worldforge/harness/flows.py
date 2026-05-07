@@ -163,6 +163,31 @@ _GROOT_REPLAY_RESULT_DIGEST = (
     "sha256:cccfed332ffc54e1a4ff6afdb17e1e5aae6c73cb433b74cfe3a2e7bed62ac1f5"
 )
 _GROOT_REPLAY_OBSERVATION_FIELDS = ("language", "state", "video")
+_GROOT_REPLAY_TOP_LEVEL_KEYS = frozenset(
+    {
+        "schema_version",
+        "source",
+        "manifest",
+        "request",
+        "policy_output",
+        "response",
+        "translated_actions",
+        "provider_events",
+    }
+)
+_GROOT_REPLAY_MANIFEST_KEYS = frozenset(
+    {
+        "flow_id",
+        "provider",
+        "model",
+        "runtime",
+        "task_description",
+        "action_horizon",
+        "embodiment_tag",
+        "raw_action_shapes",
+        "source_validation",
+    }
+)
 _GROOT_REPLAY_REQUEST_KEYS = frozenset(
     {
         "observation_fields",
@@ -170,6 +195,17 @@ _GROOT_REPLAY_REQUEST_KEYS = frozenset(
         "task_description",
         "action_horizon",
         "embodiment_tag",
+    }
+)
+_GROOT_REPLAY_POLICY_OUTPUT_KEYS = frozenset({"raw_actions", "provider_info"})
+_GROOT_REPLAY_PROVIDER_INFO_KEYS = frozenset({"model", "latency_ms", "runtime"})
+_GROOT_REPLAY_RESPONSE_KEYS = frozenset(
+    {
+        "raw_action_shapes",
+        "translated_action_count",
+        "raw_action_preview",
+        "selected_action_preview",
+        "latency_ms",
     }
 )
 _GROOT_REPLAY_RAW_ACTION_SHAPES: JSONDict = {
@@ -1097,6 +1133,7 @@ def _run_gr00t_replay_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
             events=events,
             replay_artifact=replay_artifact,
             error=exc,
+            policy_select_calls=client.get_action_calls,
         )
         if emit:
             print("\n".join(_transcript_for("gr00t-replay", summary)))
@@ -1228,12 +1265,22 @@ def _load_groot_replay_artifact(path: Path) -> JSONDict:
         raise WorldStateError(f"GR00T replay artifact is not valid JSON: {path}") from exc
     if not isinstance(payload, dict):
         raise WorldStateError("GR00T replay artifact must be a JSON object.")
+    if set(payload) != _GROOT_REPLAY_TOP_LEVEL_KEYS:
+        raise WorldStateError("GR00T replay artifact contains unsupported top-level fields.")
     if payload.get("schema_version") != _GROOT_REPLAY_SCHEMA_VERSION:
         raise WorldStateError("GR00T replay artifact schema_version is unsupported.")
+    if not isinstance(payload.get("source"), str) or not payload["source"]:
+        raise WorldStateError("GR00T replay artifact source must be a non-empty string.")
 
     manifest = _require_json_object(payload.get("manifest"), "GR00T replay manifest")
+    if set(manifest) != _GROOT_REPLAY_MANIFEST_KEYS:
+        raise WorldStateError("GR00T replay manifest contains unsupported fields.")
     if manifest.get("flow_id") != "gr00t-replay":
         raise WorldStateError("GR00T replay artifact flow_id must be 'gr00t-replay'.")
+    if manifest.get("provider") != "gr00t":
+        raise WorldStateError("GR00T replay artifact provider is unsupported.")
+    if manifest.get("model") != _GROOT_REPLAY_MODEL:
+        raise WorldStateError("GR00T replay artifact model is unsupported.")
     if manifest.get("action_horizon") != _GROOT_REPLAY_ACTION_HORIZON:
         raise WorldStateError("GR00T replay artifact action_horizon is unsupported.")
     if manifest.get("embodiment_tag") != _GROOT_REPLAY_EMBODIMENT_TAG:
@@ -1255,9 +1302,25 @@ def _load_groot_replay_artifact(path: Path) -> JSONDict:
         raise WorldStateError("GR00T replay request embodiment_tag is unsupported.")
 
     policy_output = _require_json_object(payload.get("policy_output"), "GR00T replay output")
+    if set(policy_output) != _GROOT_REPLAY_POLICY_OUTPUT_KEYS:
+        raise WorldStateError("GR00T replay policy_output contains unsupported fields.")
     raw_actions = _require_json_object(policy_output.get("raw_actions"), "GR00T replay raw_actions")
     _validate_groot_raw_actions(raw_actions)
-    _require_json_object(policy_output.get("provider_info", {}), "GR00T replay provider_info")
+    _validate_groot_provider_info(policy_output.get("provider_info", {}))
+    response = _require_json_object(payload.get("response"), "GR00T replay response")
+    if set(response) != _GROOT_REPLAY_RESPONSE_KEYS:
+        raise WorldStateError("GR00T replay response contains unsupported fields.")
+    if response.get("raw_action_shapes") != _GROOT_REPLAY_RAW_ACTION_SHAPES:
+        raise WorldStateError("GR00T replay response raw_action_shapes are unsupported.")
+    if response.get("translated_action_count") != 0:
+        raise WorldStateError("GR00T replay seed response translated_action_count must be zero.")
+    if response.get("raw_action_preview") != [] or response.get("selected_action_preview") != []:
+        raise WorldStateError("GR00T replay seed response previews must be empty.")
+    _validate_groot_latency(response.get("latency_ms"), "GR00T replay response latency_ms")
+    if payload.get("translated_actions") != []:
+        raise WorldStateError("GR00T replay seed translated_actions must be empty.")
+    if payload.get("provider_events") != []:
+        raise WorldStateError("GR00T replay seed provider_events must be empty.")
     return payload
 
 
@@ -1315,6 +1378,7 @@ def _groot_replay_failure_summary(
     events: Sequence[ProviderEvent],
     replay_artifact: JSONDict,
     error: Exception,
+    policy_select_calls: int,
 ) -> JSONDict:
     manifest = _require_json_object(saved_replay["manifest"], "GR00T replay manifest")
     request = _require_json_object(saved_replay["request"], "GR00T replay request")
@@ -1335,7 +1399,7 @@ def _groot_replay_failure_summary(
         "action_horizon": request.get("action_horizon"),
         "embodiment_tag": request.get("embodiment_tag"),
         "candidate_count": 0,
-        "policy_select_calls": 0,
+        "policy_select_calls": policy_select_calls,
         "latency_ms": response.get("latency_ms"),
         "selected_actions": [],
         "selected_action_preview": [],
@@ -1409,6 +1473,26 @@ def _validate_groot_raw_actions(raw_actions: JSONDict) -> None:
             expected_shape=expected_shape,
             name=f"GR00T replay raw_actions.{key}",
         )
+
+
+def _validate_groot_provider_info(value: object) -> JSONDict:
+    provider_info = _require_json_object(value, "GR00T replay provider_info")
+    if set(provider_info) != _GROOT_REPLAY_PROVIDER_INFO_KEYS:
+        raise WorldStateError("GR00T replay provider_info contains unsupported fields.")
+    if provider_info.get("model") != _GROOT_REPLAY_MODEL:
+        raise WorldStateError("GR00T replay provider_info model is unsupported.")
+    _validate_groot_latency(
+        provider_info.get("latency_ms"),
+        "GR00T replay provider_info latency_ms",
+    )
+    if not isinstance(provider_info.get("runtime"), str) or not provider_info["runtime"]:
+        raise WorldStateError("GR00T replay provider_info runtime must be a non-empty string.")
+    return provider_info
+
+
+def _validate_groot_latency(value: object, name: str) -> None:
+    if not isinstance(value, int | float) or isinstance(value, bool) or not math.isfinite(value):
+        raise WorldStateError(f"{name} must be a finite number.")
 
 
 def _validate_numeric_tensor(value: object, *, expected_shape: Sequence[int], name: str) -> None:

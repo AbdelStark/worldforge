@@ -282,6 +282,91 @@ def test_harness_rejects_raw_groot_replay_observation(tmp_path) -> None:
         )
 
 
+def test_harness_rejects_extra_groot_replay_artifact_fields(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    extra_field = _copy_json_payload(payload)
+    extra_field["raw_observation"] = {"token": "secret"}
+
+    with pytest.raises(WorldStateError, match="unsupported top-level fields"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "extra-field.json", extra_field)
+        )
+
+
+def test_harness_rejects_secret_groot_replay_provider_info(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    secret_info = _copy_json_payload(payload)
+    secret_info["policy_output"]["provider_info"]["api_key"] = "secret"
+
+    with pytest.raises(WorldStateError, match="provider_info contains unsupported fields"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "secret-info.json", secret_info)
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutator", "match"),
+    [
+        (
+            lambda payload: payload["manifest"].__setitem__("secret", "value"),
+            "manifest contains unsupported fields",
+        ),
+        (
+            lambda payload: payload["policy_output"].__setitem__("secret", "value"),
+            "policy_output contains unsupported fields",
+        ),
+        (
+            lambda payload: payload["response"].__setitem__("secret", "value"),
+            "response contains unsupported fields",
+        ),
+        (
+            lambda payload: payload["response"].__setitem__("translated_action_count", 1),
+            "translated_action_count must be zero",
+        ),
+        (
+            lambda payload: payload.__setitem__(
+                "translated_actions",
+                [{"type": "move_to"}],
+            ),
+            "translated_actions must be empty",
+        ),
+        (
+            lambda payload: payload["policy_output"]["provider_info"].__setitem__(
+                "runtime",
+                "",
+            ),
+            "runtime must be a non-empty string",
+        ),
+        (
+            lambda payload: payload["policy_output"]["provider_info"].__setitem__(
+                "latency_ms",
+                math.nan,
+            ),
+            "latency_ms must be a finite number",
+        ),
+    ],
+)
+def test_harness_rejects_groot_replay_retained_field_drift(
+    tmp_path,
+    mutator,
+    match: str,
+) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    drifted = _copy_json_payload(payload)
+    mutator(drifted)
+
+    with pytest.raises(WorldStateError, match=match):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "retained-field-drift.json", drifted)
+        )
+
+
 def test_harness_rejects_groot_replay_bad_raw_tensor_shape(tmp_path) -> None:
     from worldforge.harness import flows
 
@@ -324,6 +409,7 @@ def test_harness_groot_replay_failure_preserves_replay_artifact(
     assert run.validation_errors == (
         "GR00T action translation failed: GR00T replay tensor decode failed",
     )
+    assert run.summary["policy_select_calls"] == 1
     assert run.workspace_path is not None
     manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
     assert manifest["status"] == "failed"
