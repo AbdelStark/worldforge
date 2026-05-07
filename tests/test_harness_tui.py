@@ -344,6 +344,10 @@ def test_harness_status_pill_reflects_selected_flow_provider(tmp_path) -> None:
             assert pill.label.endswith("· policy")
             await pilot.press("4")
             await pilot.pause()
+            assert "GrootPolicyClientProvider" in pill.label
+            assert pill.label.endswith("· policy")
+            await pilot.press("5")
+            await pilot.pause()
             assert pill.label.endswith("· diagnostics")
 
     asyncio.run(scenario())
@@ -412,7 +416,7 @@ def test_the_world_harness_app_switches_to_diagnostics_flow(tmp_path) -> None:
             step_delay=0.0,
         )
         async with app.run_test(size=(140, 44)) as pilot:
-            await pilot.press("4")
+            await pilot.press("5")
             await pilot.press("r")
             await pilot.pause()
             screen = app.screen
@@ -420,6 +424,32 @@ def test_the_world_harness_app_switches_to_diagnostics_flow(tmp_path) -> None:
             assert screen.last_run is not None
             assert screen.last_run.flow.id == "diagnostics"
             assert screen.last_run.summary["benchmark_operation_count"] == 5
+
+    asyncio.run(scenario())
+
+
+def test_the_world_harness_app_switches_to_gr00t_replay_flow(tmp_path) -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import RunInspectorScreen, TheWorldHarnessApp
+
+    async def scenario() -> None:
+        app = TheWorldHarnessApp(
+            initial_flow_id="leworldmodel",
+            initial_screen="run-inspector",
+            state_dir=tmp_path,
+            step_delay=0.0,
+        )
+        async with app.run_test(size=(140, 44)) as pilot:
+            await pilot.press("4")
+            await pilot.press("r")
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, RunInspectorScreen)
+            assert screen.last_run is not None
+            assert screen.last_run.flow.id == "gr00t-replay"
+            assert screen.last_run.summary["translated_action_count"] == 40
+            assert screen.last_run.summary["raw_action_shapes"]["eef_9d"] == [1, 40, 9]
 
     asyncio.run(scenario())
 
