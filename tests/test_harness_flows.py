@@ -159,40 +159,40 @@ def test_harness_rejects_malformed_cosmos_policy_replay_artifacts(tmp_path) -> N
     payload = flows._cosmos_policy_saved_replay_payload()
     invalid_schema = json.loads(json.dumps(payload))
     invalid_schema["schema_version"] = 99
-    with pytest.raises(ValueError, match="schema_version"):
+    with pytest.raises(WorldStateError, match="schema_version"):
         flows._load_cosmos_policy_replay_artifact(write_payload("bad-schema.json", invalid_schema))
 
     missing_observation = json.loads(json.dumps(payload))
     missing_observation["request"]["observation_fields"] = ["primary_image"]
-    with pytest.raises(ValueError, match="missing fields"):
+    with pytest.raises(WorldStateError, match="missing fields"):
         flows._load_cosmos_policy_replay_artifact(
             write_payload("missing-observation.json", missing_observation)
         )
 
     unredacted_image = json.loads(json.dumps(payload))
     unredacted_image["request"]["observation_summary"]["primary_image"]["redacted"] = False
-    with pytest.raises(ValueError, match="must be redacted"):
+    with pytest.raises(WorldStateError, match="must be redacted"):
         flows._load_cosmos_policy_replay_artifact(
             write_payload("unredacted-image.json", unredacted_image)
         )
 
     unredacted_proprio = json.loads(json.dumps(payload))
     unredacted_proprio["request"]["observation_summary"]["proprio"]["redacted"] = False
-    with pytest.raises(ValueError, match="must be redacted"):
+    with pytest.raises(WorldStateError, match="must be redacted"):
         flows._load_cosmos_policy_replay_artifact(
             write_payload("unredacted-proprio.json", unredacted_proprio)
         )
 
     raw_observation = json.loads(json.dumps(payload))
     raw_observation["request"]["observation"] = {"primary_image": [[[[0, 0, 0]]]]}
-    with pytest.raises(ValueError, match="unsupported fields"):
+    with pytest.raises(WorldStateError, match="unsupported fields"):
         flows._load_cosmos_policy_replay_artifact(
             write_payload("raw-observation.json", raw_observation)
         )
 
     bad_action_shape = json.loads(json.dumps(payload))
     bad_action_shape["policy_output"]["actions"][0]["shape"] = [15]
-    with pytest.raises(ValueError, match="shape"):
+    with pytest.raises(WorldStateError, match="shape"):
         flows._load_cosmos_policy_replay_artifact(
             write_payload("bad-action-shape.json", bad_action_shape)
         )

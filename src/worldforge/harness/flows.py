@@ -462,28 +462,28 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Cosmos-Policy replay artifact is not valid JSON: {path}") from exc
+        raise WorldStateError(f"Cosmos-Policy replay artifact is not valid JSON: {path}") from exc
     if not isinstance(payload, dict):
-        raise ValueError("Cosmos-Policy replay artifact must be a JSON object.")
+        raise WorldStateError("Cosmos-Policy replay artifact must be a JSON object.")
     if payload.get("schema_version") != _COSMOS_POLICY_REPLAY_SCHEMA_VERSION:
-        raise ValueError("Cosmos-Policy replay artifact schema_version is unsupported.")
+        raise WorldStateError("Cosmos-Policy replay artifact schema_version is unsupported.")
 
     manifest = _require_json_object(payload.get("manifest"), "Cosmos-Policy replay manifest")
     if manifest.get("flow_id") != "cosmos-policy":
-        raise ValueError("Cosmos-Policy replay artifact flow_id must be 'cosmos-policy'.")
+        raise WorldStateError("Cosmos-Policy replay artifact flow_id must be 'cosmos-policy'.")
     if manifest.get("server_path") != "/act":
-        raise ValueError("Cosmos-Policy replay artifact server_path must be '/act'.")
+        raise WorldStateError("Cosmos-Policy replay artifact server_path must be '/act'.")
     if manifest.get("action_horizon") != _COSMOS_POLICY_ACTION_HORIZON:
-        raise ValueError("Cosmos-Policy replay artifact action_horizon is unsupported.")
+        raise WorldStateError("Cosmos-Policy replay artifact action_horizon is unsupported.")
     if manifest.get("action_dim") != _COSMOS_POLICY_ACTION_DIM:
-        raise ValueError("Cosmos-Policy replay artifact action_dim is unsupported.")
+        raise WorldStateError("Cosmos-Policy replay artifact action_dim is unsupported.")
 
     request = _require_json_object(payload.get("request"), "Cosmos-Policy replay request")
     if set(request) != _COSMOS_POLICY_REPLAY_REQUEST_KEYS:
-        raise ValueError("Cosmos-Policy replay request contains unsupported fields.")
+        raise WorldStateError("Cosmos-Policy replay request contains unsupported fields.")
     expected_fields = sorted(("primary_image", "left_wrist_image", "right_wrist_image", "proprio"))
     if request.get("observation_fields") != expected_fields:
-        raise ValueError(
+        raise WorldStateError(
             "Cosmos-Policy replay observation is missing fields or has unsupported fields."
         )
     observation_summary = _require_json_object(
@@ -491,22 +491,26 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
         "Cosmos-Policy replay observation_summary",
     )
     if set(observation_summary) != set(expected_fields):
-        raise ValueError("Cosmos-Policy replay observation_summary contains unsupported fields.")
+        raise WorldStateError(
+            "Cosmos-Policy replay observation_summary contains unsupported fields."
+        )
     for field in ("primary_image", "left_wrist_image", "right_wrist_image", "proprio"):
         field_summary = _require_json_object(
             observation_summary.get(field),
             f"Cosmos-Policy replay observation_summary.{field}",
         )
         if field_summary.get("redacted") is not True:
-            raise ValueError(f"Cosmos-Policy replay observation field {field} must be redacted.")
+            raise WorldStateError(
+                f"Cosmos-Policy replay observation field {field} must be redacted."
+            )
     if request.get("proprio_dim") != _COSMOS_POLICY_ACTION_DIM:
-        raise ValueError("Cosmos-Policy replay proprio_dim is unsupported.")
+        raise WorldStateError("Cosmos-Policy replay proprio_dim is unsupported.")
     if not isinstance(request.get("task_description"), str) or not request["task_description"]:
-        raise ValueError("Cosmos-Policy replay task_description must be a non-empty string.")
+        raise WorldStateError("Cosmos-Policy replay task_description must be a non-empty string.")
     if request.get("action_horizon") != _COSMOS_POLICY_ACTION_HORIZON:
-        raise ValueError("Cosmos-Policy replay request action_horizon is unsupported.")
+        raise WorldStateError("Cosmos-Policy replay request action_horizon is unsupported.")
     if request.get("embodiment_tag") != "aloha":
-        raise ValueError("Cosmos-Policy replay embodiment_tag must be 'aloha'.")
+        raise WorldStateError("Cosmos-Policy replay embodiment_tag must be 'aloha'.")
 
     policy_output = _require_json_object(
         payload.get("policy_output"),
@@ -514,7 +518,7 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
     )
     actions = policy_output.get("actions")
     if not isinstance(actions, list) or len(actions) != _COSMOS_POLICY_ACTION_HORIZON:
-        raise ValueError("Cosmos-Policy replay policy_output.actions must contain 50 rows.")
+        raise WorldStateError("Cosmos-Policy replay policy_output.actions must contain 50 rows.")
     for index, row in enumerate(actions):
         _decode_json_numpy_action_row(row, row_index=index)
     value_prediction = policy_output.get("value_prediction")
@@ -522,11 +526,13 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
         try:
             value_prediction_float = float(value_prediction)
         except (TypeError, ValueError) as exc:
-            raise ValueError(
+            raise WorldStateError(
                 "Cosmos-Policy replay value_prediction must be numeric when present."
             ) from exc
         if not math.isfinite(value_prediction_float):
-            raise ValueError("Cosmos-Policy replay value_prediction must be finite when present.")
+            raise WorldStateError(
+                "Cosmos-Policy replay value_prediction must be finite when present."
+            )
     return payload
 
 
@@ -669,7 +675,7 @@ def _cosmos_policy_response_payload(replay_artifact: JSONDict) -> JSONDict:
 
 def _require_json_object(value: object, name: str) -> JSONDict:
     if not isinstance(value, dict):
-        raise ValueError(f"{name} must be a JSON object.")
+        raise WorldStateError(f"{name} must be a JSON object.")
     return value
 
 
@@ -724,31 +730,31 @@ def _json_numpy_action_row(row: Sequence[float]) -> JSONDict:
 
 def _decode_json_numpy_action_row(value: object, *, row_index: int) -> list[float]:
     if not isinstance(value, dict):
-        raise ValueError(f"Cosmos-Policy replay action row {row_index} must be JSON numpy.")
+        raise WorldStateError(f"Cosmos-Policy replay action row {row_index} must be JSON numpy.")
     encoded = value.get("__numpy__")
     if not isinstance(encoded, str) or not encoded:
-        raise ValueError(f"Cosmos-Policy replay action row {row_index} is missing __numpy__.")
+        raise WorldStateError(f"Cosmos-Policy replay action row {row_index} is missing __numpy__.")
     if value.get("dtype") != "<f4":
-        raise ValueError(f"Cosmos-Policy replay action row {row_index} must use dtype <f4.")
+        raise WorldStateError(f"Cosmos-Policy replay action row {row_index} must use dtype <f4.")
     if value.get("shape") != [_COSMOS_POLICY_ACTION_DIM]:
-        raise ValueError(
+        raise WorldStateError(
             f"Cosmos-Policy replay action row {row_index} must have shape "
             f"[{_COSMOS_POLICY_ACTION_DIM}]."
         )
     try:
         raw = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error) as exc:
-        raise ValueError(
+        raise WorldStateError(
             f"Cosmos-Policy replay action row {row_index} has invalid base64."
         ) from exc
     expected_bytes = _COSMOS_POLICY_ACTION_DIM * 4
     if len(raw) != expected_bytes:
-        raise ValueError(
+        raise WorldStateError(
             f"Cosmos-Policy replay action row {row_index} must contain {expected_bytes} bytes."
         )
     decoded = list(struct.unpack(f"<{_COSMOS_POLICY_ACTION_DIM}f", raw))
     if not all(math.isfinite(value) for value in decoded):
-        raise ValueError(f"Cosmos-Policy replay action row {row_index} must be finite.")
+        raise WorldStateError(f"Cosmos-Policy replay action row {row_index} must be finite.")
     return decoded
 
 
