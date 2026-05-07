@@ -15,8 +15,10 @@ from worldforge.models import ProviderHealth
 def _load_script() -> ModuleType:
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "smoke_gr00t_policy.py"
     spec = importlib.util.spec_from_file_location("smoke_gr00t_policy", script_path)
-    assert spec is not None
-    assert spec.loader is not None
+    if spec is None:
+        raise AssertionError(f"Could not create module spec for {script_path}")
+    if spec.loader is None:
+        raise AssertionError(f"Module spec has no loader for {script_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -178,7 +180,10 @@ def test_smoke_script_requires_translator_code_opt_in(tmp_path: Path) -> None:
         )
 
 
-def test_smoke_script_requires_observation_code_opt_in(tmp_path: Path, monkeypatch) -> None:
+def test_smoke_script_requires_observation_code_opt_in(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module_path = tmp_path / "observation.py"
     module_path.write_text("def build():\n    return {'observation': {'language': {}}}\n")
     translator_path = tmp_path / "translator.py"
