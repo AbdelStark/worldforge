@@ -638,6 +638,23 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
 # First triage: verify the `/act` server is reachable and recheck the translator path plus
 # policy_info.json shape.
 
+# Cosmos-Policy remote GPU checklist:
+#
+# 1. Use a prepared Linux/NVIDIA host that can run the upstream Cosmos-Policy server.
+#    Current ALOHA Predict2 smokes should start from a 48 GB or larger GPU memory class unless
+#    the upstream requirements are stricter.
+# 2. Keep checkpoints, model approvals, CUDA, Docker, and Hugging Face/NVIDIA tokens on the host.
+#    WorldForge should only see the `/act` endpoint and sanitized run evidence.
+# 3. Prefer an SSH tunnel to `127.0.0.1:8777`. If the server is exposed directly, restrict
+#    inbound TCP 8777 to the operator IP or VPN CIDR and set `COSMOS_POLICY_ALLOWED_HOSTS`.
+# 4. Run health-only first. It validates WorldForge configuration only; it does not prove `/act`
+#    inference because the targeted upstream server has no non-mutating health endpoint.
+# 5. Run the full smoke with prepared ALOHA policy info and a trusted translator. Expected success
+#    is `run_manifest.json` with capability=policy, status=passed, and a non-empty action shape
+#    such as 50 x 14.
+# 6. Preserve only sanitized evidence. Do not commit raw images, tokens, checkpoints, Docker
+#    layers, or GPU logs with secrets. Hibernate or terminate the GPU host when finished.
+
 # Runway: requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET.
 RUNWAYML_API_SECRET=... \
   uv run pytest -m "live and network and credentialed and provider_profile" \
