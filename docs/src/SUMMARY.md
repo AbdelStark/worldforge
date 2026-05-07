@@ -46,6 +46,7 @@
   - [User And Operator Playbooks](./playbooks.md)
   - [Run Artifact Index](./run-index.md)
   - [Static HTML Reports](./html-reports.md)
+  - [World State Diff And Patch](./world-diff.md)
   - [Engineering Quality](./quality.md)
   - [Operations](./operations.md)
   - [Security](./security.md)
