@@ -110,6 +110,12 @@ _COSMOS_POLICY_ACTION_HORIZON = 50
 _COSMOS_POLICY_ACTION_DIM = 14
 _COSMOS_POLICY_VALUE_PREDICTION = 0.190714
 _COSMOS_POLICY_REPLAY_SCHEMA_VERSION = 1
+_COSMOS_POLICY_OBSERVATION_FIELDS = (
+    "left_wrist_image",
+    "primary_image",
+    "proprio",
+    "right_wrist_image",
+)
 _COSMOS_POLICY_REPLAY_REQUEST_KEYS = frozenset(
     {
         "observation_fields",
@@ -271,14 +277,18 @@ def _run_cosmos_policy_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
         for index, row in enumerate(matrix):
             if not isinstance(row, list):
                 raise ProviderError(f"Cosmos-Policy replay action row {index} must be a list.")
-            if len(row) < 3:
-                raise ProviderError(f"Cosmos-Policy replay action row {index} needs x/y/z.")
+            if len(row) != _COSMOS_POLICY_ACTION_DIM:
+                raise ProviderError(
+                    f"Cosmos-Policy replay action row {index} must be {_COSMOS_POLICY_ACTION_DIM}D."
+                )
             actions.append(Action.move_to(float(row[0]), float(row[1]), float(row[2])))
         return actions
 
     provider = CosmosPolicyProvider(
         base_url=_COSMOS_POLICY_REPLAY_BASE_URL,
         model=_COSMOS_POLICY_MODEL,
+        return_all_query_results=False,
+        allowed_hosts=("93.184.216.34",),
         transport=httpx.MockTransport(handler),
         action_translator=translator,
         event_handler=events.append,
@@ -413,9 +423,7 @@ def _write_prepared_cosmos_policy_replay_artifact(state_dir: Path) -> Path:
 def _cosmos_policy_saved_replay_payload() -> JSONDict:
     encoded_rows = [_json_numpy_action_row(row) for row in _cosmos_policy_action_rows()]
     task_description = "fold shirt"
-    observation_fields = sorted(
-        ("primary_image", "left_wrist_image", "right_wrist_image", "proprio")
-    )
+    observation_fields = list(_COSMOS_POLICY_OBSERVATION_FIELDS)
     return {
         "schema_version": _COSMOS_POLICY_REPLAY_SCHEMA_VERSION,
         "source": "sanitized Cosmos-Policy live /act response shape",
@@ -481,28 +489,15 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
     request = _require_json_object(payload.get("request"), "Cosmos-Policy replay request")
     if set(request) != _COSMOS_POLICY_REPLAY_REQUEST_KEYS:
         raise WorldStateError("Cosmos-Policy replay request contains unsupported fields.")
-    expected_fields = sorted(("primary_image", "left_wrist_image", "right_wrist_image", "proprio"))
+    expected_fields = list(_COSMOS_POLICY_OBSERVATION_FIELDS)
     if request.get("observation_fields") != expected_fields:
         raise WorldStateError(
             "Cosmos-Policy replay observation is missing fields or has unsupported fields."
         )
-    observation_summary = _require_json_object(
+    _validate_cosmos_policy_observation_summary(
         request.get("observation_summary"),
-        "Cosmos-Policy replay observation_summary",
+        expected_fields=expected_fields,
     )
-    if set(observation_summary) != set(expected_fields):
-        raise WorldStateError(
-            "Cosmos-Policy replay observation_summary contains unsupported fields."
-        )
-    for field in ("primary_image", "left_wrist_image", "right_wrist_image", "proprio"):
-        field_summary = _require_json_object(
-            observation_summary.get(field),
-            f"Cosmos-Policy replay observation_summary.{field}",
-        )
-        if field_summary.get("redacted") is not True:
-            raise WorldStateError(
-                f"Cosmos-Policy replay observation field {field} must be redacted."
-            )
     if request.get("proprio_dim") != _COSMOS_POLICY_ACTION_DIM:
         raise WorldStateError("Cosmos-Policy replay proprio_dim is unsupported.")
     if not isinstance(request.get("task_description"), str) or not request["task_description"]:
@@ -616,6 +611,7 @@ def _cosmos_policy_replay_failure_summary(
 def _validate_cosmos_policy_replay_request(payload: object, saved_request: JSONDict) -> None:
     if not isinstance(payload, dict):
         raise WorldStateError("Cosmos-Policy replay request payload must be a JSON object.")
+    _require_json_native_value(payload, "Cosmos-Policy replay request payload")
     expected_fields_value = saved_request.get("observation_fields")
     if not isinstance(expected_fields_value, list) or not all(
         isinstance(field, str) for field in expected_fields_value
@@ -626,6 +622,12 @@ def _validate_cosmos_policy_replay_request(payload: object, saved_request: JSOND
         raise WorldStateError("Cosmos-Policy replay saved observation fields are invalid.")
     expected_payload_keys = set(expected_fields) | {"task_description", "action_horizon"}
     payload_keys = set(payload)
+    if "return_all_query_results" in payload:
+        if not isinstance(payload["return_all_query_results"], bool):
+            raise WorldStateError(
+                "Cosmos-Policy replay request return_all_query_results must be boolean."
+            )
+        payload_keys.remove("return_all_query_results")
     if payload_keys != expected_payload_keys:
         missing = sorted(expected_payload_keys - payload_keys)
         extra = sorted(payload_keys - expected_payload_keys)
@@ -646,6 +648,15 @@ def _validate_cosmos_policy_replay_request(payload: object, saved_request: JSOND
     proprio = payload.get("proprio")
     if not isinstance(proprio, list) or len(proprio) != saved_request["proprio_dim"]:
         raise WorldStateError("Cosmos-Policy replay request proprio shape drifted.")
+    for index, value in enumerate(proprio):
+        if (
+            not isinstance(value, int | float)
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+        ):
+            raise WorldStateError(
+                f"Cosmos-Policy replay request proprio[{index}] must be finite numeric."
+            )
 
 
 def _cosmos_policy_policy_info_from_replay(replay_artifact: JSONDict) -> JSONDict:
@@ -677,6 +688,64 @@ def _require_json_object(value: object, name: str) -> JSONDict:
     if not isinstance(value, dict):
         raise WorldStateError(f"{name} must be a JSON object.")
     return value
+
+
+def _require_json_native_value(value: object, name: str) -> None:
+    if value is None or isinstance(value, str | bool):
+        return
+    if isinstance(value, int | float):
+        if isinstance(value, bool) or not math.isfinite(value):
+            raise WorldStateError(f"{name} must be JSON-native and finite.")
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _require_json_native_value(item, f"{name}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise WorldStateError(f"{name} keys must be strings.")
+            _require_json_native_value(item, f"{name}.{key}")
+        return
+    raise WorldStateError(f"{name} must be JSON-native.")
+
+
+def _validate_cosmos_policy_observation_summary(
+    value: object,
+    *,
+    expected_fields: Sequence[str],
+) -> None:
+    observation_summary = _require_json_object(
+        value,
+        "Cosmos-Policy replay observation_summary",
+    )
+    if set(observation_summary) != set(expected_fields):
+        raise WorldStateError(
+            "Cosmos-Policy replay observation_summary contains unsupported fields."
+        )
+    expected_shapes = {
+        "primary_image": [1, 1, 1, 3],
+        "left_wrist_image": [1, 1, 1, 3],
+        "right_wrist_image": [1, 1, 1, 3],
+        "proprio": [_COSMOS_POLICY_ACTION_DIM],
+    }
+    for field in expected_fields:
+        field_summary = _require_json_object(
+            observation_summary.get(field),
+            f"Cosmos-Policy replay observation_summary.{field}",
+        )
+        if set(field_summary) != {"redacted", "shape"}:
+            raise WorldStateError(
+                f"Cosmos-Policy replay observation_summary.{field} contains unsupported fields."
+            )
+        if field_summary.get("redacted") is not True:
+            raise WorldStateError(
+                f"Cosmos-Policy replay observation field {field} must be redacted."
+            )
+        if field_summary.get("shape") != expected_shapes[field]:
+            raise WorldStateError(
+                f"Cosmos-Policy replay observation_summary.{field}.shape is unsupported."
+            )
 
 
 def _cosmos_policy_redacted_observation_summary() -> JSONDict:
@@ -734,12 +803,25 @@ def _decode_json_numpy_action_row(value: object, *, row_index: int) -> list[floa
     encoded = value.get("__numpy__")
     if not isinstance(encoded, str) or not encoded:
         raise WorldStateError(f"Cosmos-Policy replay action row {row_index} is missing __numpy__.")
-    if value.get("dtype") != "<f4":
-        raise WorldStateError(f"Cosmos-Policy replay action row {row_index} must use dtype <f4.")
+    dtype = value.get("dtype")
+    if not isinstance(dtype, str) or not dtype:
+        raise WorldStateError(
+            f"Cosmos-Policy replay action row {row_index} must include a numeric dtype."
+        )
+    endian_prefix, item_format, item_size = _json_numpy_float_format_for_replay(
+        dtype,
+        row_index=row_index,
+    )
     if value.get("shape") != [_COSMOS_POLICY_ACTION_DIM]:
         raise WorldStateError(
             f"Cosmos-Policy replay action row {row_index} must have shape "
             f"[{_COSMOS_POLICY_ACTION_DIM}]."
+        )
+    expected_bytes = _COSMOS_POLICY_ACTION_DIM * item_size
+    expected_encoded_length = 4 * math.ceil(expected_bytes / 3)
+    if len(encoded) > expected_encoded_length:
+        raise WorldStateError(
+            f"Cosmos-Policy replay action row {row_index} base64 payload is too large."
         )
     try:
         raw = base64.b64decode(encoded, validate=True)
@@ -747,15 +829,37 @@ def _decode_json_numpy_action_row(value: object, *, row_index: int) -> list[floa
         raise WorldStateError(
             f"Cosmos-Policy replay action row {row_index} has invalid base64."
         ) from exc
-    expected_bytes = _COSMOS_POLICY_ACTION_DIM * 4
     if len(raw) != expected_bytes:
         raise WorldStateError(
             f"Cosmos-Policy replay action row {row_index} must contain {expected_bytes} bytes."
         )
-    decoded = list(struct.unpack(f"<{_COSMOS_POLICY_ACTION_DIM}f", raw))
+    decoded = list(struct.unpack(f"{endian_prefix}{_COSMOS_POLICY_ACTION_DIM}{item_format}", raw))
     if not all(math.isfinite(value) for value in decoded):
         raise WorldStateError(f"Cosmos-Policy replay action row {row_index} must be finite.")
     return decoded
+
+
+def _json_numpy_float_format_for_replay(
+    dtype: str,
+    *,
+    row_index: int,
+) -> tuple[str, str, int]:
+    normalized = dtype.strip().lower()
+    if not normalized:
+        raise WorldStateError(
+            f"Cosmos-Policy replay action row {row_index} must include a numeric dtype."
+        )
+    endian_prefix = "<"
+    if normalized[0] in ("<", ">", "=", "|"):
+        endian_prefix = "=" if normalized[0] == "|" else normalized[0]
+        normalized = normalized[1:]
+    if normalized in ("f4", "float32"):
+        return endian_prefix, "f", 4
+    if normalized in ("f8", "float64"):
+        return endian_prefix, "d", 8
+    raise WorldStateError(
+        f"Cosmos-Policy replay action row {row_index} dtype must be float32 or float64."
+    )
 
 
 def _preview_action_rows(rows: object, *, limit: int = 6, columns: int = 6) -> list[list[float]]:

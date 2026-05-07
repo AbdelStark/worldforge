@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
 import importlib
 import json
+import math
+import struct
 import sys
 from pathlib import Path
 
@@ -26,6 +29,33 @@ from worldforge.harness.run_history import (
     run_history_markdown,
 )
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest
+
+
+def _copy_json_payload(value: object) -> object:
+    return json.loads(json.dumps(value))
+
+
+def _write_cosmos_replay_payload(tmp_path: Path, name: str, payload: object) -> Path:
+    path = tmp_path / name
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _cosmos_replay_request_payload(tmp_path: Path) -> tuple[dict, dict]:
+    from worldforge.harness import flows
+
+    replay_path = tmp_path / "cosmos-policy-replay.json"
+    replay_path.write_text(
+        json.dumps(flows._cosmos_policy_saved_replay_payload()),
+        encoding="utf-8",
+    )
+    replay = flows._load_cosmos_policy_replay_artifact(replay_path)
+    saved_request = replay["request"]
+    policy_info = flows._cosmos_policy_policy_info_from_replay(replay)
+    outbound_payload = dict(policy_info["observation"])
+    outbound_payload["task_description"] = saved_request["task_description"]
+    outbound_payload["action_horizon"] = saved_request["action_horizon"]
+    return outbound_payload, saved_request
 
 
 def test_harness_flow_metadata_is_available_without_textual() -> None:
@@ -131,6 +161,16 @@ def test_harness_cosmos_policy_flow_can_emit_transcript(tmp_path, capsys) -> Non
     assert "translated_actions: 50" in output
 
 
+def test_harness_cosmos_policy_flow_ignores_live_cosmos_env(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("COSMOS_POLICY_ALLOWED_HOSTS", "live-cosmos.example")
+    monkeypatch.setenv("COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS", "true")
+
+    run = run_flow("cosmos-policy", state_dir=tmp_path)
+
+    assert run.summary["raw_action_shape"] == [50, 14]
+    assert run.summary["translated_action_count"] == 50
+
+
 def test_harness_loads_cosmos_policy_replay_artifact(tmp_path) -> None:
     from worldforge.harness import flows
 
@@ -148,72 +188,152 @@ def test_harness_loads_cosmos_policy_replay_artifact(tmp_path) -> None:
     assert len(loaded["policy_output"]["actions"]) == 50
 
 
-def test_harness_rejects_malformed_cosmos_policy_replay_artifacts(tmp_path) -> None:
+def test_harness_rejects_cosmos_policy_replay_schema_drift(tmp_path) -> None:
     from worldforge.harness import flows
 
-    def write_payload(name: str, payload: object) -> Path:
-        path = tmp_path / name
-        path.write_text(json.dumps(payload), encoding="utf-8")
-        return path
+    payload = flows._cosmos_policy_saved_replay_payload()
+    invalid_schema = _copy_json_payload(payload)
+    invalid_schema["schema_version"] = 99
+
+    with pytest.raises(WorldStateError, match="schema_version"):
+        flows._load_cosmos_policy_replay_artifact(
+            _write_cosmos_replay_payload(tmp_path, "bad-schema.json", invalid_schema)
+        )
+
+
+def test_harness_rejects_cosmos_policy_replay_missing_observation(tmp_path) -> None:
+    from worldforge.harness import flows
 
     payload = flows._cosmos_policy_saved_replay_payload()
-    invalid_schema = json.loads(json.dumps(payload))
-    invalid_schema["schema_version"] = 99
-    with pytest.raises(WorldStateError, match="schema_version"):
-        flows._load_cosmos_policy_replay_artifact(write_payload("bad-schema.json", invalid_schema))
-
-    missing_observation = json.loads(json.dumps(payload))
+    missing_observation = _copy_json_payload(payload)
     missing_observation["request"]["observation_fields"] = ["primary_image"]
+
     with pytest.raises(WorldStateError, match="missing fields"):
         flows._load_cosmos_policy_replay_artifact(
-            write_payload("missing-observation.json", missing_observation)
+            _write_cosmos_replay_payload(
+                tmp_path,
+                "missing-observation.json",
+                missing_observation,
+            )
         )
 
-    unredacted_image = json.loads(json.dumps(payload))
+
+def test_harness_rejects_unredacted_cosmos_policy_replay_image(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    unredacted_image = _copy_json_payload(payload)
     unredacted_image["request"]["observation_summary"]["primary_image"]["redacted"] = False
+
     with pytest.raises(WorldStateError, match="must be redacted"):
         flows._load_cosmos_policy_replay_artifact(
-            write_payload("unredacted-image.json", unredacted_image)
+            _write_cosmos_replay_payload(tmp_path, "unredacted-image.json", unredacted_image)
         )
 
-    unredacted_proprio = json.loads(json.dumps(payload))
+
+def test_harness_rejects_unredacted_cosmos_policy_replay_proprio(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    unredacted_proprio = _copy_json_payload(payload)
     unredacted_proprio["request"]["observation_summary"]["proprio"]["redacted"] = False
+
     with pytest.raises(WorldStateError, match="must be redacted"):
         flows._load_cosmos_policy_replay_artifact(
-            write_payload("unredacted-proprio.json", unredacted_proprio)
+            _write_cosmos_replay_payload(tmp_path, "unredacted-proprio.json", unredacted_proprio)
         )
 
-    raw_observation = json.loads(json.dumps(payload))
+
+def test_harness_rejects_raw_cosmos_policy_replay_observation(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    raw_observation = _copy_json_payload(payload)
     raw_observation["request"]["observation"] = {"primary_image": [[[[0, 0, 0]]]]}
+
     with pytest.raises(WorldStateError, match="unsupported fields"):
         flows._load_cosmos_policy_replay_artifact(
-            write_payload("raw-observation.json", raw_observation)
+            _write_cosmos_replay_payload(tmp_path, "raw-observation.json", raw_observation)
         )
 
-    bad_action_shape = json.loads(json.dumps(payload))
+
+def test_harness_rejects_cosmos_policy_replay_observation_summary_extra_keys(
+    tmp_path,
+) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    extra_summary_key = _copy_json_payload(payload)
+    extra_summary_key["request"]["observation_summary"]["primary_image"]["raw_tensor"] = [
+        0,
+        1,
+        2,
+    ]
+
+    with pytest.raises(WorldStateError, match="unsupported fields"):
+        flows._load_cosmos_policy_replay_artifact(
+            _write_cosmos_replay_payload(
+                tmp_path,
+                "extra-summary-key.json",
+                extra_summary_key,
+            )
+        )
+
+
+def test_harness_rejects_cosmos_policy_replay_bad_action_shape(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    bad_action_shape = _copy_json_payload(payload)
     bad_action_shape["policy_output"]["actions"][0]["shape"] = [15]
+
     with pytest.raises(WorldStateError, match="shape"):
         flows._load_cosmos_policy_replay_artifact(
-            write_payload("bad-action-shape.json", bad_action_shape)
+            _write_cosmos_replay_payload(tmp_path, "bad-action-shape.json", bad_action_shape)
         )
+
+
+def test_harness_rejects_cosmos_policy_replay_large_base64_before_decode(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    large_row = _copy_json_payload(payload)
+    large_row["policy_output"]["actions"][0]["__numpy__"] = "A" * 512
+
+    with pytest.raises(WorldStateError, match="base64 payload is too large"):
+        flows._load_cosmos_policy_replay_artifact(
+            _write_cosmos_replay_payload(tmp_path, "large-row.json", large_row)
+        )
+
+
+def test_harness_accepts_cosmos_policy_replay_float64_dtype(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    float64_row = _copy_json_payload(payload)
+    raw = struct.pack("<14d", *[float(index) / 100.0 for index in range(14)])
+    float64_row["policy_output"]["actions"][0] = {
+        "__numpy__": base64.b64encode(raw).decode("ascii"),
+        "dtype": "float64",
+        "shape": [14],
+    }
+
+    loaded = flows._load_cosmos_policy_replay_artifact(
+        _write_cosmos_replay_payload(tmp_path, "float64-row.json", float64_row)
+    )
+
+    assert loaded["policy_output"]["actions"][0]["dtype"] == "float64"
 
 
 def test_harness_validates_cosmos_policy_replay_request_contract(tmp_path) -> None:
     from worldforge.harness import flows
 
-    replay_path = tmp_path / "cosmos-policy-replay.json"
-    replay_path.write_text(
-        json.dumps(flows._cosmos_policy_saved_replay_payload()),
-        encoding="utf-8",
-    )
-    replay = flows._load_cosmos_policy_replay_artifact(replay_path)
-    saved_request = replay["request"]
-    policy_info = flows._cosmos_policy_policy_info_from_replay(replay)
-    outbound_payload = dict(policy_info["observation"])
-    outbound_payload["task_description"] = saved_request["task_description"]
-    outbound_payload["action_horizon"] = saved_request["action_horizon"]
+    outbound_payload, saved_request = _cosmos_replay_request_payload(tmp_path)
 
     flows._validate_cosmos_policy_replay_request(outbound_payload, saved_request)
+
+    return_all_payload = {**outbound_payload, "return_all_query_results": False}
+    flows._validate_cosmos_policy_replay_request(return_all_payload, saved_request)
 
     drifted_payload = {**outbound_payload, "task_description": "pick cube"}
     with pytest.raises(WorldStateError, match="task_description drifted"):
@@ -223,6 +343,28 @@ def test_harness_validates_cosmos_policy_replay_request_contract(tmp_path) -> No
     del missing_field_payload["left_wrist_image"]
     with pytest.raises(WorldStateError, match="request keys drifted"):
         flows._validate_cosmos_policy_replay_request(missing_field_payload, saved_request)
+
+    bad_return_all_payload = {**outbound_payload, "return_all_query_results": "false"}
+    with pytest.raises(WorldStateError, match="return_all_query_results"):
+        flows._validate_cosmos_policy_replay_request(bad_return_all_payload, saved_request)
+
+
+def test_harness_rejects_cosmos_policy_replay_request_non_json_values(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    outbound_payload, saved_request = _cosmos_replay_request_payload(tmp_path)
+
+    tuple_payload = {**outbound_payload, "primary_image": tuple(outbound_payload["primary_image"])}
+    with pytest.raises(WorldStateError, match="JSON-native"):
+        flows._validate_cosmos_policy_replay_request(tuple_payload, saved_request)
+
+    bytes_payload = {**outbound_payload, "left_wrist_image": b"not-json"}
+    with pytest.raises(WorldStateError, match="JSON-native"):
+        flows._validate_cosmos_policy_replay_request(bytes_payload, saved_request)
+
+    nan_payload = {**outbound_payload, "proprio": [0.0] * 13 + [math.nan]}
+    with pytest.raises(WorldStateError, match="JSON-native"):
+        flows._validate_cosmos_policy_replay_request(nan_payload, saved_request)
 
 
 def test_harness_cosmos_policy_optional_value_prediction_renders(tmp_path) -> None:
