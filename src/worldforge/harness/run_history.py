@@ -13,7 +13,7 @@ from worldforge.harness.models import HarnessFlow, HarnessMetric, HarnessRun, Ha
 from worldforge.harness.workspace import list_run_workspaces
 from worldforge.models import CAPABILITY_NAMES, JSONDict, WorldForgeError
 
-_SAFE_ARTIFACT_SUFFIXES = {"json", "jsonl", "md", "csv", "txt"}
+_SAFE_ARTIFACT_SUFFIXES = {"json", "jsonl", "md", "csv", "txt", "html"}
 _SECRET_FLAG_PATTERN = re.compile(
     r"^(--?.*(api[-_]?key|token|secret|password|signature).*)$",
     re.IGNORECASE,

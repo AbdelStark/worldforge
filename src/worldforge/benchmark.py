@@ -1182,11 +1182,17 @@ class BenchmarkReport:
             )
         return buffer.getvalue().strip()
 
+    def to_html(self) -> str:
+        from worldforge.html_report import render_benchmark_html
+
+        return render_benchmark_html(self)
+
     def artifacts(self) -> dict[str, str]:
         return {
             "json": self.to_json(),
             "markdown": self.to_markdown(),
             "csv": self.to_csv(),
+            "html": self.to_html(),
         }
 
     def evaluate_budgets(

@@ -45,6 +45,7 @@
 - Operations And Quality
   - [User And Operator Playbooks](./playbooks.md)
   - [Run Artifact Index](./run-index.md)
+  - [Static HTML Reports](./html-reports.md)
   - [Engineering Quality](./quality.md)
   - [Operations](./operations.md)
   - [Security](./security.md)

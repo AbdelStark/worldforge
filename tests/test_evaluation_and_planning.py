@@ -348,6 +348,7 @@ def test_evaluation_reports_and_eval_helpers(tmp_path) -> None:
         "json",
         "markdown",
         "csv",
+        "html",
         "failure_gallery.json",
         "failure_gallery.md",
     }

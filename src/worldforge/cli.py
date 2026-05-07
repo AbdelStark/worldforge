@@ -859,7 +859,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     runs_compare.add_argument(
         "--format",
-        choices=("json", "markdown", "csv"),
+        choices=("json", "markdown", "csv", "html"),
         default="markdown",
         help="Output format for the comparison summary.",
     )
@@ -891,7 +891,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     runs_bundle.add_argument(
         "--format",
-        choices=("json", "markdown"),
+        choices=("json", "markdown", "html"),
         default="markdown",
         help="Output format for the issue bundle summary.",
     )
@@ -1105,7 +1105,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     evaluate.add_argument(
         "--format",
-        choices=("markdown", "json", "csv"),
+        choices=("markdown", "json", "csv", "html"),
         default="markdown",
         help="Evaluation report format.",
     )
@@ -1141,7 +1141,7 @@ def _build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--concurrency", type=int, default=1, help="Concurrent workers.")
     benchmark.add_argument(
         "--format",
-        choices=("markdown", "json", "csv"),
+        choices=("markdown", "json", "csv", "html"),
         default="markdown",
         help="Benchmark report format.",
     )
@@ -1355,6 +1355,11 @@ def _cmd_runs(args: argparse.Namespace) -> int:
                     "first_triage_step": result.manifest["first_triage_step"],
                 }
             )
+        elif args.format == "html":
+            issue_html_path = result.output_dir / "issue.html"
+            if not issue_html_path.is_file():
+                raise WorldForgeError("Issue bundle did not produce issue.html.")
+            print(issue_html_path.read_text(encoding="utf-8"))
         else:
             if result.issue_template_path is None:
                 raise WorldForgeError("Issue bundle did not produce issue.md.")
@@ -1897,6 +1902,8 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
         print(artifacts["json"])
     elif args.format == "csv":
         print(artifacts["csv"])
+    elif args.format == "html":
+        print(artifacts["html"])
     else:
         print(artifacts["markdown"])
     return 0
@@ -2234,6 +2241,8 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
             )
     elif args.format == "csv":
         print(gate_report.to_csv() if gate_report is not None else report.to_csv())
+    elif args.format == "html":
+        print(report.to_html())
     else:
         if gate_report is None:
             print(report.to_markdown())

@@ -275,7 +275,11 @@ def comparison_artifact(payload: JSONDict, *, output_format: str) -> str:
         return comparison_to_markdown(payload)
     if output_format == "csv":
         return comparison_to_csv(payload)
-    raise WorldForgeError("comparison format must be json, markdown, or csv.")
+    if output_format == "html":
+        from worldforge.html_report import render_comparison_html
+
+        return render_comparison_html(payload)
+    raise WorldForgeError("comparison format must be json, markdown, csv, or html.")
 
 
 def _read_json_object(path: Path, *, name: str) -> JSONDict:

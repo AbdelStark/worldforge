@@ -9,6 +9,19 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added static HTML report export for evaluation reports, benchmark reports,
+  preserved-run comparisons, and issue-ready bundles. `worldforge eval`,
+  `worldforge benchmark`, `worldforge runs compare`, and `worldforge runs
+  bundle` accept `--format html`; `worldforge runs bundle` always also writes
+  `summary.html` and `issue.html` to the bundle directory. The HTML output is
+  self-contained — inline CSS only, no JavaScript, no external assets, no
+  anchor tags. All user-supplied text is escaped via `html.escape`. New public
+  surface: `worldforge.html_report.render_evaluation_html`,
+  `render_benchmark_html`, `render_comparison_html`,
+  `render_evidence_bundle_html`, `render_issue_bundle_html`,
+  `HTML_REPORT_SCHEMA_VERSION`. Documentation lives at
+  `docs/src/html-reports.md`, including when to prefer HTML versus
+  JSON/Markdown.
 - Added a local run artifact index. `worldforge runs index --workspace-dir <dir>`
   walks `<dir>/runs/` read-only and emits a sanitized summary of every preserved
   run workspace, with optional filters for provider (substring), capability,
