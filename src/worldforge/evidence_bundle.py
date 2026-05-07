@@ -12,6 +12,7 @@ from importlib import resources
 from pathlib import Path
 
 from worldforge.harness.workspace import runs_dir
+from worldforge.html_report import render_evidence_bundle_html, render_issue_bundle_html
 from worldforge.models import JSONDict, WorldForgeError, dump_json
 from worldforge.testing.capability_fixtures import CAPABILITY_FIXTURE_NAMES
 
@@ -19,7 +20,7 @@ EVIDENCE_BUNDLE_SCHEMA_VERSION = 1
 MAX_SAFE_ARTIFACT_BYTES = 1_000_000
 
 _ROOT = Path(__file__).resolve().parents[2]
-_SAFE_SUFFIXES = {".json", ".jsonl", ".md", ".csv", ".txt"}
+_SAFE_SUFFIXES = {".json", ".jsonl", ".md", ".csv", ".txt", ".html"}
 _SECRET_PATTERN = re.compile(
     r"(api[_-]?key|authorization|bearer\s+[a-z0-9._~-]+|password|secret|signature|token=|"
     r"x-amz-signature|runwayml_api_secret|nvidia_api_key)",
@@ -121,6 +122,8 @@ def generate_evidence_bundle(
         encoding="utf-8",
     )
     summary_path.write_text(render_evidence_bundle_summary(manifest), encoding="utf-8")
+    summary_html_path = output / "summary.html"
+    summary_html_path.write_text(render_evidence_bundle_html(manifest), encoding="utf-8")
     return BundleResult(
         output_dir=output,
         manifest_path=manifest_path,
@@ -159,6 +162,11 @@ def generate_issue_bundle(
     )
     result.summary_path.write_text(render_evidence_bundle_summary(manifest), encoding="utf-8")
     issue_path.write_text(render_issue_bundle_template(manifest), encoding="utf-8")
+    (result.output_dir / "summary.html").write_text(
+        render_evidence_bundle_html(manifest), encoding="utf-8"
+    )
+    issue_html_path = result.output_dir / "issue.html"
+    issue_html_path.write_text(render_issue_bundle_html(manifest), encoding="utf-8")
     return BundleResult(
         output_dir=result.output_dir,
         manifest_path=result.manifest_path,

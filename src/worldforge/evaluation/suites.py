@@ -846,12 +846,18 @@ class EvaluationReport:
             suite_version=self.provenance.suite_version if self.provenance else None,
         )
 
+    def to_html(self) -> str:
+        from worldforge.html_report import render_evaluation_html
+
+        return render_evaluation_html(self)
+
     def artifacts(self) -> dict[str, str]:
         failure_gallery = self.failure_gallery(max_cases_per_provider=None)
         return {
             "json": self.to_json(),
             "markdown": self.to_markdown(),
             "csv": self.to_csv(),
+            "html": self.to_html(),
             "failure_gallery.json": failure_gallery.to_json(),
             "failure_gallery.md": failure_gallery.to_markdown(),
         }

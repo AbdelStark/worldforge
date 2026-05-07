@@ -1025,6 +1025,7 @@ def benchmark_run_artifacts(
             "json": report.to_json(),
             "markdown": report.to_markdown(),
             "csv": report.to_csv(),
+            "html": report.to_html(),
         },
         report,
     )
