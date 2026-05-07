@@ -301,6 +301,7 @@ def test_smoke_script_redacts_cli_api_token_in_manifest(
                 "--server-arg=--password",
                 "--server-arg",
                 "password-secret",
+                "--server-arg=--api-key=inline-secret",
                 "--health-only",
                 "--run-manifest",
                 str(manifest_path),
@@ -314,7 +315,9 @@ def test_smoke_script_redacts_cli_api_token_in_manifest(
     assert "gr00t-secret" not in exported
     assert "hf-secret" not in exported
     assert "password-secret" not in exported
+    assert "inline-secret" not in exported
     assert "--api-token" in manifest["command_argv"]
+    assert "--server-arg=--api-key=[redacted]" in manifest["command_argv"]
     assert "[redacted]" in manifest["command_argv"]
     assert manifest["command_argv"].count("[redacted]") == 3
 

@@ -404,8 +404,12 @@ def _sanitized_command_argv(command_argv: Sequence[str]) -> tuple[str, ...]:
             redacted.append(f"{flag}=[redacted]")
             continue
         if flag == "--server-arg" and separator and _looks_secret_arg_flag(value):
-            redacted.append(arg)
-            redact_next = True
+            value_flag, value_separator, _value_secret = value.partition("=")
+            if value_separator:
+                redacted.append(f"--server-arg={value_flag}=[redacted]")
+            else:
+                redacted.append(arg)
+                redact_next = True
             continue
 
         safe_arg = _redact_observable_text(arg)
