@@ -21,7 +21,9 @@ Textual is optional. The base package keeps `httpx` as its only runtime dependen
 ```bash
 uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow lerobot
+uv run --extra harness worldforge-harness --flow cosmos-policy
 uv run --extra harness worldforge-harness --flow diagnostics
+uv run --extra harness worldforge-harness --flow workbench
 uv run --extra harness worldforge-harness --flow eval
 uv run --extra harness worldforge-harness --flow benchmark
 uv run --extra harness worldforge-harness --flow runs
@@ -58,7 +60,16 @@ dependencies at package import time.
 | --- | --- | --- |
 | `leworldmodel` | `score` | Deterministic LeWorldModel-shaped cost runtime, candidate scoring, score planning, execution, persistence, reload, provider events. |
 | `lerobot` | `policy` plus score provider | Deterministic LeRobot-shaped policy, action translation, policy candidate ranking, execution, persistence, reload, provider events. |
+| `cosmos-policy` | `policy` | Saved Cosmos-Policy ALOHA `/act` replay through the real provider adapter, json_numpy 50 x 14 action validation, action translation, provider events, and a sanitized replay artifact. |
 | `diagnostics` | provider catalog plus benchmark harness | `doctor()` provider scan, registered/unregistered provider status, mock benchmark matrix across predict/reason/generate/transfer/embed, latency/throughput comparison, provider events. |
+| `workbench` | provider authoring | Checkout-safe provider workbench evidence for stable and candidate adapters, promotion gaps, safe artifacts, and validation commands. |
+
+For the Cosmos replay, run
+`uv run --extra harness worldforge-harness --flow cosmos-policy`. A good run reports
+`raw_action_shape: [50, 14]`, `translated_actions: 50`, and
+`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. If it fails, start with the preserved
+run workspace: inspect `logs/provider-events.jsonl` for the provider phase and
+`artifacts/cosmos-policy-replay.json` for the saved request/response/translated-action artifact.
 
 ## Provider Connector Workspace
 
@@ -204,7 +215,9 @@ provider health, benchmark latency, benchmark throughput, and provider event pha
 - `r`: run the selected flow.
 - `1`: select LeWorldModel score planning.
 - `2`: select LeRobot policy-plus-score planning.
-- `3`: select provider diagnostics and benchmark comparison.
+- `3`: select Cosmos-Policy ALOHA replay.
+- `4`: select provider diagnostics and benchmark comparison.
+- `5`: select adapter author workbench.
 - `g w`: jump to Worlds.
 - `g p`: jump to Providers.
 - `g e`: jump to Eval.

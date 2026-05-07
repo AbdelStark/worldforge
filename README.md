@@ -106,6 +106,7 @@ world editing, and saved report previews through the `harness` extra.
 ```bash
 uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow lerobot
+uv run --extra harness worldforge-harness --flow cosmos-policy
 uv run --extra harness worldforge-harness --flow diagnostics
 ```
 

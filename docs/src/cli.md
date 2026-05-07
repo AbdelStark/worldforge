@@ -127,7 +127,9 @@ paper, or public claim.
 uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow leworldmodel
 uv run --extra harness worldforge-harness --flow lerobot
+uv run --extra harness worldforge-harness --flow cosmos-policy
 uv run --extra harness worldforge-harness --flow diagnostics
+uv run --extra harness worldforge-harness --flow workbench
 uv run --extra harness worldforge-harness --flow runs
 uv run worldforge harness --list
 uv run worldforge harness --connectors --format json
@@ -139,6 +141,13 @@ providing a visual workspace for checkout-safe flows, provider diagnostics, loca
 benchmarks. The connector and run-history metadata commands are checkout-safe and work without
 Textual; they report provider readiness, preserved-run filters, sanitized rerun commands, and first
 recovery actions without printing secret values.
+
+Expected success signal: the selected flow reaches a completed run workspace and the inspector
+shows its saved artifact paths. For `cosmos-policy`, the replay should report
+`raw_action_shape: [50, 14]`, `translated_actions: 50`, and
+`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. First triage step: open the saved
+run workspace and inspect `logs/provider-events.jsonl` plus `artifacts/cosmos-policy-replay.json`;
+for live-provider readiness checks, run `uv run worldforge harness --connectors --format json`.
 
 ## Packaged Demos
 
