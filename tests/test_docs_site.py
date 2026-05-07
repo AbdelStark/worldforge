@@ -380,6 +380,53 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
     assert "host must provide" in showcase
 
 
+def test_cosmos_policy_remote_gpu_runbook_documents_operator_path() -> None:
+    provider_doc = (ROOT / "docs/src/providers/cosmos-policy.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+
+    for required in (
+        "## Remote GPU Runbook",
+        "48 GB or larger GPU memory class",
+        "WorldForge never starts Cosmos-Policy",
+        "ssh -N -L 8777:127.0.0.1:8777",
+        "COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777",
+        "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1",
+        "COSMOS_POLICY_ALLOWED_HOSTS",
+        "uv run worldforge provider health cosmos-policy",
+        "uv run worldforge-smoke-cosmos-policy",
+        "--health-only",
+        "--policy-info-json /path/to/policy_info.json",
+        "--allow-translator-code",
+        "status=skipped",
+        "status=passed",
+        "50 x 14",
+        "json_numpy",
+        "Hibernate or terminate the GPU host",
+    ):
+        assert required in provider_doc
+
+    for required in (
+        "Cosmos-Policy remote GPU runbook",
+        "prefer an SSH",
+        "port `8777`",
+        "sanitized manifests/replay artifacts",
+        "hibernate or terminate the GPU host",
+    ):
+        assert required in operations
+
+    for required in (
+        "Cosmos-Policy remote GPU checklist",
+        "48 GB or larger GPU memory class",
+        "WorldForge should only see the `/act` endpoint",
+        "COSMOS_POLICY_ALLOWED_HOSTS",
+        "status=passed",
+        "50 x 14",
+        "Hibernate or terminate the GPU host",
+    ):
+        assert required in playbooks
+
+
 def test_provider_cohort_selection_record_covers_issue_130_contract() -> None:
     record = (ROOT / "docs/src/provider-cohort-selection.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs/src/roadmap.md").read_text(encoding="utf-8")

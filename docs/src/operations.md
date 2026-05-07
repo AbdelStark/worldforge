@@ -556,6 +556,11 @@ readiness, and safety certification.
   Expected success: the process exits 0 and the run manifest records `capability=policy` with
   `status=passed`. First triage: run `uv run worldforge provider health cosmos-policy` to confirm
   configuration, then run the smoke command to verify the host can reach `/act`.
+  For rented or lab GPUs, follow the
+  [Cosmos-Policy remote GPU runbook](./providers/cosmos-policy.md#remote-gpu-runbook): use a
+  prepared 48 GB or larger Linux/NVIDIA host when required by the upstream model, prefer an SSH
+  tunnel to port `8777`, restrict direct firewall exposure to the operator IP or VPN CIDR, preserve
+  only sanitized manifests/replay artifacts, and hibernate or terminate the GPU host when done.
 - Pytest live runtime coverage is opt-in. Use `uv run pytest` or `uv run pytest -m "not live"` for
   deterministic checkout validation. Prepared hosts can select one live provider profile at a time
   with markers such as `live`, `network`, `credentialed`, `gpu`, `robotics`, and
