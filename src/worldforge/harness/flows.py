@@ -23,7 +23,7 @@ from worldforge.harness.workspace import (
     workspace_root_for_state_dir,
     write_run_manifest,
 )
-from worldforge.models import JSONDict, ProviderEvent
+from worldforge.models import JSONDict, ProviderEvent, WorldForgeError
 from worldforge.provenance import ProvenanceEnvelope
 
 FlowRunner = Callable[..., JSONDict]
@@ -620,7 +620,7 @@ def run_flow(flow_id: str, *, state_dir: Path | None = None) -> HarnessRun:
     flows = flow_index()
     if flow_id not in flows:
         valid = ", ".join(sorted(flows))
-        raise ValueError(f"unknown harness flow '{flow_id}'. Valid flows: {valid}.")
+        raise WorldForgeError(f"unknown harness flow '{flow_id}'. Valid flows: {valid}.")
 
     flow = flows[flow_id]
     resolved_state_dir = state_dir or Path(

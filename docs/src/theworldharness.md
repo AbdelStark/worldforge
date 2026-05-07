@@ -64,6 +64,13 @@ dependencies at package import time.
 | `diagnostics` | provider catalog plus benchmark harness | `doctor()` provider scan, registered/unregistered provider status, mock benchmark matrix across predict/reason/generate/transfer/embed, latency/throughput comparison, provider events. |
 | `workbench` | provider authoring | Checkout-safe provider workbench evidence for stable and candidate adapters, promotion gaps, safe artifacts, and validation commands. |
 
+For the Cosmos replay, run
+`uv run --extra harness worldforge-harness --flow cosmos-policy`. A good run reports
+`raw_action_shape: [50, 14]`, `translated_actions: 50`, and
+`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. If it fails, start with the preserved
+run workspace: inspect `logs/provider-events.jsonl` for the provider phase and
+`artifacts/cosmos-policy-replay.json` for the saved request/response/translated-action artifact.
+
 ## Provider Connector Workspace
 
 The Providers screen and `worldforge harness --connectors --format json` use the same

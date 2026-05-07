@@ -181,7 +181,7 @@ def test_harness_cosmos_policy_optional_value_prediction_renders(tmp_path) -> No
 
 
 def test_harness_rejects_unknown_flow(tmp_path) -> None:
-    with pytest.raises(ValueError, match="unknown harness flow 'unknown'"):
+    with pytest.raises(WorldForgeError, match="unknown harness flow 'unknown'"):
         run_flow("unknown", state_dir=tmp_path)
 
 
