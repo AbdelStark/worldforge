@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from worldforge import WorldForge, WorldForgeError
+from worldforge import WorldForge, WorldForgeError, WorldStateError
 from worldforge.evaluation import EvaluationSuite
 from worldforge.harness import available_flows, flow_index, run_flow
 from worldforge.harness.flows import (
@@ -182,6 +182,33 @@ def test_harness_rejects_malformed_cosmos_policy_replay_artifacts(tmp_path) -> N
         )
 
 
+def test_harness_validates_cosmos_policy_replay_request_contract(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    replay_path = tmp_path / "cosmos-policy-replay.json"
+    replay_path.write_text(
+        json.dumps(flows._cosmos_policy_saved_replay_payload()),
+        encoding="utf-8",
+    )
+    replay = flows._load_cosmos_policy_replay_artifact(replay_path)
+    saved_request = replay["request"]
+    policy_info = flows._cosmos_policy_policy_info_from_replay(replay)
+    outbound_payload = dict(policy_info["observation"])
+    outbound_payload["task_description"] = saved_request["task_description"]
+    outbound_payload["action_horizon"] = saved_request["action_horizon"]
+
+    flows._validate_cosmos_policy_replay_request(outbound_payload, saved_request)
+
+    drifted_payload = {**outbound_payload, "task_description": "pick cube"}
+    with pytest.raises(WorldStateError, match="task_description drifted"):
+        flows._validate_cosmos_policy_replay_request(drifted_payload, saved_request)
+
+    missing_field_payload = dict(outbound_payload)
+    del missing_field_payload["left_wrist_image"]
+    with pytest.raises(WorldStateError, match="request keys drifted"):
+        flows._validate_cosmos_policy_replay_request(missing_field_payload, saved_request)
+
+
 def test_harness_cosmos_policy_optional_value_prediction_renders(tmp_path) -> None:
     from worldforge.harness import flows
 
@@ -191,6 +218,31 @@ def test_harness_cosmos_policy_optional_value_prediction_renders(tmp_path) -> No
     assert flows._steps_for("cosmos-policy", summary)[4].artifact == "value_prediction=n/a"
     assert flows._metrics_for("cosmos-policy", summary)[3].value == "n/a"
     assert "value_prediction: n/a" in flows._transcript_for("cosmos-policy", summary)
+
+
+def test_harness_cosmos_policy_failure_preserves_replay_artifact(tmp_path, monkeypatch) -> None:
+    from worldforge.harness import flows
+
+    original_response_payload = flows._cosmos_policy_response_payload
+
+    def malformed_response(replay_artifact):
+        response = json.loads(json.dumps(original_response_payload(replay_artifact)))
+        response["actions"][0]["shape"] = [15]
+        return response
+
+    monkeypatch.setattr(flows, "_cosmos_policy_response_payload", malformed_response)
+
+    run = run_flow("cosmos-policy", state_dir=tmp_path)
+
+    assert run.validation_errors
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    replay_path = run.workspace_path / "artifacts" / "cosmos-policy-replay.json"
+    replay = json.loads(replay_path.read_text())
+    assert replay["manifest"]["status"] == "failed"
+    assert "failure" in [event["phase"] for event in replay["provider_events"]]
+    assert replay["translated_actions"] == []
 
 
 def test_harness_rejects_unknown_flow(tmp_path) -> None:

@@ -23,8 +23,9 @@ from worldforge.harness.workspace import (
     workspace_root_for_state_dir,
     write_run_manifest,
 )
-from worldforge.models import JSONDict, ProviderEvent, WorldForgeError
+from worldforge.models import JSONDict, ProviderEvent, WorldForgeError, WorldStateError
 from worldforge.provenance import ProvenanceEnvelope
+from worldforge.providers.base import ProviderError
 
 FlowRunner = Callable[..., JSONDict]
 
@@ -232,6 +233,7 @@ def _run_cosmos_policy_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
     request_count = 0
     replay_source_path = _write_prepared_cosmos_policy_replay_artifact(state_dir)
     saved_replay = _load_cosmos_policy_replay_artifact(replay_source_path)
+    saved_request = _require_json_object(saved_replay["request"], "Cosmos-Policy replay request")
     policy_info = _cosmos_policy_policy_info_from_replay(saved_replay)
     policy_output = _cosmos_policy_response_payload(saved_replay)
 
@@ -241,27 +243,26 @@ def _run_cosmos_policy_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
         try:
             payload = json.loads(request.content.decode("utf-8"))
         except json.JSONDecodeError as exc:
-            raise ValueError("Cosmos-Policy replay request body must be JSON.") from exc
+            raise WorldStateError("Cosmos-Policy replay request body must be JSON.") from exc
         if request.method != "POST":
-            raise ValueError(f"Cosmos-Policy replay expected POST, got {request.method}.")
+            raise WorldStateError(f"Cosmos-Policy replay expected POST, got {request.method}.")
         if request.url.path != "/act":
-            raise ValueError(f"Cosmos-Policy replay expected /act, got {request.url.path}.")
-        if payload.get("action_horizon") != _COSMOS_POLICY_ACTION_HORIZON:
-            raise ValueError("Cosmos-Policy replay request action_horizon drifted.")
+            raise WorldStateError(f"Cosmos-Policy replay expected /act, got {request.url.path}.")
+        _validate_cosmos_policy_replay_request(payload, saved_request)
         return httpx.Response(200, json=policy_output)
 
     def translator(raw_actions: object, _info: JSONDict, _provider_info: JSONDict):
         if not isinstance(raw_actions, dict):
-            raise ValueError("Cosmos-Policy replay translator expected raw action metadata.")
+            raise ProviderError("Cosmos-Policy replay translator expected raw action metadata.")
         matrix = raw_actions.get("actions")
         if not isinstance(matrix, list):
-            raise ValueError("Cosmos-Policy replay translator expected action rows.")
+            raise ProviderError("Cosmos-Policy replay translator expected action rows.")
         actions: list[Action] = []
         for index, row in enumerate(matrix):
             if not isinstance(row, list):
-                raise ValueError(f"Cosmos-Policy replay action row {index} must be a list.")
+                raise ProviderError(f"Cosmos-Policy replay action row {index} must be a list.")
             if len(row) < 3:
-                raise ValueError(f"Cosmos-Policy replay action row {index} needs x/y/z.")
+                raise ProviderError(f"Cosmos-Policy replay action row {index} needs x/y/z.")
             actions.append(Action.move_to(float(row[0]), float(row[1]), float(row[2])))
         return actions
 
@@ -274,8 +275,39 @@ def _run_cosmos_policy_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
     )
     forge = WorldForge(state_dir=state_dir, auto_register_remote=False)
     forge.register_provider(provider)
-    health = provider.health()
-    result = forge.select_actions("cosmos-policy", info=policy_info)
+    health = None
+    try:
+        health = provider.health()
+        result = forge.select_actions("cosmos-policy", info=policy_info)
+    except Exception as exc:
+        failure_event = ProviderEvent(
+            provider="cosmos-policy",
+            operation="policy",
+            phase="failure",
+            message=str(exc),
+            metadata={"stage": "harness-replay"},
+        )
+        if not events or events[-1].message != failure_event.message:
+            events.append(failure_event)
+        replay_artifact = _cosmos_policy_failure_replay_artifact(
+            saved_replay,
+            replay_source_path=replay_source_path,
+            events=events,
+            error=exc,
+        )
+        summary = _cosmos_policy_replay_failure_summary(
+            state_dir=state_dir,
+            saved_replay=saved_replay,
+            replay_source_path=replay_source_path,
+            health=health.to_dict() if health is not None else None,
+            request_count=request_count,
+            events=events,
+            replay_artifact=replay_artifact,
+            error=exc,
+        )
+        if emit:
+            print("\n".join(_transcript_for("cosmos-policy", summary)))
+        return summary
     metadata = result.metadata
     provider_info = metadata.get("provider_info", {})
     raw_action_summary = metadata.get("raw_action_summary", {})
@@ -369,8 +401,11 @@ def _write_prepared_cosmos_policy_replay_artifact(state_dir: Path) -> Path:
 
 
 def _cosmos_policy_saved_replay_payload() -> JSONDict:
-    policy_info = _cosmos_policy_policy_info()
     encoded_rows = [_json_numpy_action_row(row) for row in _cosmos_policy_action_rows()]
+    task_description = "fold shirt"
+    observation_fields = sorted(
+        ("primary_image", "left_wrist_image", "right_wrist_image", "proprio")
+    )
     return {
         "schema_version": _COSMOS_POLICY_REPLAY_SCHEMA_VERSION,
         "source": "sanitized Cosmos-Policy live /act response shape",
@@ -380,17 +415,17 @@ def _cosmos_policy_saved_replay_payload() -> JSONDict:
             "model": _COSMOS_POLICY_MODEL,
             "server_path": "/act",
             "runtime": "saved replay",
-            "task_description": policy_info["task_description"],
+            "task_description": task_description,
             "action_horizon": _COSMOS_POLICY_ACTION_HORIZON,
             "action_dim": _COSMOS_POLICY_ACTION_DIM,
         },
         "request": {
-            "observation_fields": sorted(policy_info["observation"]),
-            "observation_summary": _cosmos_policy_observation_summary(policy_info["observation"]),
-            "proprio_dim": len(policy_info["observation"]["proprio"]),
-            "task_description": policy_info["task_description"],
-            "action_horizon": policy_info["action_horizon"],
-            "embodiment_tag": policy_info["embodiment_tag"],
+            "observation_fields": observation_fields,
+            "observation_summary": _cosmos_policy_redacted_observation_summary(),
+            "proprio_dim": _COSMOS_POLICY_ACTION_DIM,
+            "task_description": task_description,
+            "action_horizon": _COSMOS_POLICY_ACTION_HORIZON,
+            "embodiment_tag": "aloha",
         },
         "policy_output": {
             "actions": encoded_rows,
@@ -481,6 +516,118 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
     return payload
 
 
+def _cosmos_policy_failure_replay_artifact(
+    saved_replay: JSONDict,
+    *,
+    replay_source_path: Path,
+    events: Sequence[ProviderEvent],
+    error: Exception,
+) -> JSONDict:
+    replay_artifact = dict(saved_replay)
+    manifest = dict(_require_json_object(saved_replay["manifest"], "Cosmos-Policy replay manifest"))
+    manifest.update(
+        {
+            "flow_id": "cosmos-policy",
+            "status": "failed",
+            "source_artifact": replay_source_path.name,
+        }
+    )
+    response = dict(_require_json_object(saved_replay["response"], "Cosmos-Policy replay response"))
+    response.update({"translated_action_count": 0, "error": str(error)})
+    replay_artifact.update(
+        {
+            "manifest": manifest,
+            "response": response,
+            "translated_actions": [],
+            "provider_events": [event.to_dict() for event in events],
+        }
+    )
+    return replay_artifact
+
+
+def _cosmos_policy_replay_failure_summary(
+    *,
+    state_dir: Path,
+    saved_replay: JSONDict,
+    replay_source_path: Path,
+    health: JSONDict | None,
+    request_count: int,
+    events: Sequence[ProviderEvent],
+    replay_artifact: JSONDict,
+    error: Exception,
+) -> JSONDict:
+    manifest = _require_json_object(saved_replay["manifest"], "Cosmos-Policy replay manifest")
+    request = _require_json_object(saved_replay["request"], "Cosmos-Policy replay request")
+    response = _require_json_object(saved_replay["response"], "Cosmos-Policy replay response")
+    return {
+        "demo_kind": "cosmos_policy_saved_replay",
+        "status": "failed",
+        "state_dir": str(state_dir),
+        "providers": ["cosmos-policy"],
+        "model": manifest.get("model"),
+        "task_description": request.get("task_description"),
+        "runtime": manifest.get("runtime"),
+        "server_path": manifest.get("server_path"),
+        "runtime_contract": "saved /act replay through CosmosPolicyProvider",
+        "loaded_replay_artifact": replay_source_path.name,
+        "health": health or {"healthy": False, "message": "not checked"},
+        "request_count": request_count,
+        "raw_action_shape": response.get("raw_action_shape", []),
+        "translated_action_count": 0,
+        "action_horizon": request.get("action_horizon"),
+        "selected_candidate_index": None,
+        "candidate_count": 0,
+        "value_prediction": response.get("value_prediction"),
+        "selected_actions": [],
+        "selected_action_preview": [],
+        "raw_action_preview": [],
+        "event_phases": [event.phase for event in events],
+        "provider_events": [event.to_dict() for event in events],
+        "validation_errors": [str(error)],
+        "harness_artifacts": {
+            "cosmos_policy_replay": {
+                "path": "artifacts/cosmos-policy-replay.json",
+                "payload": replay_artifact,
+            },
+        },
+    }
+
+
+def _validate_cosmos_policy_replay_request(payload: object, saved_request: JSONDict) -> None:
+    if not isinstance(payload, dict):
+        raise WorldStateError("Cosmos-Policy replay request payload must be a JSON object.")
+    expected_fields_value = saved_request.get("observation_fields")
+    if not isinstance(expected_fields_value, list) or not all(
+        isinstance(field, str) for field in expected_fields_value
+    ):
+        raise WorldStateError("Cosmos-Policy replay saved observation fields are invalid.")
+    expected_fields = sorted(expected_fields_value)
+    if expected_fields != expected_fields_value:
+        raise WorldStateError("Cosmos-Policy replay saved observation fields are invalid.")
+    expected_payload_keys = set(expected_fields) | {"task_description", "action_horizon"}
+    payload_keys = set(payload)
+    if payload_keys != expected_payload_keys:
+        missing = sorted(expected_payload_keys - payload_keys)
+        extra = sorted(payload_keys - expected_payload_keys)
+        detail = []
+        if missing:
+            detail.append(f"missing={missing}")
+        if extra:
+            detail.append(f"extra={extra}")
+        raise WorldStateError(
+            "Cosmos-Policy replay request keys drifted"
+            + (f" ({'; '.join(detail)})" if detail else "")
+            + "."
+        )
+    if payload.get("task_description") != saved_request["task_description"]:
+        raise WorldStateError("Cosmos-Policy replay request task_description drifted.")
+    if payload.get("action_horizon") != saved_request["action_horizon"]:
+        raise WorldStateError("Cosmos-Policy replay request action_horizon drifted.")
+    proprio = payload.get("proprio")
+    if not isinstance(proprio, list) or len(proprio) != saved_request["proprio_dim"]:
+        raise WorldStateError("Cosmos-Policy replay request proprio shape drifted.")
+
+
 def _cosmos_policy_policy_info_from_replay(replay_artifact: JSONDict) -> JSONDict:
     request = _require_json_object(
         replay_artifact.get("request"),
@@ -512,28 +659,19 @@ def _require_json_object(value: object, name: str) -> JSONDict:
     return value
 
 
-def _cosmos_policy_observation_summary(observation: JSONDict) -> JSONDict:
+def _cosmos_policy_redacted_observation_summary() -> JSONDict:
     return {
-        "primary_image": {"redacted": True, "shape": _nested_shape(observation["primary_image"])},
+        "primary_image": {"redacted": True, "shape": [1, 1, 1, 3]},
         "left_wrist_image": {
             "redacted": True,
-            "shape": _nested_shape(observation["left_wrist_image"]),
+            "shape": [1, 1, 1, 3],
         },
         "right_wrist_image": {
             "redacted": True,
-            "shape": _nested_shape(observation["right_wrist_image"]),
+            "shape": [1, 1, 1, 3],
         },
-        "proprio": {"redacted": True, "shape": [len(observation["proprio"])]},
+        "proprio": {"redacted": True, "shape": [_COSMOS_POLICY_ACTION_DIM]},
     }
-
-
-def _nested_shape(value: object) -> list[int]:
-    shape: list[int] = []
-    current = value
-    while isinstance(current, list):
-        shape.append(len(current))
-        current = current[0] if current else []
-    return shape
 
 
 def _cosmos_policy_action_rows() -> list[list[float]]:
@@ -698,6 +836,7 @@ def run_flow(flow_id: str, *, state_dir: Path | None = None) -> HarnessRun:
         transcript=_transcript_for(flow_id, summary),
         workspace_path=workspace.path,
         provider_events=_provider_events_for(flow_id, summary),
+        validation_errors=tuple(str(error) for error in summary.get("validation_errors", [])),
     )
     _write_flow_workspace(workspace, run)
     return run
