@@ -105,6 +105,10 @@ def test_harness_runs_cosmos_policy_flow(tmp_path) -> None:
     assert len(replay["policy_output"]["actions"]) == 50
     assert len(replay["translated_actions"]) == 50
     assert replay["provider_events"][0]["phase"] == "success"
+    assert "policy_info" not in replay["request"]
+    assert replay["request"]["observation_summary"]["primary_image"]["redacted"] is True
+    assert replay["request"]["observation_summary"]["left_wrist_image"]["redacted"] is True
+    assert replay["request"]["observation_summary"]["right_wrist_image"]["redacted"] is True
     assert replay["response"]["json_numpy_rows"] is True
     assert replay["response"]["raw_action_shape"] == [50, 14]
     assert replay["request"]["observation_fields"] == [
@@ -136,7 +140,9 @@ def test_harness_loads_cosmos_policy_replay_artifact(tmp_path) -> None:
     loaded = flows._load_cosmos_policy_replay_artifact(path)
 
     assert loaded["manifest"]["model"] == "nvidia/Cosmos-Policy-ALOHA-Predict2-2B"
-    assert loaded["request"]["policy_info"]["task_description"] == "fold shirt"
+    assert loaded["request"]["task_description"] == "fold shirt"
+    assert loaded["request"]["observation_summary"]["primary_image"]["redacted"] is True
+    assert "policy_info" not in loaded["request"]
     assert len(loaded["policy_output"]["actions"]) == 50
 
 
@@ -155,10 +161,17 @@ def test_harness_rejects_malformed_cosmos_policy_replay_artifacts(tmp_path) -> N
         flows._load_cosmos_policy_replay_artifact(write_payload("bad-schema.json", invalid_schema))
 
     missing_observation = json.loads(json.dumps(payload))
-    del missing_observation["request"]["policy_info"]["observation"]["proprio"]
+    missing_observation["request"]["observation_fields"] = ["primary_image"]
     with pytest.raises(ValueError, match="missing fields"):
         flows._load_cosmos_policy_replay_artifact(
             write_payload("missing-observation.json", missing_observation)
+        )
+
+    unredacted_image = json.loads(json.dumps(payload))
+    unredacted_image["request"]["observation_summary"]["primary_image"]["redacted"] = False
+    with pytest.raises(ValueError, match="must be redacted"):
+        flows._load_cosmos_policy_replay_artifact(
+            write_payload("unredacted-image.json", unredacted_image)
         )
 
     bad_action_shape = json.loads(json.dumps(payload))

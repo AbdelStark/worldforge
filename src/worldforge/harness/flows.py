@@ -232,7 +232,7 @@ def _run_cosmos_policy_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
     request_count = 0
     replay_source_path = _write_prepared_cosmos_policy_replay_artifact(state_dir)
     saved_replay = _load_cosmos_policy_replay_artifact(replay_source_path)
-    policy_info = saved_replay["request"]["policy_info"]
+    policy_info = _cosmos_policy_policy_info_from_replay(saved_replay)
     policy_output = _cosmos_policy_response_payload(saved_replay)
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -385,9 +385,10 @@ def _cosmos_policy_saved_replay_payload() -> JSONDict:
             "action_dim": _COSMOS_POLICY_ACTION_DIM,
         },
         "request": {
-            "policy_info": policy_info,
             "observation_fields": sorted(policy_info["observation"]),
+            "observation_summary": _cosmos_policy_observation_summary(policy_info["observation"]),
             "proprio_dim": len(policy_info["observation"]["proprio"]),
+            "task_description": policy_info["task_description"],
             "action_horizon": policy_info["action_horizon"],
             "embodiment_tag": policy_info["embodiment_tag"],
         },
@@ -433,28 +434,30 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
         raise ValueError("Cosmos-Policy replay artifact action_dim is unsupported.")
 
     request = _require_json_object(payload.get("request"), "Cosmos-Policy replay request")
-    policy_info = _require_json_object(
-        request.get("policy_info"),
-        "Cosmos-Policy replay request.policy_info",
-    )
-    observation = _require_json_object(
-        policy_info.get("observation"),
-        "Cosmos-Policy replay observation",
-    )
-    missing_fields = [
-        field
-        for field in ("primary_image", "left_wrist_image", "right_wrist_image", "proprio")
-        if field not in observation
-    ]
-    if missing_fields:
+    expected_fields = sorted(("primary_image", "left_wrist_image", "right_wrist_image", "proprio"))
+    if request.get("observation_fields") != expected_fields:
         raise ValueError(
-            "Cosmos-Policy replay observation is missing fields: " + ", ".join(missing_fields)
+            "Cosmos-Policy replay observation is missing fields or has unsupported fields."
         )
-    proprio = observation["proprio"]
-    if not isinstance(proprio, list) or len(proprio) != _COSMOS_POLICY_ACTION_DIM:
-        raise ValueError("Cosmos-Policy replay proprio must be a 14-value list.")
-    if policy_info.get("action_horizon") != _COSMOS_POLICY_ACTION_HORIZON:
-        raise ValueError("Cosmos-Policy replay policy_info action_horizon is unsupported.")
+    observation_summary = _require_json_object(
+        request.get("observation_summary"),
+        "Cosmos-Policy replay observation_summary",
+    )
+    for field in ("primary_image", "left_wrist_image", "right_wrist_image"):
+        field_summary = _require_json_object(
+            observation_summary.get(field),
+            f"Cosmos-Policy replay observation_summary.{field}",
+        )
+        if field_summary.get("redacted") is not True:
+            raise ValueError(f"Cosmos-Policy replay image field {field} must be redacted.")
+    if request.get("proprio_dim") != _COSMOS_POLICY_ACTION_DIM:
+        raise ValueError("Cosmos-Policy replay proprio_dim is unsupported.")
+    if not isinstance(request.get("task_description"), str) or not request["task_description"]:
+        raise ValueError("Cosmos-Policy replay task_description must be a non-empty string.")
+    if request.get("action_horizon") != _COSMOS_POLICY_ACTION_HORIZON:
+        raise ValueError("Cosmos-Policy replay request action_horizon is unsupported.")
+    if request.get("embodiment_tag") != "aloha":
+        raise ValueError("Cosmos-Policy replay embodiment_tag must be 'aloha'.")
 
     policy_output = _require_json_object(
         payload.get("policy_output"),
@@ -478,6 +481,18 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
     return payload
 
 
+def _cosmos_policy_policy_info_from_replay(replay_artifact: JSONDict) -> JSONDict:
+    request = _require_json_object(
+        replay_artifact.get("request"),
+        "Cosmos-Policy replay request",
+    )
+    policy_info = _cosmos_policy_policy_info()
+    policy_info["task_description"] = request["task_description"]
+    policy_info["action_horizon"] = request["action_horizon"]
+    policy_info["embodiment_tag"] = request["embodiment_tag"]
+    return policy_info
+
+
 def _cosmos_policy_response_payload(replay_artifact: JSONDict) -> JSONDict:
     policy_output = _require_json_object(
         replay_artifact.get("policy_output"),
@@ -495,6 +510,30 @@ def _require_json_object(value: object, name: str) -> JSONDict:
     if not isinstance(value, dict):
         raise ValueError(f"{name} must be a JSON object.")
     return value
+
+
+def _cosmos_policy_observation_summary(observation: JSONDict) -> JSONDict:
+    return {
+        "primary_image": {"redacted": True, "shape": _nested_shape(observation["primary_image"])},
+        "left_wrist_image": {
+            "redacted": True,
+            "shape": _nested_shape(observation["left_wrist_image"]),
+        },
+        "right_wrist_image": {
+            "redacted": True,
+            "shape": _nested_shape(observation["right_wrist_image"]),
+        },
+        "proprio": {"redacted": True, "shape": [len(observation["proprio"])]},
+    }
+
+
+def _nested_shape(value: object) -> list[int]:
+    shape: list[int] = []
+    current = value
+    while isinstance(current, list):
+        shape.append(len(current))
+        current = current[0] if current else []
+    return shape
 
 
 def _cosmos_policy_action_rows() -> list[list[float]]:
@@ -1085,11 +1124,11 @@ def _inspector_payload(run: HarnessRun) -> JSONDict:
     }
 
 
-def _write_flow_artifacts(workspace: RunWorkspace, summary: JSONDict) -> dict[str, str]:
+def _write_flow_artifacts(workspace: RunWorkspace, summary: JSONDict) -> JSONDict:
     descriptors = summary.get("harness_artifacts")
     if not isinstance(descriptors, dict):
         return {}
-    paths: dict[str, str] = {}
+    paths: JSONDict = {}
     for name, descriptor in descriptors.items():
         if not isinstance(name, str) or not name.strip():
             raise ValueError("harness artifact names must be non-empty strings")
