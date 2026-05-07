@@ -72,6 +72,7 @@ class FakeZmqSocket:
         self.sent: list[object] = []
         self.options: list[tuple[int, object]] = []
         self.targets: list[str] = []
+        self.close_calls: list[object] = []
 
     def setsockopt(self, option: int, value: object) -> None:
         self.options.append((option, value))
@@ -87,6 +88,9 @@ class FakeZmqSocket:
         if isinstance(response, BaseException):
             raise response
         return response
+
+    def close(self, *, linger: object | None = None) -> None:
+        self.close_calls.append(linger)
 
 
 class FakeScoreProvider(BaseProvider):
@@ -719,7 +723,31 @@ def test_gr00t_zmq_fallback_ping_reinitializes_socket_after_failure(monkeypatch)
     assert client.ping() is False
     assert len(sockets) == 2
     assert sockets[0].sent == [{"endpoint": "ping"}]
+    assert sockets[0].close_calls == [0]
     assert sockets[1].targets == ["tcp://gpu.example.test:5555"]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"max_response_bytes": 0},
+        {"max_response_bytes": -1},
+        {"max_response_bytes": True},
+        {"max_response_bytes": "64"},
+        {"max_array_bytes": 0},
+        {"max_array_bytes": -1},
+        {"max_array_bytes": False},
+        {"max_array_bytes": "64"},
+    ],
+)
+def test_gr00t_zmq_fallback_rejects_invalid_size_limits(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="positive integer"):
+        _GrootZmqPolicyClient(
+            host="gpu.example.test",
+            port=5555,
+            timeout_ms=321,
+            **kwargs,  # type: ignore[arg-type]
+        )
 
 
 def test_gr00t_provider_reports_fallback_dependency_import_failure(monkeypatch) -> None:
