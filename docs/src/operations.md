@@ -536,14 +536,22 @@ readiness, and safety certification.
   pushes to `main`, validates real policy/score events, caches Hugging Face assets and the
   LeWorldModel object checkpoint with `actions/cache`, and uploads the JSON summary plus
   `run_manifest.json` as evidence. Checkpoint artifacts are not uploaded.
-- To smoke-test a real GR00T policy server, install or check out NVIDIA Isaac-GR00T, prepare a
-  host-specific observation factory and action translator, then run
-  `uv run python scripts/smoke_gr00t_policy.py --gr00t-root /path/to/Isaac-GR00T --start-server ...`.
-  The script can also connect to an existing server with `GROOT_POLICY_HOST` and
-  `--policy-info-json` or `--observation-module`.
+- To smoke-test a real GR00T policy server, install or check out NVIDIA Isaac-GR00T on a prepared
+  NVIDIA/Linux host, prepare a host-specific observation fixture and action translator, then run
+  `GROOT_POLICY_HOST=127.0.0.1 GROOT_POLICY_PORT=5555 uv run python scripts/smoke_gr00t_policy.py --health-only --run-manifest .worldforge/runs/gr00t-health/run_manifest.json`.
+  Expected success for `--health-only`: the process exits 0 and the run manifest records
+  `capability=policy` with `status=skipped`.
+  For a full policy request, run
+  `GROOT_POLICY_HOST=127.0.0.1 GROOT_POLICY_PORT=5555 uv run python scripts/smoke_gr00t_policy.py --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions --allow-translator-code --run-manifest .worldforge/runs/gr00t-live/run_manifest.json`.
+  Expected success: the process exits 0 and the run manifest records `capability=policy` with
+  `status=passed`. First triage: run `uv run worldforge provider health gr00t` to confirm the
+  client can reach the remote PolicyClient server, then recheck the observation fixture and
+  translator path.
 - Starting the upstream GR00T server requires a compatible NVIDIA/Linux runtime for its CUDA and
   TensorRT dependencies. On unsupported hosts, point WorldForge at an already running remote GR00T
-  policy server.
+  policy server. Prefer an SSH tunnel such as `ssh -N -L 5555:127.0.0.1:5555 ubuntu@<gpu-host>`
+  or restrict the server port to the operator IP or VPN. Hibernate or terminate remote GPU
+  instances when the smoke is done.
 - To smoke-test a real Cosmos-Policy ALOHA server, run the upstream server on a compatible
   Linux/NVIDIA host, prepare ALOHA policy info and an action translator, then run
   `COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 uv run worldforge-smoke-cosmos-policy --policy-info-json /path/to/policy_info.json --translator /path/to/translator.py:translate_actions --allow-translator-code --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json`.

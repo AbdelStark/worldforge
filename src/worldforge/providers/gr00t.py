@@ -309,7 +309,10 @@ class GrootPolicyClientProvider(BaseProvider):
             raise ProviderError(f"Failed to create GR00T PolicyClient: {exc}") from exc
         return self._policy_client
 
-    def _validate_info(self, info: JSONDict) -> tuple[JSONDict, JSONDict | None]:
+    def _validate_info(
+        self,
+        info: JSONDict,
+    ) -> tuple[JSONDict, JSONDict | None, int | None, str | None]:
         if not isinstance(info, dict):
             raise ProviderError("GR00T policy info must be a JSON object.")
         observation = info.get("observation")
@@ -322,7 +325,28 @@ class GrootPolicyClientProvider(BaseProvider):
         options = info.get("options")
         if options is not None and not isinstance(options, dict):
             raise ProviderError("GR00T policy info.options must be a JSON object when provided.")
-        return dict(observation), dict(options) if isinstance(options, dict) else None
+        action_horizon_value = info.get("action_horizon")
+        try:
+            action_horizon = (
+                optional_positive_int(action_horizon_value, name="GR00T action_horizon")
+                if action_horizon_value is not None
+                else None
+            )
+        except Exception as exc:
+            raise ProviderError(str(exc)) from exc
+        embodiment_tag = info.get("embodiment_tag")
+        if embodiment_tag is not None:
+            if not isinstance(embodiment_tag, str) or not embodiment_tag.strip():
+                raise ProviderError(
+                    "GR00T policy info.embodiment_tag must be a non-empty string when provided."
+                )
+            embodiment_tag = embodiment_tag.strip()
+        return (
+            dict(observation),
+            dict(options) if isinstance(options, dict) else None,
+            action_horizon,
+            embodiment_tag,
+        )
 
     def _translate_actions(
         self,
@@ -345,7 +369,12 @@ class GrootPolicyClientProvider(BaseProvider):
     def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
         started = perf_counter()
         try:
-            observation, options = self._validate_info(info)
+            (
+                observation,
+                options,
+                requested_action_horizon,
+                requested_embodiment_tag,
+            ) = self._validate_info(info)
             client = self._load_client()
             get_action = getattr(client, "get_action", None)
             if not callable(get_action):
@@ -385,13 +414,8 @@ class GrootPolicyClientProvider(BaseProvider):
                 info=info,
                 provider_info=normalized_provider_info,
             )
-            action_horizon_value = info.get("action_horizon")
-            action_horizon = (
-                optional_positive_int(action_horizon_value, name="GR00T action_horizon")
-                if action_horizon_value is not None
-                else len(candidate_plans[0])
-            )
-            embodiment_tag = str(info.get("embodiment_tag") or self.embodiment_tag or "").strip()
+            action_horizon = requested_action_horizon or len(candidate_plans[0])
+            embodiment_tag = requested_embodiment_tag or self.embodiment_tag
             result = ActionPolicyResult(
                 provider=self.name,
                 actions=list(candidate_plans[0]),

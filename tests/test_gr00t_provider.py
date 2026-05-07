@@ -357,6 +357,30 @@ def test_gr00t_provider_health_reports_unreachable_policy_server() -> None:
     assert "secret" not in health.details
 
 
+def test_gr00t_provider_health_reports_missing_policy_client_symbol(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "gr00t.policy.server_client", types.SimpleNamespace())
+
+    health = GrootPolicyClientProvider(host="127.0.0.1").health()
+
+    assert health.healthy is False
+    assert "PolicyClient is unavailable" in health.details
+
+
+def test_gr00t_provider_health_reports_policy_client_creation_failures(monkeypatch) -> None:
+    class FailingPolicyClient:
+        def __init__(self, **_kwargs: object) -> None:
+            raise RuntimeError("bad client init")
+
+    fake_server_client_module = types.SimpleNamespace(PolicyClient=FailingPolicyClient)
+    monkeypatch.setitem(sys.modules, "gr00t.policy.server_client", fake_server_client_module)
+
+    health = GrootPolicyClientProvider(host="127.0.0.1").health()
+
+    assert health.healthy is False
+    assert "Failed to create GR00T PolicyClient" in health.details
+    assert "bad client init" in health.details
+
+
 def test_gr00t_provider_lazily_constructs_policy_client_from_import(monkeypatch) -> None:
     created: list[dict[str, object]] = []
 
@@ -469,6 +493,38 @@ def test_gr00t_provider_rejects_invalid_configuration(
             {"observation": {}},
             "at least one of video, state, or language",
         ),
+        (
+            GrootPolicyClientProvider(
+                policy_client=FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {})),
+                action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+            ),
+            [],
+            "JSON object",
+        ),
+        (
+            GrootPolicyClientProvider(
+                policy_client=FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {})),
+                action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+            ),
+            {"observation": "not-an-object"},
+            "observation",
+        ),
+        (
+            GrootPolicyClientProvider(
+                policy_client=FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {})),
+                action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+            ),
+            {"observation": {"language": {"task": [["move"]]}}, "options": []},
+            "options",
+        ),
+        (
+            GrootPolicyClientProvider(
+                policy_client=FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {})),
+                action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+            ),
+            {"observation": {"language": {"task": [["move"]]}}, "embodiment_tag": object()},
+            "embodiment_tag",
+        ),
     ],
 )
 def test_gr00t_provider_rejects_malformed_policy_inputs(
@@ -478,6 +534,39 @@ def test_gr00t_provider_rejects_malformed_policy_inputs(
 ) -> None:
     with pytest.raises(ProviderError, match=match):
         provider.select_actions(info=info)
+
+
+def test_gr00t_provider_rejects_invalid_action_horizon_before_policy_call() -> None:
+    client = FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {}))
+    provider = GrootPolicyClientProvider(
+        policy_client=client,
+        action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+    )
+
+    with pytest.raises(ProviderError, match="action_horizon"):
+        provider.select_actions(info={**_policy_info(), "action_horizon": 0})
+
+    assert client.get_action_calls == []
+
+
+def test_gr00t_provider_wraps_unexpected_event_sink_failure() -> None:
+    events: list[str] = []
+
+    def fail_on_success(event: ProviderEvent) -> None:
+        events.append(event.phase)
+        if event.phase == "success":
+            raise RuntimeError("event sink down")
+
+    provider = GrootPolicyClientProvider(
+        policy_client=FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {})),
+        action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+        event_handler=fail_on_success,
+    )
+
+    with pytest.raises(ProviderError, match="event sink down"):
+        provider.select_actions(info=_policy_info())
+
+    assert events == ["success", "failure"]
 
 
 @pytest.mark.parametrize(

@@ -669,6 +669,29 @@ LEWORLDMODEL_POLICY=pusht/lewm \
 GROOT_POLICY_HOST=127.0.0.1 \
   uv run pytest -m "live and network and robotics and provider_profile" \
     --run-live --run-network --run-robotics --provider-profile gr00t
+# Expected success: pytest completes the selected live profile without failures.
+# First triage: run `uv run worldforge provider health gr00t` to confirm client
+# configuration and server reachability.
+
+GROOT_POLICY_HOST=127.0.0.1 \
+GROOT_POLICY_PORT=5555 \
+  uv run python scripts/smoke_gr00t_policy.py \
+    --health-only \
+    --run-manifest .worldforge/runs/gr00t-health/run_manifest.json
+# Expected success: run_manifest.json records capability=policy with status=skipped.
+# First triage: confirm the remote PolicyClient server is reachable before sending
+# observation data.
+
+GROOT_POLICY_HOST=127.0.0.1 \
+GROOT_POLICY_PORT=5555 \
+  uv run python scripts/smoke_gr00t_policy.py \
+    --policy-info-json /path/to/policy_info.json \
+    --translator /path/to/translator.py:translate_actions \
+    --allow-translator-code \
+    --run-manifest .worldforge/runs/gr00t-live/run_manifest.json
+# Expected success: run_manifest.json records capability=policy with status=passed.
+# First triage: recheck the observation shape, translator import path, and remote
+# server logs.
 
 # LeRobot: requires LEROBOT_POLICY_PATH or LEROBOT_POLICY and host-owned policy deps.
 LEROBOT_POLICY_PATH=lerobot/diffusion_pusht \
