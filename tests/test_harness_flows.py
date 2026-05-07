@@ -207,6 +207,7 @@ def test_harness_runs_groot_replay_flow(tmp_path) -> None:
     assert replay["manifest"]["source_validation"] == (
         "validated live on RTX A6000; committed artifact is sanitized"
     )
+    assert replay["manifest"]["raw_action_shapes"] == run.summary["raw_action_shapes"]
     assert len(replay["policy_output"]["raw_actions"]["eef_9d"][0]) == 40
     assert len(replay["translated_actions"]) == 40
     assert replay["provider_events"][0]["phase"] == "success"

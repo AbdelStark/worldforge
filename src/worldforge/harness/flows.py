@@ -1145,27 +1145,35 @@ def _run_gr00t_replay_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
     raw_action_preview = _groot_action_preview(normalized_raw_actions)
     selected_action_preview = [action.to_dict() for action in result.actions[:8]]
     replay_artifact = dict(saved_replay)
+    manifest = dict(_require_json_object(saved_replay["manifest"], "GR00T replay manifest"))
+    manifest.update(
+        {
+            "flow_id": "gr00t-replay",
+            "provider": result.provider,
+            "model": _GROOT_REPLAY_MODEL,
+            "runtime": metadata.get("runtime"),
+            "task_description": _GROOT_REPLAY_TASK,
+            "action_horizon": result.action_horizon,
+            "embodiment_tag": result.embodiment_tag,
+            "source_artifact": replay_source_path.name,
+            "source_validation": "validated live on RTX A6000; committed artifact is sanitized",
+            "result_digest": _GROOT_REPLAY_RESULT_DIGEST,
+        }
+    )
+    response = dict(_require_json_object(saved_replay["response"], "GR00T replay response"))
+    response.update(
+        {
+            "raw_action_shapes": raw_action_shapes,
+            "translated_action_count": len(result.actions),
+            "raw_action_preview": raw_action_preview,
+            "selected_action_preview": selected_action_preview,
+            "latency_ms": _GROOT_REPLAY_LATENCY_MS,
+        }
+    )
     replay_artifact.update(
         {
-            "manifest": {
-                "flow_id": "gr00t-replay",
-                "provider": result.provider,
-                "model": _GROOT_REPLAY_MODEL,
-                "runtime": metadata.get("runtime"),
-                "task_description": _GROOT_REPLAY_TASK,
-                "action_horizon": result.action_horizon,
-                "embodiment_tag": result.embodiment_tag,
-                "source_artifact": replay_source_path.name,
-                "source_validation": "validated live on RTX A6000; committed artifact is sanitized",
-                "result_digest": _GROOT_REPLAY_RESULT_DIGEST,
-            },
-            "response": {
-                "raw_action_shapes": raw_action_shapes,
-                "translated_action_count": len(result.actions),
-                "raw_action_preview": raw_action_preview,
-                "selected_action_preview": selected_action_preview,
-                "latency_ms": _GROOT_REPLAY_LATENCY_MS,
-            },
+            "manifest": manifest,
+            "response": response,
             "translated_actions": [action.to_dict() for action in result.actions],
             "provider_events": [event.to_dict() for event in events],
         }
