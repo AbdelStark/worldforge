@@ -110,6 +110,16 @@ _COSMOS_POLICY_ACTION_HORIZON = 50
 _COSMOS_POLICY_ACTION_DIM = 14
 _COSMOS_POLICY_VALUE_PREDICTION = 0.190714
 _COSMOS_POLICY_REPLAY_SCHEMA_VERSION = 1
+_COSMOS_POLICY_REPLAY_REQUEST_KEYS = frozenset(
+    {
+        "observation_fields",
+        "observation_summary",
+        "proprio_dim",
+        "task_description",
+        "action_horizon",
+        "embodiment_tag",
+    }
+)
 _FLOW_ARTIFACT_RESERVED_NAMES = frozenset(
     {"summary", "steps", "metrics", "transcript", "inspector"}
 )
@@ -469,6 +479,8 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
         raise ValueError("Cosmos-Policy replay artifact action_dim is unsupported.")
 
     request = _require_json_object(payload.get("request"), "Cosmos-Policy replay request")
+    if set(request) != _COSMOS_POLICY_REPLAY_REQUEST_KEYS:
+        raise ValueError("Cosmos-Policy replay request contains unsupported fields.")
     expected_fields = sorted(("primary_image", "left_wrist_image", "right_wrist_image", "proprio"))
     if request.get("observation_fields") != expected_fields:
         raise ValueError(
@@ -478,13 +490,15 @@ def _load_cosmos_policy_replay_artifact(path: Path) -> JSONDict:
         request.get("observation_summary"),
         "Cosmos-Policy replay observation_summary",
     )
-    for field in ("primary_image", "left_wrist_image", "right_wrist_image"):
+    if set(observation_summary) != set(expected_fields):
+        raise ValueError("Cosmos-Policy replay observation_summary contains unsupported fields.")
+    for field in ("primary_image", "left_wrist_image", "right_wrist_image", "proprio"):
         field_summary = _require_json_object(
             observation_summary.get(field),
             f"Cosmos-Policy replay observation_summary.{field}",
         )
         if field_summary.get("redacted") is not True:
-            raise ValueError(f"Cosmos-Policy replay image field {field} must be redacted.")
+            raise ValueError(f"Cosmos-Policy replay observation field {field} must be redacted.")
     if request.get("proprio_dim") != _COSMOS_POLICY_ACTION_DIM:
         raise ValueError("Cosmos-Policy replay proprio_dim is unsupported.")
     if not isinstance(request.get("task_description"), str) or not request["task_description"]:
