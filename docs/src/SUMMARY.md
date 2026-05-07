@@ -31,6 +31,7 @@
 - Authoring And API
   - [Provider Authoring Guide](./provider-authoring-guide.md)
   - [External Provider Packages](./external-providers.md)
+  - [Scenario Definition Format](./scenarios.md)
   - [Provider Routing And Fallback](./provider-routing.md)
   - [Python API](./api/python.md)
   - [Public API Stability](./api-stability.md)

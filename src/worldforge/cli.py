@@ -1059,6 +1059,49 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Filter providers by capability name.",
     )
 
+    scenario = subparsers.add_parser(
+        "scenario",
+        help="Validate or run a JSON-native checkout-safe scenario file.",
+    )
+    scenario_subparsers = scenario.add_subparsers(
+        dest="scenario_command",
+        required=True,
+        metavar="command",
+    )
+    scenario_validate = scenario_subparsers.add_parser(
+        "validate",
+        help="Load and validate a scenario JSON file without running it.",
+    )
+    scenario_validate.add_argument("path", type=Path, help="Scenario JSON file path.")
+    scenario_validate.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the validation report.",
+    )
+
+    scenario_run = scenario_subparsers.add_parser(
+        "run",
+        help="Validate and run a scenario file end-to-end with a checkout-safe provider.",
+    )
+    scenario_run.add_argument("path", type=Path, help="Scenario JSON file path.")
+    scenario_run.add_argument(
+        "--state-dir",
+        default=".worldforge/worlds",
+        help="World state directory (the scenario world is created here).",
+    )
+    scenario_run.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the scenario run result.",
+    )
+    scenario_run.add_argument(
+        "--output",
+        type=Path,
+        help="Optional path to write the rendered result instead of stdout.",
+    )
+
     negotiate = subparsers.add_parser(
         "negotiate",
         help="Report whether providers can satisfy a capability workflow before it runs.",
@@ -1840,6 +1883,39 @@ def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
     return handler(args, forge)
 
 
+def _cmd_scenario(args: argparse.Namespace) -> int:
+    from worldforge.scenarios import load_scenario, run_scenario
+
+    scenario = load_scenario(args.path)
+    if args.scenario_command == "validate":
+        if args.format == "markdown":
+            print(
+                f"# Scenario `{scenario.id}`\n\n"
+                f"- name: {scenario.name}\n"
+                f"- provider: {scenario.provider}\n"
+                f"- world: {scenario.world_name}\n"
+                f"- objects: {len(scenario.objects)}\n"
+                f"- actions: {len(scenario.actions)}\n"
+                f"- expected_artifacts: {len(scenario.expected_artifacts)}\n"
+            )
+        else:
+            print(scenario.to_json(), end="")
+        return 0
+
+    forge = WorldForge(state_dir=args.state_dir)
+    result = run_scenario(forge, scenario)
+    rendered = result.to_markdown() if args.format == "markdown" else result.to_json()
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            rendered if rendered.endswith("\n") else rendered + "\n",
+            encoding="utf-8",
+        )
+        return 0 if result.all_expectations_passed() else 1
+    print(rendered, end="")
+    return 0 if result.all_expectations_passed() else 1
+
+
 def _cmd_doctor(args: argparse.Namespace, forge: WorldForge) -> int:
     _print_json(
         forge.doctor(
@@ -2359,6 +2435,12 @@ def main() -> int:
         try:
             return _cmd_drills(args)
         except (WorldForgeError, ValueError) as exc:
+            parser.exit(2, f"{exc}\n")
+
+    if args.command == "scenario":
+        try:
+            return _cmd_scenario(args)
+        except (ProviderError, WorldForgeError, ValueError) as exc:
             parser.exit(2, f"{exc}\n")
 
     if args.command == "world" and args.world_command == "preflight":
