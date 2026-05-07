@@ -100,6 +100,11 @@ def test_harness_runs_cosmos_policy_flow(tmp_path) -> None:
         "artifacts/cosmos-policy-replay.json"
     )
     replay = json.loads((run.workspace_path / "artifacts/cosmos-policy-replay.json").read_text())
+    assert replay["manifest"]["flow_id"] == "cosmos-policy"
+    assert replay["manifest"]["server_path"] == "/act"
+    assert len(replay["policy_output"]["actions"]) == 50
+    assert len(replay["translated_actions"]) == 50
+    assert replay["provider_events"][0]["phase"] == "success"
     assert replay["response"]["json_numpy_rows"] is True
     assert replay["response"]["raw_action_shape"] == [50, 14]
     assert replay["request"]["observation_fields"] == [
@@ -119,6 +124,60 @@ def test_harness_cosmos_policy_flow_can_emit_transcript(tmp_path, capsys) -> Non
     assert summary["raw_action_shape"] == [50, 14]
     assert "flow: cosmos-policy" in output
     assert "translated_actions: 50" in output
+
+
+def test_harness_loads_cosmos_policy_replay_artifact(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    path = tmp_path / "cosmos-policy-replay.json"
+    payload = flows._cosmos_policy_saved_replay_payload()
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = flows._load_cosmos_policy_replay_artifact(path)
+
+    assert loaded["manifest"]["model"] == "nvidia/Cosmos-Policy-ALOHA-Predict2-2B"
+    assert loaded["request"]["policy_info"]["task_description"] == "fold shirt"
+    assert len(loaded["policy_output"]["actions"]) == 50
+
+
+def test_harness_rejects_malformed_cosmos_policy_replay_artifacts(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    def write_payload(name: str, payload: object) -> Path:
+        path = tmp_path / name
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    invalid_schema = json.loads(json.dumps(payload))
+    invalid_schema["schema_version"] = 99
+    with pytest.raises(ValueError, match="schema_version"):
+        flows._load_cosmos_policy_replay_artifact(write_payload("bad-schema.json", invalid_schema))
+
+    missing_observation = json.loads(json.dumps(payload))
+    del missing_observation["request"]["policy_info"]["observation"]["proprio"]
+    with pytest.raises(ValueError, match="missing fields"):
+        flows._load_cosmos_policy_replay_artifact(
+            write_payload("missing-observation.json", missing_observation)
+        )
+
+    bad_action_shape = json.loads(json.dumps(payload))
+    bad_action_shape["policy_output"]["actions"][0]["shape"] = [15]
+    with pytest.raises(ValueError, match="shape"):
+        flows._load_cosmos_policy_replay_artifact(
+            write_payload("bad-action-shape.json", bad_action_shape)
+        )
+
+
+def test_harness_cosmos_policy_optional_value_prediction_renders(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    summary = run_flow("cosmos-policy", state_dir=tmp_path).summary
+    summary = {**summary, "value_prediction": None}
+
+    assert flows._steps_for("cosmos-policy", summary)[4].artifact == "value_prediction=n/a"
+    assert flows._metrics_for("cosmos-policy", summary)[3].value == "n/a"
+    assert "value_prediction: n/a" in flows._transcript_for("cosmos-policy", summary)
 
 
 def test_harness_rejects_unknown_flow(tmp_path) -> None:
@@ -150,6 +209,11 @@ def test_harness_flow_artifact_descriptors_are_validated(tmp_path) -> None:
         flows._write_flow_artifacts(
             workspace,
             {"harness_artifacts": {"demo": {"path": "results/demo.json"}}},
+        )
+    with pytest.raises(ValueError, match="reserved"):
+        flows._write_flow_artifacts(
+            workspace,
+            {"harness_artifacts": {"summary": {"path": "artifacts/summary.json"}}},
         )
 
 
