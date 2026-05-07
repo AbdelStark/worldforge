@@ -97,6 +97,36 @@ def test_smoke_script_builds_policy_info_from_json_files(tmp_path: Path) -> None
     }
 
 
+@pytest.mark.parametrize(
+    ("field_update", "match"),
+    [
+        ({"embodiment_tag": ""}, "embodiment_tag"),
+        ({"embodiment_tag": 3}, "embodiment_tag"),
+        ({"action_horizon": 0}, "action_horizon"),
+        ({"action_horizon": -1}, "action_horizon"),
+        ({"action_horizon": True}, "action_horizon"),
+        ({"action_horizon": "8"}, "action_horizon"),
+    ],
+)
+def test_smoke_script_rejects_invalid_policy_control_fields_from_json(
+    tmp_path: Path,
+    field_update: dict[str, object],
+    match: str,
+) -> None:
+    policy_path = tmp_path / "policy.json"
+    policy_info = {
+        "observation": {
+            "language": {"task": [["pick up the cube"]]},
+        },
+        **field_update,
+    }
+    policy_path.write_text(json.dumps(policy_info, default=str), encoding="utf-8")
+    script = _load_script()
+
+    with pytest.raises(SystemExit, match=match):
+        script._load_policy_info(_args(policy_info_json=policy_path))
+
+
 def test_smoke_script_builds_policy_info_from_observation_factory(tmp_path: Path) -> None:
     module_path = tmp_path / "observation.py"
     module_path.write_text(
@@ -148,13 +178,55 @@ def test_smoke_script_requires_translator_code_opt_in(tmp_path: Path) -> None:
         )
 
 
-def test_smoke_script_requires_observation_code_opt_in(tmp_path: Path) -> None:
+def test_smoke_script_requires_observation_code_opt_in(tmp_path: Path, monkeypatch) -> None:
     module_path = tmp_path / "observation.py"
     module_path.write_text("def build():\n    return {'observation': {'language': {}}}\n")
+    translator_path = tmp_path / "translator.py"
+    translator_path.write_text(
+        "def translate(raw_actions, info, provider_info):\n    return []\n",
+        encoding="utf-8",
+    )
     script = _load_script()
+    calls: list[dict[str, object]] = []
 
     with pytest.raises(SystemExit, match="allow-observation-code"):
         script._load_policy_info(_args(observation_module=f"{module_path}:build"))
+
+    class StubResult:
+        def to_dict(self) -> dict[str, object]:
+            return {"provider": "gr00t", "actions": []}
+
+    class StubGrootProvider:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def health(self) -> ProviderHealth:
+            return ProviderHealth(
+                name="gr00t",
+                healthy=True,
+                latency_ms=0.1,
+                details="reachable",
+            )
+
+        def select_actions(self, *, info: dict[str, object]) -> StubResult:
+            calls.append(info)
+            return StubResult()
+
+    monkeypatch.setattr(script, "GrootPolicyClientProvider", StubGrootProvider)
+    main_args = [
+        "--host",
+        "127.0.0.1",
+        "--observation-module",
+        f"{module_path}:build",
+        "--translator",
+        f"{translator_path}:translate",
+        "--allow-translator-code",
+    ]
+    with pytest.raises(SystemExit, match="allow-observation-code"):
+        script.main(main_args)
+
+    assert script.main([*main_args, "--allow-observation-code"]) == 0
+    assert calls == [{"observation": {"language": {}}}]
 
 
 def test_smoke_script_writes_health_only_manifest(tmp_path: Path, monkeypatch) -> None:
@@ -193,6 +265,73 @@ def test_smoke_script_writes_health_only_manifest(tmp_path: Path, monkeypatch) -
     assert manifest["capability"] == "policy"
     assert manifest["status"] == "skipped"
     assert manifest["event_count"] == 0
+
+
+def test_smoke_script_redacts_cli_api_token_in_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    manifest_path = tmp_path / "runs" / "gr00t-health" / "run_manifest.json"
+    script = _load_script()
+
+    class StubGrootProvider:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def health(self) -> ProviderHealth:
+            return ProviderHealth(
+                name="gr00t",
+                healthy=True,
+                latency_ms=0.1,
+                details="reachable",
+            )
+
+    monkeypatch.setattr(script, "GrootPolicyClientProvider", StubGrootProvider)
+
+    assert (
+        script.main(
+            [
+                "--host",
+                "127.0.0.1",
+                "--api-token",
+                "gr00t-secret",
+                "--health-only",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+        == 0
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    exported = json.dumps(manifest, sort_keys=True)
+    assert "gr00t-secret" not in exported
+    assert "--api-token" in manifest["command_argv"]
+    assert "[redacted]" in manifest["command_argv"]
+
+
+def test_smoke_script_writes_failed_manifest_on_parse_error(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "runs" / "gr00t-parse-failed" / "run_manifest.json"
+    script = _load_script()
+
+    with pytest.raises(SystemExit, match="exit code 2"):
+        script.main(
+            [
+                "--port",
+                "not-an-int",
+                "--api-token",
+                "gr00t-secret",
+                "--run-manifest",
+                str(manifest_path),
+            ]
+        )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    exported = json.dumps(manifest, sort_keys=True)
+    assert manifest["provider_profile"] == "gr00t"
+    assert manifest["status"] == "failed"
+    assert manifest["result_digest"].startswith("sha256:")
+    assert "gr00t-secret" not in exported
 
 
 def test_smoke_script_writes_failed_manifest_on_translator_error(

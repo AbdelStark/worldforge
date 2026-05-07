@@ -14,6 +14,7 @@ from worldforge.models import (
     ProviderCapabilities,
     ProviderEvent,
     ProviderHealth,
+    _redact_observable_text,
 )
 
 from ._config import (
@@ -306,7 +307,9 @@ class GrootPolicyClientProvider(BaseProvider):
                 strict=self.strict,
             )
         except Exception as exc:
-            raise ProviderError(f"Failed to create GR00T PolicyClient: {exc}") from exc
+            detail = _redact_observable_text(str(exc)).strip()
+            suffix = f": {detail}" if detail else ""
+            raise ProviderError(f"Failed to create GR00T PolicyClient{suffix}") from exc
         return self._policy_client
 
     def _validate_info(
@@ -414,7 +417,15 @@ class GrootPolicyClientProvider(BaseProvider):
                 info=info,
                 provider_info=normalized_provider_info,
             )
-            action_horizon = requested_action_horizon or len(candidate_plans[0])
+            translated_action_horizon = len(candidate_plans[0])
+            if (
+                requested_action_horizon is not None
+                and requested_action_horizon != translated_action_horizon
+            ):
+                raise ProviderError(
+                    "GR00T policy info.action_horizon must match the translated action count."
+                )
+            action_horizon = requested_action_horizon or translated_action_horizon
             embodiment_tag = requested_embodiment_tag or self.embodiment_tag
             result = ActionPolicyResult(
                 provider=self.name,

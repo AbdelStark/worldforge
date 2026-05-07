@@ -11,7 +11,7 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import suppress
 from pathlib import Path
 from types import ModuleType
@@ -27,6 +27,20 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 5555
 DEFAULT_TIMEOUT_MS = 15_000
 DEFAULT_STARTUP_TIMEOUT_SECONDS = 300.0
+_SECRET_ARG_FLAGS = {"--api-token"}
+_MANIFEST_ENV_VARS = (
+    "GROOT_POLICY_HOST",
+    "GROOT_POLICY_PORT",
+    "GROOT_POLICY_TIMEOUT_MS",
+    "GROOT_POLICY_API_TOKEN",
+    "GROOT_POLICY_STRICT",
+    "GROOT_EMBODIMENT_TAG",
+    "GROOT_REPO",
+    "GROOT_MODEL_PATH",
+    "GROOT_DATASET_PATH",
+    "GROOT_POLICY_DEVICE",
+    "GROOT_POLICY_BIND_HOST",
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -153,7 +167,24 @@ def _load_policy_info(args: argparse.Namespace) -> JSONDict:
         info.setdefault("embodiment_tag", args.embodiment_tag)
     if args.action_horizon is not None:
         info["action_horizon"] = args.action_horizon
+    _validate_policy_info_controls(info)
     return info
+
+
+def _validate_policy_info_controls(info: JSONDict) -> None:
+    embodiment_tag = info.get("embodiment_tag")
+    if embodiment_tag is not None and (
+        not isinstance(embodiment_tag, str) or not embodiment_tag.strip()
+    ):
+        raise SystemExit("GR00T policy info.embodiment_tag must be a non-empty string.")
+
+    action_horizon = info.get("action_horizon")
+    if action_horizon is not None and (
+        isinstance(action_horizon, bool)
+        or not isinstance(action_horizon, int)
+        or action_horizon <= 0
+    ):
+        raise SystemExit("GR00T policy info.action_horizon must be an integer greater than 0.")
 
 
 def _server_module_available() -> bool:
@@ -350,47 +381,110 @@ def _redacted_exit_message(exc: BaseException) -> str:
     return _redact_observable_text(str(exc))
 
 
+def _sanitized_command_argv(command_argv: Sequence[str]) -> tuple[str, ...]:
+    redacted: list[str] = []
+    redact_next = False
+    for raw_arg in command_argv:
+        arg = str(raw_arg)
+        if redact_next:
+            redacted.append("[redacted]")
+            redact_next = False
+            continue
+
+        flag, separator, _value = arg.partition("=")
+        if flag in _SECRET_ARG_FLAGS and separator:
+            redacted.append(f"{flag}=[redacted]")
+            continue
+
+        safe_arg = _redact_observable_text(arg)
+        redacted.append(safe_arg if safe_arg.strip() else "[redacted]")
+        if arg in _SECRET_ARG_FLAGS:
+            redact_next = True
+    return tuple(redacted)
+
+
+def _command_argv_from_input(argv: Sequence[str] | None) -> tuple[str, ...]:
+    if argv is None:
+        return _sanitized_command_argv(sys.argv)
+    return _sanitized_command_argv(("smoke_gr00t_policy.py", *argv))
+
+
+def _manifest_path_from_command_argv(command_argv: Sequence[str]) -> Path | None:
+    for index, arg in enumerate(command_argv):
+        if arg == "--run-manifest" and index + 1 < len(command_argv):
+            return Path(command_argv[index + 1])
+        if arg.startswith("--run-manifest="):
+            value = arg.split("=", maxsplit=1)[1]
+            return Path(value) if value.strip() else None
+    return None
+
+
+def _write_manifest(
+    run_manifest: Path,
+    *,
+    input_fixture: Path | None,
+    provider_events: list[object],
+    output: JSONDict,
+    status: str,
+    command_argv: Sequence[str],
+) -> None:
+    if input_fixture is not None and not input_fixture.expanduser().exists():
+        input_fixture = None
+    write_run_manifest(
+        run_manifest,
+        build_run_manifest(
+            run_id=_manifest_run_id(run_manifest),
+            provider_profile="gr00t",
+            capability="policy",
+            status=status,
+            env_vars=_MANIFEST_ENV_VARS,
+            event_count=len(provider_events),
+            input_fixture=input_fixture,
+            result=output,
+            command_argv=command_argv,
+        ),
+    )
+
+
 def _write_manifest_if_requested(
     args: argparse.Namespace,
     *,
     provider_events: list[object],
     output: JSONDict,
     status: str,
+    command_argv: Sequence[str],
 ) -> None:
     if args.run_manifest is None:
         return
     input_fixture = args.policy_info_json or args.observation_json
-    if input_fixture is not None and not input_fixture.expanduser().exists():
-        input_fixture = None
-    write_run_manifest(
+    _write_manifest(
         args.run_manifest,
-        build_run_manifest(
-            run_id=_manifest_run_id(args.run_manifest),
-            provider_profile="gr00t",
-            capability="policy",
-            status=status,
-            env_vars=(
-                "GROOT_POLICY_HOST",
-                "GROOT_POLICY_PORT",
-                "GROOT_POLICY_TIMEOUT_MS",
-                "GROOT_POLICY_API_TOKEN",
-                "GROOT_POLICY_STRICT",
-                "GROOT_EMBODIMENT_TAG",
-                "GROOT_REPO",
-                "GROOT_MODEL_PATH",
-                "GROOT_DATASET_PATH",
-                "GROOT_POLICY_DEVICE",
-                "GROOT_POLICY_BIND_HOST",
-            ),
-            event_count=len(provider_events),
-            input_fixture=input_fixture,
-            result=output,
-        ),
+        input_fixture=input_fixture,
+        provider_events=provider_events,
+        output=output,
+        status=status,
+        command_argv=command_argv,
     )
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    command_argv = _command_argv_from_input(argv)
+    try:
+        args = _parser().parse_args(argv)
+    except (Exception, SystemExit) as exc:
+        redacted_error = _redacted_exit_message(exc)
+        output = {"error": redacted_error}
+        manifest_path = _manifest_path_from_command_argv(command_argv)
+        if manifest_path is not None:
+            _write_manifest(
+                manifest_path,
+                input_fixture=None,
+                provider_events=[],
+                output=output,
+                status="failed",
+                command_argv=command_argv,
+            )
+        raise SystemExit(redacted_error) from None
     if args.gr00t_root is not None:
         root = args.gr00t_root.expanduser().resolve()
         if str(root) not in sys.path:
@@ -451,6 +545,7 @@ def main(argv: list[str] | None = None) -> int:
             provider_events=provider_events,
             output=output,
             status="skipped" if args.health_only else "passed",
+            command_argv=command_argv,
         )
     except (Exception, SystemExit) as exc:
         redacted_error = _redacted_exit_message(exc)
@@ -460,6 +555,7 @@ def main(argv: list[str] | None = None) -> int:
             provider_events=provider_events,
             output=output,
             status="failed",
+            command_argv=command_argv,
         )
         raise SystemExit(redacted_error) from None
     finally:

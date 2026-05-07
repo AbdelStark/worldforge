@@ -18,7 +18,7 @@ from worldforge.providers import (
 from worldforge.testing import assert_provider_contract
 
 
-def _policy_info() -> JSONDict:
+def _policy_info(*, action_horizon: int = 1) -> JSONDict:
     return {
         "observation": {
             "video": {
@@ -32,7 +32,7 @@ def _policy_info() -> JSONDict:
             },
         },
         "embodiment_tag": "LIBERO_PANDA",
-        "action_horizon": 2,
+        "action_horizon": action_horizon,
     }
 
 
@@ -121,6 +121,7 @@ def test_gr00t_provider_contract_unconfigured(monkeypatch) -> None:
 
 
 def test_gr00t_policy_client_provider_passes_contract_and_emits_events() -> None:
+    policy_info = _policy_info(action_horizon=2)
     raw_response = (
         {
             "arm": [[[0.1, 0.5, 0.0], [0.2, 0.5, 0.0]]],
@@ -145,8 +146,8 @@ def test_gr00t_policy_client_provider_passes_contract_and_emits_events() -> None
         event_handler=events.append,
     )
 
-    report = assert_provider_contract(provider, policy_info=_policy_info())
-    result = provider.select_actions(info=_policy_info())
+    report = assert_provider_contract(provider, policy_info=policy_info)
+    result = provider.select_actions(info=policy_info)
 
     assert report.exercised_operations == ["policy"]
     assert provider.profile().capabilities.policy is True
@@ -157,7 +158,7 @@ def test_gr00t_policy_client_provider_passes_contract_and_emits_events() -> None
     assert result.embodiment_tag == "LIBERO_PANDA"
     assert result.raw_actions["arm"] == [[[0.1, 0.5, 0.0], [0.2, 0.5, 0.0]]]
     assert result.metadata["provider_info"] == {"latency_ms": 7.5}
-    assert client.get_action_calls[-1]["observation"] == _policy_info()["observation"]
+    assert client.get_action_calls[-1]["observation"] == policy_info["observation"]
     assert events[-1].operation == "policy"
     assert events[-1].phase == "success"
     assert events[-1].attempt == 1
@@ -369,7 +370,7 @@ def test_gr00t_provider_health_reports_missing_policy_client_symbol(monkeypatch)
 def test_gr00t_provider_health_reports_policy_client_creation_failures(monkeypatch) -> None:
     class FailingPolicyClient:
         def __init__(self, **_kwargs: object) -> None:
-            raise RuntimeError("bad client init")
+            raise RuntimeError("bad client init api_token=gr00t-secret")
 
     fake_server_client_module = types.SimpleNamespace(PolicyClient=FailingPolicyClient)
     monkeypatch.setitem(sys.modules, "gr00t.policy.server_client", fake_server_client_module)
@@ -379,6 +380,8 @@ def test_gr00t_provider_health_reports_policy_client_creation_failures(monkeypat
     assert health.healthy is False
     assert "Failed to create GR00T PolicyClient" in health.details
     assert "bad client init" in health.details
+    assert "gr00t-secret" not in health.details
+    assert "api_token=[redacted]" in health.details
 
 
 def test_gr00t_provider_lazily_constructs_policy_client_from_import(monkeypatch) -> None:
@@ -547,6 +550,34 @@ def test_gr00t_provider_rejects_invalid_action_horizon_before_policy_call() -> N
         provider.select_actions(info={**_policy_info(), "action_horizon": 0})
 
     assert client.get_action_calls == []
+
+
+def test_gr00t_provider_rejects_invalid_embodiment_tag_before_policy_call() -> None:
+    client = FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {}))
+    provider = GrootPolicyClientProvider(
+        policy_client=client,
+        action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+    )
+
+    with pytest.raises(ProviderError, match="embodiment_tag"):
+        provider.select_actions(
+            info={"observation": {"language": {"task": [["move"]]}}, "embodiment_tag": object()}
+        )
+
+    assert client.get_action_calls == []
+
+
+def test_gr00t_provider_rejects_action_horizon_mismatch_after_translation() -> None:
+    client = FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {}))
+    provider = GrootPolicyClientProvider(
+        policy_client=client,
+        action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+    )
+
+    with pytest.raises(ProviderError, match="action_horizon"):
+        provider.select_actions(info={**_policy_info(), "action_horizon": 2})
+
+    assert len(client.get_action_calls) == 1
 
 
 def test_gr00t_provider_wraps_unexpected_event_sink_failure() -> None:
