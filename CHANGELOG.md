@@ -22,6 +22,21 @@ releases may still include breaking changes when the public API needs to tighten
   `HTML_REPORT_SCHEMA_VERSION`. Documentation lives at
   `docs/src/html-reports.md`, including when to prefer HTML versus
   JSON/Markdown.
+- Added JSON-native world state diff and patch artifacts. `worldforge world
+  diff <source> <target>` walks two persisted worlds (default) or two exported
+  JSON files (with `--source-path --target-path`) and emits a
+  schema-versioned diff covering top-level fields (`name`, `provider`,
+  `description`, `step`, `metadata`), scene-object additions/removals/updates
+  with before/after payloads, and a history summary. The companion
+  `WorldPatch.from_diff(diff)` and `apply_patch(state, patch)` helpers apply
+  changes to a base snapshot, validating each operation through `SceneObject`,
+  `Position`, and `BBox` so traversal-shaped IDs, incoherent bounding boxes,
+  malformed pose payloads, or removing missing objects raise `WorldStateError`
+  instead of silently corrupting state. New public surface:
+  `worldforge.world_diff.diff_worlds`, `diff_worlds_from_paths`,
+  `apply_patch`, `WorldDiff`, `WorldPatch`, `ObjectChange`,
+  `WorldFieldChange`, `WORLD_DIFF_SCHEMA_VERSION`. Documentation lives at
+  `docs/src/world-diff.md`.
 - Added a local run artifact index. `worldforge runs index --workspace-dir <dir>`
   walks `<dir>/runs/` read-only and emits a sanitized summary of every preserved
   run workspace, with optional filters for provider (substring), capability,

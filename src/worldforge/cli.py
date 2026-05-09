@@ -796,6 +796,40 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for the forked world summary.",
     )
 
+    world_diff = world_subparsers.add_parser(
+        "diff",
+        help="Diff two persisted or exported world JSON snapshots.",
+    )
+    world_diff.add_argument(
+        "source",
+        help="Source world id (relative to --state-dir) or path to a world JSON file.",
+    )
+    world_diff.add_argument(
+        "target",
+        help="Target world id (relative to --state-dir) or path to a world JSON file.",
+    )
+    world_diff.add_argument(
+        "--state-dir",
+        default=".worldforge/worlds",
+        help="World state directory used when source/target are world ids.",
+    )
+    world_diff.add_argument(
+        "--source-path",
+        action="store_true",
+        help="Treat source as an explicit JSON file path rather than a world id.",
+    )
+    world_diff.add_argument(
+        "--target-path",
+        action="store_true",
+        help="Treat target as an explicit JSON file path rather than a world id.",
+    )
+    world_diff.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the world diff.",
+    )
+
     world_preflight = world_subparsers.add_parser(
         "preflight",
         help="Check local world JSON state and run workspaces without mutating them.",
@@ -1757,6 +1791,32 @@ def _cmd_world_preflight(args: argparse.Namespace) -> int:
     return 1 if report["status"] == "failed" else 0
 
 
+def _cmd_world_diff(args: argparse.Namespace, forge: WorldForge) -> int:
+    from worldforge.world_diff import diff_worlds, diff_worlds_from_paths
+
+    if args.source_path or args.target_path:
+        if not (args.source_path and args.target_path):
+            raise WorldForgeError(
+                "world diff requires --source-path and --target-path together "
+                "when comparing exported JSON files."
+            )
+        diff = diff_worlds_from_paths(args.source, args.target)
+    else:
+        source_world = forge.load_world(args.source)
+        target_world = forge.load_world(args.target)
+        diff = diff_worlds(
+            source_world.to_dict(),
+            target_world.to_dict(),
+            source_label=args.source,
+            target_label=args.target,
+        )
+    if args.format == "markdown":
+        print(diff.to_markdown(), end="")
+    else:
+        print(diff.to_json(), end="")
+    return 0
+
+
 def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
     world_dispatch = {
         "list": _cmd_world_list,
@@ -1772,6 +1832,7 @@ def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
         "export": _cmd_world_export,
         "import": _cmd_world_import,
         "fork": _cmd_world_fork,
+        "diff": _cmd_world_diff,
     }
     handler = world_dispatch.get(args.world_command)
     if handler is None:
