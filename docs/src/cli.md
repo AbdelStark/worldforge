@@ -71,6 +71,9 @@ uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name imported-lab
 uv run worldforge world fork <world-id> --name forked-lab
 uv run worldforge world delete <world-id>
+uv run worldforge world diff <source-id> <target-id>
+uv run worldforge scenario validate examples/scenarios/cube-on-table.json
+uv run worldforge scenario run examples/scenarios/spawn-and-move.json --state-dir .worldforge/worlds
 ```
 
 World IDs are local JSON file stems. Values with path separators or traversal-shaped input are
