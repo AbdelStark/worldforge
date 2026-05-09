@@ -427,6 +427,40 @@ def test_cosmos_policy_remote_gpu_runbook_documents_operator_path() -> None:
         assert required in playbooks
 
 
+def test_gr00t_live_smoke_docs_cover_remote_policy_contract() -> None:
+    provider_doc = (ROOT / "docs/src/providers/gr00t.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    evidence = (ROOT / "docs/src/live-smoke-evidence.json").read_text(encoding="utf-8")
+    manifest = (ROOT / "src/worldforge/providers/runtime_manifests/gr00t.json").read_text(
+        encoding="utf-8"
+    )
+
+    for signal in (
+        "## Live Smoke Evidence",
+        "--health-only",
+        "--allow-translator-code",
+        "--allow-observation-code",
+        "--run-manifest .worldforge/runs/gr00t-health/run_manifest.json",
+        "--run-manifest .worldforge/runs/gr00t-live/run_manifest.json",
+        "status=skipped",
+        "status=passed",
+        "ssh -N -L 5555:127.0.0.1:5555",
+        "uv run worldforge provider health gr00t",
+        "Hibernate or terminate",
+    ):
+        assert signal in provider_doc or signal in operations or signal in playbooks
+
+    for doc in (operations, playbooks):
+        assert "GROOT_POLICY_HOST=127.0.0.1" in doc
+        assert "scripts/smoke_gr00t_policy.py" in doc
+        assert "status=skipped" in doc
+        assert "status=passed" in doc
+
+    assert "--health-only" in evidence
+    assert "scripts/smoke_gr00t_policy.py --health-only" in manifest
+
+
 def test_provider_cohort_selection_record_covers_issue_130_contract() -> None:
     record = (ROOT / "docs/src/provider-cohort-selection.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs/src/roadmap.md").read_text(encoding="utf-8")

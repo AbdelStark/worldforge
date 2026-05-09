@@ -82,6 +82,23 @@ from gr00t.policy.server_client import PolicyClient
 
 and creates a client from `GROOT_POLICY_*` settings.
 
+If the full Isaac GR00T package is not importable in the WorldForge process, the provider falls
+back to a small ZMQ/msgpack client for the documented PolicyServer protocol. That fallback is useful
+for the normal remote-GPU shape because NVIDIA's full `gr00t` runtime is currently Python-3.10
+pinned while WorldForge runs on Python 3.13. The fallback still requires host-installed optional
+client packages:
+
+```bash
+GROOT_POLICY_HOST=127.0.0.1 \
+GROOT_POLICY_PORT=5555 \
+uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py \
+  --health-only \
+  --run-manifest .worldforge/runs/gr00t-health/run_manifest.json
+```
+
+The GPU server still owns the full Isaac GR00T install, CUDA runtime, checkpoints, and robot-specific
+dependencies.
+
 ## Input Contract
 
 ```python
@@ -165,16 +182,33 @@ plan = world.plan(
 WorldForge serializes policy candidates into `Action.to_dict()` payloads before calling the score
 provider unless `score_action_candidates=...` supplies model-native candidates.
 
-## Live Smoke
+## Live Smoke Evidence
 
 Connect to an existing GR00T policy server:
 
 ```bash
 GROOT_POLICY_HOST=127.0.0.1 \
 GROOT_POLICY_PORT=5555 \
-uv run python scripts/smoke_gr00t_policy.py \
+uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py \
   --policy-info-json /path/to/policy_info.json \
-  --translator /path/to/translator.py:translate_actions
+  --translator /path/to/translator.py:translate_actions \
+  --allow-translator-code \
+  --run-manifest .worldforge/runs/gr00t-live/run_manifest.json
+```
+
+`--translator` imports and executes local Python code. The smoke command requires
+`--allow-translator-code` so operators explicitly opt into running trusted translator code. If
+policy inputs are created through `--observation-module`, pass `--allow-observation-code` after
+auditing that observation factory too.
+
+Prepared hosts can run a configuration and connectivity check without a policy request:
+
+```bash
+GROOT_POLICY_HOST=127.0.0.1 \
+GROOT_POLICY_PORT=5555 \
+uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py \
+  --health-only \
+  --run-manifest .worldforge/runs/gr00t-health/run_manifest.json
 ```
 
 Start the upstream server from a host-owned Isaac-GR00T checkout:
@@ -186,11 +220,39 @@ uv run python scripts/smoke_gr00t_policy.py \
   --model-path nvidia/GR00T-N1.6-3B \
   --embodiment-tag GR1 \
   --policy-info-json /path/to/policy_info.json \
-  --translator /path/to/translator.py:translate_actions
+  --translator /path/to/translator.py:translate_actions \
+  --allow-translator-code \
+  --run-manifest .worldforge/runs/gr00t-live/run_manifest.json
 ```
 
 Starting upstream Isaac GR00T requires a compatible NVIDIA/Linux runtime for CUDA and TensorRT
 dependencies. On unsupported hosts, connect WorldForge to an already running remote policy server.
+
+For a remote GPU, keep the GR00T server private and connect over an SSH tunnel when possible:
+
+```bash
+ssh -N -L 5555:127.0.0.1:5555 ubuntu@<gpu-host>
+```
+
+If direct networking is required, restrict the server port to the operator IP or a VPN. Do not
+expose a GR00T policy server broadly on the public internet.
+
+Expected success signal:
+
+- `--health-only`: run manifest records `capability=policy` with `status=skipped`.
+- Full smoke (`--policy-info-json` or `--observation-json` plus `--translator`): run manifest
+  records `capability=policy` with `status=passed`.
+
+First triage step:
+
+- Run `uv run worldforge provider health gr00t` to confirm client configuration and server
+  reachability, then re-run the smoke command with `--run-manifest` so the failure has a
+  sanitized digest.
+
+The smoke can write a sanitized `run_manifest.json` with value-free environment presence, runtime
+manifest id, input fixture digest, event count, and result digest. The manifest does not store
+tokens, raw sensor tensors, checkpoint bytes, or robot controller state. Hibernate or terminate
+remote GPU instances when the smoke is done.
 
 ## Failure Modes
 

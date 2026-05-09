@@ -8,15 +8,17 @@ import importlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from contextlib import suppress
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from worldforge.models import JSONDict
+from worldforge.models import JSONDict, _redact_observable_text
 from worldforge.providers import GrootPolicyClientProvider
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 
@@ -26,6 +28,24 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 5555
 DEFAULT_TIMEOUT_MS = 15_000
 DEFAULT_STARTUP_TIMEOUT_SECONDS = 300.0
+_SECRET_ARG_FLAGS = {"--api-token"}
+_SECRET_ARG_NAME_PATTERN = re.compile(
+    r"(api[-_]?key|authorization|credential|password|secret|token)",
+    re.IGNORECASE,
+)
+_MANIFEST_ENV_VARS = (
+    "GROOT_POLICY_HOST",
+    "GROOT_POLICY_PORT",
+    "GROOT_POLICY_TIMEOUT_MS",
+    "GROOT_POLICY_API_TOKEN",
+    "GROOT_POLICY_STRICT",
+    "GROOT_EMBODIMENT_TAG",
+    "GROOT_REPO",
+    "GROOT_MODEL_PATH",
+    "GROOT_DATASET_PATH",
+    "GROOT_POLICY_DEVICE",
+    "GROOT_POLICY_BIND_HOST",
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -65,7 +85,16 @@ def _load_json_file(path: Path, *, name: str) -> JSONDict:
     return payload
 
 
-def _module_from_path(path: Path) -> ModuleType:
+def _code_opt_in_message(name: str, flag: str) -> str:
+    return (
+        f"Loading {name} imports and executes local Python code; pass {flag} only for "
+        f"trusted {name} code."
+    )
+
+
+def _module_from_path(path: Path, *, name: str, allow_code: bool, flag: str) -> ModuleType:
+    if not allow_code:
+        raise SystemExit(_code_opt_in_message(name, flag))
     resolved = path.expanduser().resolve()
     if not resolved.exists():
         raise SystemExit(f"Python module file does not exist: {path}")
@@ -77,7 +106,15 @@ def _module_from_path(path: Path) -> ModuleType:
     return module
 
 
-def _load_callable(spec: str, *, name: str) -> Callable[..., Any]:
+def _load_callable(
+    spec: str,
+    *,
+    name: str,
+    allow_code: bool = False,
+    flag: str = "--allow-translator-code",
+) -> Callable[..., Any]:
+    if not allow_code:
+        raise SystemExit(_code_opt_in_message(name, flag))
     if ":" not in spec:
         raise SystemExit(f"{name} must be formatted as module_or_file:function.")
     module_ref, function_name = spec.rsplit(":", 1)
@@ -86,7 +123,7 @@ def _load_callable(spec: str, *, name: str) -> Callable[..., Any]:
 
     candidate_path = Path(module_ref)
     if candidate_path.exists() or module_ref.endswith(".py") or "/" in module_ref:
-        module = _module_from_path(candidate_path)
+        module = _module_from_path(candidate_path, name=name, allow_code=allow_code, flag=flag)
     else:
         try:
             module = importlib.import_module(module_ref)
@@ -110,7 +147,12 @@ def _load_policy_info(args: argparse.Namespace) -> JSONDict:
             "observation": _load_json_file(args.observation_json, name="observation"),
         }
     elif args.observation_module is not None:
-        factory = _load_callable(args.observation_module, name="observation factory")
+        factory = _load_callable(
+            args.observation_module,
+            name="observation factory",
+            allow_code=args.allow_observation_code,
+            flag="--allow-observation-code",
+        )
         try:
             produced = factory()
         except Exception as exc:
@@ -130,7 +172,24 @@ def _load_policy_info(args: argparse.Namespace) -> JSONDict:
         info.setdefault("embodiment_tag", args.embodiment_tag)
     if args.action_horizon is not None:
         info["action_horizon"] = args.action_horizon
+    _validate_policy_info_controls(info)
     return info
+
+
+def _validate_policy_info_controls(info: JSONDict) -> None:
+    embodiment_tag = info.get("embodiment_tag")
+    if embodiment_tag is not None and (
+        not isinstance(embodiment_tag, str) or not embodiment_tag.strip()
+    ):
+        raise SystemExit("GR00T policy info.embodiment_tag must be a non-empty string.")
+
+    action_horizon = info.get("action_horizon")
+    if action_horizon is not None and (
+        isinstance(action_horizon, bool)
+        or not isinstance(action_horizon, int)
+        or action_horizon <= 0
+    ):
+        raise SystemExit("GR00T policy info.action_horizon must be an integer greater than 0.")
 
 
 def _server_module_available() -> bool:
@@ -261,7 +320,20 @@ def _parser() -> argparse.ArgumentParser:
         "--translator",
         help=(
             "Python action translator formatted as module_or_file:function. The callable receives "
-            "(raw_actions, info, provider_info) and returns WorldForge Action objects."
+            "(raw_actions, info, provider_info) and returns WorldForge Action objects. "
+            "This imports and executes local Python; requires --allow-translator-code."
+        ),
+    )
+    parser.add_argument(
+        "--allow-translator-code",
+        action="store_true",
+        help="Acknowledge that --translator imports and executes trusted local Python code.",
+    )
+    parser.add_argument(
+        "--allow-observation-code",
+        action="store_true",
+        help=(
+            "Acknowledge that --observation-module imports and executes trusted local Python code."
         ),
     )
     parser.add_argument(
@@ -298,38 +370,183 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    args = _parser().parse_args()
+def _manifest_run_id(path: Path) -> str:
+    expanded = path.expanduser()
+    return expanded.parent.name.strip() or expanded.stem.strip() or "gr00t-policy-smoke"
+
+
+def _redacted_exit_message(exc: BaseException) -> str:
+    if isinstance(exc, SystemExit):
+        code = exc.code
+        if code is None:
+            return "GR00T policy smoke failed."
+        if isinstance(code, int):
+            return f"GR00T policy smoke failed with exit code {code}."
+        return _redact_observable_text(str(code))
+    return _redact_observable_text(str(exc))
+
+
+def _sanitized_command_argv(command_argv: Sequence[str]) -> tuple[str, ...]:
+    redacted: list[str] = []
+    redact_next = False
+    for raw_arg in command_argv:
+        arg = str(raw_arg)
+        if redact_next:
+            if arg == "--server-arg":
+                redacted.append(arg)
+                continue
+            redacted.append("[redacted]")
+            redact_next = False
+            continue
+
+        flag, separator, value = arg.partition("=")
+        if _looks_secret_arg_flag(flag) and separator:
+            redacted.append(f"{flag}=[redacted]")
+            continue
+        if flag == "--server-arg" and separator and _looks_secret_arg_flag(value):
+            value_flag, value_separator, _value_secret = value.partition("=")
+            if value_separator:
+                redacted.append(f"--server-arg={value_flag}=[redacted]")
+            else:
+                redacted.append(arg)
+                redact_next = True
+            continue
+
+        safe_arg = _redact_observable_text(arg)
+        redacted.append(safe_arg if safe_arg.strip() else "[redacted]")
+        if _looks_secret_arg_flag(arg):
+            redact_next = True
+    return tuple(redacted)
+
+
+def _looks_secret_arg_flag(arg: str) -> bool:
+    if not arg.startswith("-"):
+        return False
+    flag = arg.split("=", maxsplit=1)[0]
+    return flag in _SECRET_ARG_FLAGS or _SECRET_ARG_NAME_PATTERN.search(flag) is not None
+
+
+def _command_argv_from_input(argv: Sequence[str] | None) -> tuple[str, ...]:
+    if argv is None:
+        return _sanitized_command_argv(sys.argv)
+    return _sanitized_command_argv(("smoke_gr00t_policy.py", *argv))
+
+
+def _manifest_path_from_command_argv(command_argv: Sequence[str]) -> Path | None:
+    for index, arg in enumerate(command_argv):
+        if arg == "--run-manifest" and index + 1 < len(command_argv):
+            return Path(command_argv[index + 1])
+        if arg.startswith("--run-manifest="):
+            value = arg.split("=", maxsplit=1)[1]
+            return Path(value) if value.strip() else None
+    return None
+
+
+def _write_manifest(
+    run_manifest: Path,
+    *,
+    input_fixture: Path | None,
+    provider_events: list[object],
+    output: JSONDict,
+    status: str,
+    command_argv: Sequence[str],
+) -> None:
+    if input_fixture is not None and not input_fixture.expanduser().exists():
+        input_fixture = None
+    write_run_manifest(
+        run_manifest,
+        build_run_manifest(
+            run_id=_manifest_run_id(run_manifest),
+            provider_profile="gr00t",
+            capability="policy",
+            status=status,
+            env_vars=_MANIFEST_ENV_VARS,
+            event_count=len(provider_events),
+            input_fixture=input_fixture,
+            result=output,
+            command_argv=command_argv,
+        ),
+    )
+
+
+def _write_manifest_if_requested(
+    args: argparse.Namespace,
+    *,
+    provider_events: list[object],
+    output: JSONDict,
+    status: str,
+    command_argv: Sequence[str],
+) -> None:
+    if args.run_manifest is None:
+        return
+    input_fixture = args.policy_info_json or args.observation_json
+    _write_manifest(
+        args.run_manifest,
+        input_fixture=input_fixture,
+        provider_events=provider_events,
+        output=output,
+        status=status,
+        command_argv=command_argv,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    command_argv = _command_argv_from_input(argv)
+    try:
+        args = _parser().parse_args(argv)
+    except (Exception, SystemExit) as exc:
+        redacted_error = _redacted_exit_message(exc)
+        output: JSONDict = {"error": redacted_error}
+        manifest_path = _manifest_path_from_command_argv(command_argv)
+        if manifest_path is not None:
+            _write_manifest(
+                manifest_path,
+                input_fixture=None,
+                provider_events=[],
+                output=output,
+                status="failed",
+                command_argv=command_argv,
+            )
+        raise SystemExit(redacted_error) from None
     if args.gr00t_root is not None:
         root = args.gr00t_root.expanduser().resolve()
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-    if args.timeout_ms <= 0:
-        raise SystemExit("--timeout-ms must be greater than 0.")
-    if args.port <= 0:
-        raise SystemExit("--port must be greater than 0.")
-    if args.action_horizon is not None and args.action_horizon <= 0:
-        raise SystemExit("--action-horizon must be greater than 0.")
-    if not args.health_only and args.translator is None:
-        raise SystemExit("--translator is required unless --health-only is set.")
-
-    translator = (
-        None if args.translator is None else _load_callable(args.translator, name="translator")
-    )
     provider_events = []
-    provider = GrootPolicyClientProvider(
-        host=args.host,
-        port=args.port,
-        timeout_ms=args.timeout_ms,
-        api_token=args.api_token,
-        strict=args.strict,
-        embodiment_tag=args.embodiment_tag,
-        action_translator=translator,
-        event_handler=provider_events.append,
-    )
-
-    process = _start_server(args)
+    output: JSONDict = {}
+    process: subprocess.Popen[bytes] | None = None
     try:
+        if args.timeout_ms <= 0:
+            raise SystemExit("--timeout-ms must be greater than 0.")
+        if args.port <= 0:
+            raise SystemExit("--port must be greater than 0.")
+        if args.action_horizon is not None and args.action_horizon <= 0:
+            raise SystemExit("--action-horizon must be greater than 0.")
+        if not args.health_only and args.translator is None:
+            raise SystemExit("--translator is required unless --health-only is set.")
+
+        translator = (
+            None
+            if args.translator is None
+            else _load_callable(
+                args.translator,
+                name="translator",
+                allow_code=args.allow_translator_code,
+                flag="--allow-translator-code",
+            )
+        )
+        provider = GrootPolicyClientProvider(
+            host=args.host,
+            port=args.port,
+            timeout_ms=args.timeout_ms,
+            api_token=args.api_token,
+            strict=args.strict,
+            embodiment_tag=args.embodiment_tag,
+            action_translator=translator,
+            event_handler=provider_events.append,
+        )
+
+        process = _start_server(args)
         if process is not None:
             health_payload = _wait_for_health(
                 provider,
@@ -342,38 +559,28 @@ def main() -> int:
             if not health.healthy:
                 raise SystemExit(f"GR00T provider is not healthy: {health.details}")
 
-        output: JSONDict = {"health": health_payload}
+        output["health"] = health_payload
         if not args.health_only:
             result = provider.select_actions(info=_load_policy_info(args))
             output["result"] = result.to_dict()
-        if args.run_manifest is not None:
-            input_fixture = args.policy_info_json or args.observation_json
-            write_run_manifest(
-                args.run_manifest,
-                build_run_manifest(
-                    run_id=args.run_manifest.parent.name,
-                    provider_profile="gr00t",
-                    capability="policy",
-                    status="skipped" if args.health_only else "passed",
-                    env_vars=(
-                        "GROOT_POLICY_HOST",
-                        "GROOT_POLICY_PORT",
-                        "GROOT_POLICY_TIMEOUT_MS",
-                        "GROOT_POLICY_API_TOKEN",
-                        "GROOT_POLICY_STRICT",
-                        "GROOT_EMBODIMENT_TAG",
-                        "GROOT_REPO",
-                        "GROOT_MODEL_PATH",
-                        "GROOT_DATASET_PATH",
-                        "GROOT_POLICY_DEVICE",
-                    ),
-                    event_count=len(provider_events),
-                    input_fixture=input_fixture,
-                    result=output,
-                ),
-            )
-        print(json.dumps(output, indent=2, sort_keys=True))
-        return 0
+        _write_manifest_if_requested(
+            args,
+            provider_events=provider_events,
+            output=output,
+            status="skipped" if args.health_only else "passed",
+            command_argv=command_argv,
+        )
+    except (Exception, SystemExit) as exc:
+        redacted_error = _redacted_exit_message(exc)
+        output.setdefault("error", redacted_error)
+        _write_manifest_if_requested(
+            args,
+            provider_events=provider_events,
+            output=output,
+            status="failed",
+            command_argv=command_argv,
+        )
+        raise SystemExit(redacted_error) from None
     finally:
         if process is not None and not args.leave_server_running and process.poll() is None:
             process.terminate()
@@ -382,6 +589,9 @@ def main() -> int:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+    with suppress(BrokenPipeError):
+        print(json.dumps(output, indent=2, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":
