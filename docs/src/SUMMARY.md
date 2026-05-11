@@ -55,6 +55,7 @@
   - [Contributing](./contributing.md)
 - Planning Records
   - [Roadmap](./roadmap.md)
+  - [Roadmap Expansion 2](./roadmap-expansion-2.md)
   - [Roadmap Expansion](./roadmap-expansion.md)
   - [Roadmap Continuation](./roadmap-continuation.md)
   - [Provider And Platform Roadmap](./provider-platform-roadmap.md)

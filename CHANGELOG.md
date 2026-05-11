@@ -9,6 +9,12 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
+  production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
+  focuses on artifact schema governance, executable docs snippets, optional dependency import
+  boundaries, provider configuration indexing, external-provider demos, capability preflight
+  demos, scenario matrices, runtime asset manifests, report renderer extension points, and composed
+  workflow traces.
 - Added static HTML report export for evaluation reports, benchmark reports,
   preserved-run comparisons, and issue-ready bundles. `worldforge eval`,
   `worldforge benchmark`, `worldforge runs compare`, and `worldforge runs

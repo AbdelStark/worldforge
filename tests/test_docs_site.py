@@ -998,6 +998,51 @@ def test_roadmap_expansion_documents_three_streams_and_thirty_issues() -> None:
         assert expansion.count(section) >= 30
 
 
+def test_roadmap_expansion_2_documents_three_streams_and_thirty_issues() -> None:
+    expansion = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert "Roadmap Expansion 2" in roadmap
+    assert "[Roadmap Expansion 2](./roadmap-expansion-2.md)" in summary
+    assert "Roadmap Expansion 2: roadmap-expansion-2.md" in mkdocs
+    assert "second 30-issue roadmap expansion" in changelog
+    assert "roadmap: expansion-2" in expansion
+
+    streams = (
+        "Production Grade, Quality, DevX, And Docs",
+        "Demos, End-to-End Showcases, And Use Cases",
+        "New Features",
+    )
+    for stream in streams:
+        assert stream in expansion
+
+    assert expansion.count("### WF-PQDX2-") == 10
+    assert expansion.count("### WF-DEMO2-") == 10
+    assert expansion.count("### WF-FEAT2-") == 10
+    assert "GitHub issue: pending" not in expansion
+    assert expansion.count("https://github.com/AbdelStark/worldforge/issues/") >= 30
+
+    for label in (
+        "stream: production-quality",
+        "stream: demos-showcases",
+        "stream: new-features",
+    ):
+        assert label in expansion
+
+    required_sections = (
+        "Problem:",
+        "Scope:",
+        "Out of scope:",
+        "Acceptance criteria:",
+        "Validation:",
+    )
+    for section in required_sections:
+        assert expansion.count(section) >= 30
+
+
 def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
@@ -1339,6 +1384,7 @@ def test_documentation_information_architecture_cover_issue_188_contract() -> No
         assert route in docs_map
 
     for roadmap_page in (
+        "Roadmap Expansion 2",
         "Roadmap Expansion",
         "Roadmap Continuation",
         "Provider And Platform Roadmap",
