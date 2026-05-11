@@ -6,8 +6,9 @@ import sys
 from pathlib import Path
 
 from worldforge.cli import main
-from worldforge.evidence_bundle import generate_evidence_bundle
+from worldforge.evidence_bundle import generate_evidence_bundle, generate_issue_bundle
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest
+from worldforge.testing import DeterministicIdFactory, stable_json_dumps, stable_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "generate_release_evidence.py"
@@ -169,3 +170,54 @@ def test_release_evidence_can_link_generated_bundle(tmp_path: Path) -> None:
 
     assert "evidence_manifest.json" in report
     assert "Preserved Release Artifacts" in report
+
+
+def test_issue_bundle_uses_deterministic_controls_for_exact_snapshot(tmp_path: Path) -> None:
+    ids = DeterministicIdFactory()
+    run_id = ids.run_id()
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        run_id=run_id,
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+    )
+    workspace.write_json(
+        "reports/report.json",
+        {"suite_id": "planning", "results": [], "claim_boundary": "fixture-only"},
+    )
+    write_run_manifest(
+        workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        status="failed",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+        result_summary={"result_count": 0, "failed_count": 1},
+        artifact_paths={"json": "reports/report.json"},
+    )
+
+    result = generate_issue_bundle(
+        workspace_dir=tmp_path,
+        run_id=run_id,
+        output_dir=tmp_path / "issue-bundle",
+        generated_at="2026-01-01T00:00:00+00:00",
+    )
+    snapshot = stable_snapshot(result.manifest, path_roots={tmp_path: "<tmp>"})
+    digest_fields = {
+        item["path"]: item["sha256"] for item in snapshot["files"] if item.get("sha256")
+    }
+
+    assert str(tmp_path) not in stable_json_dumps(snapshot)
+    assert snapshot["generated_at"] == "2026-01-01T00:00:00+00:00"
+    assert snapshot["bundle_kind"] == "issue-run"
+    assert snapshot["runs"][0]["run_id"] == "20260101T000000Z-00000001"
+    assert snapshot["runs"][0]["source_path"] == "<host-local:20260101T000000Z-00000001>"
+    assert snapshot["safe_to_attach"] is True
+    assert set(digest_fields) == {
+        "runs/20260101T000000Z-00000001/reports/report.json",
+        "runs/20260101T000000Z-00000001/run_manifest.json",
+    }

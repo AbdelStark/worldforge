@@ -51,7 +51,8 @@ evaluation harnesses, and testable prototypes.
   snapshots, plans, benchmark reports, robotics showcase visual layers, and JSON artifacts. Rerun
   is not a provider capability and stays behind the `rerun` extra or host-owned optional runtimes
   that already provide `rerun-sdk`.
-- `src/worldforge/testing/`: reusable adapter contract helpers.
+- `src/worldforge/testing/`: reusable adapter contract helpers, fixture loaders, runtime markers,
+  and deterministic controls for artifact/report tests.
 - `src/worldforge/demos/`: packaged demo entry points exposed through `uv run` console scripts.
 - `src/worldforge/demos/lerobot_e2e.py`: packaged LeRobot policy-plus-score planning demo exposed
   through `uv run worldforge-demo-lerobot`.
@@ -270,6 +271,9 @@ generated documentation surfaces.
 - Add regression tests for every bug fix and every documented failure mode.
 - Provider contract helpers in `src/worldforge/testing/` must raise explicit `AssertionError`
   messages instead of relying on Python `assert` statements.
+- Artifact/report tests that compare exact rendered output should use
+  `worldforge.testing.DeterministicClock`, `DeterministicIdFactory`, `stable_snapshot`, and
+  `stable_json_dumps` instead of local paths, random IDs, or live wall-clock timestamps.
 - Put remote provider payload fixtures under `tests/fixtures/providers/` and assert both parser
   errors and public provider errors.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.

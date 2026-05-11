@@ -164,10 +164,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Tests for artifact renderers avoid local path, clock, and ordering flake.
-- [ ] Helpers are reusable by future report and demo tests.
-- [ ] Docs explain deterministic fixture policy for contributors.
-- [ ] Existing runtime timing fields remain truthful in real runs.
+- [x] Tests for artifact renderers avoid local path, clock, and ordering flake.
+- [x] Helpers are reusable by future report and demo tests.
+- [x] Docs explain deterministic fixture policy for contributors.
+- [x] Existing runtime timing fields remain truthful in real runs.
 
 Validation:
 

@@ -71,6 +71,25 @@ leaving fragile examples unmarked:
 Run `uv run python scripts/check_docs_snippets.py` before changing Python or JSON examples in the
 Python API, scenarios, provider routing, external provider, benchmarking, artifact, or report docs.
 
+### Deterministic artifact tests
+
+Use `worldforge.testing` determinism helpers when tests compare exact artifact, report, or manifest
+output:
+
+```python
+from worldforge.testing import DeterministicIdFactory, stable_json_dumps, stable_snapshot
+
+ids = DeterministicIdFactory()
+snapshot = stable_snapshot(payload, path_roots={tmp_path: "<tmp>"})
+assert stable_json_dumps(snapshot) == expected_json
+```
+
+Exact snapshots are useful for schema-versioned JSON artifacts, issue templates, rendered reports,
+and stable CLI text. Prefer semantic assertions for real latency or throughput measurements, host
+paths, current git metadata, live timestamps, optional runtime warning text, and values owned by a
+prepared external runtime. Do not globally monkeypatch clocks or randomness for host-owned smokes;
+pass deterministic clocks or explicit IDs into the test helper or renderer being tested.
+
 Before changing public imports, CLI flags, provider capabilities, or artifact schemas, classify the
 surface through [Public API Stability](./api-stability.md) and the
 [Artifact Schemas](./artifact-schemas.md) ownership map. Stable and provisional surfaces need a
@@ -82,7 +101,8 @@ Key directories:
 - `src/worldforge/models.py`: public data contracts and validation.
 - `src/worldforge/framework.py`: runtime facade, worlds, planning, persistence, and diagnostics.
 - `src/worldforge/providers/`: provider interfaces, catalog, adapters, and scaffolds.
-- `src/worldforge/testing/`: reusable provider contract helpers.
+- `src/worldforge/testing/`: reusable provider contract helpers, fixture loaders, runtime markers,
+  and deterministic artifact test controls.
 - `src/worldforge/evaluation/`: deterministic evaluation suites.
 - `src/worldforge/benchmark.py`: provider benchmark harness.
 - `src/worldforge/observability.py`: provider event sinks.

@@ -16,6 +16,7 @@ from worldforge.harness.workspace import (
     workspace_root_for_state_dir,
     write_run_manifest,
 )
+from worldforge.testing import DeterministicIdFactory, stable_json_dumps, stable_snapshot
 
 
 def test_run_flow_preserves_shared_workspace_layout(tmp_path) -> None:
@@ -365,6 +366,57 @@ def test_workspace_helpers_reject_escape_and_invalid_cleanup(tmp_path) -> None:
     bad_manifest.parent.mkdir(parents=True)
     bad_manifest.write_text("not-json", encoding="utf-8")
     assert [run["run_id"] for run in list_run_workspaces(tmp_path)] == ["20260101T000000Z-00000001"]
+
+
+def test_deterministic_controls_pin_preserved_benchmark_snapshot(tmp_path: Path) -> None:
+    ids = DeterministicIdFactory()
+    run = _preserved_benchmark_run(
+        tmp_path,
+        run_id=ids.run_id(),
+        average_latency_ms=10.0,
+        throughput_per_second=5.0,
+    )
+    report = json.loads((run.path / "reports" / "report.json").read_text(encoding="utf-8"))
+
+    snapshot = stable_snapshot(
+        {
+            "run_id": run.run_id,
+            "report_path": run.path / "reports" / "report.json",
+            "benchmark": report["results"][0],
+        },
+        path_roots={tmp_path: "<workspace>"},
+    )
+
+    assert stable_json_dumps(snapshot) == (
+        "{\n"
+        '  "benchmark": {\n'
+        '    "average_latency_ms": 10.0,\n'
+        '    "concurrency": 1,\n'
+        '    "error_count": 0,\n'
+        '    "errors": [],\n'
+        '    "iterations": 2,\n'
+        '    "max_latency_ms": 10.0,\n'
+        '    "min_latency_ms": 10.0,\n'
+        '    "operation": "predict",\n'
+        '    "operation_metrics": {\n'
+        '      "events": [\n'
+        "        {\n"
+        '          "request_count": 2\n'
+        "        }\n"
+        "      ]\n"
+        "    },\n"
+        '    "p50_latency_ms": 10.0,\n'
+        '    "p95_latency_ms": 10.0,\n'
+        '    "provider": "mock",\n'
+        '    "retry_count": 1,\n'
+        '    "success_count": 2,\n'
+        '    "throughput_per_second": 5.0,\n'
+        '    "total_time_ms": 20.0\n'
+        "  },\n"
+        '  "report_path": "<workspace>/runs/20260101T000000Z-00000001/reports/report.json",\n'
+        '  "run_id": "20260101T000000Z-00000001"\n'
+        "}\n"
+    )
 
 
 def _preserved_benchmark_run(

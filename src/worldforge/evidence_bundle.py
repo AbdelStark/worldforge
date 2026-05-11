@@ -47,6 +47,7 @@ def generate_evidence_bundle(
     run_ids: tuple[str, ...] = (),
     overwrite: bool = False,
     include_fixture_digests: bool = True,
+    generated_at: str | None = None,
 ) -> BundleResult:
     """Generate a deterministic, safe-to-attach evidence bundle from preserved runs."""
 
@@ -104,7 +105,7 @@ def generate_evidence_bundle(
     fixture_digests = _fixture_digests() if include_fixture_digests else []
     manifest = {
         "schema_version": EVIDENCE_BUNDLE_SCHEMA_VERSION,
-        "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "generated_at": generated_at or datetime.now(UTC).replace(microsecond=0).isoformat(),
         "source_workspace": _display_path(workspace),
         "run_count": len(runs),
         "runs": sorted(runs, key=lambda item: str(item["run_id"])),
@@ -138,6 +139,7 @@ def generate_issue_bundle(
     run_id: str,
     output_dir: Path,
     overwrite: bool = False,
+    generated_at: str | None = None,
 ) -> BundleResult:
     """Generate a small issue-ready bundle for one preserved run."""
 
@@ -147,6 +149,7 @@ def generate_issue_bundle(
         run_ids=(run_id,),
         overwrite=overwrite,
         include_fixture_digests=False,
+        generated_at=generated_at,
     )
     manifest = {
         **result.manifest,

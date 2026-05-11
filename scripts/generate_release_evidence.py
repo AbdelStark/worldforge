@@ -326,10 +326,14 @@ def release_gate_results(
     skip_gates: tuple[str, ...] = (),
     skip_reason: str = "",
     runner: Any = subprocess.run,
+    now_utc: Any | None = None,
+    monotonic_clock: Any | None = None,
 ) -> tuple[ReleaseGateResult, ...]:
     """Return release-readiness gate results, optionally executing commands."""
 
     skip_gate_names = set(skip_gates)
+    resolved_now_utc = now_utc or _utc_now
+    resolved_monotonic = monotonic_clock or monotonic
     results: list[ReleaseGateResult] = []
     for gate in gates:
         if gate.name in skip_gate_names:
@@ -353,8 +357,8 @@ def release_gate_results(
             )
             continue
 
-        started_at = datetime.now(UTC).replace(microsecond=0).isoformat()
-        start = monotonic()
+        started_at = _isoformat_utc(resolved_now_utc())
+        start = resolved_monotonic()
         completed = runner(
             gate.command,
             shell=True,
@@ -362,8 +366,8 @@ def release_gate_results(
             capture_output=True,
             text=True,
         )
-        finished_at = datetime.now(UTC).replace(microsecond=0).isoformat()
-        duration_ms = round((monotonic() - start) * 1000, 3)
+        finished_at = _isoformat_utc(resolved_now_utc())
+        duration_ms = round((resolved_monotonic() - start) * 1000, 3)
         return_code = int(completed.returncode)
         results.append(
             ReleaseGateResult(
@@ -394,10 +398,11 @@ def release_evidence_payload(
     gate_results: tuple[ReleaseGateResult, ...],
     live_smoke_registry: dict[str, Any] | None = None,
     known_limitations: tuple[str, ...] = (),
+    now_utc: Any | None = None,
 ) -> dict[str, Any]:
     """Return a JSON-native release-readiness evidence payload."""
 
-    generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    generated_at = _isoformat_utc((now_utc or _utc_now)())
     return {
         "schema_version": 1,
         "generated_at": generated_at,
@@ -441,10 +446,11 @@ def render_release_evidence(
     live_smoke_registry: dict[str, Any] | None = None,
     known_limitations: tuple[str, ...] = (),
     gate_results: tuple[ReleaseGateResult, ...] | None = None,
+    now_utc: Any | None = None,
 ) -> str:
     commit = _git_output("rev-parse", "--short", "HEAD") or "unknown"
     branch = _git_output("branch", "--show-current") or "unknown"
-    generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    generated_at = _isoformat_utc((now_utc or _utc_now)())
     resolved_gate_results = gate_results or release_gate_results(run=False)
     lines = [
         "# WorldForge Release Evidence",
@@ -747,6 +753,16 @@ def _git_output(*args: str) -> str:
         ).strip()
     except (OSError, subprocess.CalledProcessError):
         return ""
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC).replace(microsecond=0)
+
+
+def _isoformat_utc(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).replace(microsecond=0).isoformat()
 
 
 if __name__ == "__main__":

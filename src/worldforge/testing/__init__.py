@@ -35,6 +35,12 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "provider_profile_skip_reason": "worldforge.testing.runtime_profiles",
     "pytest_marker_definitions": "worldforge.testing.runtime_profiles",
     "runtime_marker_skip_reason": "worldforge.testing.runtime_profiles",
+    "DeterministicClock": "worldforge.testing.determinism",
+    "DeterministicIdFactory": "worldforge.testing.determinism",
+    "deterministic_run_workspace": "worldforge.testing.determinism",
+    "stable_json_dumps": "worldforge.testing.determinism",
+    "stable_path": "worldforge.testing.determinism",
+    "stable_snapshot": "worldforge.testing.determinism",
 }
 
 __all__ = sorted(_EXPORTS)

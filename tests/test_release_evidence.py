@@ -3,10 +3,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from subprocess import CompletedProcess
 
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
+from worldforge.testing import DeterministicClock, stable_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "generate_release_evidence.py"
@@ -80,6 +82,7 @@ def test_release_evidence_links_live_manifest_and_artifact(tmp_path: Path) -> No
         command_argv=("worldforge-smoke-runway",),
         event_count=3,
         artifact_paths={"video": video_path},
+        created_at="2026-01-01T00:00:00+00:00",
     )
     write_run_manifest(manifest_path, manifest)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -92,6 +95,7 @@ def test_release_evidence_links_live_manifest_and_artifact(tmp_path: Path) -> No
     )
 
     assert "| `runway` | passed |" in report
+    assert payload["created_at"] == "2026-01-01T00:00:00+00:00"
     assert "run_manifest.json" in report
     assert "`generate`" in report
     assert "`video`=" in report
@@ -140,6 +144,28 @@ def test_release_evidence_gate_runner_records_pass_fail_and_skip() -> None:
     assert results[2].triage_step == "host skipped intentionally"
 
 
+def test_release_evidence_gate_runner_accepts_deterministic_clock() -> None:
+    gate = ReleaseGate("Docs", "uv run mkdocs build --strict", "fix docs")
+    clock = DeterministicClock(
+        start=datetime(2026, 1, 1, tzinfo=UTC),
+        wall_step=timedelta(seconds=1),
+        monotonic_start=100.0,
+        monotonic_step=0.25,
+    )
+
+    results = release_gate_results(
+        (gate,),
+        run=True,
+        runner=lambda command, **_kwargs: CompletedProcess(command, 0, stdout="ok", stderr=""),
+        now_utc=clock.now,
+        monotonic_clock=clock.monotonic,
+    )
+
+    assert results[0].started_at == "2026-01-01T00:00:00+00:00"
+    assert results[0].finished_at == "2026-01-01T00:00:01+00:00"
+    assert results[0].duration_ms == 250.0
+
+
 def test_release_evidence_json_payload_contains_gate_and_host_owned_statuses() -> None:
     gate_results = release_gate_results(
         (ReleaseGate("Docs", "uv run mkdocs build --strict", "fix docs"),),
@@ -164,6 +190,30 @@ def test_release_evidence_json_payload_contains_gate_and_host_owned_statuses() -
     }
     assert {item["status"] for item in payload["live_provider_evidence"]} == {"host-owned"}
     assert payload["known_limitations"] == ["No live smokes."]
+
+
+def test_release_evidence_payload_uses_explicit_clock_for_snapshot(tmp_path: Path) -> None:
+    gate_results = release_gate_results(
+        (ReleaseGate("Docs", "uv run mkdocs build --strict", "fix docs"),),
+        run=False,
+    )
+    payload = generate_release_evidence.release_evidence_payload(
+        manifests=(),
+        benchmark_artifacts=(tmp_path / "benchmark.json",),
+        artifacts=(),
+        gate_results=gate_results,
+        known_limitations=("No live smokes.",),
+        now_utc=DeterministicClock(start=datetime(2026, 1, 1, tzinfo=UTC)).now,
+    )
+    snapshot = stable_snapshot(
+        payload,
+        path_roots={tmp_path: "<tmp>"},
+        field_replacements={"commit": "<commit>"},
+    )
+
+    assert snapshot["generated_at"] == "2026-01-01T00:00:00+00:00"
+    assert snapshot["benchmark_artifacts"][0]["path"] == "<tmp>/benchmark.json"
+    assert snapshot["git"]["commit"] == "<commit>"
 
 
 def test_release_evidence_main_discovers_evidence_bundle_manifest(

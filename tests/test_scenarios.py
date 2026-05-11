@@ -20,6 +20,7 @@ from worldforge.scenarios import (
     parse_scenario,
     run_scenario,
 )
+from worldforge.testing import stable_json_dumps, stable_snapshot
 
 _VALID_PAYLOAD = {
     "schema_version": SCENARIO_SCHEMA_VERSION,
@@ -163,6 +164,44 @@ def test_run_scenario_creates_world_and_records_object_count(tmp_path: Path) -> 
     assert result.object_count == 1
     assert result.final_step >= 1
     assert result.all_expectations_passed() is True
+
+
+def test_run_scenario_result_supports_exact_stable_snapshot(tmp_path: Path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    result = run_scenario(forge, parse_scenario(_VALID_PAYLOAD))
+
+    snapshot = stable_snapshot(
+        result.to_dict(),
+        path_roots={tmp_path: "<state>"},
+        field_replacements={"world_id": "<world-id>"},
+    )
+
+    assert stable_json_dumps(snapshot) == (
+        "{\n"
+        '  "all_expectations_passed": true,\n'
+        '  "expectation_checks": [\n'
+        "    {\n"
+        '      "expected": 1,\n'
+        '      "kind": "object_count",\n'
+        '      "label": "object_count",\n'
+        '      "observed": 1,\n'
+        '      "passed": true\n'
+        "    },\n"
+        "    {\n"
+        '      "expected": 2,\n'
+        '      "kind": "step",\n'
+        '      "label": "step_count",\n'
+        '      "observed": 2,\n'
+        '      "passed": true\n'
+        "    }\n"
+        "  ],\n"
+        '  "final_step": 2,\n'
+        '  "object_count": 1,\n'
+        '  "scenario_id": "first-scenario",\n'
+        '  "schema_version": 1,\n'
+        '  "world_id": "<world-id>"\n'
+        "}\n"
+    )
 
 
 def test_run_scenario_records_failed_expectations_without_raising(tmp_path: Path) -> None:

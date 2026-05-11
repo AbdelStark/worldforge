@@ -54,6 +54,14 @@ framework should track:
   mutation.
 - Test fixtures must be deterministic unless a test explicitly validates nondeterministic runtime
   handling.
+- Artifact and report tests should use `worldforge.testing.DeterministicClock`,
+  `DeterministicIdFactory`, `deterministic_run_workspace`, `stable_snapshot`, and
+  `stable_json_dumps` when they assert exact JSON or Markdown snapshots. Normalize temporary paths,
+  generated IDs, and known volatile fields before comparing text.
+- Exact snapshots are appropriate for stable artifact schemas, rendered user-facing report text,
+  command snippets, schema-versioned manifests, and failure templates. Prefer semantic assertions
+  for real provider latency, throughput, host paths, current git commits, live timestamps, optional
+  runtime warnings, and other values whose truth depends on the host environment.
 - Every provider capability must have both a positive contract test and a failure-mode test for the
   boundary it documents.
 - Reusable provider contract helpers must use explicit exceptions instead of Python `assert`, so

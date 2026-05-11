@@ -99,6 +99,7 @@ def build_run_manifest(
     result: Mapping[str, Any] | None = None,
     result_digest: str | None = None,
     environ: Mapping[str, str] | None = None,
+    created_at: str | None = None,
 ) -> LiveSmokeRunManifest:
     """Build a validated live smoke run manifest without exposing secrets."""
 
@@ -125,21 +126,24 @@ def build_run_manifest(
         elif input_summary:
             resolved_input_digest = digest_json_value(dict(input_summary))
 
-    return LiveSmokeRunManifest(
-        run_id=run_id,
-        command_argv=tuple(command_argv or sys.argv),
-        provider_profile=provider_profile,
-        capability=capability,
-        status=status,
-        runtime_manifest_id=runtime_manifest_id,
-        env_summary=tuple(env_summary(env_vars, environ=environ)),
-        input_summary=input_summary or {},
-        input_digest=resolved_input_digest,
-        input_fixture_digest=resolved_input_fixture_digest,
-        event_count=event_count,
-        result_digest=resolved_result_digest,
-        artifact_paths=_artifact_path_summary(artifact_paths or {}),
-    )
+    manifest_kwargs: dict[str, Any] = {
+        "run_id": run_id,
+        "command_argv": tuple(command_argv or sys.argv),
+        "provider_profile": provider_profile,
+        "capability": capability,
+        "status": status,
+        "runtime_manifest_id": runtime_manifest_id,
+        "env_summary": tuple(env_summary(env_vars, environ=environ)),
+        "input_summary": input_summary or {},
+        "input_digest": resolved_input_digest,
+        "input_fixture_digest": resolved_input_fixture_digest,
+        "event_count": event_count,
+        "result_digest": resolved_result_digest,
+        "artifact_paths": _artifact_path_summary(artifact_paths or {}),
+    }
+    if created_at is not None:
+        manifest_kwargs["created_at"] = created_at
+    return LiveSmokeRunManifest(**manifest_kwargs)
 
 
 def write_run_manifest(

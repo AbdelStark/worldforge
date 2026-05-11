@@ -22,6 +22,12 @@ releases may still include breaking changes when the public API needs to tighten
   benchmarking, artifact, and report docs. The gate executes Python snippets in a temp workspace,
   parses JSON snippets, applies scenario and benchmark schema checks, and requires explicit
   host-owned, credentialed, or illustrative skip markers.
+- Added `worldforge.testing` deterministic controls for artifact and report tests:
+  `DeterministicClock`, `DeterministicIdFactory`, `deterministic_run_workspace`,
+  `stable_snapshot`, `stable_path`, and `stable_json_dumps`. Evidence bundle generation, issue
+  bundle tests, release evidence tests, preserved benchmark snapshots, scenario result snapshots,
+  and live-smoke run manifest tests can now pin clocks, IDs, temp paths, volatile fields, and
+  sorted JSON without weakening real runtime timing.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import
