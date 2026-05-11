@@ -244,7 +244,8 @@ def test_runs_compare_exports_benchmark_artifacts(tmp_path, monkeypatch, capsys)
     assert payload["baseline_run_id"] == "20260101T000000Z-00000001"
     assert payload["rows"][1]["delta_average_latency_ms"] == 5.0
     assert "budget_file:/tmp/budget.json#abc123" in payload["runs"][0]["provenance_refs"]
-    assert str(first.path / "reports" / "report.json") in payload["runs"][0]["artifact_refs"]
+    assert "reports/report.json" in payload["runs"][0]["artifact_refs"]
+    assert str(first.path / "reports" / "report.json") not in payload["runs"][0]["artifact_refs"]
 
     monkeypatch.setattr(
         sys,
