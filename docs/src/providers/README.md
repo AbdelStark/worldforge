@@ -8,6 +8,8 @@ Provider discovery and auto-registration policy live in `src/worldforge/provider
 Keep this page and the provider pages aligned with that catalog.
 For the operator-facing environment, optional package, timeout, prepared-host asset, and first
 diagnostic contract, use the [Provider Configuration Index](../provider-configuration-index.md).
+For concrete parser, credential, retry, optional-runtime, scaffold, and safe-artifact examples, use
+the [Provider Failure Mode Gallery](../provider-failure-gallery.md).
 
 ## Provider Catalog
 

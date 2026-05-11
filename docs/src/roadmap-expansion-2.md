@@ -762,10 +762,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Gallery covers at least eight provider failure modes.
-- [ ] Each entry includes expected signal, owner, first triage step, and safe artifact behavior.
-- [ ] Docs link from support, provider docs, and troubleshooting.
-- [ ] Tests verify gallery entries stay aligned with real error behavior.
+- [x] Gallery covers at least eight provider failure modes.
+- [x] Each entry includes expected signal, owner, first triage step, and safe artifact behavior.
+- [x] Docs link from support, provider docs, and troubleshooting.
+- [x] Tests verify gallery entries stay aligned with real error behavior.
 
 Validation:
 

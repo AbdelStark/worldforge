@@ -48,6 +48,7 @@ SDIST_REQUIRED_SUFFIXES = (
     "docs/src/demo-showcases.md",
     "docs/src/docs-map.md",
     "docs/src/provider-authoring-guide.md",
+    "docs/src/provider-failure-gallery.md",
     "docs/src/quality.md",
     "docs/src/robotics-showcase-deep-dive.md",
     "docs/src/use-case-cookbook.md",

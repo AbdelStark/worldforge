@@ -2801,6 +2801,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         ("capability-negotiation-preflight", 241),
         ("embodied-policy-replay-comparison", 242),
         ("non-developer-evidence-review", 245),
+        ("provider-failure-gallery", 246),
     )
     for workflow, issue in workflows:
         assert workflow in script
@@ -2823,6 +2824,8 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "controller safety",
         "local-only",
         "execute JavaScript",
+        "provider failure gallery",
+        "signed URLs",
     ):
         assert boundary in showcase_docs or boundary in cookbook
 
@@ -2935,6 +2938,47 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
     ):
         assert signal in html_reports
     assert "test_non_developer_evidence_review_demo_escapes_and_marks_local_only" in evidence_tests
+
+    failure_gallery_docs = (ROOT / "docs/src/provider-failure-gallery.md").read_text(
+        encoding="utf-8"
+    )
+    support_docs = (ROOT / "docs/src/support.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
+    remote_provider_tests = (ROOT / "tests/test_remote_video_providers.py").read_text(
+        encoding="utf-8"
+    )
+    contract_tests = (ROOT / "tests/test_provider_contracts.py").read_text(encoding="utf-8")
+    assert "Provider Failure Mode Gallery" in summary
+    assert "Provider Failure Mode Gallery: provider-failure-gallery.md" in mkdocs
+    assert "docs/src/provider-failure-gallery.md" in distribution
+    assert "[Provider Failure Mode Gallery](./provider-failure-gallery.md)" in support_docs
+    assert "[Provider Failure Mode Gallery](./provider-failure-gallery.md)" in playbooks
+    assert "[Provider Failure Mode Gallery](../provider-failure-gallery.md)" in provider_index
+    for checkbox in (
+        "- [x] Gallery covers at least eight provider failure modes.",
+        (
+            "- [x] Each entry includes expected signal, owner, first triage step, and safe "
+            "artifact behavior."
+        ),
+        "- [x] Docs link from support, provider docs, and troubleshooting.",
+        "- [x] Tests verify gallery entries stay aligned with real error behavior.",
+    ):
+        assert checkbox in roadmap
+    for signal in (
+        "mock-invalid-prediction-state",
+        "cosmos-generation-unauthorized",
+        "cosmos-generation-timeout",
+        "runway-missing-task-id",
+        "runway-expired-artifact",
+        "runway-unsafe-artifact-url",
+        "optional-runtime-missing-dependency",
+        "genie-scaffold-fail-closed",
+        "raw provider request bodies",
+    ):
+        assert signal in failure_gallery_docs or signal in script
+    assert "test_provider_failure_gallery_matches_remote_provider_failures" in remote_provider_tests
+    assert "test_provider_failure_gallery_matches_contract_failures" in contract_tests
 
 
 def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:

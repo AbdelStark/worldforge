@@ -42,6 +42,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a non-developer evidence review demo that builds a static HTML/JSON/Markdown review
   package from evaluation, benchmark, world-diff, and issue-bundle artifacts while escaping display
   text and marking unsafe host-local references as local-only.
+- Added a provider failure mode gallery demo and docs page covering fixture-backed parser errors,
+  provider errors, retry exhaustion, missing config, optional-runtime setup, scaffold boundaries,
+  unsupported behavior, and safe artifact handling with first triage commands.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

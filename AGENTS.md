@@ -64,7 +64,7 @@ evaluation harnesses, and testable prototypes.
   robotics replay, remote dry-run, adapter authoring, batch eval, service host, Rerun gallery,
   failure lab, cookbook, external provider package, custom evaluation suite, and policy+score
   candidate lab, fixture drift review, capability negotiation preflight, and embodied policy
-  replay comparison, and non-developer evidence review workflows.
+  replay comparison, non-developer evidence review, and provider failure gallery workflows.
 - `scripts/release_readiness_drill.py`: checkout-safe release readiness drill that renders
   clean-pass and controlled-failure release-evidence artifacts without publishing, tagging,
   signing, or running host-owned optional runtimes.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -15,10 +17,29 @@ from worldforge.providers.http_utils import request_bytes_with_policy, validate_
 from worldforge.testing import assert_provider_contract
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "providers"
+_ROOT = Path(__file__).resolve().parents[1]
+_DEMO_SCRIPT = _ROOT / "scripts" / "demo_showcases.py"
+_DEMO_SPEC = importlib.util.spec_from_file_location(
+    "demo_showcases_for_remote_provider_tests",
+    _DEMO_SCRIPT,
+)
+assert _DEMO_SPEC is not None
+_demo_showcases = importlib.util.module_from_spec(_DEMO_SPEC)
+assert _DEMO_SPEC.loader is not None
+sys.modules[_DEMO_SPEC.name] = _demo_showcases
+_DEMO_SPEC.loader.exec_module(_demo_showcases)
 
 
 def _fixture(name: str) -> dict[str, object]:
     return json.loads((_FIXTURE_DIR / name).read_text(encoding="utf-8"))
+
+
+def _gallery_entry(entry_id: str) -> dict[str, object]:
+    entries = {
+        str(entry["id"]): entry
+        for entry in _demo_showcases.build_provider_failure_gallery_entries()
+    }
+    return entries[entry_id]
 
 
 def test_cosmos_provider_contract() -> None:
@@ -722,6 +743,85 @@ def test_runway_provider_rejects_unsafe_artifact_urls(monkeypatch, artifact_url:
 
     with pytest.raises(ProviderError, match="artifact URL"):
         provider.generate("a rainy alley at night", duration_seconds=4.0)
+
+
+def test_provider_failure_gallery_matches_remote_provider_failures(monkeypatch) -> None:
+    auth_entry = _gallery_entry("cosmos-generation-unauthorized")
+    auth_events: list[ProviderEvent] = []
+    auth_provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        event_handler=auth_events.append,
+        transport=httpx.MockTransport(lambda request: httpx.Response(401, text="bad token")),
+    )
+
+    with pytest.raises(ProviderError) as auth_error:
+        auth_provider.generate("drive through the city", duration_seconds=2.0)
+
+    assert str(auth_entry["expected_error"]) in str(auth_error.value)
+    assert auth_events[0].phase == "failure"
+    assert str(auth_events[0].status_code) in str(auth_entry["expected_event"])
+    assert str(auth_events[0].target) in str(auth_entry["expected_event"])
+
+    timeout_entry = _gallery_entry("cosmos-generation-timeout")
+    timeout_events: list[ProviderEvent] = []
+
+    def timeout_handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("cosmos timed out", request=request)
+
+    timeout_provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        event_handler=timeout_events.append,
+        transport=httpx.MockTransport(timeout_handler),
+    )
+
+    with pytest.raises(ProviderError) as timeout_error:
+        timeout_provider.generate("drive through the city", duration_seconds=2.0)
+
+    assert str(timeout_entry["expected_error"]) in str(timeout_error.value)
+    assert timeout_events[0].phase == "failure"
+    assert str(timeout_events[0].target) in str(timeout_entry["expected_event"])
+
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
+    missing_id_entry = _gallery_entry("runway-missing-task-id")
+
+    def missing_task_id_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json=_fixture("runway_create_missing_id.json"))
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    missing_id_provider = RunwayProvider(
+        transport=httpx.MockTransport(missing_task_id_handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+    )
+    with pytest.raises(ProviderError) as missing_id_error:
+        missing_id_provider.generate("a rainy alley at night", duration_seconds=4.0)
+    assert str(missing_id_entry["expected_error"]) in str(missing_id_error.value)
+
+    unsafe_url_entry = _gallery_entry("runway-unsafe-artifact-url")
+
+    def unsafe_url_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/image_to_video":
+            return httpx.Response(200, json=_fixture("runway_create_success.json"))
+        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "task_generate",
+                    "status": "SUCCEEDED",
+                    "output": ["http://127.0.0.1:8777/generated.mp4"],
+                },
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    unsafe_url_provider = RunwayProvider(
+        transport=httpx.MockTransport(unsafe_url_handler),
+        poll_interval_seconds=0.0,
+        max_polls=1,
+    )
+    with pytest.raises(ProviderError) as unsafe_url_error:
+        unsafe_url_provider.generate("a rainy alley at night", duration_seconds=4.0)
+    assert str(unsafe_url_entry["expected_error"]) in str(unsafe_url_error.value)
 
 
 def test_runway_provider_allows_local_artifact_urls_only_when_explicit(monkeypatch) -> None:

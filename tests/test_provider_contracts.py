@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import inspect
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -32,6 +34,26 @@ from worldforge.testing import (
     assert_transfer_conformance,
     load_capability_fixture,
 )
+
+_ROOT = Path(__file__).resolve().parents[1]
+_DEMO_SCRIPT = _ROOT / "scripts" / "demo_showcases.py"
+_DEMO_SPEC = importlib.util.spec_from_file_location(
+    "demo_showcases_for_provider_contract_tests",
+    _DEMO_SCRIPT,
+)
+assert _DEMO_SPEC is not None
+_demo_showcases = importlib.util.module_from_spec(_DEMO_SPEC)
+assert _DEMO_SPEC.loader is not None
+sys.modules[_DEMO_SPEC.name] = _demo_showcases
+_DEMO_SPEC.loader.exec_module(_demo_showcases)
+
+
+def _gallery_entry(entry_id: str) -> dict[str, object]:
+    entries = {
+        str(entry["id"]): entry
+        for entry in _demo_showcases.build_provider_failure_gallery_entries()
+    }
+    return entries[entry_id]
 
 
 def test_mock_provider_passes_contract_checks() -> None:
@@ -280,6 +302,39 @@ def test_jepa_no_longer_exposes_scaffold_surrogate(monkeypatch) -> None:
 
     with pytest.raises(ProviderError, match="does not implement embed"):
         JepaProvider().embed(text="cube")
+
+
+def test_provider_failure_gallery_matches_contract_failures(monkeypatch) -> None:
+    invalid_entry = _gallery_entry("mock-invalid-prediction-state")
+    with pytest.raises(AssertionError) as invalid_error:
+        assert_provider_contract(BrokenContractProvider())
+    assert str(invalid_entry["expected_error"]) in str(invalid_error.value)
+
+    secret_entry = _gallery_entry("provider-event-secret-material")
+    with pytest.raises(AssertionError) as secret_error:
+        assert_provider_events_conform(
+            [
+                ProviderEvent(
+                    provider="runway",
+                    operation="download",
+                    phase="success",
+                    metadata={"safe": "raw-secret"},
+                )
+            ]
+        )
+    assert str(secret_entry["expected_error"]) in str(secret_error.value)
+
+    unsupported_entry = _gallery_entry("genie-scaffold-fail-closed")
+    monkeypatch.setenv("GENIE_API_KEY", "genie-test-key")
+    monkeypatch.delenv("WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES", raising=False)
+    genie_report = assert_provider_contract(GenieProvider())
+    assert genie_report.configured is True
+    assert genie_report.exercised_operations == []
+    assert "exercised_operations=[]" in str(unsupported_entry["expected_error"])
+
+    jepa_entry = _gallery_entry("optional-runtime-missing-dependency")
+    assert str(jepa_entry["owner"]) == "prepared host owner"
+    assert "do not add it to base dependencies" in str(jepa_entry["first_triage_step"])
 
 
 def test_provider_contract_cli_runs_mock_provider(monkeypatch, capsys) -> None:

@@ -47,6 +47,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         241,
         242,
         245,
+        246,
     ]
     assert [workflow["id"] for workflow in workflows] == [
         "first-run",
@@ -66,6 +67,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "capability-negotiation-preflight",
         "embodied-policy-replay-comparison",
         "non-developer-evidence-review",
+        "provider-failure-gallery",
     ]
 
 
@@ -73,7 +75,7 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     module = _load_demo_showcases()
     results = module.run_workflows("all", workspace_dir=tmp_path, overwrite=True)
 
-    assert len(results) == 17
+    assert len(results) == 18
     assert all(result["safe_to_attach"] is True for result in results)
     assert all(result["status"] in {"passed", "skipped"} for result in results)
 
@@ -216,6 +218,32 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     html = review_html.read_text(encoding="utf-8")
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
     assert "<script" not in html
+
+    provider_failures = summaries["provider-failure-gallery"]
+    failure_report = provider_failures["report"]
+    assert failure_report["entry_count"] >= 8
+    assert failure_report["safe_to_attach"] is True
+    failure_entries = {entry["id"]: entry for entry in failure_report["entries"]}
+    assert {
+        "mock-invalid-prediction-state",
+        "cosmos-generation-unauthorized",
+        "cosmos-generation-timeout",
+        "runway-missing-task-id",
+        "runway-expired-artifact",
+        "runway-unsafe-artifact-url",
+        "optional-runtime-missing-dependency",
+        "genie-scaffold-fail-closed",
+    } <= set(failure_entries)
+    for entry in failure_entries.values():
+        assert entry["expected_event"]
+        assert entry["expected_error"]
+        assert entry["expected_artifact"]
+        assert entry["owner"]
+        assert entry["first_triage_command"].startswith("uv run") or entry[
+            "first_triage_command"
+        ].startswith("jq ")
+        assert entry["safe_artifact_behavior"]
+        assert entry["safe_to_attach"] is True
 
 
 def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:

@@ -1030,6 +1030,9 @@ Success signal:
 ## 10. Triage Incidents And Regressions
 
 Use this as the first stop when a user reports a failure.
+For provider-specific parser, retry, credential, optional-runtime, scaffold, and unsafe-artifact
+examples, cross-check the [Provider Failure Mode Gallery](./provider-failure-gallery.md) before
+attaching evidence.
 
 | Reported failure | First command | Evidence to capture | Usual fix path |
 | --- | --- | --- | --- |

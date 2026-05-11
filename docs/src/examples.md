@@ -13,7 +13,7 @@ For the full command surface, see the [CLI Reference](./cli.md).
 
 | Workflow | Surface | Command |
 | --- | --- | --- |
-| `demo-showcases` | Ten checkout-safe issue-backed workflows for first-run, diagnostics, replay, remote dry-run, adapter authoring, batch eval, service host, Rerun gallery, failure lab, and cookbook evidence | `uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases` |
+| `demo-showcases` | Checkout-safe issue-backed workflows for local worlds, diagnostics, replay, provider failures, evidence review, release drills, and cookbook evidence | `uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases` |
 
 ```bash
 uv run python scripts/demo_showcases.py list

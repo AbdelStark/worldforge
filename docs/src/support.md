@@ -24,6 +24,9 @@ uv run worldforge provider info <provider>
 Check the [Provider Configuration Index](./provider-configuration-index.md) before filing provider
 setup issues; it lists the required env vars, optional inputs, host-owned runtime packages,
 prepared-host assets, default timeouts, and first diagnostic command for every catalog provider.
+If the failure is a parser error, provider error, retry exhaustion, missing configuration,
+unsupported capability, optional-runtime setup problem, scaffold boundary, or unsafe artifact,
+match it against the [Provider Failure Mode Gallery](./provider-failure-gallery.md) first.
 
 It is safe to attach provider profiles, doctor output, provider health, runtime manifests,
 `config_summary().to_dict()` output, smoke `run_manifest.json` files, benchmark reports, and
