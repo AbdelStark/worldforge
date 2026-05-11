@@ -73,7 +73,8 @@ evaluation harnesses, and testable prototypes.
 - `src/worldforge/harness/`: optional TheWorldHarness TUI package. Keep flow metadata and runners
   independent from Textual; `tui.py` is the only Textual-dependent module. Current flows cover
   LeWorldModel score planning, LeRobot policy-plus-score planning, Cosmos-Policy ALOHA replay,
-  provider diagnostics plus benchmark comparison, and the adapter author workbench.
+  GR00T PolicyClient replay, provider diagnostics plus benchmark comparison, and the adapter author
+  workbench.
 - `src/worldforge/smoke/`: packaged optional-runtime smoke entry points exposed through `uv run`
   console scripts.
 - `src/worldforge/smoke/lerobot_leworldmodel.py`: optional host-owned real robotics showcase that

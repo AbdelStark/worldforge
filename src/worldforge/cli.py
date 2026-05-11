@@ -1273,6 +1273,8 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=(
             "leworldmodel",
             "lerobot",
+            "cosmos-policy",
+            "gr00t",
             "diagnostics",
             "workbench",
             "eval",

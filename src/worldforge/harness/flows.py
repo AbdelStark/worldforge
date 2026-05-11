@@ -74,6 +74,21 @@ FLOWS: tuple[HarnessFlow, ...] = (
         ),
     ),
     HarnessFlow(
+        id="gr00t",
+        title="GR00T Policy Replay",
+        short_title="GR00T",
+        focus="saved PolicyClient replay",
+        provider="GrootPolicyClientProvider",
+        capability="policy",
+        command="uv run --extra harness worldforge-harness --flow gr00t",
+        accent="#b9a7ff",
+        summary=(
+            "Replay a sanitized NVIDIA Isaac GR00T PolicyClient action response through the "
+            "real provider boundary, validate named tensors, translate the policy output, and "
+            "preserve an inspectable artifact without requiring a live CUDA server."
+        ),
+    ),
+    HarnessFlow(
         id="diagnostics",
         title="Provider Diagnostics + Benchmark",
         short_title="Diagnostics",
@@ -136,6 +151,42 @@ _COSMOS_POLICY_PREVIEW_ROWS = (
     (0.00418, -0.02012, -0.01506, -0.03610, 0.06206, 0.01546),
     (0.01023, -0.02691, -0.01081, -0.05677, 0.06027, 0.01551),
     (0.00377, -0.02269, -0.01370, -0.04925, 0.06735, 0.01213),
+)
+_GROOT_REPLAY_SCHEMA_VERSION = 1
+_GROOT_MODEL = "nvidia/GR00T-N1.7-3B"
+_GROOT_EMBODIMENT_TAG = "GR1"
+_GROOT_ACTION_HORIZON = 4
+_GROOT_TENSOR_DIMS = {
+    "eef_9d": 9,
+    "gripper_position": 1,
+    "joint_position": 7,
+}
+_GROOT_REQUIRED_TENSORS = tuple(_GROOT_TENSOR_DIMS)
+_GROOT_REPLAY_REQUEST_KEYS = frozenset(
+    {
+        "observation_summary",
+        "task_instruction",
+        "action_horizon",
+        "embodiment_tag",
+    }
+)
+_GROOT_EEF_9D_ROWS = (
+    (0.18, 0.46, 0.22, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0),
+    (0.24, 0.47, 0.20, 1.0, 0.0, 0.0, 0.0, 0.98, 0.02),
+    (0.31, 0.48, 0.18, 0.99, 0.01, 0.0, 0.0, 0.96, 0.04),
+    (0.38, 0.50, 0.16, 0.98, 0.02, 0.0, 0.0, 0.94, 0.06),
+)
+_GROOT_GRIPPER_POSITION_ROWS = (
+    (0.045,),
+    (0.038,),
+    (0.030,),
+    (0.022,),
+)
+_GROOT_JOINT_POSITION_ROWS = (
+    (0.12, -0.41, 0.05, -1.82, 0.04, 1.41, 0.28),
+    (0.14, -0.39, 0.04, -1.79, 0.05, 1.38, 0.26),
+    (0.16, -0.36, 0.03, -1.75, 0.06, 1.35, 0.24),
+    (0.18, -0.34, 0.02, -1.71, 0.07, 1.31, 0.21),
 )
 
 
@@ -873,6 +924,360 @@ def _preview_action_rows(rows: object, *, limit: int = 6, columns: int = 6) -> l
     return preview
 
 
+class _SavedGrootReplayClient:
+    """PolicyClient-shaped object that replays a sanitized GR00T response."""
+
+    def __init__(self, replay_artifact: JSONDict) -> None:
+        self.replay_artifact = replay_artifact
+        self.ping_calls = 0
+        self.get_action_calls = 0
+
+    def ping(self) -> bool:
+        self.ping_calls += 1
+        return True
+
+    def get_action(self, observation: object, options: object | None = None) -> object:
+        self.get_action_calls += 1
+        request = _require_json_object(
+            self.replay_artifact.get("request"),
+            "GR00T replay request",
+        )
+        _validate_gr00t_replay_observation(observation, request)
+        if options is not None:
+            _require_json_native_value(options, "GR00T replay options")
+        policy_output = _require_json_object(
+            self.replay_artifact.get("policy_output"),
+            "GR00T replay policy_output",
+        )
+        return policy_output["raw_actions"], dict(
+            _require_json_object(policy_output.get("provider_info"), "GR00T provider_info")
+        )
+
+
+def _run_gr00t_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
+    from worldforge.models import Action
+    from worldforge.providers import GrootPolicyClientProvider
+
+    events: list[ProviderEvent] = []
+    replay_source_path = _write_prepared_gr00t_replay_artifact(state_dir)
+    saved_replay = _load_gr00t_replay_artifact(replay_source_path)
+    policy_info = _gr00t_policy_info_from_replay(saved_replay)
+    replay_client = _SavedGrootReplayClient(saved_replay)
+
+    def translator(raw_actions: object, _info: JSONDict, _provider_info: JSONDict):
+        tensor_rows = _validate_gr00t_raw_actions(raw_actions)
+        return [
+            Action.move_to(float(row[0]), float(row[1]), float(row[2]))
+            for row in tensor_rows["eef_9d"]
+        ]
+
+    provider = GrootPolicyClientProvider(
+        policy_client=replay_client,
+        embodiment_tag=str(policy_info["embodiment_tag"]),
+        action_translator=translator,
+        event_handler=events.append,
+    )
+    forge = WorldForge(state_dir=state_dir, auto_register_remote=False)
+    forge.register_provider(provider)
+    health = provider.health()
+    result = forge.select_actions("gr00t", info=policy_info)
+
+    raw_tensor_shapes = _gr00t_tensor_shapes(result.raw_actions)
+    selected_action_preview = [action.to_dict() for action in result.actions]
+    replay_artifact = dict(saved_replay)
+    replay_artifact.update(
+        {
+            "manifest": {
+                **dict(_require_json_object(saved_replay["manifest"], "GR00T replay manifest")),
+                "source_artifact": replay_source_path.name,
+            },
+            "response": {
+                "raw_tensor_shapes": raw_tensor_shapes,
+                "validated_tensors": list(_GROOT_REQUIRED_TENSORS),
+                "translated_action_count": len(result.actions),
+                "selected_action_preview": selected_action_preview,
+                "provider_info": result.metadata.get("provider_info", {}),
+            },
+            "translated_actions": selected_action_preview,
+            "provider_events": [event.to_dict() for event in events],
+        }
+    )
+    summary: JSONDict = {
+        "demo_kind": "gr00t_saved_policy_replay",
+        "state_dir": str(state_dir),
+        "providers": [result.provider],
+        "model": _GROOT_MODEL,
+        "task_instruction": policy_info["observation"]["language"]["task"][0][0],
+        "runtime": "saved PolicyClient replay",
+        "runtime_contract": "saved GR00T PolicyClient response through GrootPolicyClientProvider",
+        "live_validation_boundary": (
+            "A prepared GPU host validates the GR00T server shape; this harness flow replays only "
+            "the sanitized policy output contract."
+        ),
+        "loaded_replay_artifact": replay_source_path.name,
+        "health": health.to_dict(),
+        "policy_client_calls": replay_client.get_action_calls,
+        "raw_tensor_shapes": raw_tensor_shapes,
+        "validated_tensors": list(_GROOT_REQUIRED_TENSORS),
+        "translated_action_count": len(result.actions),
+        "action_horizon": result.action_horizon,
+        "embodiment_tag": result.embodiment_tag,
+        "candidate_count": result.metadata.get("candidate_count"),
+        "selected_actions": selected_action_preview,
+        "selected_action_preview": selected_action_preview,
+        "event_phases": [event.phase for event in events],
+        "provider_events": [event.to_dict() for event in events],
+        "harness_artifacts": {
+            "gr00t_policy_replay": {
+                "path": "artifacts/gr00t-policy-replay.json",
+                "payload": replay_artifact,
+            },
+        },
+    }
+    if emit:
+        print("\n".join(_transcript_for("gr00t", summary)))
+    return summary
+
+
+def _write_prepared_gr00t_replay_artifact(state_dir: Path) -> Path:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    replay_path = state_dir / "gr00t-prepared-replay.json"
+    replay_path.write_text(
+        json.dumps(_gr00t_saved_replay_payload(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return replay_path
+
+
+def _gr00t_saved_replay_payload() -> JSONDict:
+    raw_actions = {
+        "eef_9d": [_rows_to_lists(_GROOT_EEF_9D_ROWS)],
+        "gripper_position": [_rows_to_lists(_GROOT_GRIPPER_POSITION_ROWS)],
+        "joint_position": [_rows_to_lists(_GROOT_JOINT_POSITION_ROWS)],
+    }
+    return {
+        "schema_version": _GROOT_REPLAY_SCHEMA_VERSION,
+        "source": "sanitized GR00T live PolicyClient response shape",
+        "manifest": {
+            "flow_id": "gr00t",
+            "provider": "gr00t",
+            "model": _GROOT_MODEL,
+            "runtime": "saved PolicyClient replay",
+            "embodiment_tag": _GROOT_EMBODIMENT_TAG,
+            "action_horizon": _GROOT_ACTION_HORIZON,
+            "tensor_shapes": {
+                name: [1, _GROOT_ACTION_HORIZON, dim] for name, dim in _GROOT_TENSOR_DIMS.items()
+            },
+            "live_validation": (
+                "GR00T server shape validated on a prepared GPU host; replay is checkout-safe."
+            ),
+        },
+        "request": {
+            "observation_summary": _gr00t_redacted_observation_summary(),
+            "task_instruction": "move the end effector toward the cube and close the gripper",
+            "action_horizon": _GROOT_ACTION_HORIZON,
+            "embodiment_tag": _GROOT_EMBODIMENT_TAG,
+        },
+        "policy_output": {
+            "raw_actions": raw_actions,
+            "provider_info": {
+                "model": _GROOT_MODEL,
+                "runtime": "saved PolicyClient replay",
+                "latency_ms": 18.4,
+                "server": "redacted",
+            },
+        },
+        "response": {
+            "raw_tensor_shapes": {
+                name: [1, _GROOT_ACTION_HORIZON, dim] for name, dim in _GROOT_TENSOR_DIMS.items()
+            },
+            "validated_tensors": [],
+            "translated_action_count": 0,
+            "selected_action_preview": [],
+        },
+        "translated_actions": [],
+        "provider_events": [],
+    }
+
+
+def _load_gr00t_replay_artifact(path: Path) -> JSONDict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise WorldStateError(f"GR00T replay artifact is not valid JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise WorldStateError("GR00T replay artifact must be a JSON object.")
+    if payload.get("schema_version") != _GROOT_REPLAY_SCHEMA_VERSION:
+        raise WorldStateError("GR00T replay artifact schema_version is unsupported.")
+
+    manifest = _require_json_object(payload.get("manifest"), "GR00T replay manifest")
+    if manifest.get("flow_id") != "gr00t":
+        raise WorldStateError("GR00T replay artifact flow_id must be 'gr00t'.")
+    if manifest.get("provider") != "gr00t":
+        raise WorldStateError("GR00T replay artifact provider must be 'gr00t'.")
+    if manifest.get("action_horizon") != _GROOT_ACTION_HORIZON:
+        raise WorldStateError("GR00T replay artifact action_horizon is unsupported.")
+    if manifest.get("embodiment_tag") != _GROOT_EMBODIMENT_TAG:
+        raise WorldStateError("GR00T replay artifact embodiment_tag is unsupported.")
+    tensor_shapes = _require_json_object(
+        manifest.get("tensor_shapes"),
+        "GR00T replay tensor_shapes",
+    )
+    expected_shapes = {
+        name: [1, _GROOT_ACTION_HORIZON, dim] for name, dim in _GROOT_TENSOR_DIMS.items()
+    }
+    if tensor_shapes != expected_shapes:
+        raise WorldStateError("GR00T replay artifact tensor_shapes drifted.")
+
+    request = _require_json_object(payload.get("request"), "GR00T replay request")
+    if set(request) != _GROOT_REPLAY_REQUEST_KEYS:
+        raise WorldStateError("GR00T replay request contains unsupported fields.")
+    _validate_gr00t_observation_summary(request.get("observation_summary"))
+    if not isinstance(request.get("task_instruction"), str) or not request["task_instruction"]:
+        raise WorldStateError("GR00T replay task_instruction must be a non-empty string.")
+    if request.get("action_horizon") != _GROOT_ACTION_HORIZON:
+        raise WorldStateError("GR00T replay request action_horizon is unsupported.")
+    if request.get("embodiment_tag") != _GROOT_EMBODIMENT_TAG:
+        raise WorldStateError("GR00T replay request embodiment_tag is unsupported.")
+
+    policy_output = _require_json_object(payload.get("policy_output"), "GR00T replay policy_output")
+    _validate_gr00t_raw_actions(policy_output.get("raw_actions"))
+    provider_info = _require_json_object(
+        policy_output.get("provider_info"),
+        "GR00T replay provider_info",
+    )
+    _require_json_native_value(provider_info, "GR00T replay provider_info")
+    return payload
+
+
+def _gr00t_policy_info_from_replay(replay_artifact: JSONDict) -> JSONDict:
+    request = _require_json_object(replay_artifact.get("request"), "GR00T replay request")
+    return {
+        "observation": {
+            "video": {"front": [[[[[0, 0, 0]]]]]},
+            "state": {
+                "eef_9d": [[[0.0 for _ in range(_GROOT_TENSOR_DIMS["eef_9d"])]]],
+                "gripper_position": [
+                    [[0.0 for _ in range(_GROOT_TENSOR_DIMS["gripper_position"])]]
+                ],
+                "joint_position": [[[0.0 for _ in range(_GROOT_TENSOR_DIMS["joint_position"])]]],
+            },
+            "language": {"task": [[request["task_instruction"]]]},
+        },
+        "embodiment_tag": request["embodiment_tag"],
+        "action_horizon": request["action_horizon"],
+    }
+
+
+def _validate_gr00t_replay_observation(observation: object, saved_request: JSONDict) -> None:
+    if not isinstance(observation, dict):
+        raise WorldStateError("GR00T replay observation must be a JSON object.")
+    _require_json_native_value(observation, "GR00T replay observation")
+    if set(observation) != {"video", "state", "language"}:
+        raise WorldStateError("GR00T replay observation keys drifted.")
+    language = _require_json_object(observation.get("language"), "GR00T replay language")
+    if language.get("task") != [[saved_request["task_instruction"]]]:
+        raise WorldStateError("GR00T replay task instruction drifted.")
+
+
+def _validate_gr00t_observation_summary(value: object) -> None:
+    observation_summary = _require_json_object(value, "GR00T replay observation_summary")
+    expected_shapes = {
+        "video.front": [1, 1, 1, 1, 3],
+        "state.eef_9d": [1, 1, _GROOT_TENSOR_DIMS["eef_9d"]],
+        "state.gripper_position": [1, 1, _GROOT_TENSOR_DIMS["gripper_position"]],
+        "state.joint_position": [1, 1, _GROOT_TENSOR_DIMS["joint_position"]],
+        "language.task": [1, 1],
+    }
+    if set(observation_summary) != set(expected_shapes):
+        raise WorldStateError("GR00T replay observation_summary contains unsupported fields.")
+    for field, expected_shape in expected_shapes.items():
+        field_summary = _require_json_object(
+            observation_summary.get(field),
+            f"GR00T replay observation_summary.{field}",
+        )
+        if set(field_summary) != {"redacted", "shape"}:
+            raise WorldStateError(
+                f"GR00T replay observation_summary.{field} contains unsupported fields."
+            )
+        if field_summary.get("redacted") is not True:
+            raise WorldStateError(f"GR00T replay observation field {field} must be redacted.")
+        if field_summary.get("shape") != expected_shape:
+            raise WorldStateError(f"GR00T replay observation_summary.{field}.shape is unsupported.")
+
+
+def _gr00t_redacted_observation_summary() -> JSONDict:
+    return {
+        "video.front": {"redacted": True, "shape": [1, 1, 1, 1, 3]},
+        "state.eef_9d": {
+            "redacted": True,
+            "shape": [1, 1, _GROOT_TENSOR_DIMS["eef_9d"]],
+        },
+        "state.gripper_position": {
+            "redacted": True,
+            "shape": [1, 1, _GROOT_TENSOR_DIMS["gripper_position"]],
+        },
+        "state.joint_position": {
+            "redacted": True,
+            "shape": [1, 1, _GROOT_TENSOR_DIMS["joint_position"]],
+        },
+        "language.task": {"redacted": True, "shape": [1, 1]},
+    }
+
+
+def _validate_gr00t_raw_actions(raw_actions: object) -> dict[str, list[list[float]]]:
+    if not isinstance(raw_actions, dict):
+        raise WorldStateError("GR00T replay raw_actions must be a JSON object.")
+    if set(raw_actions) != set(_GROOT_REQUIRED_TENSORS):
+        raise WorldStateError(
+            "GR00T replay raw_actions must include eef_9d, gripper_position, and joint_position."
+        )
+    return {
+        name: _validate_gr00t_tensor(raw_actions.get(name), name=name, dim=dim)
+        for name, dim in _GROOT_TENSOR_DIMS.items()
+    }
+
+
+def _validate_gr00t_tensor(value: object, *, name: str, dim: int) -> list[list[float]]:
+    if not isinstance(value, list) or len(value) != 1:
+        raise WorldStateError(
+            f"GR00T replay tensor {name} must have shape [1, {_GROOT_ACTION_HORIZON}, {dim}]."
+        )
+    rows = value[0]
+    if not isinstance(rows, list) or len(rows) != _GROOT_ACTION_HORIZON:
+        raise WorldStateError(
+            f"GR00T replay tensor {name} must have shape [1, {_GROOT_ACTION_HORIZON}, {dim}]."
+        )
+    parsed_rows: list[list[float]] = []
+    for row_index, row in enumerate(rows):
+        if not isinstance(row, list) or len(row) != dim:
+            raise WorldStateError(
+                f"GR00T replay tensor {name}[0][{row_index}] must have {dim} finite values."
+            )
+        parsed_row: list[float] = []
+        for column_index, raw_value in enumerate(row):
+            if (
+                not isinstance(raw_value, int | float)
+                or isinstance(raw_value, bool)
+                or not math.isfinite(raw_value)
+            ):
+                raise WorldStateError(
+                    f"GR00T replay tensor {name}[0][{row_index}][{column_index}] must be finite."
+                )
+            parsed_row.append(float(raw_value))
+        parsed_rows.append(parsed_row)
+    return parsed_rows
+
+
+def _gr00t_tensor_shapes(raw_actions: JSONDict) -> JSONDict:
+    tensors = _validate_gr00t_raw_actions(raw_actions)
+    return {name: [1, len(rows), len(rows[0]) if rows else 0] for name, rows in tensors.items()}
+
+
+def _rows_to_lists(rows: Sequence[Sequence[float]]) -> list[list[float]]:
+    return [[float(value) for value in row] for row in rows]
+
+
 # Demo modules import the optional-runtime provider classes at module scope, so
 # keep these imports lazy: loading the harness should not pull LeRobot/LeWorldModel
 # adapters into the base cold-start path.
@@ -892,6 +1297,7 @@ _RUNNERS: dict[str, FlowRunner] = {
     "leworldmodel": _run_leworldmodel_demo,
     "lerobot": _run_lerobot_demo,
     "cosmos-policy": _run_cosmos_policy_demo,
+    "gr00t": _run_gr00t_demo,
     "diagnostics": _run_diagnostics_demo,
     "workbench": _run_workbench_demo,
 }
@@ -1573,6 +1979,45 @@ def _steps_for(flow_id: str, summary: JSONDict) -> tuple[HarnessStep, ...]:
                 f"events={', '.join(summary['event_phases'])}",
             ),
         )
+    if flow_id == "gr00t":
+        return (
+            HarnessStep(
+                "Load saved PolicyClient replay",
+                "Use a sanitized GR00T action response from a prepared live-server shape.",
+                "Checkout-safe replay loaded; no CUDA server or checkpoint is required.",
+                f"task={summary['task_instruction']}",
+            ),
+            HarnessStep(
+                "Check provider boundary",
+                "Instantiate GrootPolicyClientProvider with an injected PolicyClient replay.",
+                "Provider health is configured for the injected client.",
+                f"model={summary['model']}",
+            ),
+            HarnessStep(
+                "Call GR00T adapter",
+                "Route the replay through the real policy provider and event path.",
+                f"{summary['policy_client_calls']} get_action call handled.",
+                f"embodiment={summary['embodiment_tag']}",
+            ),
+            HarnessStep(
+                "Validate named tensors",
+                "Check eef_9d, gripper_position, and joint_position shapes before translation.",
+                f"raw tensor shapes {summary['raw_tensor_shapes']}.",
+                f"validated={', '.join(summary['validated_tensors'])}",
+            ),
+            HarnessStep(
+                "Translate policy output",
+                "Map eef_9d trajectory rows into executable WorldForge Action objects.",
+                f"{summary['translated_action_count']} move_to actions produced.",
+                f"action_horizon={summary['action_horizon']}",
+            ),
+            HarnessStep(
+                "Preserve replay artifact",
+                "Write the inspector state, provider events, and sanitized GR00T replay artifact.",
+                "artifact=artifacts/gr00t-policy-replay.json",
+                f"events={', '.join(summary['event_phases'])}",
+            ),
+        )
     if flow_id == "diagnostics":
         return (
             HarnessStep(
@@ -1762,6 +2207,31 @@ def _metrics_for(flow_id: str, summary: JSONDict) -> tuple[HarnessMetric, ...]:
             ),
             HarnessMetric("Artifact", "replay", "artifacts/cosmos-policy-replay.json"),
         )
+    if flow_id == "gr00t":
+        return (
+            HarnessMetric("Flow", "policy", "GR00T PolicyClient replay"),
+            HarnessMetric(
+                "Tensors",
+                str(len(summary["validated_tensors"])),
+                ", ".join(summary["validated_tensors"]),
+            ),
+            HarnessMetric(
+                "Horizon",
+                str(summary["action_horizon"]),
+                "translated action rows",
+            ),
+            HarnessMetric(
+                "Translated",
+                str(summary["translated_action_count"]),
+                "WorldForge Action objects",
+            ),
+            HarnessMetric(
+                "Events",
+                str(len(summary["event_phases"])),
+                ", ".join(summary["event_phases"]),
+            ),
+            HarnessMetric("Artifact", "replay", "artifacts/gr00t-policy-replay.json"),
+        )
 
     flow_label = "score" if flow_id == "leworldmodel" else "policy+score"
     return (
@@ -1824,6 +2294,19 @@ def _transcript_for(flow_id: str, summary: JSONDict) -> tuple[str, ...]:
             f"translated_actions: {summary['translated_action_count']}",
             f"value_prediction: {_format_optional_float(summary['value_prediction'])}",
             "saved_replay_artifact: artifacts/cosmos-policy-replay.json",
+            f"events: {', '.join(summary['event_phases'])}",
+        )
+    if flow_id == "gr00t":
+        return (
+            "flow: gr00t",
+            f"provider: {', '.join(summary['providers'])}",
+            f"model: {summary['model']}",
+            f"task: {summary['task_instruction']}",
+            f"health: {summary['health']['healthy']}",
+            f"raw_tensor_shapes: {summary['raw_tensor_shapes']}",
+            f"validated_tensors: {', '.join(summary['validated_tensors'])}",
+            f"translated_actions: {summary['translated_action_count']}",
+            "saved_replay_artifact: artifacts/gr00t-policy-replay.json",
             f"events: {', '.join(summary['event_phases'])}",
         )
 

@@ -30,12 +30,20 @@ from worldforge.harness.run_history import (
 )
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def _copy_json_payload(value: object) -> object:
     return json.loads(json.dumps(value))
 
 
 def _write_cosmos_replay_payload(tmp_path: Path, name: str, payload: object) -> Path:
+    path = tmp_path / name
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _write_gr00t_replay_payload(tmp_path: Path, name: str, payload: object) -> Path:
     path = tmp_path / name
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -64,6 +72,7 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
         "leworldmodel",
         "lerobot",
         "cosmos-policy",
+        "gr00t",
         "diagnostics",
         "workbench",
     ]
@@ -73,8 +82,9 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
     assert payload[0]["command"] == "uv run worldforge-demo-leworldmodel"
     assert payload[1]["focus"] == "policy plus score planning"
     assert payload[2]["command"] == "uv run --extra harness worldforge-harness --flow cosmos-policy"
-    assert payload[3]["command"] == "uv run worldforge harness --flow diagnostics"
-    assert payload[4]["command"] == "uv run worldforge provider workbench mock"
+    assert payload[3]["command"] == "uv run --extra harness worldforge-harness --flow gr00t"
+    assert payload[4]["command"] == "uv run worldforge harness --flow diagnostics"
+    assert payload[5]["command"] == "uv run worldforge provider workbench mock"
 
 
 def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
@@ -161,6 +171,65 @@ def test_harness_cosmos_policy_flow_can_emit_transcript(tmp_path, capsys) -> Non
     assert "translated_actions: 50" in output
 
 
+def test_harness_runs_gr00t_flow(tmp_path) -> None:
+    run = run_flow("gr00t", state_dir=tmp_path)
+
+    assert run.flow.id == "gr00t"
+    assert len(run.steps) == 6
+    assert len(run.metrics) == 6
+    assert run.summary["model"] == "nvidia/GR00T-N1.7-3B"
+    assert run.summary["embodiment_tag"] == "GR1"
+    assert run.summary["raw_tensor_shapes"] == {
+        "eef_9d": [1, 4, 9],
+        "gripper_position": [1, 4, 1],
+        "joint_position": [1, 4, 7],
+    }
+    assert run.summary["validated_tensors"] == [
+        "eef_9d",
+        "gripper_position",
+        "joint_position",
+    ]
+    assert run.summary["translated_action_count"] == 4
+    assert run.summary["action_horizon"] == 4
+    assert [event["phase"] for event in run.provider_events] == ["success"]
+    assert "validated_tensors: eef_9d, gripper_position, joint_position" in run.transcript
+    assert "saved_replay_artifact: artifacts/gr00t-policy-replay.json" in run.transcript
+    assert run.workspace_path is not None
+
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["artifact_paths"]["gr00t_policy_replay"] == (
+        "artifacts/gr00t-policy-replay.json"
+    )
+    replay = json.loads((run.workspace_path / "artifacts/gr00t-policy-replay.json").read_text())
+    assert replay["manifest"]["flow_id"] == "gr00t"
+    assert replay["manifest"]["model"] == "nvidia/GR00T-N1.7-3B"
+    assert set(replay["policy_output"]["raw_actions"]) == {
+        "eef_9d",
+        "gripper_position",
+        "joint_position",
+    }
+    assert len(replay["translated_actions"]) == 4
+    assert replay["provider_events"][0]["phase"] == "success"
+    assert "observation" not in replay["request"]
+    assert all(
+        field["redacted"] is True for field in replay["request"]["observation_summary"].values()
+    )
+    exported = json.dumps(replay).lower()
+    assert "checkpoint" not in exported
+    assert "private endpoint" not in exported
+
+
+def test_harness_gr00t_flow_can_emit_transcript(tmp_path, capsys) -> None:
+    from worldforge.harness import flows
+
+    summary = flows._run_gr00t_demo(state_dir=tmp_path, emit=True)
+
+    output = capsys.readouterr().out
+    assert summary["raw_tensor_shapes"]["eef_9d"] == [1, 4, 9]
+    assert "flow: gr00t" in output
+    assert "translated_actions: 4" in output
+
+
 def test_harness_cosmos_policy_flow_ignores_live_cosmos_env(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("COSMOS_POLICY_ALLOWED_HOSTS", "live-cosmos.example")
     monkeypatch.setenv("COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS", "true")
@@ -188,6 +257,30 @@ def test_harness_loads_cosmos_policy_replay_artifact(tmp_path) -> None:
     assert len(loaded["policy_output"]["actions"]) == 50
 
 
+def test_harness_loads_gr00t_replay_artifact(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    fixture_loaded = flows._load_gr00t_replay_artifact(
+        ROOT / "tests" / "fixtures" / "providers" / "gr00t_policy_replay.json"
+    )
+    path = tmp_path / "gr00t-policy-replay.json"
+    payload = flows._gr00t_saved_replay_payload()
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = flows._load_gr00t_replay_artifact(path)
+
+    assert fixture_loaded["policy_output"] == loaded["policy_output"]
+    assert loaded["manifest"]["model"] == "nvidia/GR00T-N1.7-3B"
+    assert loaded["request"]["task_instruction"]
+    assert loaded["request"]["observation_summary"]["video.front"]["redacted"] is True
+    assert "observation" not in loaded["request"]
+    assert set(loaded["policy_output"]["raw_actions"]) == {
+        "eef_9d",
+        "gripper_position",
+        "joint_position",
+    }
+
+
 def test_harness_rejects_cosmos_policy_replay_schema_drift(tmp_path) -> None:
     from worldforge.harness import flows
 
@@ -198,6 +291,58 @@ def test_harness_rejects_cosmos_policy_replay_schema_drift(tmp_path) -> None:
     with pytest.raises(WorldStateError, match="schema_version"):
         flows._load_cosmos_policy_replay_artifact(
             _write_cosmos_replay_payload(tmp_path, "bad-schema.json", invalid_schema)
+        )
+
+
+def test_harness_rejects_gr00t_replay_schema_drift(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._gr00t_saved_replay_payload()
+    invalid_schema = _copy_json_payload(payload)
+    invalid_schema["schema_version"] = 99
+
+    with pytest.raises(WorldStateError, match="schema_version"):
+        flows._load_gr00t_replay_artifact(
+            _write_gr00t_replay_payload(tmp_path, "bad-gr00t-schema.json", invalid_schema)
+        )
+
+
+def test_harness_rejects_gr00t_replay_missing_named_tensor(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._gr00t_saved_replay_payload()
+    missing_tensor = _copy_json_payload(payload)
+    del missing_tensor["policy_output"]["raw_actions"]["eef_9d"]
+
+    with pytest.raises(WorldStateError, match="eef_9d"):
+        flows._load_gr00t_replay_artifact(
+            _write_gr00t_replay_payload(tmp_path, "missing-gr00t-tensor.json", missing_tensor)
+        )
+
+
+def test_harness_rejects_gr00t_replay_bad_tensor_shape(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._gr00t_saved_replay_payload()
+    bad_shape = _copy_json_payload(payload)
+    bad_shape["policy_output"]["raw_actions"]["joint_position"][0][0] = [0.0]
+
+    with pytest.raises(WorldStateError, match="joint_position"):
+        flows._load_gr00t_replay_artifact(
+            _write_gr00t_replay_payload(tmp_path, "bad-gr00t-shape.json", bad_shape)
+        )
+
+
+def test_harness_rejects_unredacted_gr00t_replay_observation(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._gr00t_saved_replay_payload()
+    unredacted = _copy_json_payload(payload)
+    unredacted["request"]["observation_summary"]["video.front"]["redacted"] = False
+
+    with pytest.raises(WorldStateError, match="must be redacted"):
+        flows._load_gr00t_replay_artifact(
+            _write_gr00t_replay_payload(tmp_path, "unredacted-gr00t.json", unredacted)
         )
 
 

@@ -461,6 +461,52 @@ def test_gr00t_live_smoke_docs_cover_remote_policy_contract() -> None:
     assert "scripts/smoke_gr00t_policy.py --health-only" in manifest
 
 
+def test_gr00t_replay_harness_docs_cover_issue_226_contract() -> None:
+    harness_doc = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    flows = (ROOT / "src/worldforge/harness/flows.py").read_text(encoding="utf-8")
+    fixture = (ROOT / "tests/fixtures/providers/gr00t_policy_replay.json").read_text(
+        encoding="utf-8"
+    )
+    tests = (ROOT / "tests/test_harness_flows.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "uv run --extra harness worldforge-harness --flow gr00t",
+        "validated_tensors: eef_9d, gripper_position, joint_position",
+        "artifacts/gr00t-policy-replay.json",
+        "observations, private endpoints, GPU logs, checkpoints",
+        "prepared GPU host validates the live GR00T server shape",
+    ):
+        assert signal in harness_doc
+
+    for implementation_signal in (
+        "_run_gr00t_demo",
+        "_load_gr00t_replay_artifact",
+        "_SavedGrootReplayClient",
+        "GrootPolicyClientProvider",
+        "eef_9d",
+        "gripper_position",
+        "joint_position",
+    ):
+        assert implementation_signal in flows
+
+    for test_signal in (
+        "test_harness_runs_gr00t_flow",
+        "test_harness_loads_gr00t_replay_artifact",
+        "test_harness_rejects_gr00t_replay_missing_named_tensor",
+        "test_harness_rejects_gr00t_replay_bad_tensor_shape",
+        "test_harness_rejects_unredacted_gr00t_replay_observation",
+    ):
+        assert test_signal in tests
+
+    assert "GR00T PolicyClient replay" in agents
+    assert "checkout-safe GR00T PolicyClient replay flow" in changelog
+    assert "raw_actions" in fixture
+    assert "observation_summary" in fixture
+    assert "checkpoint" not in fixture.lower()
+
+
 def test_provider_cohort_selection_record_covers_issue_130_contract() -> None:
     record = (ROOT / "docs/src/provider-cohort-selection.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs/src/roadmap.md").read_text(encoding="utf-8")

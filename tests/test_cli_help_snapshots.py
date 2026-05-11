@@ -1,3 +1,5 @@
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import sys
@@ -101,7 +103,7 @@ options:
 """,
     ("harness", "--help"): """\
 usage: worldforge harness [-h]
-                          [--flow {leworldmodel,lerobot,diagnostics,workbench,eval,benchmark,runs}]
+                          [--flow {leworldmodel,lerobot,cosmos-policy,gr00t,diagnostics,workbench,eval,benchmark,runs}]
                           [--state-dir STATE_DIR] [--list] [--connectors]
                           [--runs] [--workspace-dir WORKSPACE_DIR]
                           [--provider PROVIDER] [--capability CAPABILITY]
@@ -112,7 +114,7 @@ usage: worldforge harness [-h]
 
 options:
   -h, --help            show this help message and exit
-  --flow {leworldmodel,lerobot,diagnostics,workbench,eval,benchmark,runs}
+  --flow {leworldmodel,lerobot,cosmos-policy,gr00t,diagnostics,workbench,eval,benchmark,runs}
                         Harness flow to open.
   --state-dir STATE_DIR
                         Directory for persisted demo worlds. Defaults to a

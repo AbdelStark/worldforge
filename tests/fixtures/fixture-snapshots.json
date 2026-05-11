@@ -274,6 +274,14 @@
     },
     {
       "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": 1,
+      "path": "tests/fixtures/providers/gr00t_policy_replay.json",
+      "review_status": "tracked",
+      "sha256": "sha256:e885e2ffd5ad5d1ab88b35a025232576fcddbe5d59f3b04b80cbebbeb15ff8ae",
+      "size_bytes": 3760
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
       "fixture_schema_version": null,
       "path": "tests/fixtures/providers/jepa_wms_bad_action_candidates.json",
       "review_status": "tracked",

@@ -68,6 +68,11 @@ releases may still include breaking changes when the public API needs to tighten
   `tests/fixtures/fixture-snapshots.json` against capability fixtures, provider payload fixtures,
   benchmark inputs, scenario files, and scene artifact fixtures, with review output that separates
   accidental drift from entries marked `intended-update`.
+- Added a checkout-safe GR00T PolicyClient replay flow in TheWorldHarness. The flow replays a
+  sanitized saved policy response through `GrootPolicyClientProvider`, validates `eef_9d`,
+  `gripper_position`, and `joint_position` tensor shapes, translates the trajectory into
+  WorldForge actions, and preserves a replay artifact without requiring CUDA, checkpoints, raw
+  observations, private endpoints, or GPU logs.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import
