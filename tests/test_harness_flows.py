@@ -358,7 +358,7 @@ def test_harness_robotics_compare_preserves_other_artifacts_when_subflow_raises(
     run = run_flow("robotics-compare", state_dir=tmp_path)
 
     assert run.validation_errors == (
-        "cosmos-policy: RuntimeError: transport exploded for https://example.test/act "
+        "cosmos-policy: WorldStateError: transport exploded for https://example.test/act "
         "with api_key=[redacted]",
     )
     assert run.workspace_path is not None
@@ -374,6 +374,7 @@ def test_harness_robotics_compare_preserves_other_artifacts_when_subflow_raises(
     )
     assert comparison["artifacts"] == {"gr00t_replay": "artifacts/gr00t-replay.json"}
     comparison_text = json.dumps(comparison)
+    assert "RuntimeError" not in comparison_text
     assert "cosmos-secret" not in comparison_text
     assert "raw-secret" not in comparison_text
     assert "token=" not in comparison_text

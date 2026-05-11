@@ -1766,9 +1766,19 @@ def _robotics_compare_failed_subflow_summary(
 
 def _robotics_compare_exception_error(prefix: str, exc: BaseException) -> str:
     detail = _redact_observable_text(str(exc)).strip()
-    type_name = type(exc).__name__
+    type_name = _robotics_compare_exception_type_name(exc)
     message = f"{type_name}: {detail}" if detail else type_name
     return f"{prefix}: {message}" if prefix else message
+
+
+def _robotics_compare_exception_type_name(exc: BaseException) -> str:
+    if isinstance(exc, ProviderError):
+        return "ProviderError"
+    if isinstance(exc, WorldStateError):
+        return "WorldStateError"
+    if isinstance(exc, WorldForgeError):
+        return "WorldForgeError"
+    return "WorldStateError"
 
 
 def _robotics_compare_failure_summary(
