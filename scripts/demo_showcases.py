@@ -1453,6 +1453,273 @@ def _capability_negotiation_preflight(workflow_dir: Path) -> JSONDict:
     }
 
 
+class _TranslatorMissingLeRobotPolicy:
+    def to(self, _device: str) -> _TranslatorMissingLeRobotPolicy:
+        return self
+
+    def eval(self) -> _TranslatorMissingLeRobotPolicy:
+        return self
+
+    def requires_grad_(self, _enabled: bool) -> None:
+        return None
+
+    def select_action(self, _observation: object) -> list[list[float]]:
+        return [[0.1, 0.5, 0.0]]
+
+
+class _TranslatorMissingGrootClient:
+    def ping(self) -> bool:
+        return True
+
+    def get_action(self, _observation: object, options: object | None = None) -> object:
+        if options is not None:
+            _ = options
+        return {"eef_9d": [[[0.1, 0.5, 0.0]]]}, {"runtime": "missing-translator-check"}
+
+
+def _policy_missing_translator_checks() -> list[JSONDict]:
+    import httpx
+
+    from worldforge.providers import (
+        CosmosPolicyProvider,
+        GrootPolicyClientProvider,
+        LeRobotPolicyProvider,
+    )
+
+    checks: list[JSONDict] = []
+    providers = [
+        (
+            "lerobot",
+            LeRobotPolicyProvider(
+                policy=_TranslatorMissingLeRobotPolicy(),
+                policy_path="demo/lerobot-missing-translator",
+            ),
+            {
+                "observation": {"observation.state": [[0.0, 0.5, 0.0]]},
+                "embodiment_tag": "aloha",
+                "action_horizon": 1,
+            },
+        ),
+        (
+            "gr00t",
+            GrootPolicyClientProvider(
+                policy_client=_TranslatorMissingGrootClient(),
+                embodiment_tag="GR1",
+            ),
+            {
+                "observation": {"state": {"eef_9d": [[[0.0 for _ in range(9)]]]}},
+                "embodiment_tag": "GR1",
+                "action_horizon": 1,
+            },
+        ),
+        (
+            "cosmos-policy",
+            CosmosPolicyProvider(
+                base_url="http://93.184.216.34",
+                transport=httpx.MockTransport(
+                    lambda _request: httpx.Response(
+                        200,
+                        json={"actions": [[0.0 for _ in range(14)]]},
+                    )
+                ),
+            ),
+            {
+                "observation": {
+                    "primary_image": [[[[0, 0, 0]]]],
+                    "left_wrist_image": [[[[0, 0, 0]]]],
+                    "right_wrist_image": [[[[0, 0, 0]]]],
+                    "proprio": [0.0 for _ in range(14)],
+                },
+                "task_description": "translator check",
+                "embodiment_tag": "aloha",
+                "action_horizon": 1,
+            },
+        ),
+    ]
+    for provider_name, provider, policy_info in providers:
+        try:
+            provider.select_actions(info=policy_info)
+        except ProviderError as exc:
+            checks.append(
+                {
+                    "provider": provider_name,
+                    "capability": "policy",
+                    "status": "blocked",
+                    "requires": "host action_translator",
+                    "message": str(exc),
+                    "advertised_capabilities": provider.profile().capabilities.enabled_names(),
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "provider": provider_name,
+                    "capability": "policy",
+                    "status": "unexpected-pass",
+                    "requires": "host action_translator",
+                    "message": "provider returned executable actions without translator",
+                    "advertised_capabilities": provider.profile().capabilities.enabled_names(),
+                }
+            )
+    return checks
+
+
+def _embodied_policy_replay_comparison(workflow_dir: Path) -> JSONDict:
+    from worldforge.harness.flows import _run_cosmos_policy_demo, _run_gr00t_demo
+
+    lerobot_summary = lerobot_e2e.run_demo(state_dir=workflow_dir / "lerobot", emit=False)
+    gr00t_summary = _run_gr00t_demo(state_dir=workflow_dir / "gr00t", emit=False)
+    cosmos_summary = _run_cosmos_policy_demo(state_dir=workflow_dir / "cosmos-policy", emit=False)
+
+    lerobot_policy = lerobot_summary["plan"]["metadata"]["policy_result"]
+    lerobot_metadata = lerobot_policy["metadata"]
+    gr00t_artifact = gr00t_summary["harness_artifacts"]["gr00t_policy_replay"]["payload"]
+    cosmos_artifact = cosmos_summary["harness_artifacts"]["cosmos_policy_replay"]["payload"]
+
+    provider_rows = [
+        {
+            "provider": "lerobot",
+            "runtime_contract": (
+                "injected deterministic LeRobot policy through LeRobotPolicyProvider"
+            ),
+            "readiness": "checkout-safe fixture",
+            "capability": "policy",
+            "action_horizon": lerobot_policy["action_horizon"],
+            "embodiment_tag": lerobot_policy["embodiment_tag"],
+            "candidate_count": lerobot_metadata["candidate_count"],
+            "translated_action_count": len(lerobot_policy["actions"]),
+            "raw_action_keys": sorted(lerobot_policy["raw_actions"].keys()),
+            "raw_action_shape": lerobot_metadata["raw_action_summary"]["shape"],
+            "provider_specific_fields": {
+                "policy_path": lerobot_metadata["policy_path"],
+                "policy_type": lerobot_metadata["policy_type"],
+                "mode": lerobot_metadata["mode"],
+                "device": lerobot_metadata["device"],
+            },
+            "live_follow_up": "uv run python scripts/smoke_lerobot_policy.py --help",
+        },
+        {
+            "provider": "gr00t",
+            "runtime_contract": gr00t_summary["runtime_contract"],
+            "readiness": "checkout-safe fixture",
+            "capability": "policy",
+            "action_horizon": gr00t_summary["action_horizon"],
+            "embodiment_tag": gr00t_summary["embodiment_tag"],
+            "candidate_count": gr00t_summary["candidate_count"],
+            "translated_action_count": gr00t_summary["translated_action_count"],
+            "raw_action_keys": sorted(gr00t_artifact["policy_output"]["raw_actions"].keys()),
+            "raw_tensor_shapes": gr00t_summary["raw_tensor_shapes"],
+            "provider_specific_fields": gr00t_artifact["policy_output"]["provider_info"],
+            "live_follow_up": "uv run python scripts/smoke_gr00t_policy.py --help",
+        },
+        {
+            "provider": "cosmos-policy",
+            "runtime_contract": cosmos_summary["runtime_contract"],
+            "readiness": "checkout-safe fixture",
+            "capability": "policy",
+            "action_horizon": cosmos_summary["action_horizon"],
+            "embodiment_tag": "aloha",
+            "candidate_count": cosmos_summary["candidate_count"],
+            "translated_action_count": cosmos_summary["translated_action_count"],
+            "raw_action_keys": sorted(cosmos_artifact["policy_output"].keys()),
+            "raw_action_shape": cosmos_summary["raw_action_shape"],
+            "provider_specific_fields": {
+                "server_path": cosmos_summary["server_path"],
+                "value_prediction": cosmos_summary["value_prediction"],
+                "json_numpy_rows": cosmos_artifact["response"]["json_numpy_rows"],
+            },
+            "live_follow_up": "uv run worldforge-smoke-cosmos-policy --help",
+        },
+    ]
+    comparison = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "providers": provider_rows,
+        "missing_translator_checks": _policy_missing_translator_checks(),
+        "common_policy_contract": [
+            "provider",
+            "capability",
+            "action_horizon",
+            "embodiment_tag",
+            "raw_actions",
+            "translated Action candidates",
+            "provider metadata",
+        ],
+        "non_normalization_boundary": (
+            "Rows compare policy contracts side by side; they do not convert LeRobot tensors, "
+            "GR00T named tensors, or Cosmos-Policy 14D ALOHA rows into a shared action space."
+        ),
+        "prepared_host_follow_ups": {
+            row["provider"]: row["live_follow_up"] for row in provider_rows
+        },
+        "claim_boundary": (
+            "Checkout-safe replay comparison only; no robot controller, cross-provider action "
+            "conversion, live GPU server, checkpoint download, or physical-safety claim."
+        ),
+    }
+    report_path = workflow_dir / "embodied-policy-replay-comparison.json"
+    report_path.write_text(
+        json.dumps(comparison, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    markdown_path = workflow_dir / "embodied-policy-replay-comparison.md"
+    markdown_lines = [
+        "# Embodied Policy Replay Comparison",
+        "",
+        comparison["claim_boundary"],
+        "",
+        "| provider | horizon | translated | provider-specific raw fields | live follow-up |",
+        "| --- | ---: | ---: | --- | --- |",
+    ]
+    for row in provider_rows:
+        raw_fields = ", ".join(row["raw_action_keys"])
+        if "raw_tensor_shapes" in row:
+            raw_fields = raw_fields + " / " + ", ".join(row["raw_tensor_shapes"])
+        markdown_lines.append(
+            "| {provider} | {horizon} | {translated} | {raw_fields} | `{follow_up}` |".format(
+                provider=row["provider"],
+                horizon=row["action_horizon"],
+                translated=row["translated_action_count"],
+                raw_fields=raw_fields,
+                follow_up=row["live_follow_up"],
+            )
+        )
+    markdown_lines.extend(
+        [
+            "",
+            "## Missing Translator Checks",
+            "",
+            "| provider | status | message |",
+            "| --- | --- | --- |",
+        ]
+    )
+    markdown_lines.extend(
+        f"| {check['provider']} | {check['status']} | {check['message']} |"
+        for check in comparison["missing_translator_checks"]
+    )
+    markdown_lines.extend(["", comparison["non_normalization_boundary"], ""])
+    markdown_path.write_text("\n".join(markdown_lines), encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "embodied-policy-replay-comparison",
+        "safe_to_attach": True,
+        "summary": (
+            "Compared LeRobot, GR00T, and Cosmos-Policy policy replay contracts while preserving "
+            "provider-specific raw action metadata and translator requirements."
+        ),
+        "report": comparison,
+        "artifact_paths": {
+            "comparison_json": str(report_path),
+            "comparison_markdown": str(markdown_path),
+        },
+        "first_triage_step": (
+            "Open `embodied-policy-replay-comparison.md` and check the provider-specific raw "
+            "fields before selecting a prepared-host live smoke."
+        ),
+        "claim_boundary": comparison["claim_boundary"],
+    }
+
+
 def _copy_artifact_paths(run_workspace: Any, artifact_paths: object) -> dict[str, str]:
     if not isinstance(artifact_paths, dict):
         return {}
@@ -1545,6 +1812,12 @@ WORKFLOWS = (
         "Capability negotiation preflight demo",
         241,
         _capability_negotiation_preflight,
+    ),
+    DemoWorkflow(
+        "embodied-policy-replay-comparison",
+        "Embodied policy replay comparison",
+        242,
+        _embodied_policy_replay_comparison,
     ),
 )
 

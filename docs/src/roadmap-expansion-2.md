@@ -616,10 +616,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Replay compares provider policy contracts without normalizing away provider-specific fields.
-- [ ] Missing translator behavior is explicit and tested.
-- [ ] Docs explain prepared-host live-smoke follow-ups for each provider.
-- [ ] The comparison artifact is safe to attach.
+- [x] Replay compares provider policy contracts without normalizing away provider-specific fields.
+- [x] Missing translator behavior is explicit and tested.
+- [x] Docs explain prepared-host live-smoke follow-ups for each provider.
+- [x] The comparison artifact is safe to attach.
 
 Validation:
 

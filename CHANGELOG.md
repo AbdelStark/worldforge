@@ -30,6 +30,9 @@ releases may still include breaking changes when the public API needs to tighten
   JSON/Markdown for ready, missing-config, missing-dependency, unsupported, and not-registered
   cases across generate, transfer, score, policy+score, and evaluation workflow shapes without
   installing dependencies or executing fallback workflows.
+- Added a checkout-safe embodied policy replay comparison. It compares LeRobot, GR00T, and
+  Cosmos-Policy policy contracts side by side, preserves provider-specific raw action metadata,
+  records missing-translator blockers, and links each provider to its prepared-host live smoke.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

@@ -186,6 +186,11 @@ For a checkout-safe version of the same policy+score boundary without GR00T, CUD
 controller, run `uv run python scripts/demo_showcases.py run policy-score-candidate-lab`. The lab
 keeps provider-specific raw actions visible and makes missing translator behavior explicit.
 
+For a side-by-side policy replay comparison across LeRobot, GR00T, and Cosmos-Policy, run
+`uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison`. Use the report to
+inspect GR00T named tensors and translator blockers before moving to the prepared-host
+`uv run python scripts/smoke_gr00t_policy.py --help` path.
+
 ## Live Smoke Evidence
 
 Connect to an existing GR00T policy server:

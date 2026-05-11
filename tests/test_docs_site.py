@@ -2693,6 +2693,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         ("policy-score-candidate-lab", 239),
         ("fixture-drift-review", 240),
         ("capability-negotiation-preflight", 241),
+        ("embodied-policy-replay-comparison", 242),
     )
     for workflow, issue in workflows:
         assert workflow in script
@@ -2711,6 +2712,8 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "physical-fidelity",
         "fallback workflows",
         "missing-dependency",
+        "cross-provider action conversion",
+        "controller safety",
     ):
         assert boundary in showcase_docs or boundary in cookbook
 
@@ -2769,6 +2772,21 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
     assert "capability-negotiation-preflight" in capability_docs
     assert "test_capability_negotiation_preflight_demo_preserves_blockers" in capability_tests
 
+    demo_tests = (ROOT / "tests/test_demo_showcases.py").read_text(encoding="utf-8")
+    for checkbox in (
+        (
+            "- [x] Replay compares provider policy contracts without normalizing away "
+            "provider-specific fields."
+        ),
+        "- [x] Missing translator behavior is explicit and tested.",
+        "- [x] Docs explain prepared-host live-smoke follow-ups for each provider.",
+        "- [x] The comparison artifact is safe to attach.",
+    ):
+        assert checkbox in roadmap
+    assert "embodied-policy-replay-comparison" in demo_tests
+    assert "raw_tensor_shapes" in demo_tests
+    assert "missing_translator_checks" in demo_tests
+
     for provider_doc in (
         "docs/src/api/python.md",
         "docs/src/providers/lerobot.md",
@@ -2778,6 +2796,14 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
     ):
         text = (ROOT / provider_doc).read_text(encoding="utf-8")
         assert "policy-score-candidate-lab" in text
+
+    for provider_doc in (
+        "docs/src/providers/lerobot.md",
+        "docs/src/providers/gr00t.md",
+        "docs/src/providers/cosmos-policy.md",
+    ):
+        text = (ROOT / provider_doc).read_text(encoding="utf-8")
+        assert "embodied-policy-replay-comparison" in text
 
 
 def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:

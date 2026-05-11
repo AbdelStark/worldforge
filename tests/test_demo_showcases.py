@@ -45,6 +45,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         239,
         240,
         241,
+        242,
     ]
     assert [workflow["id"] for workflow in workflows] == [
         "first-run",
@@ -62,6 +63,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "policy-score-candidate-lab",
         "fixture-drift-review",
         "capability-negotiation-preflight",
+        "embodied-policy-replay-comparison",
     ]
 
 
@@ -69,7 +71,7 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     module = _load_demo_showcases()
     results = module.run_workflows("all", workspace_dir=tmp_path, overwrite=True)
 
-    assert len(results) == 15
+    assert len(results) == 16
     assert all(result["safe_to_attach"] is True for result in results)
     assert all(result["status"] in {"passed", "skipped"} for result in results)
 
@@ -186,6 +188,19 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     assert negotiation_report["unsupported_example"]["readiness"] == "unsupported"
     assert "policy-plus-score" in negotiation_report["workflow_shapes"]
     assert Path(str(negotiation["artifact_paths"]["preflight_markdown"])).is_file()
+
+    policy_replay = summaries["embodied-policy-replay-comparison"]
+    policy_replay_report = policy_replay["report"]
+    providers = {provider["provider"]: provider for provider in policy_replay_report["providers"]}
+    assert set(providers) == {"lerobot", "gr00t", "cosmos-policy"}
+    assert providers["lerobot"]["raw_action_shape"] == [3, 2, 3]
+    assert "eef_9d" in providers["gr00t"]["raw_tensor_shapes"]
+    assert providers["cosmos-policy"]["raw_action_shape"] == [50, 14]
+    assert all(
+        check["status"] == "blocked" for check in policy_replay_report["missing_translator_checks"]
+    )
+    assert "cross-provider action conversion" in policy_replay_report["claim_boundary"]
+    assert Path(str(policy_replay["artifact_paths"]["comparison_markdown"])).is_file()
 
 
 def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:

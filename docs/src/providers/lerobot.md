@@ -210,6 +210,11 @@ control, run `uv run python scripts/demo_showcases.py run policy-score-candidate
 shows generated candidates, raw policy action preservation, selected action metadata, invalid
 candidate bounds, and missing-translator failure handling.
 
+For a side-by-side policy replay comparison across LeRobot, GR00T, and Cosmos-Policy, run
+`uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison`. Use the report to
+inspect LeRobot raw tensor shape and translator blockers before moving to the prepared-host
+`uv run python scripts/smoke_lerobot_policy.py --help` path.
+
 ## Runtime Checks
 
 Checkout-safe end-to-end demo:
