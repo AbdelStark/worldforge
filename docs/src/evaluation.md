@@ -20,6 +20,63 @@ print(report.results[0].passed)
 print(report.to_json())
 ```
 
+## Custom suite authoring
+
+External packages can define deterministic suites without subclassing internal modules. A custom
+suite is a public `EvaluationSuite.custom(...)` with one or more `EvaluationScenario` objects. Each
+scenario can supply a callable evaluator that receives an `EvaluationContext` and returns
+`context.outcome(score=..., passed=..., metrics=...)`.
+
+```python
+from worldforge.evaluation import EvaluationContext, EvaluationScenario, EvaluationSuite
+
+
+def check_empty_world(context: EvaluationContext):
+    object_count = context.world.object_count
+    return context.outcome(
+        score=1.0,
+        passed=object_count == 0,
+        metrics={"object_count": object_count},
+    )
+
+
+suite = EvaluationSuite.custom(
+    suite_id="custom-empty-world",
+    name="Custom Empty World Evaluation",
+    suite_version="custom-empty-world:1",
+    claim_boundary=(
+        "This custom suite is a deterministic checkout example, not a model-quality claim."
+    ),
+    scenarios=[
+        EvaluationScenario.from_callable(
+            name="empty-world-readable",
+            description="Checks that a new world can be inspected.",
+            evaluator=check_empty_world,
+        )
+    ],
+)
+
+EvaluationSuite.register("custom-empty-world", lambda: suite, replace=True)
+report = EvaluationSuite.from_registered("custom-empty-world").run_report("mock", forge=forge)
+print(report.provenance.suite_version)
+print(report.artifacts()["failure_gallery.json"])
+```
+
+The callable may also return an `EvaluationResult` or a JSON object with `score`, `passed`, and
+`metrics`, but `context.outcome(...)` is the recommended path because it validates score ranges,
+boolean pass flags, and JSON-native metrics at the scenario boundary. Tuple-shaped values, object
+instances, non-finite numbers, and non-string metric keys raise `WorldForgeError` instead of being
+serialized into reports.
+
+Custom suite version strings are author-owned; use a stable value such as `my-suite:1` and bump it
+when scenario inputs, metrics, or pass/fail semantics change. The report provenance records that
+suite version, input digest, result digest, provider list, claim boundary, and metric semantics.
+Use the `claim_boundary` field to state exactly what the suite does not prove. Do not use custom
+suites as leaderboard, physical-fidelity, media-quality, safety, or real-robot-performance claims
+unless separate evidence establishes those claims.
+
+See `examples/custom_evaluation_suite.py` for a checkout-safe runnable example.
+
 ## CLI
 
 ```bash

@@ -771,10 +771,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Users can define and run a custom suite without touching internal modules.
-- [ ] Custom reports include provenance and failure galleries where applicable.
-- [ ] Tests cover custom suite success and invalid metric payloads.
-- [ ] Docs explain suite authoring and non-claims.
+- [x] Users can define and run a custom suite without touching internal modules.
+- [x] Custom reports include provenance and failure galleries where applicable.
+- [x] Tests cover custom suite success and invalid metric payloads.
+- [x] Docs explain suite authoring and non-claims.
 
 Validation:
 

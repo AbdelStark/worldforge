@@ -355,6 +355,40 @@ Failed reports expose representative, sanitized gallery cases through `failure_g
 through `report.artifacts()["failure_gallery.json"]` / `["failure_gallery.md"]`. The gallery is
 for deterministic contract triage; it does not rank providers or claim physical fidelity.
 
+Custom deterministic suites use the same public report path:
+
+```python
+from worldforge.evaluation import EvaluationContext, EvaluationScenario, EvaluationSuite
+
+
+def check_world(context: EvaluationContext):
+    return context.outcome(
+        score=1.0,
+        passed=context.world.object_count == 0,
+        metrics={"object_count": context.world.object_count},
+    )
+
+
+custom = EvaluationSuite.custom(
+    suite_id="custom-empty-world",
+    name="Custom Empty World Evaluation",
+    suite_version="custom-empty-world:1",
+    claim_boundary="Checkout-safe custom example; not a model-quality claim.",
+    scenarios=[
+        EvaluationScenario.from_callable(
+            name="empty-world-readable",
+            description="Checks that a new world can be inspected.",
+            evaluator=check_world,
+        )
+    ],
+)
+report = custom.run_report("mock", forge=forge)
+print(report.provenance.suite_version)
+```
+
+`EvaluationSuite.register(...)` and `EvaluationSuite.from_registered(...)` provide a process-local
+registry for host applications that want to name custom suites.
+
 ## Benchmarking
 
 ```python

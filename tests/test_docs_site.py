@@ -802,6 +802,62 @@ def test_evaluation_failure_gallery_docs_cover_issue_147_contract() -> None:
     assert "- [x] Reports avoid raw secrets" in continuation
 
 
+def test_custom_evaluation_suite_authoring_docs_cover_issue_201_contract() -> None:
+    evaluation = (ROOT / "docs/src/evaluation.md").read_text(encoding="utf-8")
+    python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    expansion = (ROOT / "docs/src/roadmap-expansion.md").read_text(encoding="utf-8")
+    suites = (ROOT / "src/worldforge/evaluation/suites.py").read_text(encoding="utf-8")
+    evaluation_init = (ROOT / "src/worldforge/evaluation/__init__.py").read_text(encoding="utf-8")
+    root_init = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
+    example = (ROOT / "examples/custom_evaluation_suite.py").read_text(encoding="utf-8")
+    tests = (ROOT / "tests/test_evaluation_suites.py").read_text(encoding="utf-8")
+
+    for doc in (evaluation, python_api):
+        for signal in (
+            "EvaluationSuite.custom",
+            "EvaluationScenario.from_callable",
+            "EvaluationContext",
+            "context.outcome",
+            "suite_version",
+            "claim_boundary",
+            "not a model-quality claim",
+        ):
+            assert signal in doc
+
+    for implementation_signal in (
+        "EvaluationScenarioOutcome",
+        "EvaluationSuite.register",
+        "from_registered",
+        "registered_names",
+        "_coerce_custom_result",
+        "Custom evaluation scenarios must return",
+    ):
+        assert implementation_signal in suites
+
+    for export_signal in ("EvaluationContext", "EvaluationScenarioOutcome"):
+        assert export_signal in evaluation_init
+        assert export_signal in root_init
+
+    assert "build_suite" in example
+    assert "examples/custom_evaluation_suite.py" in evaluation
+    assert "custom evaluation-suite authoring API" in changelog
+    for test_signal in (
+        "test_custom_evaluation_suite_runs_with_provenance_and_artifacts",
+        "test_custom_evaluation_suite_failure_gallery_uses_custom_claim_boundary",
+        "test_custom_evaluation_suite_rejects_invalid_metric_payload",
+    ):
+        assert test_signal in tests
+
+    for criterion in (
+        "Users can define and run a custom suite",
+        "Custom reports include provenance",
+        "Tests cover custom suite success",
+        "Docs explain suite authoring and non-claims",
+    ):
+        assert f"- [x] {criterion}" in expansion
+
+
 def test_cross_provider_comparison_docs_cover_issue_150_contract() -> None:
     benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
