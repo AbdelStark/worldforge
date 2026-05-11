@@ -448,16 +448,28 @@ def _copy_run_workspace(
     run_id: str,
     copied_refs: set[Path],
 ) -> None:
+    run_root = run_path.resolve()
     for source in sorted(path for path in run_path.rglob("*") if path.is_file()):
         resolved = source.resolve()
+        relative = source.relative_to(run_path)
+        destination = Path("runs") / run_id / relative
+        if not _is_relative_to(resolved, run_root):
+            _record_excluded(
+                context,
+                destination=destination,
+                source=str(source),
+                reason="run artifact resolves outside the run workspace",
+                kind="run-artifact",
+                local_only=True,
+            )
+            continue
         if resolved in copied_refs:
             continue
         copied_refs.add(resolved)
-        relative = source.relative_to(run_path)
         _copy_safe_file(
             context,
             source=source,
-            destination=Path("runs") / run_id / relative,
+            destination=destination,
             kind="run-artifact",
         )
 

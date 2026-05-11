@@ -233,6 +233,48 @@ def test_evidence_bundle_reports_missing_manifest_artifact_reference(tmp_path: P
     assert manifest["safe_to_attach"] is False
 
 
+def test_evidence_bundle_excludes_run_workspace_symlink_escape(tmp_path: Path) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        run_id="20260101T000000Z-00000001",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+    )
+    external = tmp_path / "outside.json"
+    external.write_text('{"safe": true}\n', encoding="utf-8")
+    symlink_path = workspace.path / "reports" / "external.json"
+    symlink_path.symlink_to(external)
+    write_run_manifest(
+        workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        status="failed",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+        result_summary={"failed_count": 1},
+        artifact_paths={"json": "reports/external.json"},
+    )
+
+    result = generate_evidence_bundle(
+        workspace_dir=tmp_path,
+        output_dir=tmp_path / "bundle",
+    )
+
+    manifest = result.manifest
+    excluded = {item["path"]: item for item in manifest["files"] if not item["included"]}
+    escaped = excluded["runs/20260101T000000Z-00000001/reports/external.json"]
+    assert escaped["reason"] == "run artifact resolves outside the run workspace"
+    assert escaped["local_only"] is True
+    assert manifest["safe_to_attach"] is False
+    assert not (
+        result.output_dir / "runs" / "20260101T000000Z-00000001" / "reports" / "external.json"
+    ).exists()
+
+
 def test_release_evidence_can_link_generated_bundle(tmp_path: Path) -> None:
     manifest_path = tmp_path / "bundle" / "evidence_manifest.json"
     manifest_path.parent.mkdir()
