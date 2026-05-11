@@ -1668,10 +1668,7 @@ def _run_robotics_compare_demo(*, state_dir: Path, emit: bool = False) -> JSONDi
             "status": "completed",
             "source_validation": source_validation,
             "rows": rows,
-            "artifacts": {
-                "cosmos_policy_replay": "artifacts/cosmos-policy-replay.json",
-                "gr00t_replay": "artifacts/gr00t-replay.json",
-            },
+            "artifacts": {},
             "notes": [
                 (
                     "WorldForge owns the common policy contract, validation, events, and "
@@ -1685,6 +1682,7 @@ def _run_robotics_compare_demo(*, state_dir: Path, emit: bool = False) -> JSONDi
             comparison_payload,
             require_replays=True,
         )
+        comparison_payload["artifacts"] = _robotics_compare_replay_artifact_paths(harness_artifacts)
     except Exception as exc:
         return _robotics_compare_failure_summary(
             state_dir=state_dir,
@@ -1754,10 +1752,7 @@ def _robotics_compare_failure_summary(
         "status": "failed",
         "source_validation": source_validation,
         "validation_errors": validation_errors,
-        "artifacts": {
-            "cosmos_policy_replay": "artifacts/cosmos-policy-replay.json",
-            "gr00t_replay": "artifacts/gr00t-replay.json",
-        },
+        "artifacts": {},
         "notes": [
             "At least one subflow failed before comparison rows could be normalized.",
             "Available sanitized replay artifacts are still preserved for triage.",
@@ -1767,6 +1762,12 @@ def _robotics_compare_failure_summary(
         subflows,
         validation_errors=validation_errors,
     )
+    harness_artifacts = _robotics_compare_artifacts(
+        subflows,
+        comparison_payload,
+        require_replays=False,
+    )
+    comparison_payload["artifacts"] = _robotics_compare_replay_artifact_paths(harness_artifacts)
     summary: JSONDict = {
         "demo_kind": "robotics_policy_replay_comparison",
         "state_dir": str(state_dir),
@@ -1779,11 +1780,7 @@ def _robotics_compare_failure_summary(
         "event_phases": [str(event.get("phase", "unknown")) for event in provider_events],
         "provider_events": provider_events,
         "validation_errors": validation_errors,
-        "harness_artifacts": _robotics_compare_artifacts(
-            subflows,
-            comparison_payload,
-            require_replays=False,
-        ),
+        "harness_artifacts": harness_artifacts,
     }
     if emit:
         print("\n".join(_transcript_for("robotics-compare", summary)))
@@ -1888,6 +1885,18 @@ def _robotics_compare_artifacts(
             continue
         artifacts[name] = {"path": path, "payload": payload}
     return artifacts
+
+
+def _robotics_compare_replay_artifact_paths(harness_artifacts: JSONDict) -> JSONDict:
+    paths: JSONDict = {}
+    for name in ("cosmos_policy_replay", "gr00t_replay"):
+        descriptor = harness_artifacts.get(name)
+        if not isinstance(descriptor, dict):
+            continue
+        path = descriptor.get("path")
+        if isinstance(path, str):
+            paths[name] = path
+    return paths
 
 
 def _robotics_compare_lerobot_row(summary: JSONDict) -> JSONDict:

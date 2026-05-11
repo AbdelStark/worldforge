@@ -324,6 +324,10 @@ def test_harness_robotics_compare_preserves_replay_artifacts_on_subflow_failure(
     )
     assert comparison["status"] == "failed"
     assert comparison["validation_errors"] == ["cosmos-policy: simulated replay validation failure"]
+    assert comparison["artifacts"] == {
+        "cosmos_policy_replay": "artifacts/cosmos-policy-replay.json",
+        "gr00t_replay": "artifacts/gr00t-replay.json",
+    }
     assert run.provider_events[-1]["phase"] == "failure"
 
 
@@ -350,6 +354,10 @@ def test_harness_robotics_compare_preserves_other_artifacts_when_subflow_raises(
     )
     assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
     assert "cosmos_policy_replay" not in manifest["artifact_paths"]
+    comparison = json.loads(
+        (run.workspace_path / "artifacts/robotics-policy-comparison.json").read_text()
+    )
+    assert comparison["artifacts"] == {"gr00t_replay": "artifacts/gr00t-replay.json"}
     assert run.provider_events[-1]["phase"] == "failure"
     assert any(
         event["metadata"].get("subflow_id") == "cosmos-policy" for event in run.provider_events
