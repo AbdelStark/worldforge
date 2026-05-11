@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
-from worldforge.harness.workspace import runs_dir
+from worldforge.harness.workspace import runs_dir, validate_run_id
 from worldforge.html_report import render_evidence_bundle_html, render_issue_bundle_html
 from worldforge.models import JSONDict, WorldForgeError, dump_json
 from worldforge.report_renderers import (
@@ -422,10 +422,17 @@ class _BundleContext:
 def _select_run_paths(workspace_dir: Path, run_ids: tuple[str, ...]) -> list[Path]:
     root = runs_dir(workspace_dir)
     if run_ids:
-        return [root / run_id for run_id in sorted(run_ids)]
+        return [root / _validated_run_id(run_id) for run_id in sorted(run_ids)]
     if not root.exists():
         return []
     return sorted(path.parent for path in root.glob("*/run_manifest.json"))
+
+
+def _validated_run_id(run_id: str) -> str:
+    try:
+        return validate_run_id(run_id)
+    except ValueError as exc:
+        raise WorldForgeError(f"Evidence bundle run_id is invalid: {exc}") from exc
 
 
 def _load_run_manifest(run_path: Path) -> JSONDict:

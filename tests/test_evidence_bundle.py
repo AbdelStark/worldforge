@@ -5,7 +5,10 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 import worldforge.evidence_bundle as evidence_bundle
+from worldforge import WorldForgeError
 from worldforge.cli import main
 from worldforge.evidence_bundle import (
     evidence_bundle_artifact,
@@ -231,6 +234,33 @@ def test_evidence_bundle_reports_missing_manifest_artifact_reference(tmp_path: P
     assert missing["reason"] == "artifact reference does not exist"
     assert missing["local_only"] is True
     assert manifest["safe_to_attach"] is False
+
+
+def test_evidence_bundle_rejects_traversal_run_id(tmp_path: Path) -> None:
+    (tmp_path / "runs").mkdir()
+    escaped = tmp_path / "escape"
+    escaped.mkdir()
+    (escaped / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_id": "20260101T000000Z-00000001",
+                "kind": "eval",
+                "command": "worldforge eval",
+                "status": "passed",
+                "artifact_paths": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(WorldForgeError, match="run_id"):
+        generate_evidence_bundle(
+            workspace_dir=tmp_path,
+            output_dir=tmp_path / "bundle",
+            run_ids=("../escape",),
+        )
 
 
 def test_evidence_bundle_excludes_run_workspace_symlink_escape(tmp_path: Path) -> None:
