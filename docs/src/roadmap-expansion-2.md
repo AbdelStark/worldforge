@@ -127,10 +127,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Base imports succeed without optional runtime packages installed.
-- [ ] The audit fails with a precise module path when an optional dependency leaks into base code.
-- [ ] Docs identify the only modules allowed to import each optional runtime directly.
-- [ ] Existing optional smoke commands keep their host-owned dependency behavior.
+- [x] Base imports succeed without optional runtime packages installed.
+- [x] The audit fails with a precise module path when an optional dependency leaks into base code.
+- [x] Docs identify the only modules allowed to import each optional runtime directly.
+- [x] Existing optional smoke commands keep their host-owned dependency behavior.
 
 Validation:
 

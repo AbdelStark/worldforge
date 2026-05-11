@@ -56,6 +56,7 @@ def test_release_evidence_renders_without_credentials(
     assert "| `cosmos-policy` | host-owned |" in report
     assert "missing host-owned configuration: `COSMOS_POLICY_BASE_URL`" in report
     assert "uv run python scripts/generate_provider_docs.py --check" in report
+    assert "uv run python scripts/check_optional_import_boundaries.py" in report
     assert "uv run --extra harness pytest --cov=src/worldforge" in report
     assert "Run with `--run-gates` to execute this checkout-safe gate." in report
     assert "[`" in report

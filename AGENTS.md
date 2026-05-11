@@ -81,6 +81,9 @@ evaluation harnesses, and testable prototypes.
 - `examples/lerobot_e2e_demo.py`: checkout-safe end-to-end LeRobot policy-plus-score planning
   compatibility wrapper with an injected deterministic policy.
 - `scripts/generate_provider_docs.py`: provider catalog documentation generator and drift check.
+- `scripts/check_optional_import_boundaries.py`: checkout-safe static and import-time audit that
+  keeps Textual, Rerun, torch, stable-worldmodel, LeRobot, GR00T, and Cosmos-Policy imports behind
+  their allowed optional-runtime modules.
 - `scripts/scaffold_provider.py`: safe scaffold generator for new provider adapter files,
   fixture placeholders, tests, runtime manifest stubs, docs stubs, and workbench checklists.
 - `scripts/smoke_leworldmodel.py`: compatibility wrapper for
@@ -124,6 +127,7 @@ uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -391,10 +395,11 @@ generated documentation surfaces.
 - `uv run python scripts/generate_provider_docs.py --check`,
   `uv run python scripts/check_docs_commands.py`,
   `uv run python scripts/check_wrapper_portability.py`,
+  `uv run python scripts/check_optional_import_boundaries.py`,
   `uv run python scripts/check_core_performance.py`, and `uv run mkdocs build --strict` check
-  generated provider docs, documented command drift, wrapper portability, checkout-safe core
-  performance budgets, and the MkDocs Material site. A warning in the published docs build is a
-  release blocker.
+  generated provider docs, documented command drift, wrapper portability, optional-runtime import
+  boundaries, checkout-safe core performance budgets, and the MkDocs Material site. A warning in
+  the published docs build is a release blocker.
 - `worldforge benchmark --budget-file <path>` evaluates direct provider benchmark results against
   JSON thresholds and exits non-zero on violations. Keep benchmark budgets tied to preserved run
   artifacts when using them for release or paper claims.

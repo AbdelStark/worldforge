@@ -19,6 +19,7 @@ uv run worldforge examples
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run mkdocs build --strict
 uv run pytest tests/test_cli_help_snapshots.py tests/test_provider_catalog_docs.py
 ```
@@ -858,6 +859,7 @@ uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -897,6 +899,19 @@ uv run python scripts/check_wrapper_portability.py
 Success signal: every wrapper row passes, including `scripts/robotics-showcase`, LeWorldModel
 wrappers, GR00T and LeRobot smoke helpers, and `scripts/test_package.sh`. First triage step: repair
 the exact script named in the failure before editing docs around it.
+
+Run the optional import boundary audit whenever base imports, CLI startup, non-TUI harness modules,
+or optional provider modules change:
+
+```bash
+uv run python scripts/check_optional_import_boundaries.py
+```
+
+Success signal: the static audit reports no direct optional-runtime imports outside allowed
+modules, and the import-time audit loads `worldforge`, `worldforge.cli`, provider modules, and
+non-TUI harness modules without importing Textual, Rerun, torch, stable-worldmodel, LeRobot,
+GR00T, or Cosmos-Policy packages. First triage step: move the named import behind the provider,
+smoke, `worldforge.rerun`, or `harness.tui` boundary identified by the report.
 
 Then run the locked dependency audit:
 

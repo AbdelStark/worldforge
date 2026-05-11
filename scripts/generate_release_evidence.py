@@ -107,6 +107,11 @@ CHECKOUT_SAFE_GATES = (
         "invocation.",
     ),
     ReleaseGate(
+        "Optional import boundaries",
+        "uv run python scripts/check_optional_import_boundaries.py",
+        "Move the named optional-runtime import behind its allowed lazy module boundary.",
+    ),
+    ReleaseGate(
         "Core performance budgets",
         "uv run python scripts/check_core_performance.py",
         "Inspect the JSON report row, confirm the measured path, and fix regressions before "

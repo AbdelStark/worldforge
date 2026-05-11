@@ -588,6 +588,7 @@ uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -642,6 +643,13 @@ smoke commands without installing host-owned runtimes. Success signal: the repor
 `scripts/robotics-showcase`, `scripts/lewm-real`, `scripts/lewm-lerobot-real`, GR00T and LeRobot
 smoke helpers, and `scripts/test_package.sh`. First triage step: fix the named script's shebang,
 executable bit, documented command, or Python 3.13 uv invocation.
+
+`uv run python scripts/check_optional_import_boundaries.py` checks optional-runtime import
+boundaries without installing host-owned runtimes. Success signal: base package imports, CLI
+startup, `worldforge.rerun`, and non-TUI harness modules do not load Textual, Rerun, torch,
+stable-worldmodel, LeRobot, GR00T, or Cosmos-Policy packages, and static source checks only find
+optional imports inside their allowed provider, smoke, Rerun, or `harness.tui` modules. First
+triage step: move the named import behind the allowed lazy boundary in the report.
 
 When release or issue triage needs the underlying evaluation and benchmark artifacts, generate a
 separate evidence bundle first:

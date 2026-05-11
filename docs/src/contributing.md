@@ -10,6 +10,7 @@ uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -33,8 +34,9 @@ into public issues.
 
 `uv run python scripts/generate_provider_docs.py --check`,
 `uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_wrapper_portability.py`,
-and `uv run mkdocs build --strict` verify generated provider docs, documented command drift,
-wrapper portability, and the MkDocs Material site in strict mode. `bash scripts/test_package.sh`
+`uv run python scripts/check_optional_import_boundaries.py`, and `uv run mkdocs build --strict`
+verify generated provider docs, documented command drift, wrapper portability, optional-runtime
+import boundaries, and the MkDocs Material site in strict mode. `bash scripts/test_package.sh`
 checks the wheel/sdist contents before installing the built wheel and running tests against the
 installed package. See [Artifact Integrity](./artifact-integrity.md) for the release artifact
 hashing and evidence-linking contract.
