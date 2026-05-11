@@ -349,7 +349,7 @@ def test_harness_status_pill_reflects_selected_flow_provider(tmp_path) -> None:
             await pilot.press("5")
             await pilot.pause()
             assert "LeRobot + Cosmos-Policy + GR00T" in pill.label
-            assert pill.label.endswith("· policy comparison")
+            assert pill.label.endswith("· policy")
             await pilot.press("6")
             await pilot.pause()
             assert pill.label.endswith("· diagnostics")

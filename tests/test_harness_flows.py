@@ -263,11 +263,13 @@ def test_harness_runs_robotics_compare_flow(tmp_path) -> None:
     assert rows["gr00t-replay"]["raw_tensor_count"] == 3
     assert rows["gr00t-replay"]["translated_action_count"] == 40
     assert run.summary["total_translated_actions"] == 92
-    assert [event["phase"] for event in run.provider_events] == [
-        "success",
-        "success",
-        "success",
-    ]
+    assert len(run.provider_events) == 7
+    assert {event["phase"] for event in run.provider_events} == {"success"}
+    assert {
+        event["metadata"]["subflow_id"]
+        for event in run.provider_events
+        if "subflow_id" in event.get("metadata", {})
+    } == {"lerobot", "cosmos-policy", "gr00t-replay"}
     transcript = "\n".join(run.transcript)
     assert "flow: robotics-compare" in transcript
     assert "comparison_artifact: artifacts/robotics-policy-comparison.json" in transcript
@@ -287,6 +289,42 @@ def test_harness_runs_robotics_compare_flow(tmp_path) -> None:
         "validated live on RTX A6000; committed artifact is sanitized"
     )
     assert not _contains_dict_key(comparison, "observation")
+
+
+def test_harness_robotics_compare_preserves_replay_artifacts_on_subflow_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from worldforge.harness import flows
+
+    original_cosmos = flows._run_cosmos_policy_demo
+
+    def failed_cosmos(*, state_dir: Path, emit: bool = False) -> dict:
+        summary = original_cosmos(state_dir=state_dir, emit=emit)
+        summary["validation_errors"] = ["simulated replay validation failure"]
+        return summary
+
+    monkeypatch.setattr(flows, "_run_cosmos_policy_demo", failed_cosmos)
+
+    run = run_flow("robotics-compare", state_dir=tmp_path)
+
+    assert run.validation_errors == ("cosmos-policy: simulated replay validation failure",)
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["artifact_paths"]["robotics_comparison"] == (
+        "artifacts/robotics-policy-comparison.json"
+    )
+    assert manifest["artifact_paths"]["cosmos_policy_replay"] == (
+        "artifacts/cosmos-policy-replay.json"
+    )
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    comparison = json.loads(
+        (run.workspace_path / "artifacts/robotics-policy-comparison.json").read_text()
+    )
+    assert comparison["status"] == "failed"
+    assert comparison["validation_errors"] == ["cosmos-policy: simulated replay validation failure"]
+    assert run.provider_events[-1]["phase"] == "failure"
 
 
 @pytest.mark.parametrize(
