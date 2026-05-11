@@ -14,6 +14,10 @@ releases may still include breaking changes when the public API needs to tighten
   entry-point discovery, disabled discovery, duplicate-name handling, and missing optional
   dependency skip reporting, and preserves a safe discovery report without publishing or mutating
   tracked source.
+- Expanded the custom evaluation suite example into a checkout-safe walkthrough. The demo now runs a
+  deterministic custom suite against `mock`, preserves JSON/Markdown/HTML/failure-gallery
+  artifacts with provenance, and includes one controlled failed case for report review without
+  claiming model quality.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

@@ -886,11 +886,14 @@ def test_custom_evaluation_suite_authoring_docs_cover_issue_201_contract() -> No
         assert export_signal in root_init
 
     assert "build_suite" in example
+    assert "run_walkthrough" in example
     assert "examples/custom_evaluation_suite.py" in evaluation
+    assert "custom-evaluation-suite" in evaluation
     assert "custom evaluation-suite authoring API" in changelog
     for test_signal in (
         "test_custom_evaluation_suite_runs_with_provenance_and_artifacts",
         "test_custom_evaluation_suite_failure_gallery_uses_custom_claim_boundary",
+        "test_custom_evaluation_walkthrough_example_writes_report_artifacts",
         "test_custom_evaluation_suite_rejects_invalid_metric_payload",
     ):
         assert test_signal in tests
@@ -2686,6 +2689,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         ("failure-lab", 197),
         ("use-case-cookbook", 198),
         ("external-provider-package", 237),
+        ("custom-evaluation-suite", 238),
     )
     for workflow, issue in workflows:
         assert workflow in script
@@ -2698,6 +2702,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "Rerun",
         "scaffold is intentionally fail-closed",
         "entry-point discovery",
+        "failure-gallery",
         "physical-fidelity",
     ):
         assert boundary in showcase_docs or boundary in cookbook
@@ -2715,6 +2720,13 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
             "demo runs."
         ),
         "- [x] Docs link the demo from external provider and provider authoring pages.",
+    ):
+        assert checkbox in roadmap
+    for checkbox in (
+        "- [x] Walkthrough runs in a clean checkout without credentials or optional runtimes.",
+        "- [x] Custom suite output includes provenance and failure-gallery behavior.",
+        "- [x] Docs explain deterministic contract-signal framing.",
+        "- [x] Tests cover the walkthrough artifact set.",
     ):
         assert checkbox in roadmap
 

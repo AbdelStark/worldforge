@@ -891,6 +891,34 @@ def _external_provider_package(workflow_dir: Path) -> JSONDict:
     }
 
 
+def _custom_evaluation_suite(workflow_dir: Path) -> JSONDict:
+    example = _load_module(
+        ROOT / "examples/custom_evaluation_suite.py",
+        "worldforge_custom_evaluation_demo",
+    )
+    walkthrough = example.run_walkthrough(
+        output_dir=workflow_dir / "custom-eval-artifacts",
+        state_dir=workflow_dir / "worlds",
+    )
+    artifact_paths = dict(walkthrough["artifact_paths"])
+    return {
+        "status": "passed",
+        "provider": "mock",
+        "safe_to_attach": True,
+        "summary": (
+            "Ran a custom evaluation suite with provenance, deterministic metrics, one "
+            "controlled failure, and JSON/Markdown/HTML/failure-gallery artifacts."
+        ),
+        "walkthrough": walkthrough,
+        "artifact_paths": artifact_paths,
+        "first_triage_step": (
+            "Open `custom-eval-artifacts/markdown` first, then inspect "
+            "`failure_gallery.md` for the controlled failed case."
+        ),
+        "claim_boundary": walkthrough["claim_boundary"],
+    }
+
+
 def _copy_artifact_paths(run_workspace: Any, artifact_paths: object) -> dict[str, str]:
     if not isinstance(artifact_paths, dict):
         return {}
@@ -959,6 +987,12 @@ WORKFLOWS = (
         "External provider package demo",
         237,
         _external_provider_package,
+    ),
+    DemoWorkflow(
+        "custom-evaluation-suite",
+        "Custom evaluation suite walkthrough",
+        238,
+        _custom_evaluation_suite,
     ),
 )
 

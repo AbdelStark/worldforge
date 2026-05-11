@@ -75,7 +75,18 @@ Use the `claim_boundary` field to state exactly what the suite does not prove. D
 suites as leaderboard, physical-fidelity, media-quality, safety, or real-robot-performance claims
 unless separate evidence establishes those claims.
 
-See `examples/custom_evaluation_suite.py` for a checkout-safe runnable example.
+See `examples/custom_evaluation_suite.py` for a checkout-safe runnable example. To preserve the
+full walkthrough artifact set, run:
+
+```bash
+uv run python scripts/demo_showcases.py run custom-evaluation-suite --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+The workflow writes report JSON, Markdown, CSV, HTML, `failure_gallery.json`,
+`failure_gallery.md`, and a walkthrough summary under the selected demo workspace. It includes one
+controlled failed case so reviewers can inspect failure-gallery behavior. The claim boundary stays
+explicit: this is deterministic contract-signal evidence, not model quality, leaderboard,
+physical-fidelity, safety, or robot-performance evidence.
 
 ## CLI
 

@@ -464,10 +464,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Walkthrough runs in a clean checkout without credentials or optional runtimes.
-- [ ] Custom suite output includes provenance and failure-gallery behavior.
-- [ ] Docs explain deterministic contract-signal framing.
-- [ ] Tests cover the walkthrough artifact set.
+- [x] Walkthrough runs in a clean checkout without credentials or optional runtimes.
+- [x] Custom suite output includes provenance and failure-gallery behavior.
+- [x] Docs explain deterministic contract-signal framing.
+- [x] Tests cover the walkthrough artifact set.
 
 Validation:
 
