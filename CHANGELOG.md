@@ -31,6 +31,9 @@ releases may still include breaking changes when the public API needs to tighten
   capability-aware provider contract checks for registered providers or direct `module:factory`
   paths, emits safe-to-attach JSON/Markdown evidence with skipped host-owned checks and validation
   commands, and keeps live provider calls behind an explicit `--live` flag.
+- Added runtime asset manifests for prepared-host optional runtimes. LeWorldModel and
+  LeRobot/LeWorldModel smoke outputs now include safe `runtime_assets` references in run manifests,
+  while full local-only paths, cache roots, and checkpoint bytes stay out of attachable evidence.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

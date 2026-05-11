@@ -309,6 +309,9 @@ generated documentation surfaces.
   expected artifact values.
 - Dataset manifests are provenance records, not dataset storage. Keep paths repository-relative,
   record checksums/license/privacy/safety fields, and leave host-owned acquisition outside the repo.
+- Runtime asset manifests are evidence records, not cache ownership. Keep full host-local `path`
+  and `cache_root` fields local-only; run manifests should include safe `runtime_assets`
+  references without checkpoint bytes, local cache roots, tokens, or generated assets.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.
 - Keep operator docs concrete: every new runtime, provider, persistence, or release workflow
   should state the command to run, the expected success signal, and the first triage step.

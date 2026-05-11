@@ -132,6 +132,31 @@ uv run worldforge doctor --registered-only
 uv run worldforge provider health
 ```
 
+## Runtime Asset Manifests And Cache Policy
+
+Prepared-host optional runtimes often depend on checkpoint files, policy repos, object files,
+server-side model assets, and cache directories. WorldForge records those as runtime asset
+manifests and safe run-manifest references; it does not download, retain, or upload the assets.
+
+Runtime asset manifests use `RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION`. Full local manifests may record
+`path`, `cache_root`, `source`, `revision`, `checksum`, `size_bytes`, `local_only`, `exists`, and
+`rebuild_command`. Run manifests only include `runtime_assets` as safe-to-attach references. For
+`local_only: true` assets, references omit `path` and `cache_root` so host-local checkpoint and
+cache locations do not leave the machine.
+
+| Runtime family | Typical assets | Cache policy | Rebuild or triage command | Evidence boundary |
+| --- | --- | --- | --- | --- |
+| LeWorldModel | `*_object.ckpt`, Hugging Face `config.json` and `weights.pt`, `STABLEWM_HOME` cache | Pin `LEWORLDMODEL_REVISION`; keep builder downloads under `LEWORLDMODEL_ASSET_CACHE_DIR`; keep object checkpoints under `STABLEWM_HOME` or `LEWORLDMODEL_CACHE_DIR`. | `worldforge-build-leworldmodel-checkpoint --policy pusht/lewm --revision <pinned-sha>` | Run manifests cite the checkpoint manifest reference and rebuild command, never checkpoint bytes or host-local cache roots. |
+| LeRobot | policy repo id or local checkpoint directory, Hugging Face cache, embodiment translator | Keep `LEROBOT_CACHE_DIR` host-owned and aligned with the policy version used for the smoke. | `scripts/smoke_lerobot_policy.py --policy-path <repo-or-checkpoint> --device cpu` | Run manifests cite a policy-checkpoint reference; raw policy weights and local policy paths stay local-only. |
+| GR00T | remote policy server, model checkpoint, CUDA/TensorRT runtime, embodiment assets | Keep server-side caches on the GPU host; WorldForge should connect to the server rather than sync checkpoint directories. | `uv run python scripts/smoke_gr00t_policy.py --health-only --run-manifest <path>` | Evidence records server reachability and provider events, not checkpoint files, GPU logs, or robot-controller state. |
+| Cosmos-Policy | ALOHA `/act` server, Docker/CUDA runtime, model checkpoints, observation builder, translator | Keep Docker layers, checkpoints, and gated-model tokens on the prepared GPU host. | `uv run worldforge-smoke-cosmos-policy --health-only --run-manifest <path>` | Evidence records `/act` configuration and sanitized run status; checkpoints, raw observations, and tokens remain host-owned. |
+| Future provider candidates | candidate-specific checkpoints, fixtures, caches, and server assets | Add a runtime asset manifest before promoting live smoke evidence. | Document the rebuild or reacquisition command in the provider page. | Attach references and checksums when available; do not attach local-only paths or generated assets. |
+
+Cleanup is also host-owned. Use normal cache tools for the runtime in question, then rerun the
+provider health command and the smoke with `--run-manifest` to preserve fresh evidence. If a cache
+path appears in a JSON artifact, treat it as a bug: run manifests should contain `runtime_assets`
+references, not local cache paths.
+
 ## Persistence
 
 World state is persisted as local JSON under `.worldforge/worlds` by default or under the

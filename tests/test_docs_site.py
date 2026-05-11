@@ -1315,6 +1315,90 @@ def test_provider_contract_cli_docs_cover_issue_251_contract() -> None:
     assert "test_discovery_loads_valid_entry_point" in entry_tests
 
 
+def test_runtime_asset_manifest_docs_cover_issue_252_contract() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    implementation = (ROOT / "src/worldforge/providers/runtime_manifest.py").read_text(
+        encoding="utf-8"
+    )
+    run_manifest = (ROOT / "src/worldforge/smoke/run_manifest.py").read_text(encoding="utf-8")
+    runtime_assets = (ROOT / "src/worldforge/smoke/runtime_assets.py").read_text(encoding="utf-8")
+    lewm_smoke = (ROOT / "src/worldforge/smoke/leworldmodel.py").read_text(encoding="utf-8")
+    robotics_smoke = (ROOT / "src/worldforge/smoke/lerobot_leworldmodel.py").read_text(
+        encoding="utf-8"
+    )
+    exports = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
+    runtime_tests = (ROOT / "tests/test_runtime_profiles.py").read_text(encoding="utf-8")
+    robotics_tests = (ROOT / "tests/test_robotics_showcase.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "## Runtime Asset Manifests And Cache Policy",
+        "RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION",
+        "`runtime_assets`",
+        "`local_only: true`",
+        "safe-to-attach references",
+        "worldforge-build-leworldmodel-checkpoint",
+        "LeWorldModel",
+        "LeRobot",
+        "GR00T",
+        "Cosmos-Policy",
+        "Future provider candidates",
+        "Cleanup is also host-owned",
+    ):
+        assert signal in operations
+    assert "Runtime asset manifests and references" in schemas
+    assert "RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION" in schemas
+    assert "runtime asset manifests" in changelog
+    assert "Runtime asset manifests are evidence records" in agents
+    for checkbox in (
+        "- [x] Runtime asset manifests validate local-only and attachable fields separately.",
+        "- [x] Optional smoke outputs can reference manifests without embedding assets.",
+        "- [x] Docs explain cache cleanup, rebuild, and evidence boundaries.",
+        "- [x] Tests cover valid, missing, unsafe, and local-only manifest cases.",
+    ):
+        assert checkbox in roadmap
+
+    for implementation_signal in (
+        "RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION",
+        "class RuntimeAssetManifest",
+        "validate_runtime_asset_manifest",
+        "include_local_fields",
+        "safe_to_attach",
+        "local_only",
+    ):
+        assert implementation_signal in implementation
+    for run_signal in (
+        "runtime_assets",
+        "validate_runtime_asset_manifest",
+        "_runtime_asset_summary",
+    ):
+        assert run_signal in run_manifest
+    for helper_signal in (
+        "leworldmodel_checkpoint_asset",
+        "lerobot_policy_asset",
+        "LEWORLDMODEL_ASSET_SOURCE",
+    ):
+        assert helper_signal in runtime_assets
+    assert "runtime_assets=runtime_assets" in lewm_smoke
+    assert "runtime_assets=runtime_assets" in robotics_smoke
+    for export_signal in (
+        "RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION",
+        "RuntimeAssetManifest",
+        "validate_runtime_asset_manifest",
+    ):
+        assert export_signal in exports
+    for test_signal in (
+        "test_runtime_asset_manifest_separates_local_and_attachable_fields",
+        "test_runtime_asset_manifest_rejects_unsafe_attachable_or_secret_fields",
+        "test_run_manifest_references_runtime_assets_without_local_paths",
+    ):
+        assert test_signal in runtime_tests
+    assert "test_robotics_runtime_asset_references_omit_host_paths" in robotics_tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
@@ -1951,6 +2035,11 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
         (
             "Provider runtime manifests",
             "MANIFEST_SCHEMA_VERSION",
+            "src/worldforge/providers/runtime_manifest.py",
+        ),
+        (
+            "Runtime asset manifests and references",
+            "RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION",
             "src/worldforge/providers/runtime_manifest.py",
         ),
         (

@@ -980,10 +980,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Runtime asset manifests validate local-only and attachable fields separately.
-- [ ] Optional smoke outputs can reference manifests without embedding assets.
-- [ ] Docs explain cache cleanup, rebuild, and evidence boundaries.
-- [ ] Tests cover valid, missing, unsafe, and local-only manifest cases.
+- [x] Runtime asset manifests validate local-only and attachable fields separately.
+- [x] Optional smoke outputs can reference manifests without embedding assets.
+- [x] Docs explain cache cleanup, rebuild, and evidence boundaries.
+- [x] Tests cover valid, missing, unsafe, and local-only manifest cases.
 
 Validation:
 

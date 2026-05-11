@@ -29,6 +29,7 @@ from worldforge.providers import LeRobotPolicyProvider, LeWorldModelProvider
 from worldforge.providers._config import env_value as _env_value
 from worldforge.smoke.leworldmodel_bridges import bridge_names, get_bridge
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
+from worldforge.smoke.runtime_assets import lerobot_policy_asset, leworldmodel_checkpoint_asset
 
 from .leworldmodel import (
     DEFAULT_STABLEWM_HOME,
@@ -1097,6 +1098,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         require_exists=not args.health_only,
     )
     checkpoint_exists = object_path.exists()
+    runtime_assets = (
+        lerobot_policy_asset(
+            policy_path=args.policy_path,
+            cache_root=args.lerobot_cache_dir,
+        ),
+        leworldmodel_checkpoint_asset(
+            policy=args.lewm_policy,
+            checkpoint=object_path,
+            cache_root=lewm_cache_dir,
+            exists=checkpoint_exists,
+        ),
+    )
+    runtime_asset_refs = [asset.to_reference() for asset in runtime_assets]
     lerobot_device = args.lerobot_device or args.device
     lewm_device = args.lewm_device or args.device
     if not args.json_only:
@@ -1203,6 +1217,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "checkpoint_display": _display_path(object_path),
             "checkpoint_exists": checkpoint_exists,
             "health": {"lerobot": policy_health, "leworldmodel": score_health},
+            "runtime_assets": runtime_asset_refs,
             "metrics": {"total_latency_ms": (perf_counter() - total_started) * 1000},
         }
         rerun_payload = _rerun_payload(args, rerun_session)
@@ -1240,6 +1255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     event_count=len(provider_events),
                     input_summary={"bridge": bridge_summary} if bridge_summary is not None else {},
                     result=payload,
+                    runtime_assets=runtime_assets,
                     artifact_paths=json_artifacts,
                 ),
             )
@@ -1424,6 +1440,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "checkpoint_display": _display_path(object_path),
         "state_dir": str(state_dir),
         "health": {"lerobot": policy_health, "leworldmodel": score_health},
+        "runtime_assets": runtime_asset_refs,
         "inputs": {
             "policy_path": args.policy_path,
             "policy_type": args.policy_type,
@@ -1500,6 +1517,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 },
                 input_fixture=input_fixture,
                 result=payload,
+                runtime_assets=runtime_assets,
                 artifact_paths=artifact_paths,
             ),
         )
