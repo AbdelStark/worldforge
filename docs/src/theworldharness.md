@@ -22,6 +22,7 @@ Textual is optional. The base package keeps `httpx` as its only runtime dependen
 uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow lerobot
 uv run --extra harness worldforge-harness --flow cosmos-policy
+uv run --extra harness worldforge-harness --flow gr00t-replay
 uv run --extra harness worldforge-harness --flow diagnostics
 uv run --extra harness worldforge-harness --flow workbench
 uv run --extra harness worldforge-harness --flow eval
@@ -61,6 +62,7 @@ dependencies at package import time.
 | `leworldmodel` | `score` | Deterministic LeWorldModel-shaped cost runtime, candidate scoring, score planning, execution, persistence, reload, provider events. |
 | `lerobot` | `policy` plus score provider | Deterministic LeRobot-shaped policy, action translation, policy candidate ranking, execution, persistence, reload, provider events. |
 | `cosmos-policy` | `policy` | Saved Cosmos-Policy ALOHA `/act` replay through the real provider adapter, json_numpy 50 x 14 action validation, action translation, provider events, and a sanitized replay artifact. |
+| `gr00t-replay` | `policy` | Saved GR00T N1.7 PolicyClient replay through the real provider adapter, named eef/gripper/joint tensor validation, action translation, provider events, and a sanitized replay artifact. |
 | `diagnostics` | provider catalog plus benchmark harness | `doctor()` provider scan, registered/unregistered provider status, mock benchmark matrix across predict/reason/generate/transfer/embed, latency/throughput comparison, provider events. |
 | `workbench` | provider authoring | Checkout-safe provider workbench evidence for stable and candidate adapters, promotion gaps, safe artifacts, and validation commands. |
 
@@ -70,6 +72,15 @@ For the Cosmos replay, run
 `saved_replay_artifact: artifacts/cosmos-policy-replay.json`. If it fails, start with the preserved
 run workspace: inspect `logs/provider-events.jsonl` for the provider phase and
 `artifacts/cosmos-policy-replay.json` for the saved request/response/translated-action artifact.
+
+For the GR00T replay, run
+`uv run --extra harness worldforge-harness --flow gr00t-replay`. A good run reports
+`translated_actions: 40`, raw tensor shapes for `eef_9d`, `gripper_position`, and
+`joint_position`, and `saved_replay_artifact: artifacts/gr00t-replay.json`. The committed artifact
+is deterministic and checkout-safe; the live RTX A6000 validation is mentioned as provenance, not
+stored as GPU logs, checkpoints, private endpoints, or raw observations. If it fails, start with
+the preserved run workspace: inspect `logs/provider-events.jsonl` for provider events/errors and
+`artifacts/gr00t-replay.json` for the saved replay request/response/translated-action artifact.
 
 ## Provider Connector Workspace
 
@@ -216,8 +227,9 @@ provider health, benchmark latency, benchmark throughput, and provider event pha
 - `1`: select LeWorldModel score planning.
 - `2`: select LeRobot policy-plus-score planning.
 - `3`: select Cosmos-Policy ALOHA replay.
-- `4`: select provider diagnostics and benchmark comparison.
-- `5`: select adapter author workbench.
+- `4`: select GR00T DROID replay.
+- `5`: select provider diagnostics and benchmark comparison.
+- `6`: select adapter author workbench.
 - `g w`: jump to Worlds.
 - `g p`: jump to Providers.
 - `g e`: jump to Eval.
