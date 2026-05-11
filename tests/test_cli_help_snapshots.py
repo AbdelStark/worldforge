@@ -178,6 +178,7 @@ usage: worldforge eval [-h]
                        [--provider PROVIDERS]
                        [--format {markdown,json,csv,html}]
                        [--state-dir STATE_DIR] [--run-workspace RUN_WORKSPACE]
+                       [--dataset-manifest DATASET_MANIFESTS]
 
 options:
   -h, --help            show this help message and exit
@@ -191,6 +192,9 @@ options:
   --run-workspace RUN_WORKSPACE
                         Preserve sanitized eval artifacts under
                         RUN_WORKSPACE/runs/<run-id>/.
+  --dataset-manifest DATASET_MANIFESTS
+                        Dataset manifest JSON to cite in evaluation
+                        provenance. Can be repeated.
 """,
     ("benchmark", "--help"): """\
 usage: worldforge benchmark [-h] [--provider PROVIDERS]

@@ -94,6 +94,32 @@ def _budget_file_summary(value: object, *, name: str) -> JSONDict | None:
     return summary
 
 
+def _dataset_manifest_refs(value: object, *, name: str) -> tuple[JSONDict, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, tuple | list):
+        raise WorldForgeError(f"{name} must be a sequence of dataset manifest references.")
+    refs = []
+    for index, item in enumerate(value):
+        ref = require_json_dict(item, name=f"{name}[{index}]")
+        for key in ("id", "name", "sha256", "license"):
+            candidate = ref.get(key)
+            if not isinstance(candidate, str) or not candidate.strip():
+                raise WorldForgeError(f"{name}[{index}] '{key}' must be a non-empty string.")
+        _digest_or_none(ref["sha256"], name=f"{name}[{index}] sha256")
+        require_non_negative_int(ref.get("entry_count"), name=f"{name}[{index}] entry_count")
+        if ref["entry_count"] < 1:
+            raise WorldForgeError(f"{name}[{index}] entry_count must be greater than zero.")
+        for section in ("privacy", "safety"):
+            if not isinstance(ref.get(section), dict):
+                raise WorldForgeError(f"{name}[{index}] '{section}' must be a JSON object.")
+        path = ref.get("path")
+        if path is not None and (not isinstance(path, str) or not path.strip()):
+            raise WorldForgeError(f"{name}[{index}] path must be a non-empty string or omitted.")
+        refs.append(ref)
+    return tuple(refs)
+
+
 @dataclass(frozen=True, slots=True)
 class ProvenanceEnvelope:
     """Validated provenance metadata wrapping a report."""
@@ -108,6 +134,7 @@ class ProvenanceEnvelope:
     input_digest: str | None = None
     result_digest: str | None = None
     budget_file: JSONDict | None = None
+    dataset_manifests: tuple[JSONDict, ...] = ()
     event_count: int = 0
     claim_boundary: str = ""
     metric_semantics: str = ""
@@ -187,6 +214,14 @@ class ProvenanceEnvelope:
             "budget_file",
             _budget_file_summary(self.budget_file, name="ProvenanceEnvelope budget_file"),
         )
+        object.__setattr__(
+            self,
+            "dataset_manifests",
+            _dataset_manifest_refs(
+                self.dataset_manifests,
+                name="ProvenanceEnvelope dataset_manifests",
+            ),
+        )
         require_non_negative_int(self.event_count, name="ProvenanceEnvelope event_count")
         object.__setattr__(
             self,
@@ -216,6 +251,7 @@ class ProvenanceEnvelope:
             "input_digest": self.input_digest,
             "result_digest": self.result_digest,
             "budget_file": dict(self.budget_file) if self.budget_file is not None else None,
+            "dataset_manifests": [dict(ref) for ref in self.dataset_manifests],
             "event_count": self.event_count,
             "claim_boundary": self.claim_boundary,
             "metric_semantics": self.metric_semantics,
@@ -265,6 +301,7 @@ class ProvenanceEnvelope:
             input_digest=payload.get("input_digest"),
             result_digest=payload.get("result_digest"),
             budget_file=payload.get("budget_file"),
+            dataset_manifests=tuple(payload.get("dataset_manifests", ()) or ()),
             event_count=int(payload.get("event_count", 0) or 0),
             claim_boundary=str(payload.get("claim_boundary", "")),
             metric_semantics=str(payload.get("metric_semantics", "")),

@@ -1463,13 +1463,18 @@ def preserve_eval_run_workspace(
 ) -> RunWorkspace:
     """Preserve an evaluation report in the shared run workspace layout."""
 
+    input_summary: dict[str, object] = {"suite_id": suite_id, "providers": list(providers)}
+    if report.provenance is not None and report.provenance.dataset_manifests:
+        input_summary["dataset_manifests"] = [
+            ref["id"] for ref in report.provenance.dataset_manifests
+        ]
     workspace = create_run_workspace(
         workspace_dir,
         kind="eval",
         command=command,
         provider=", ".join(providers),
         operation=suite_id,
-        input_summary={"suite_id": suite_id, "providers": list(providers)},
+        input_summary=input_summary,
     )
     paths = _write_report_artifacts(workspace, artifacts)
     result_summary = {
@@ -1486,7 +1491,7 @@ def preserve_eval_run_workspace(
         provider=", ".join(providers),
         operation=suite_id,
         status="completed",
-        input_summary={"suite_id": suite_id, "providers": list(providers)},
+        input_summary=input_summary,
         result_summary=result_summary,
         artifact_paths=paths,
     )

@@ -11,6 +11,7 @@ from worldforge.harness.workspace import create_run_workspace, write_run_manifes
 from worldforge.testing import DeterministicIdFactory, stable_json_dumps, stable_snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
+DATASET_MANIFEST = ROOT / "examples/dataset-manifests/mock-evaluation-fixtures.json"
 SCRIPT = ROOT / "scripts" / "generate_release_evidence.py"
 SPEC = importlib.util.spec_from_file_location("generate_release_evidence_for_bundle", SCRIPT)
 assert SPEC is not None
@@ -42,6 +43,8 @@ def test_evidence_bundle_collects_mock_eval_and_benchmark_runs(
             str(state_dir),
             "--run-workspace",
             str(workspace),
+            "--dataset-manifest",
+            str(DATASET_MANIFEST.relative_to(ROOT)),
             "--format",
             "json",
         ],
@@ -82,6 +85,7 @@ def test_evidence_bundle_collects_mock_eval_and_benchmark_runs(
     assert sum(path.endswith("reports/report.json") for path in paths) == 2
     assert "inputs/src/worldforge/benchmark_presets/_data/inputs-mock.json" in paths
     assert "budgets/src/worldforge/benchmark_presets/_data/budget-mock-smoke.json" in paths
+    assert "dataset-manifests/examples/dataset-manifests/mock-evaluation-fixtures.json" in paths
     assert all(item["sha256"].startswith("sha256:") for item in manifest["files"])
     assert any(
         item["path"] == "src/worldforge/testing/fixtures/predict/valid_baseline.json"

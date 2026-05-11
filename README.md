@@ -475,6 +475,8 @@ surface and runtime-specific entrypoints:
   layer.
 - Built-in evaluation suites are deterministic contract harnesses. They are not physical-fidelity,
   media-quality, or real-world safety claims.
+- Evaluation dataset manifests cite fixture, remote, or host-owned asset provenance by digest and
+  license/safety metadata; they do not store or download datasets.
 - Scaffold adapters (`jepa`, `genie`, `jepa-wms`) are placeholders, not real integrations.
 - World IDs are local storage identifiers. Path separators and traversal-shaped IDs are rejected.
 

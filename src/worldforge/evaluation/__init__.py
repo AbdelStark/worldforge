@@ -13,6 +13,13 @@ evidence of physical realism, media quality, or task success on real hardware. T
 compatibility and resolve to the same classes.
 """
 
+from worldforge.dataset_manifests import (
+    DatasetManifest,
+    DatasetManifestEntry,
+    load_dataset_manifest,
+    parse_dataset_manifest,
+)
+
 from .suites import (
     EvalReport,
     EvalResult,
@@ -40,6 +47,8 @@ from .suites import (
 )
 
 __all__ = [
+    "DatasetManifest",
+    "DatasetManifestEntry",
     "EvalReport",
     "EvalResult",
     "EvalScenario",
@@ -63,4 +72,6 @@ __all__ = [
     "ReasoningEvaluationSuite",
     "TransferEval",
     "TransferEvaluationSuite",
+    "load_dataset_manifest",
+    "parse_dataset_manifest",
 ]

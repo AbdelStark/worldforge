@@ -304,6 +304,8 @@ generated documentation surfaces.
 - Scenario parameter matrices must stay bounded and JSON-native. Use whole-value placeholders only;
   keep supported substitutions limited to provider names, object positions, action targets, and
   expected artifact values.
+- Dataset manifests are provenance records, not dataset storage. Keep paths repository-relative,
+  record checksums/license/privacy/safety fields, and leave host-owned acquisition outside the repo.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.
 - Keep operator docs concrete: every new runtime, provider, persistence, or release workflow
   should state the command to run, the expected success signal, and the first triage step.

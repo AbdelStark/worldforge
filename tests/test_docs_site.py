@@ -1177,6 +1177,67 @@ def test_scenario_matrix_docs_cover_issue_249_contract() -> None:
         assert test_signal in tests
 
 
+def test_dataset_manifest_docs_cover_issue_250_contract() -> None:
+    evaluation = (ROOT / "docs/src/evaluation.md").read_text(encoding="utf-8")
+    artifact_schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    implementation = (ROOT / "src/worldforge/dataset_manifests.py").read_text(encoding="utf-8")
+    provenance = (ROOT / "src/worldforge/provenance.py").read_text(encoding="utf-8")
+    eval_impl = (ROOT / "src/worldforge/evaluation/suites.py").read_text(encoding="utf-8")
+    evidence = (ROOT / "src/worldforge/evidence_bundle.py").read_text(encoding="utf-8")
+    cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    tests = (ROOT / "tests/test_evaluation_suites.py").read_text(encoding="utf-8")
+    bundle_tests = (ROOT / "tests/test_evidence_bundle.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "## Dataset Manifests",
+        "`schema_version: 1`",
+        "license notes",
+        "provenance owner/source/version fields",
+        "privacy classification",
+        "safety review",
+        "host-owned acquisition steps",
+        "does not embed dataset entries or raw assets",
+    ):
+        assert signal in evaluation
+    assert "Dataset manifests" in artifact_schemas
+    assert "DATASET_MANIFEST_SCHEMA_VERSION" in artifact_schemas
+    assert "Evaluation reports can cite dataset manifests without embedding datasets" in claim_map
+    assert "evaluation dataset manifest contracts" in changelog
+    for checkbox in (
+        "- [x] Dataset manifests are JSON-native, schema-versioned, and validated.",
+        "- [x] Evaluation reports can cite dataset manifests without embedding datasets.",
+        "- [x] Unsafe or under-specified manifests fail explicitly.",
+        "- [x] Docs explain license/provenance boundaries and host-owned assets.",
+    ):
+        assert checkbox in roadmap
+
+    for implementation_signal in (
+        "DATASET_MANIFEST_SCHEMA_VERSION",
+        "class DatasetManifest",
+        "class DatasetManifestEntry",
+        "load_dataset_manifest",
+        "parse_dataset_manifest",
+        "dataset_manifest_references",
+        "_safe_relative_path",
+        "_safe_remote_uri",
+    ):
+        assert implementation_signal in implementation
+    assert "dataset_manifests" in provenance
+    assert "dataset_manifest_references" in eval_impl
+    assert "dataset-manifest" in evidence
+    assert "--dataset-manifest" in cli
+    for test_signal in (
+        "test_dataset_manifest_validates_and_evaluation_report_cites_it",
+        "test_dataset_manifest_rejects_unsafe_or_under_specified_payloads",
+        "test_dataset_manifest_validates_remote_reference_boundaries",
+    ):
+        assert test_signal in tests
+    assert "mock-evaluation-fixtures.json" in bundle_tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
@@ -1789,6 +1850,11 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
             "Evaluation reports and provenance",
             "PROVENANCE_SCHEMA_VERSION",
             "src/worldforge/provenance.py",
+        ),
+        (
+            "Dataset manifests",
+            "DATASET_MANIFEST_SCHEMA_VERSION",
+            "src/worldforge/dataset_manifests.py",
         ),
         (
             "Evaluation failure galleries",

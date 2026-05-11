@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
-from worldforge import WorldForge, WorldForgeError
+from worldforge import DATASET_MANIFEST_SCHEMA_VERSION, WorldForge, WorldForgeError
+from worldforge.dataset_manifests import load_dataset_manifest, parse_dataset_manifest
 from worldforge.evaluation import (
     EvaluationContext,
     EvaluationScenario,
     EvaluationScenarioOutcome,
     EvaluationSuite,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
+DATASET_MANIFEST = ROOT / "examples/dataset-manifests/mock-evaluation-fixtures.json"
+_DIGEST = "sha256:72b95ee161e971da5eb37a54b426dda56863819d81cd6e4b32f1111f8336c086"
 
 
 def test_builtin_evaluation_suite_names_are_stable() -> None:
@@ -35,6 +41,95 @@ def test_builtin_evaluation_reports_export_failure_gallery_artifacts(tmp_path) -
     )
     assert json.loads(artifacts["failure_gallery.json"])["case_count"] == 0
     assert "No failed evaluation cases." in artifacts["failure_gallery.md"]
+
+
+def test_dataset_manifest_validates_and_evaluation_report_cites_it(tmp_path) -> None:
+    manifest = load_dataset_manifest(DATASET_MANIFEST, root=ROOT)
+    assert manifest.schema_version == DATASET_MANIFEST_SCHEMA_VERSION
+    assert manifest.entry_count == 2
+    assert manifest.entries[0].kind == "local-fixture"
+    assert manifest.entries[1].kind == "remote-reference"
+
+    report = EvaluationSuite.from_builtin("physics").run_report(
+        ["mock"],
+        forge=WorldForge(state_dir=tmp_path),
+        dataset_manifests=[DATASET_MANIFEST],
+    )
+
+    assert report.provenance is not None
+    refs = report.provenance.dataset_manifests
+    assert len(refs) == 1
+    assert refs[0]["id"] == "mock-evaluation-fixtures"
+    assert refs[0]["path"] == "examples/dataset-manifests/mock-evaluation-fixtures.json"
+    assert refs[0]["entry_count"] == 2
+    payload = report.to_dict()
+    assert payload["provenance"]["dataset_manifests"][0]["id"] == "mock-evaluation-fixtures"
+    assert "entries" not in payload["provenance"]["dataset_manifests"][0]
+    assert "Dataset manifests: mock-evaluation-fixtures" in report.to_markdown()
+
+
+def test_dataset_manifest_rejects_unsafe_or_under_specified_payloads() -> None:
+    payload = json.loads(DATASET_MANIFEST.read_text(encoding="utf-8"))
+
+    missing_provenance = json.loads(json.dumps(payload))
+    del missing_provenance["provenance"]["owner"]
+    with pytest.raises(WorldForgeError, match=r"provenance\.owner"):
+        parse_dataset_manifest(missing_provenance, root=ROOT)
+
+    unsafe_path = json.loads(json.dumps(payload))
+    unsafe_path["entries"][0]["path"] = "../private.json"
+    with pytest.raises(WorldForgeError, match="traversal"):
+        parse_dataset_manifest(unsafe_path, root=ROOT)
+
+    bad_digest = json.loads(json.dumps(payload))
+    bad_digest["entries"][0]["sha256"] = _DIGEST.replace("72", "73", 1)
+    with pytest.raises(WorldForgeError, match="does not match local fixture"):
+        parse_dataset_manifest(bad_digest, root=ROOT)
+
+
+def test_dataset_manifest_validates_remote_reference_boundaries() -> None:
+    payload = {
+        "schema_version": DATASET_MANIFEST_SCHEMA_VERSION,
+        "id": "remote-reference",
+        "name": "Remote Reference",
+        "description": "Manifest containing a stable remote reference.",
+        "license": "Example license",
+        "provenance": {
+            "source": "Example registry",
+            "version": "remote-reference:1",
+            "owner": "WorldForge tests",
+        },
+        "privacy": {"classification": "public", "contains_personal_data": False},
+        "safety": {
+            "reviewed": True,
+            "contains_sensitive_capability_data": False,
+            "contains_robot_logs": False,
+        },
+        "host_acquisition_steps": ["Fetch outside the repository and verify the digest."],
+        "entries": [
+            {
+                "id": "remote-entry",
+                "kind": "remote-reference",
+                "description": "Stable external reference.",
+                "sha256": _DIGEST,
+                "uri": "https://example.com/worldforge/dataset.json",
+            },
+            {
+                "id": "host-entry",
+                "kind": "host-asset",
+                "description": "Host-owned prepared asset reference.",
+                "sha256": _DIGEST,
+                "asset_id": "host-prepared-fixture-v1",
+            },
+        ],
+    }
+    manifest = parse_dataset_manifest(payload, root=ROOT)
+    assert manifest.entries[0].uri == "https://example.com/worldforge/dataset.json"
+    assert manifest.entries[1].asset_id == "host-prepared-fixture-v1"
+
+    payload["entries"][0]["uri"] = "https://example.com/worldforge/dataset.json?token=secret"
+    with pytest.raises(WorldForgeError, match="query strings"):
+        parse_dataset_manifest(payload, root=ROOT)
 
 
 def test_custom_evaluation_suite_runs_with_provenance_and_artifacts(tmp_path) -> None:

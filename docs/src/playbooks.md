@@ -456,6 +456,9 @@ shape. Do not treat either as a physical-fidelity claim.
 ```bash
 uv run worldforge eval --suite planning --provider mock --format markdown
 uv run worldforge eval --suite generation --provider mock --format json
+uv run worldforge eval --suite planning --provider mock \
+  --dataset-manifest examples/dataset-manifests/mock-evaluation-fixtures.json \
+  --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format markdown
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
@@ -465,6 +468,8 @@ uv run worldforge benchmark --provider mock --operation generate --budget-file e
 Success signal:
 
 - suites skip or fail explicitly when a provider does not support the required capability.
+- evaluation dataset manifests are cited by compact provenance references; license, privacy,
+  safety, checksums, and host-owned acquisition steps are recorded without copying datasets.
 - benchmark reports identify provider, operation, pass/fail status, latency, retry counts, and
   exported artifact format for direct provider surfaces such as `score`, `policy`, `generate`,
   `transfer`, and `embed`.

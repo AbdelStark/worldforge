@@ -98,6 +98,29 @@ uv run worldforge eval --suite planning --provider mock --run-workspace .worldfo
 The run workspace stores `run_manifest.json`, JSON/Markdown/CSV reports, and a result summary under
 `.worldforge/runs/<run-id>/`.
 
+## Dataset Manifests
+
+Evaluation reports can cite a dataset manifest without storing or downloading a dataset:
+
+```bash
+uv run worldforge eval --suite planning --provider mock \
+  --dataset-manifest examples/dataset-manifests/mock-evaluation-fixtures.json \
+  --format json
+```
+
+Dataset manifests are JSON-native artifacts with `schema_version: 1`. They record local fixture
+references, stable remote references, host-owned asset identifiers, `sha256:<hex>` checksums,
+license notes, provenance owner/source/version fields, privacy classification, safety review
+flags, and host-owned acquisition steps. Local fixtures must use repository-relative safe paths and
+match their checksum; remote references must be stable `https` URIs without signed query strings;
+host-owned assets must use `asset_id` plus acquisition steps rather than host-local paths.
+
+The evaluation provenance stores only a compact `dataset_manifests` reference: manifest id, digest,
+entry count, license, privacy and safety summaries, and a safe manifest path when the manifest is
+inside the repository. It does not embed dataset entries or raw assets. Evidence and issue bundles
+copy safe source-controlled manifest files, while host-owned datasets, checkpoints, and prepared
+runtime assets remain outside the repository.
+
 When a suite has failures, the JSON and Markdown reports include a compact failure gallery. The
 gallery is also exported through `report.artifacts()` as `failure_gallery.json` and
 `failure_gallery.md` for issue attachments:
@@ -170,6 +193,7 @@ audited without console logs:
 | `command` | The command argv vector when produced through the CLI. |
 | `providers`, `capabilities` | Providers exercised and capabilities they covered. |
 | `runtime_manifests` | Provider runtime manifest references when available. |
+| `dataset_manifests` | Compact references to dataset manifests cited by the report. |
 | `input_digest`, `result_digest` | Deterministic `sha256:<hex>` digests of inputs and results. |
 | `event_count` | Emitted `ProviderEvent` count. |
 | `claim_boundary`, `metric_semantics` | Mirrors the report-level claim text. |

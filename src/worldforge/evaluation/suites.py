@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 from urllib.parse import urlsplit
 
+from worldforge.dataset_manifests import dataset_manifest_references
 from worldforge.models import (
     Action,
     BBox,
@@ -135,6 +136,11 @@ def _provenance_markdown_lines(provenance: ProvenanceEnvelope | None) -> list[st
         lines.append(f"- Runtime manifests: {manifests}")
     if provenance.budget_file is not None:
         lines.append(f"- Budget file: {provenance.budget_file['path']}")
+    if provenance.dataset_manifests:
+        manifests = ", ".join(
+            f"{ref['id']} ({ref['sha256']})" for ref in provenance.dataset_manifests
+        )
+        lines.append(f"- Dataset manifests: {manifests}")
     if provenance.command:
         lines.append(f"- Command: `{' '.join(provenance.command)}`")
     if provenance.notes:
@@ -1305,6 +1311,7 @@ class EvaluationSuite:
         *,
         world: World | None = None,
         forge: WorldForge | None = None,
+        dataset_manifests: Sequence[object] | None = None,
     ) -> EvaluationReport:
         from worldforge.framework import WorldForge
 
@@ -1331,7 +1338,8 @@ class EvaluationSuite:
             with ThreadPoolExecutor(max_workers=min(8, len(provider_names))) as pool:
                 for provider_results in pool.map(_run_one, provider_names):
                     results.extend(provider_results)
-        provenance = self._build_provenance(provider_names, results)
+        dataset_refs = dataset_manifest_references(dataset_manifests)
+        provenance = self._build_provenance(provider_names, results, dataset_manifests=dataset_refs)
         return EvaluationReport(
             self.suite_id,
             self.name,
@@ -1345,6 +1353,8 @@ class EvaluationSuite:
         self,
         provider_names: Sequence[str],
         results: Sequence[EvaluationResult],
+        *,
+        dataset_manifests: Sequence[JSONDict] = (),
     ) -> ProvenanceEnvelope:
         result_payload = [result.to_dict() for result in results]
         return ProvenanceEnvelope(
@@ -1367,9 +1377,11 @@ class EvaluationSuite:
                         for scenario in self.scenarios
                     ],
                     "providers": list(provider_names),
+                    "dataset_manifests": list(dataset_manifests),
                 }
             ),
             result_digest=digest_payload(result_payload),
+            dataset_manifests=tuple(dataset_manifests),
             event_count=0,
             claim_boundary=self.claim_boundary,
             metric_semantics=self.metric_semantics,

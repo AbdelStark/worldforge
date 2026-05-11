@@ -22,6 +22,11 @@ releases may still include breaking changes when the public API needs to tighten
   positions, action targets, and expected artifact values, validate every expanded case before
   execution, and return aggregate pass/fail counts plus failed-case details from
   `worldforge scenario run`.
+- Added evaluation dataset manifest contracts. `worldforge eval --dataset-manifest <path>` now
+  cites schema-versioned manifest references in provenance, with validation for local fixture
+  paths, remote references, host-owned asset records, checksums, license/provenance/privacy/safety
+  fields, and evidence-bundle copying of safe source-controlled manifest files without embedding
+  datasets.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

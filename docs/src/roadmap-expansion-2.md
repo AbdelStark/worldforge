@@ -908,10 +908,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Dataset manifests are JSON-native, schema-versioned, and validated.
-- [ ] Evaluation reports can cite dataset manifests without embedding datasets.
-- [ ] Unsafe or under-specified manifests fail explicitly.
-- [ ] Docs explain license/provenance boundaries and host-owned assets.
+- [x] Dataset manifests are JSON-native, schema-versioned, and validated.
+- [x] Evaluation reports can cite dataset manifests without embedding datasets.
+- [x] Unsafe or under-specified manifests fail explicitly.
+- [x] Docs explain license/provenance boundaries and host-owned assets.
 
 Validation:
 

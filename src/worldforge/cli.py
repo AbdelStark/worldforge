@@ -1205,6 +1205,14 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Preserve sanitized eval artifacts under RUN_WORKSPACE/runs/<run-id>/.",
     )
+    evaluate.add_argument(
+        "--dataset-manifest",
+        dest="dataset_manifests",
+        action="append",
+        type=Path,
+        default=None,
+        help="Dataset manifest JSON to cite in evaluation provenance. Can be repeated.",
+    )
 
     benchmark = subparsers.add_parser(
         "benchmark",
@@ -2048,8 +2056,14 @@ def _cmd_predict(args: argparse.Namespace, forge: WorldForge) -> int:
 def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
     suite = EvaluationSuite.from_builtin(args.suite)
     providers = args.providers or ["mock"]
-    report = suite.run_report(providers, forge=forge)
+    report = suite.run_report(
+        providers,
+        forge=forge,
+        dataset_manifests=args.dataset_manifests,
+    )
     eval_command = _command_string(["eval", "--suite", args.suite, *_provider_args(providers)])
+    for manifest_path in args.dataset_manifests or ():
+        eval_command += f" --dataset-manifest {manifest_path}"
     if report.provenance is not None:
         report.provenance = report.provenance.with_overrides(
             command=tuple(eval_command.split()),

@@ -428,6 +428,28 @@ def _copy_report_references(
                 destination=destination_root / _repo_relative(referenced),
                 kind=key,
             )
+        provenance = payload.get("provenance", {})
+        if not isinstance(provenance, dict):
+            continue
+        dataset_manifests = provenance.get("dataset_manifests", [])
+        if not isinstance(dataset_manifests, list):
+            continue
+        for reference in dataset_manifests:
+            if not isinstance(reference, dict):
+                continue
+            referenced = _resolve_report_reference(reference.get("path"))
+            if referenced is None:
+                continue
+            resolved = referenced.resolve()
+            if resolved in copied_refs:
+                continue
+            copied_refs.add(resolved)
+            _copy_safe_file(
+                context,
+                source=referenced,
+                destination=Path("dataset-manifests") / _repo_relative(referenced),
+                kind="dataset-manifest",
+            )
 
 
 def _record_manifest_artifact_references(
