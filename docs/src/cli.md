@@ -47,6 +47,7 @@ documented workspace.
 uv run worldforge doctor --registered-only
 uv run worldforge provider list
 uv run worldforge provider info mock
+uv run worldforge provider contract mock --format json
 uv run worldforge provider docs
 uv run worldforge provider health mock
 uv run worldforge negotiate --list

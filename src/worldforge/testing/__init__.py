@@ -13,6 +13,7 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "assert_predict_conformance": "worldforge.testing.providers",
     "assert_provider_contract": "worldforge.testing.providers",
     "assert_provider_events_conform": "worldforge.testing.providers",
+    "assert_provider_metadata_conformance": "worldforge.testing.providers",
     "assert_reason_conformance": "worldforge.testing.providers",
     "assert_score_conformance": "worldforge.testing.providers",
     "assert_transfer_conformance": "worldforge.testing.providers",

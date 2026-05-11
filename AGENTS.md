@@ -257,6 +257,9 @@ generated documentation surfaces.
   supported capability explicitly. Valid capability names are `predict`, `generate`, `reason`,
   `embed`, `plan`, `transfer`, `score`, and `policy`; reject unknown names instead of treating
   them as unsupported.
+- `worldforge provider contract` output is issue-facing evidence. Keep it safe to attach, include
+  validation commands and next steps, report skipped host-owned checks explicitly, and do not call
+  non-local provider capabilities unless the host opts in with `--live`.
 - Use capability protocol registration for narrow one-surface integrations. A protocol
   implementation declares `name`, optional `ProviderProfileSpec`, and the matching method; register
   it with `WorldForge.register_cost`, `register_policy`, `register_generator`,

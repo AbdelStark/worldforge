@@ -1238,6 +1238,83 @@ def test_dataset_manifest_docs_cover_issue_250_contract() -> None:
     assert "mock-evaluation-fixtures.json" in bundle_tests
 
 
+def test_provider_contract_cli_docs_cover_issue_251_contract() -> None:
+    authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
+    external = (ROOT / "docs/src/external-providers.md").read_text(encoding="utf-8")
+    cli_docs = (ROOT / "docs/src/cli.md").read_text(encoding="utf-8")
+    schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    implementation = (ROOT / "src/worldforge/provider_contracts.py").read_text(encoding="utf-8")
+    cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    exports = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
+    tests = (ROOT / "tests/test_provider_contracts.py").read_text(encoding="utf-8")
+    entry_tests = (ROOT / "tests/test_provider_entry_points.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "worldforge provider contract mock --format markdown",
+        "--factory my_pkg.adapters:make_my_policy_provider",
+        "`--live`",
+        "skipped host-owned checks",
+        "validation commands",
+        "does not claim physical fidelity",
+    ):
+        assert signal in authoring
+    for signal in (
+        "## Contract CLI",
+        "worldforge provider contract my-policy --format json",
+        "safe-to-attach JSON or Markdown evidence",
+        "skipped host-owned\nchecks",
+        "``--live``",
+        "``--score-info``",
+    ):
+        assert signal in external
+    assert "uv run worldforge provider contract mock --format json" in cli_docs
+    assert "Provider contract evidence" in schemas
+    assert "PROVIDER_CONTRACT_EVIDENCE_SCHEMA_VERSION" in schemas
+    assert "external adapter authors" in changelog
+    assert "`worldforge provider contract` output is issue-facing evidence" in agents
+    for checkbox in (
+        "- [x] CLI can run contract checks for mock and fixture-backed providers.",
+        "- [x] Unsupported or unimplemented advertised capabilities fail loudly.",
+        "- [x] Output is safe to attach and includes validation commands.",
+        "- [x] Docs link the CLI from provider authoring and external provider docs.",
+    ):
+        assert checkbox in roadmap
+
+    for implementation_signal in (
+        "PROVIDER_CONTRACT_EVIDENCE_SCHEMA_VERSION",
+        "class ProviderContractEvidence",
+        "class ProviderContractCheck",
+        "provider_from_factory_path",
+        "run_provider_contract",
+        "_host_owned_skips",
+        "_safe_detail",
+    ):
+        assert implementation_signal in implementation
+    for cli_signal in (
+        "provider contract",
+        "_cmd_provider_contract",
+        "load_json_contract_input",
+        "provider_from_factory_path",
+    ):
+        assert cli_signal in cli
+    for export_signal in (
+        "PROVIDER_CONTRACT_EVIDENCE_SCHEMA_VERSION",
+        "ProviderContractEvidence",
+        "run_provider_contract",
+    ):
+        assert export_signal in exports
+    for test_signal in (
+        "test_provider_contract_cli_runs_mock_provider",
+        "test_provider_contract_cli_reports_direct_factory_failure",
+        "test_provider_contract_cli_skips_configured_remote_without_live",
+    ):
+        assert test_signal in tests
+    assert "test_discovery_loads_valid_entry_point" in entry_tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
@@ -1875,6 +1952,11 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
             "Provider runtime manifests",
             "MANIFEST_SCHEMA_VERSION",
             "src/worldforge/providers/runtime_manifest.py",
+        ),
+        (
+            "Provider contract evidence",
+            "PROVIDER_CONTRACT_EVIDENCE_SCHEMA_VERSION",
+            "src/worldforge/provider_contracts.py",
         ),
         (
             "Capability negotiation reports",

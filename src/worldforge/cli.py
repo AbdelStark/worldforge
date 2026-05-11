@@ -60,6 +60,7 @@ CLI_EPILOG = """Common commands:
   worldforge provider list
   worldforge provider docs
   worldforge provider info mock
+  worldforge provider contract mock
   worldforge provider workbench mock
   worldforge harness --list
   worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
@@ -532,6 +533,45 @@ def _build_parser() -> argparse.ArgumentParser:
         "--capability",
         choices=CAPABILITY_NAMES,
         help="Filter providers by capability name.",
+    )
+
+    provider_contract = provider_subparsers.add_parser(
+        "contract",
+        help="Run provider contract checks and emit issue-ready evidence.",
+    )
+    provider_contract.add_argument("name", nargs="?", help="Registered or known provider name.")
+    provider_contract.add_argument(
+        "--factory",
+        help="Direct provider factory path as module:factory.",
+    )
+    provider_contract.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="Output format for contract evidence.",
+    )
+    provider_contract.add_argument(
+        "--live",
+        action="store_true",
+        help="Allow live provider calls on a prepared host.",
+    )
+    provider_contract.add_argument(
+        "--score-info",
+        type=Path,
+        help="JSON score info payload for score providers.",
+    )
+    provider_contract.add_argument(
+        "--score-candidates",
+        type=Path,
+        help="JSON action candidates payload for score providers.",
+    )
+    provider_contract.add_argument(
+        "--policy-info",
+        type=Path,
+        help="JSON policy info payload for policy providers.",
+    )
+    provider_contract.add_argument(
+        "--state-dir", default=".worldforge/worlds", help="World state directory."
     )
 
     provider_docs = provider_subparsers.add_parser(
@@ -1602,11 +1642,53 @@ def _cmd_provider_health(args: argparse.Namespace, forge: WorldForge) -> int:
     return 0
 
 
+def _cmd_provider_contract(args: argparse.Namespace, forge: WorldForge) -> int:
+    from worldforge.provider_contracts import (
+        load_json_contract_input,
+        provider_from_factory_path,
+        run_provider_contract,
+    )
+
+    if args.factory and args.name:
+        raise WorldForgeError("provider contract accepts either a provider name or --factory.")
+    if args.factory:
+        provider = provider_from_factory_path(args.factory)
+        registered = False
+        factory_path = args.factory
+    else:
+        if not args.name:
+            raise WorldForgeError("provider contract requires a provider name or --factory.")
+        provider = forge._registered_or_known_provider(args.name, include_known=True)
+        if provider is None:
+            raise ProviderError(f"Provider '{args.name}' is unknown.")
+        registered = args.name in forge.providers()
+        factory_path = None
+
+    evidence = run_provider_contract(
+        provider,
+        registered=registered,
+        factory_path=factory_path,
+        live=args.live,
+        score_info=load_json_contract_input(args.score_info, name="score-info"),
+        score_action_candidates=load_json_contract_input(
+            args.score_candidates,
+            name="score-candidates",
+        ),
+        policy_info=load_json_contract_input(args.policy_info, name="policy-info"),
+    )
+    if args.format == "json":
+        print(evidence.to_json(), end="")
+    else:
+        print(evidence.to_markdown(), end="")
+    return 0 if evidence.status == "passed" else 1
+
+
 def _cmd_provider(args: argparse.Namespace, forge: WorldForge) -> int | None:
     provider_dispatch = {
         "list": _cmd_provider_list,
         "info": _cmd_provider_info,
         "health": _cmd_provider_health,
+        "contract": _cmd_provider_contract,
     }
     handler = provider_dispatch.get(args.provider_command)
     if handler is None:

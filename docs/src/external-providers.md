@@ -43,6 +43,24 @@ Three rules:
    ``configured()`` must return ``True`` for the provider to be auto-registered. Hosts can
    still register an unconfigured provider explicitly via ``forge.register_provider(...)``.
 
+## Contract CLI
+
+Run the provider contract CLI before opening an issue or PR for an external adapter:
+
+```bash
+uv run worldforge provider contract my-policy --format json
+uv run worldforge provider contract --factory my_pkg.adapters:make_my_policy_provider --format markdown
+```
+
+The command accepts either a registered provider name or a direct ``module:factory`` path. It emits
+safe-to-attach JSON or Markdown evidence with provider metadata, passed checks, skipped host-owned
+checks, failures, next steps, and validation commands.
+
+WorldForge does not call non-local provider capabilities by default. A configured remote, robotics,
+or optional-runtime provider records those capability checks as skipped until the host reruns with
+``--live`` on a prepared machine. Use ``--score-info``, ``--score-candidates``, and
+``--policy-info`` when a score or policy adapter needs provider-native fixture payloads.
+
 ## Failure behaviour
 
 Discovery never crashes the host. Each entry-point that cannot be wrapped is recorded with a
@@ -103,5 +121,6 @@ diagnostics rather than a machine-parseable contract. Treat them like log messag
 
 ```bash
 uv run pytest tests/test_provider_entry_points.py tests/test_provider_catalog.py
+uv run pytest tests/test_provider_contracts.py
 uv run mkdocs build --strict
 ```

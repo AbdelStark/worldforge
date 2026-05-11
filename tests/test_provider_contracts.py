@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import inspect
+import json
+import sys
 
 import pytest
 
 import worldforge.testing.providers as provider_testing
 from worldforge import Action, ActionPolicyResult, ActionScoreResult, ProviderCapabilities
+from worldforge.cli import main as worldforge_main
 from worldforge.models import ProviderEvent, ProviderHealth
 from worldforge.providers import (
     BaseProvider,
@@ -123,6 +126,56 @@ class FakePolicyProvider(BaseProvider):
         )
 
 
+class BrokenContractProvider(BaseProvider):
+    def __init__(self, *, event_handler=None) -> None:
+        super().__init__(
+            name="broken-contract",
+            capabilities=ProviderCapabilities(predict=True),
+            profile=ProviderProfileSpec(
+                description="Fixture provider that advertises a broken predict surface",
+                is_local=True,
+                deterministic=True,
+            ),
+            event_handler=event_handler,
+        )
+
+    def predict(self, world_state, action, steps) -> PredictionPayload:
+        return PredictionPayload(
+            state={"scene": {"objects": {}}},
+            confidence=0.5,
+            physics_score=0.5,
+            frames=[],
+            metadata={"provider": self.name},
+            latency_ms=0.1,
+        )
+
+
+def make_broken_contract_provider(event_handler=None) -> BrokenContractProvider:
+    return BrokenContractProvider(event_handler=event_handler)
+
+
+class RemoteConfiguredPredictProvider(BaseProvider):
+    def __init__(self, *, event_handler=None) -> None:
+        super().__init__(
+            name="remote-contract",
+            capabilities=ProviderCapabilities(predict=True),
+            profile=ProviderProfileSpec(
+                description="Configured remote fixture for host-owned skip evidence",
+                is_local=False,
+                deterministic=False,
+                requires_credentials=False,
+            ),
+            event_handler=event_handler,
+        )
+
+    def predict(self, world_state, action, steps) -> PredictionPayload:
+        raise AssertionError("remote predict should require --live before invocation")
+
+
+def make_remote_configured_predict_provider(event_handler=None) -> RemoteConfiguredPredictProvider:
+    return RemoteConfiguredPredictProvider(event_handler=event_handler)
+
+
 def test_capability_specific_score_and_policy_helpers() -> None:
     score = assert_score_conformance(
         FakeScoreProvider(),
@@ -227,3 +280,83 @@ def test_jepa_no_longer_exposes_scaffold_surrogate(monkeypatch) -> None:
 
     with pytest.raises(ProviderError, match="does not implement embed"):
         JepaProvider().embed(text="cube")
+
+
+def test_provider_contract_cli_runs_mock_provider(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["worldforge", "provider", "contract", "mock", "--format", "json"],
+    )
+
+    assert worldforge_main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 1
+    assert payload["status"] == "passed"
+    assert payload["provider"] == "mock"
+    assert payload["registered"] is True
+    assert payload["safe_to_attach"] is True
+    assert payload["validation_commands"][0] == (
+        "uv run worldforge provider contract mock --format json"
+    )
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert checks["metadata"]["status"] == "passed"
+    for capability in ("predict", "reason", "embed", "generate", "transfer"):
+        assert checks[capability]["status"] == "passed"
+
+
+def test_provider_contract_cli_reports_direct_factory_failure(monkeypatch, capsys) -> None:
+    factory_path = f"{__name__}:make_broken_contract_provider"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "provider",
+            "contract",
+            "--factory",
+            factory_path,
+            "--format",
+            "json",
+        ],
+    )
+
+    assert worldforge_main() == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["provider"] == "broken-contract"
+    assert payload["registered"] is False
+    assert payload["factory_path"] == factory_path
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert checks["metadata"]["status"] == "passed"
+    assert checks["capability-contract"]["status"] == "failed"
+    assert "invalid world state" in checks["capability-contract"]["detail"]
+    assert f"--factory {factory_path}" in checks["capability-contract"]["next_step"]
+
+
+def test_provider_contract_cli_skips_configured_remote_without_live(monkeypatch, capsys) -> None:
+    factory_path = f"{__name__}:make_remote_configured_predict_provider"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "provider",
+            "contract",
+            "--factory",
+            factory_path,
+            "--format",
+            "json",
+        ],
+    )
+
+    assert worldforge_main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert payload["status"] == "passed"
+    assert payload["skipped_count"] == 1
+    assert checks["predict"]["status"] == "skipped"
+    assert "requires --live" in checks["predict"]["detail"]

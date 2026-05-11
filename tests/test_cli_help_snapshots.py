@@ -43,6 +43,33 @@ options:
   --format {markdown,json}
                         Output format for provider docs metadata.
 """,
+    ("provider", "contract", "--help"): """\
+usage: worldforge provider contract [-h] [--factory FACTORY]
+                                    [--format {markdown,json}] [--live]
+                                    [--score-info SCORE_INFO]
+                                    [--score-candidates SCORE_CANDIDATES]
+                                    [--policy-info POLICY_INFO]
+                                    [--state-dir STATE_DIR]
+                                    [name]
+
+positional arguments:
+  name                  Registered or known provider name.
+
+options:
+  -h, --help            show this help message and exit
+  --factory FACTORY     Direct provider factory path as module:factory.
+  --format {markdown,json}
+                        Output format for contract evidence.
+  --live                Allow live provider calls on a prepared host.
+  --score-info SCORE_INFO
+                        JSON score info payload for score providers.
+  --score-candidates SCORE_CANDIDATES
+                        JSON action candidates payload for score providers.
+  --policy-info POLICY_INFO
+                        JSON policy info payload for policy providers.
+  --state-dir STATE_DIR
+                        World state directory.
+""",
     ("world", "create", "--help"): """\
 usage: worldforge world create [-h] [--provider PROVIDER] [--prompt PROMPT]
                                [--description DESCRIPTION]
@@ -299,6 +326,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "worldforge provider list",
         "worldforge provider docs",
         "worldforge provider info mock",
+        "worldforge provider contract mock",
         "worldforge harness --list",
         "worldforge eval --suite planning --provider mock --format json",
         "worldforge runs list",

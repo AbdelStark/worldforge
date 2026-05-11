@@ -27,6 +27,10 @@ releases may still include breaking changes when the public API needs to tighten
   paths, remote references, host-owned asset records, checksums, license/provenance/privacy/safety
   fields, and evidence-bundle copying of safe source-controlled manifest files without embedding
   datasets.
+- Added `worldforge provider contract` for external adapter authors. It runs metadata and
+  capability-aware provider contract checks for registered providers or direct `module:factory`
+  paths, emits safe-to-attach JSON/Markdown evidence with skipped host-owned checks and validation
+  commands, and keeps live provider calls behind an explicit `--live` flag.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

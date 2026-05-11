@@ -314,6 +314,7 @@ uv run worldforge world export <world-id> --output world.json           # portab
 uv run worldforge world delete <world-id>                               # remove local JSON state
 uv run worldforge provider list                                         # registered providers
 uv run worldforge provider info mock                                    # capability and lifecycle surface
+uv run worldforge provider contract mock --format json                  # attachable contract evidence
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 uv run worldforge eval --suite planning --provider mock --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format json

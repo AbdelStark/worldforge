@@ -943,10 +943,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] CLI can run contract checks for mock and fixture-backed providers.
-- [ ] Unsupported or unimplemented advertised capabilities fail loudly.
-- [ ] Output is safe to attach and includes validation commands.
-- [ ] Docs link the CLI from provider authoring and external provider docs.
+- [x] CLI can run contract checks for mock and fixture-backed providers.
+- [x] Unsupported or unimplemented advertised capabilities fail loudly.
+- [x] Output is safe to attach and includes validation commands.
+- [x] Docs link the CLI from provider authoring and external provider docs.
 
 Validation:
 

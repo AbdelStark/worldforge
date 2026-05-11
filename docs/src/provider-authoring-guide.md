@@ -617,6 +617,27 @@ Use the capability-specific helper when a fixture or injected runtime exercises 
 Use `assert_provider_contract(...)` when the test can safely exercise every declared capability for
 the provider.
 
+### Contract CLI Evidence
+
+External adapter authors can run the same contract surface from the CLI and attach the output to an
+issue or PR:
+
+```bash
+uv run worldforge provider contract mock --format markdown
+uv run worldforge provider contract --factory my_pkg.adapters:make_my_policy_provider --format json
+```
+
+The command checks provider metadata first, selects capability checks from the provider profile, and
+prints JSON or Markdown evidence with passed checks, skipped host-owned checks, failures, next
+steps, and validation commands. Registered providers can be named directly. Adapters that are not
+installed through the `worldforge.providers` entry-point group can use `--factory module:factory`.
+
+Live capability calls against non-local providers are skipped unless the host explicitly passes
+`--live`. Score and policy providers can supply fixture payloads with `--score-info`,
+`--score-candidates`, and `--policy-info`; otherwise the command uses the checkout-safe contract
+fixtures where possible. Passing CLI evidence is adapter-contract evidence only. It is not automatic
+promotion evidence and does not claim physical fidelity, media quality, or robot safety.
+
 Remote providers:
 
 - [ ] No tests require live credentials.
