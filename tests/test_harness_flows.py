@@ -37,6 +37,17 @@ def _copy_json_payload(value: object) -> object:
     return json.loads(json.dumps(value))
 
 
+def _contains_dict_key(value: object, key: str) -> bool:
+    if isinstance(value, dict):
+        return any(
+            item_key == key or _contains_dict_key(item_value, key)
+            for item_key, item_value in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_dict_key(item, key) for item in value)
+    return False
+
+
 def _write_cosmos_replay_payload(tmp_path: Path, name: str, payload: object) -> Path:
     path = tmp_path / name
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -275,7 +286,60 @@ def test_harness_runs_robotics_compare_flow(tmp_path) -> None:
     assert comparison["source_validation"]["gr00t-replay"] == (
         "validated live on RTX A6000; committed artifact is sanitized"
     )
-    assert "observation" not in json.dumps(comparison)
+    assert not _contains_dict_key(comparison, "observation")
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "flow_id", "summary", "missing_key"),
+    [
+        (
+            "_robotics_compare_lerobot_row",
+            "lerobot",
+            {"selected_candidate_index": 0, "candidate_costs": [0.0], "selected_actions": []},
+            "policy_candidate_count",
+        ),
+        (
+            "_robotics_compare_cosmos_row",
+            "cosmos-policy",
+            {
+                "providers": ["cosmos-policy"],
+                "model": "cosmos",
+                "candidate_count": 1,
+                "selected_candidate_index": 0,
+                "value_prediction": None,
+                "translated_action_count": 50,
+            },
+            "raw_action_shape",
+        ),
+        (
+            "_robotics_compare_groot_row",
+            "gr00t-replay",
+            {
+                "providers": ["gr00t"],
+                "model": "gr00t",
+                "embodiment_tag": "DROID",
+                "latency_ms": 1.0,
+                "translated_action_count": 40,
+            },
+            "raw_action_shapes",
+        ),
+    ],
+)
+def test_harness_robotics_compare_rows_report_missing_keys(
+    helper_name: str,
+    flow_id: str,
+    summary: dict,
+    missing_key: str,
+) -> None:
+    from worldforge.harness import flows
+
+    helper = getattr(flows, helper_name)
+
+    with pytest.raises(
+        WorldStateError,
+        match=rf"{flow_id} comparison summary missing required key '{missing_key}'",
+    ):
+        helper(summary)
 
 
 def test_harness_robotics_compare_flow_can_emit_transcript(tmp_path, capsys) -> None:

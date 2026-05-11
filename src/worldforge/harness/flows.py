@@ -1716,55 +1716,74 @@ def _run_robotics_compare_demo(*, state_dir: Path, emit: bool = False) -> JSONDi
 
 
 def _robotics_compare_lerobot_row(summary: JSONDict) -> JSONDict:
-    selected_index = int(summary["selected_candidate_index"])
-    candidate_costs = list(summary["candidate_costs"])
-    selected_cost = candidate_costs[selected_index]
-    return {
-        "flow_id": "lerobot",
-        "provider": "lerobot",
-        "model": "injected deterministic LeRobot-shaped policy",
-        "source": "checkout-safe policy plus score demo",
-        "raw_shape": f"{summary['policy_candidate_count']} candidate chunks",
-        "candidate_count": int(summary["policy_candidate_count"]),
-        "selected_candidate_index": selected_index,
-        "selected_score": float(selected_cost),
-        "translated_action_count": len(summary["selected_actions"]),
-        "events": len(summary.get("event_phases", [])),
-        "artifact": "run summary only",
-    }
+    try:
+        selected_index = int(summary["selected_candidate_index"])
+        candidate_costs = list(summary["candidate_costs"])
+        selected_cost = candidate_costs[selected_index]
+        return {
+            "flow_id": "lerobot",
+            "provider": "lerobot",
+            "model": "injected deterministic LeRobot-shaped policy",
+            "source": "checkout-safe policy plus score demo",
+            "raw_shape": f"{summary['policy_candidate_count']} candidate chunks",
+            "candidate_count": int(summary["policy_candidate_count"]),
+            "selected_candidate_index": selected_index,
+            "selected_score": float(selected_cost),
+            "translated_action_count": len(summary["selected_actions"]),
+            "events": len(summary.get("event_phases", [])),
+            "artifact": "run summary only",
+        }
+    except KeyError as exc:
+        raise WorldStateError(f"lerobot comparison summary missing required key {exc!s}.") from exc
+    except (IndexError, TypeError, ValueError) as exc:
+        raise WorldStateError(f"lerobot comparison summary is malformed: {exc}") from exc
 
 
 def _robotics_compare_cosmos_row(summary: JSONDict) -> JSONDict:
-    raw_shape = " x ".join(str(item) for item in summary["raw_action_shape"])
-    return {
-        "flow_id": "cosmos-policy",
-        "provider": str(summary["providers"][0]),
-        "model": summary["model"],
-        "source": "sanitized ALOHA /act replay",
-        "raw_shape": raw_shape,
-        "candidate_count": int(summary["candidate_count"]),
-        "selected_candidate_index": int(summary["selected_candidate_index"]),
-        "value_prediction": summary["value_prediction"],
-        "translated_action_count": int(summary["translated_action_count"]),
-        "events": len(summary.get("event_phases", [])),
-        "artifact": "artifacts/cosmos-policy-replay.json",
-    }
+    try:
+        raw_shape = " x ".join(str(item) for item in summary["raw_action_shape"])
+        return {
+            "flow_id": "cosmos-policy",
+            "provider": str(summary["providers"][0]),
+            "model": summary["model"],
+            "source": "sanitized ALOHA /act replay",
+            "raw_shape": raw_shape,
+            "candidate_count": int(summary["candidate_count"]),
+            "selected_candidate_index": int(summary["selected_candidate_index"]),
+            "value_prediction": summary["value_prediction"],
+            "translated_action_count": int(summary["translated_action_count"]),
+            "events": len(summary.get("event_phases", [])),
+            "artifact": "artifacts/cosmos-policy-replay.json",
+        }
+    except KeyError as exc:
+        raise WorldStateError(
+            f"cosmos-policy comparison summary missing required key {exc!s}."
+        ) from exc
+    except (IndexError, TypeError, ValueError) as exc:
+        raise WorldStateError(f"cosmos-policy comparison summary is malformed: {exc}") from exc
 
 
 def _robotics_compare_groot_row(summary: JSONDict) -> JSONDict:
-    return {
-        "flow_id": "gr00t-replay",
-        "provider": str(summary["providers"][0]),
-        "model": summary["model"],
-        "source": "sanitized GR00T PolicyClient replay",
-        "raw_shape": _groot_shape_result(summary),
-        "raw_tensor_count": len(summary["raw_action_shapes"]),
-        "embodiment_tag": summary["embodiment_tag"],
-        "latency_ms": summary["latency_ms"],
-        "translated_action_count": int(summary["translated_action_count"]),
-        "events": len(summary.get("event_phases", [])),
-        "artifact": "artifacts/gr00t-replay.json",
-    }
+    try:
+        return {
+            "flow_id": "gr00t-replay",
+            "provider": str(summary["providers"][0]),
+            "model": summary["model"],
+            "source": "sanitized GR00T PolicyClient replay",
+            "raw_shape": _groot_shape_result(summary),
+            "raw_tensor_count": len(summary["raw_action_shapes"]),
+            "embodiment_tag": summary["embodiment_tag"],
+            "latency_ms": summary["latency_ms"],
+            "translated_action_count": int(summary["translated_action_count"]),
+            "events": len(summary.get("event_phases", [])),
+            "artifact": "artifacts/gr00t-replay.json",
+        }
+    except KeyError as exc:
+        raise WorldStateError(
+            f"gr00t-replay comparison summary missing required key {exc!s}."
+        ) from exc
+    except (IndexError, TypeError, ValueError) as exc:
+        raise WorldStateError(f"gr00t-replay comparison summary is malformed: {exc}") from exc
 
 
 def _harness_artifact_payload(summary: JSONDict, name: str) -> object:
