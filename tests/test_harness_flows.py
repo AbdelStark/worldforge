@@ -327,6 +327,35 @@ def test_harness_robotics_compare_preserves_replay_artifacts_on_subflow_failure(
     assert run.provider_events[-1]["phase"] == "failure"
 
 
+def test_harness_robotics_compare_preserves_other_artifacts_when_subflow_raises(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from worldforge.harness import flows
+
+    def failed_cosmos(*, state_dir: Path, emit: bool = False) -> dict:
+        _ = (state_dir, emit)
+        raise RuntimeError("transport exploded")
+
+    monkeypatch.setattr(flows, "_run_cosmos_policy_demo", failed_cosmos)
+
+    run = run_flow("robotics-compare", state_dir=tmp_path)
+
+    assert run.validation_errors == ("cosmos-policy: RuntimeError: transport exploded",)
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["artifact_paths"]["robotics_comparison"] == (
+        "artifacts/robotics-policy-comparison.json"
+    )
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    assert "cosmos_policy_replay" not in manifest["artifact_paths"]
+    assert run.provider_events[-1]["phase"] == "failure"
+    assert any(
+        event["metadata"].get("subflow_id") == "cosmos-policy" for event in run.provider_events
+    )
+
+
 @pytest.mark.parametrize(
     ("helper_name", "flow_id", "summary", "missing_key"),
     [
