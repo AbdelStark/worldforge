@@ -653,10 +653,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Gallery scenarios validate and run through the CLI.
-- [ ] Failure scenarios are intentionally marked and tested.
-- [ ] Docs show expected artifacts and first triage steps.
-- [ ] Scenario examples stay JSON-native and deterministic.
+- [x] Gallery scenarios validate and run through the CLI.
+- [x] Failure scenarios are intentionally marked and tested.
+- [x] Docs show expected artifacts and first triage steps.
+- [x] Scenario examples stay JSON-native and deterministic.
 
 Validation:
 

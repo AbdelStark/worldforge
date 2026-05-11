@@ -37,16 +37,48 @@
       "fixture_schema_version": 1,
       "path": "examples/scenarios/cube-on-table.json",
       "review_status": "tracked",
-      "sha256": "sha256:72b95ee161e971da5eb37a54b426dda56863819d81cd6e4b32f1111f8336c086",
-      "size_bytes": 799
+      "sha256": "sha256:8f4d316e72de6e82881b9ee6d2d34251aa9940ece56791df20d2e5ab9fad3e16",
+      "size_bytes": 936
+    },
+    {
+      "fixture_kind": "scenario-fixture",
+      "fixture_schema_version": 1,
+      "path": "examples/scenarios/evaluation-readiness.json",
+      "review_status": "tracked",
+      "sha256": "sha256:e1a5133c81d17bec96d4c69bef8ea7d9e3fcc4a8cd6e3a37fa3504fd1caaeeff",
+      "size_bytes": 1310
+    },
+    {
+      "fixture_kind": "scenario-fixture",
+      "fixture_schema_version": 1,
+      "path": "examples/scenarios/expected-failure-object-count.json",
+      "review_status": "tracked",
+      "sha256": "sha256:da96a94df9e1115400082b16f38530a8d386df3de9e4f7c79bca589ba0861b05",
+      "size_bytes": 941
+    },
+    {
+      "fixture_kind": "scenario-fixture",
+      "fixture_schema_version": 1,
+      "path": "examples/scenarios/invalid-action-missing-target.json",
+      "review_status": "tracked",
+      "sha256": "sha256:30440c4e7cad5cbebbbbf51a5e4af35dc7ae26cf836d549c7931e978d6b95cfb",
+      "size_bytes": 1092
+    },
+    {
+      "fixture_kind": "scenario-fixture",
+      "fixture_schema_version": 1,
+      "path": "examples/scenarios/report-export-basic.json",
+      "review_status": "tracked",
+      "sha256": "sha256:b670627576e23624658b896fac4df0903d0dc1900cca8531754f5ff3820b6f4d",
+      "size_bytes": 1262
     },
     {
       "fixture_kind": "scenario-fixture",
       "fixture_schema_version": 1,
       "path": "examples/scenarios/spawn-and-move.json",
       "review_status": "tracked",
-      "sha256": "sha256:4d202eb3b59ee2d73977044529c3e172043ccdd76cac10fd8a0e1da915112f46",
-      "size_bytes": 1129
+      "sha256": "sha256:7446e5ebe76840a2dbcd45b4095654d97110bbd29b382b519bd48d095b0be9dc",
+      "size_bytes": 1267
     },
     {
       "fixture_kind": "capability-fixture",

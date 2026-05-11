@@ -213,6 +213,9 @@ uv run python scripts/generate_dependency_audit_evidence.py
   benchmarks, incident triage, and release gates.
 - `docs/src/demo-showcases.md` and `docs/src/use-case-cookbook.md`: checkout-safe showcase
   workflow matrix, artifact contract, first triage steps, and task-oriented demo recipes.
+- `docs/src/scenarios.md` and `examples/scenarios/`: JSON-native scenario format plus the
+  checkout-safe local-world gallery for setup, failure, invalid-action, evaluation, and export
+  examples.
 - `docs/src/operations.md`: configuration, operational modes, persistence, observability, failure
   modes, recovery, release checklist, and provider hardening criteria.
 - `docs/src/provider-authoring-guide.md`: provider taxonomy, capability, validation,

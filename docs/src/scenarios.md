@@ -27,6 +27,33 @@ pairs for `assert_provider_contract()`. Scenarios drive a full
 not adapter-level test data. Scenarios can reference any registered
 provider; fixtures are scoped to a single adapter.
 
+## Scenario Gallery
+
+The checkout-safe gallery under `examples/scenarios/` gives contributors
+small starting points for local worlds and scenario-result artifacts:
+
+| Scenario | Intent | Expected artifact | First triage step |
+| --- | --- | --- | --- |
+| `cube-on-table.json` | successful world setup | passing JSON result with one object and two mock steps | inspect the initial cube pose and mock provider setup |
+| `spawn-and-move.json` | spawn plus predict workflow | passing result with two objects and two steps | inspect `spawn_object` bbox and the following predict step |
+| `expected-failure-object-count.json` | intentionally failed expectation | non-zero `scenario run` result with `passed: false` expectation row | confirm the mismatch is intentional before changing the scenario |
+| `invalid-action-missing-target.json` | invalid action boundary | `scenario validate` passes, `scenario run` fails with missing `z` | inspect `actions[0].parameters` for the missing coordinate |
+| `evaluation-readiness.json` | evaluation-oriented setup | passing result with two static objects and `step=0` | inspect the initial world object payload before changing evaluation code |
+| `report-export-basic.json` | report/export example | passing JSON or Markdown result suitable for `--output` attachment | compare scenario result JSON before checking world export |
+
+Run the gallery through the same CLI surface as any local scenario:
+
+```bash
+uv run worldforge scenario validate examples/scenarios/report-export-basic.json
+uv run worldforge scenario run examples/scenarios/report-export-basic.json \
+    --state-dir .worldforge/scenario-gallery/report-export --format markdown \
+    --output .worldforge/scenario-gallery/report-export.md
+```
+
+The failed and invalid examples are deliberate. They are marked in
+`metadata.expected_failure` or `metadata.expected_cli_error` so tests can
+prove the failure mode without weakening the normal CLI contract.
+
 ## Schema (version 1)
 
 <!-- worldforge-snippet: parse -->

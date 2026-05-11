@@ -1180,6 +1180,53 @@ def test_scenario_matrix_docs_cover_issue_249_contract() -> None:
         assert test_signal in tests
 
 
+def test_scenario_gallery_docs_cover_issue_243_contract() -> None:
+    scenarios = (ROOT / "docs/src/scenarios.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    tests = (ROOT / "tests/test_scenarios.py").read_text(encoding="utf-8")
+    manifest = (ROOT / "tests/fixtures/fixture-snapshots.json").read_text(encoding="utf-8")
+    scenario_paths = sorted((ROOT / "examples/scenarios").glob("*.json"))
+
+    assert len(scenario_paths) >= 5
+    for filename in (
+        "cube-on-table.json",
+        "spawn-and-move.json",
+        "expected-failure-object-count.json",
+        "invalid-action-missing-target.json",
+        "evaluation-readiness.json",
+        "report-export-basic.json",
+    ):
+        path = ROOT / "examples/scenarios" / filename
+        payload = path.read_text(encoding="utf-8")
+        assert '"gallery_intent"' in payload
+        assert filename in scenarios
+        assert f"examples/scenarios/{filename}" in manifest
+
+    for signal in (
+        "Scenario Gallery",
+        "metadata.expected_failure",
+        "metadata.expected_cli_error",
+        "scenario validate` passes, `scenario run` fails",
+        "--output .worldforge/scenario-gallery/report-export.md",
+        "Provider fixtures live under `tests/fixtures/providers/`",
+    ):
+        assert signal in scenarios
+
+    for checkbox in (
+        "- [x] Gallery scenarios validate and run through the CLI.",
+        "- [x] Failure scenarios are intentionally marked and tested.",
+        "- [x] Docs show expected artifacts and first triage steps.",
+        "- [x] Scenario examples stay JSON-native and deterministic.",
+    ):
+        assert checkbox in roadmap
+
+    assert "scenario gallery" in changelog
+    assert "checkout-safe local-world gallery" in agents
+    assert "test_scenario_gallery_cli_runs_expected_success_and_failure_modes" in tests
+
+
 def test_dataset_manifest_docs_cover_issue_250_contract() -> None:
     evaluation = (ROOT / "docs/src/evaluation.md").read_text(encoding="utf-8")
     artifact_schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")

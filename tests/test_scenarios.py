@@ -520,11 +520,89 @@ def test_scenario_run_cli_writes_output_file(tmp_path: Path, monkeypatch, capsys
 def test_bundled_sample_scenarios_validate_and_run(tmp_path: Path) -> None:
     sample_dir = Path(__file__).resolve().parents[1] / "examples" / "scenarios"
     samples = sorted(sample_dir.glob("*.json"))
-    assert samples, "examples/scenarios should contain at least one sample"
+    assert len(samples) >= 5
 
-    forge = WorldForge(state_dir=tmp_path)
+    intents: set[str] = set()
     for sample in samples:
         scenario = load_scenario(sample)
         assert isinstance(scenario, Scenario)
+        assert scenario.metadata
+        intent = str(scenario.metadata.get("gallery_intent", "world setup"))
+        intents.add(intent)
+        forge = WorldForge(state_dir=tmp_path / sample.stem)
+        if scenario.metadata.get("expected_cli_error") is True:
+            with pytest.raises(
+                WorldForgeError,
+                match=str(scenario.metadata["expected_error_contains"]),
+            ):
+                run_scenario(forge, scenario)
+            continue
+
         result = run_scenario(forge, scenario)
-        assert result.all_expectations_passed() is True
+        if scenario.metadata.get("expected_failure") is True:
+            assert result.all_expectations_passed() is False
+            assert any(not check.passed for check in result.expectation_checks)
+        else:
+            assert result.all_expectations_passed() is True
+
+    assert {
+        "world setup",
+        "failed expectation",
+        "invalid action",
+        "evaluation-oriented setup",
+        "report/export",
+    } <= intents
+
+
+def test_scenario_gallery_cli_runs_expected_success_and_failure_modes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    sample_dir = Path(__file__).resolve().parents[1] / "examples" / "scenarios"
+    samples = sorted(sample_dir.glob("*.json"))
+
+    for sample in samples:
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["worldforge", "scenario", "validate", str(sample), "--format", "json"],
+        )
+        assert worldforge_main() == 0
+        validated = json.loads(capsys.readouterr().out)
+        metadata = validated.get("metadata", {})
+
+        output = tmp_path / "outputs" / f"{sample.stem}.json"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "worldforge",
+                "scenario",
+                "run",
+                str(sample),
+                "--state-dir",
+                str(tmp_path / "worlds" / sample.stem),
+                "--format",
+                "json",
+                "--output",
+                str(output),
+            ],
+        )
+        if metadata.get("expected_cli_error") is True:
+            with pytest.raises(SystemExit) as excinfo:
+                worldforge_main()
+            assert excinfo.value.code == 2
+            error = capsys.readouterr().err
+            assert metadata["expected_error_contains"] in error
+            continue
+
+        exit_code = worldforge_main()
+        assert output.exists()
+        result = json.loads(output.read_text(encoding="utf-8"))
+        if metadata.get("expected_failure") is True:
+            assert exit_code == 1
+            assert result["all_expectations_passed"] is False
+        else:
+            assert exit_code == 0
+            assert result["all_expectations_passed"] is True

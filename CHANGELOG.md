@@ -33,6 +33,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a checkout-safe embodied policy replay comparison. It compares LeRobot, GR00T, and
   Cosmos-Policy policy contracts side by side, preserves provider-specific raw action metadata,
   records missing-translator blockers, and links each provider to its prepared-host live smoke.
+- Added a scenario gallery under `examples/scenarios/` covering successful world setup,
+  intentionally failed expectations, invalid action triage, evaluation-oriented setup, and
+  report/export output through the existing `worldforge scenario` CLI.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for
