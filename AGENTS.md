@@ -164,6 +164,9 @@ uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --
 uv run worldforge world list
 uv run worldforge world objects <world-id>
 uv run worldforge world history <world-id>
+uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
+uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world delete <world-id>
 uv run worldforge provider docs
@@ -360,6 +363,9 @@ generated documentation surfaces.
   mutation/predict/export/import/fork flows, and keep service-grade durability host-owned.
 - World IDs are file stems for local JSON persistence. Reject path separators, traversal-shaped
   values, and other non-file-safe IDs before loading, importing, or saving world state.
+- World migration previews are read-only issue-facing reports. They may report required changes,
+  invalid fields, unsafe IDs, and bounding-box corrections, but they must not rewrite local state
+  or silently repair malformed JSON.
 - Persisted history is part of the state contract: history entries must have non-negative steps,
   non-empty summaries, valid snapshot states, valid serialized `Action` payloads when present, and
   no entry step greater than the current world step. Scene object add/update/remove mutations

@@ -209,6 +209,8 @@ uv run worldforge world list
 uv run worldforge world objects <world-id>
 uv run worldforge world history <world-id>
 uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
+uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name lab-copy
 uv run worldforge world fork <world-id> --history-index 0 --name lab-start
@@ -248,6 +250,10 @@ Supported persistence invariants:
   reports missing state directories, unsafe requested IDs, corrupted worlds, invalid histories,
   incoherent object bounding boxes, stale run workspaces, unsafe run artifact paths, and retention
   pressure.
+- `world migration-preview` is read-only and accepts either a persisted world id or
+  `--source-path` for persisted/exported JSON. It reports schema version, required changes,
+  invalid fields, unsafe IDs, bounding-box corrections, and `can_apply_safely` without rewriting
+  the source file.
 - README and operations docs state that multi-writer persistence is host-owned.
 - Any future built-in persistence backend must be introduced as an explicit adapter with its own
   locking, migration, and recovery documentation.
@@ -271,6 +277,23 @@ Recovery commands in the report export diagnostics before moving invalid files i
 `.worldforge/quarantine/`. They do not run `rm` or silently delete user data. For retention pressure,
 the first command is `uv run worldforge runs cleanup --workspace-dir .worldforge --keep 20 --dry-run`;
 remove `--dry-run` only after the preserved evidence is no longer needed.
+
+Migration preview is the state-review command before applying a schema rewrite:
+
+```bash
+uv run worldforge world migration-preview <world-id> \
+  --state-dir .worldforge/worlds \
+  --format json > worldforge-migration-preview.json
+uv run worldforge world migration-preview world.json \
+  --source-path \
+  --format markdown > worldforge-migration-preview.md
+```
+
+Success signal: `safe_to_attach` and `read_only` are `true`. `status: passed` means no migration is
+required. `status: migration-needed` means the preview found schema defaults, legacy
+`position`-to-`pose.position` changes, or bounding-box corrections that can be reviewed before an
+explicit rewrite. `status: blocked` means invalid fields or unsafe IDs must be fixed outside the
+preview tool; WorldForge does not silently repair malformed local state.
 
 ## Run Workspaces
 

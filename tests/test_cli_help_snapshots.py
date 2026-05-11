@@ -128,6 +128,25 @@ options:
   --format {json,markdown}
                         Output format for the preflight report.
 """,
+    ("world", "migration-preview", "--help"): """\
+usage: worldforge world migration-preview [-h] [--state-dir STATE_DIR]
+                                          [--source-path]
+                                          [--format {json,markdown}]
+                                          source
+
+positional arguments:
+  source                World id relative to --state-dir, or a JSON file when
+                        --source-path is set.
+
+options:
+  -h, --help            show this help message and exit
+  --state-dir STATE_DIR
+                        World state directory used when source is a world id.
+  --source-path         Treat source as an explicit persisted or exported JSON
+                        file path.
+  --format {json,markdown}
+                        Output format for the migration preview report.
+""",
     ("harness", "--help"): """\
 usage: worldforge harness [-h]
                           [--flow {leworldmodel,lerobot,cosmos-policy,gr00t,diagnostics,workbench,eval,benchmark,runs}]
@@ -285,6 +304,8 @@ WORLD_HELP_COMMANDS: tuple[tuple[str, str], ...] = (
     ("export", "Export a persisted world as JSON."),
     ("import", "Import and save exported world JSON."),
     ("fork", "Fork a world from a history entry."),
+    ("diff", "Diff two persisted or exported world JSON snapshots."),
+    ("migration-preview", "Preview world JSON migration requirements without"),
     ("preflight", "Check local world JSON state and run workspaces without"),
 )
 

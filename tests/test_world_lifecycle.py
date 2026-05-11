@@ -14,6 +14,12 @@ from worldforge import (
     WorldForgeError,
     WorldStateError,
 )
+from worldforge.world_migration_preview import (
+    preview_world_migration,
+    preview_world_migration_from_path,
+    preview_world_migration_from_world_id,
+    render_world_migration_preview_markdown,
+)
 
 
 def test_world_prediction_compare_and_persistence_flow(tmp_path) -> None:
@@ -403,3 +409,158 @@ def test_world_import_rejects_malformed_history_entries(tmp_path) -> None:
     for payload, message in malformed_cases:
         with pytest.raises(WorldStateError, match=message):
             forge.import_world(json.dumps(payload))
+
+
+def test_world_migration_preview_accepts_current_persisted_and_exported_state(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("migration-ok", provider="mock")
+    world.add_object(
+        SceneObject(
+            "cube",
+            Position(0.0, 0.5, 0.0),
+            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+            id="cube-1",
+        )
+    )
+    world_id = forge.save_world(world)
+    persisted_path = tmp_path / f"{world_id}.json"
+    before = persisted_path.read_text(encoding="utf-8")
+
+    report = preview_world_migration_from_world_id(world_id, state_dir=tmp_path)
+
+    assert report["status"] == "passed"
+    assert report["safe_to_attach"] is True
+    assert report["read_only"] is True
+    assert report["can_apply_safely"] is True
+    assert report["schema"]["world_schema_version"] == 1
+    assert report["counts"] == {
+        "required_change_count": 0,
+        "invalid_field_count": 0,
+        "unsafe_id_count": 0,
+        "bounding_box_correction_count": 0,
+        "blocking_issue_count": 0,
+    }
+    assert persisted_path.read_text(encoding="utf-8") == before
+
+    exported_path = tmp_path / "exported-world.json"
+    exported_path.write_text(forge.export_world(world_id), encoding="utf-8")
+    exported = preview_world_migration_from_path(exported_path)
+
+    assert exported["status"] == "passed"
+    assert exported["source"]["payload_kind"] == "exported-json"
+    assert exported["schema"]["export_schema_version"] == 1
+    assert str(tmp_path) not in json.dumps(exported)
+
+
+def test_world_migration_preview_reports_legacy_schema_and_position_changes(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("legacy-world", provider="mock")
+    world.add_object(
+        SceneObject(
+            "cube",
+            Position(0.0, 0.5, 0.0),
+            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+            id="cube-1",
+        )
+    )
+    state = world.to_dict()
+    state.pop("schema_version")
+    state["history"][0]["state"].pop("schema_version")
+    object_state = state["scene"]["objects"]["cube-1"]
+    object_state["position"] = object_state["pose"]["position"]
+    del object_state["pose"]
+    original = json.dumps(state, sort_keys=True)
+
+    report = preview_world_migration(
+        state,
+        source={"kind": "fixture", "label": "<fixture>/legacy-world.json"},
+    )
+
+    assert report["status"] == "migration-needed"
+    assert report["can_apply_safely"] is True
+    assert report["counts"]["invalid_field_count"] == 0
+    kinds = {change["kind"] for change in report["required_changes"]}
+    assert {"add-schema-version", "promote-position-to-pose"} <= kinds
+    assert any(change["path"] == "state.schema_version" for change in report["required_changes"])
+    assert any(
+        "history[0].state.schema_version" in change["path"] for change in report["required_changes"]
+    )
+    assert json.dumps(state, sort_keys=True) == original
+
+
+def test_world_migration_preview_reports_invalid_fields_and_unsafe_ids(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("invalid-history", provider="mock")
+    state = world.to_dict()
+    state["history"][0]["summary"] = ""
+
+    invalid = preview_world_migration(
+        state,
+        source={"kind": "fixture", "label": "<fixture>/invalid-history.json"},
+    )
+
+    assert invalid["status"] == "blocked"
+    assert invalid["can_apply_safely"] is False
+    assert any("history[0]" in field["message"] for field in invalid["invalid_fields"])
+
+    unsafe_state = world.to_dict()
+    unsafe_state["scene"]["objects"]["../cube"] = {
+        "id": "../cube",
+        "name": "cube",
+        "pose": {
+            "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+            "rotation": {"w": 1, "x": 0, "y": 0, "z": 0},
+        },
+        "bbox": {
+            "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+            "max": {"x": 0.05, "y": 0.55, "z": 0.05},
+        },
+        "is_graspable": False,
+        "metadata": {},
+    }
+
+    unsafe = preview_world_migration(
+        unsafe_state,
+        source={"kind": "fixture", "label": "<fixture>/unsafe-object.json"},
+    )
+
+    assert unsafe["status"] == "blocked"
+    assert unsafe["counts"]["unsafe_id_count"] >= 1
+    assert unsafe["unsafe_ids"][0]["value"] == "<unsafe-object-id>"
+    assert "../cube" not in json.dumps(unsafe)
+
+
+def test_world_migration_preview_reports_bbox_correction_without_rewriting(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("bbox-preview", provider="mock")
+    world.add_object(
+        SceneObject(
+            "cube",
+            Position(0.0, 0.5, 0.0),
+            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+            id="cube-1",
+        )
+    )
+    world_id = forge.save_world(world)
+    path = tmp_path / f"{world_id}.json"
+    state = json.loads(path.read_text(encoding="utf-8"))
+    state["scene"]["objects"]["cube-1"]["bbox"] = {
+        "min": {"x": 10.0, "y": 10.0, "z": 10.0},
+        "max": {"x": 12.0, "y": 12.0, "z": 12.0},
+    }
+    path.write_text(json.dumps(state), encoding="utf-8")
+    before = path.read_text(encoding="utf-8")
+
+    report = preview_world_migration_from_world_id(world_id, state_dir=tmp_path)
+
+    assert report["status"] == "migration-needed"
+    assert report["can_apply_safely"] is True
+    correction = report["bounding_box_corrections"][0]
+    assert correction["object_id"] == "cube-1"
+    assert correction["proposed_bbox"]["min"] == {"x": -1.0, "y": -0.5, "z": -1.0}
+    assert correction["proposed_bbox"]["max"] == {"x": 1.0, "y": 1.5, "z": 1.0}
+    assert path.read_text(encoding="utf-8") == before
+
+    markdown = render_world_migration_preview_markdown(report)
+    assert "# WorldForge World Migration Preview" in markdown
+    assert "Bounding Box Corrections" in markdown

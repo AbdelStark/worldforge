@@ -1085,10 +1085,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Preview is read-only by default and works on a temp copy in tests.
-- [ ] Invalid state reports exact failure reasons instead of coercing silently.
-- [ ] Output can be attached to issues safely.
-- [ ] Docs explain import/export and local persistence migration boundaries.
+- [x] Preview is read-only by default and works on a temp copy in tests.
+- [x] Invalid state reports exact failure reasons instead of coercing silently.
+- [x] Output can be attached to issues safely.
+- [x] Docs explain import/export and local persistence migration boundaries.
 
 Validation:
 

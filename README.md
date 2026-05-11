@@ -310,6 +310,7 @@ uv run worldforge world list                                            # persis
 uv run worldforge world objects <world-id>                              # scene objects
 uv run worldforge world history <world-id>                              # object edits + predictions
 uv run worldforge world preflight                                       # read-only local state diagnostics
+uv run worldforge world migration-preview <world-id>                    # read-only schema review
 uv run worldforge world export <world-id> --output world.json           # portable state JSON
 uv run worldforge world delete <world-id>                               # remove local JSON state
 uv run worldforge provider list                                         # registered providers
@@ -473,7 +474,7 @@ surface and runtime-specific entrypoints:
   caller converts them into executable `Action` objects.
 - Local JSON persistence is single-writer and available through both Python APIs and
   `worldforge world` CLI commands. Services needing locking, transactions, or migrations own that
-  layer.
+  layer; `worldforge world migration-preview` reports schema changes before any explicit rewrite.
 - Built-in evaluation suites are deterministic contract harnesses. They are not physical-fidelity,
   media-quality, or real-world safety claims.
 - Evaluation dataset manifests cite fixture, remote, or host-owned asset provenance by digest and

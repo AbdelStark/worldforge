@@ -299,6 +299,8 @@ uv run worldforge world objects <world-id>
 uv run worldforge world show <world-id>
 uv run worldforge world history <world-id>
 uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
+uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name lab-copy
 uv run worldforge world fork <world-id> --history-index 0 --name lab-start
@@ -337,11 +339,17 @@ Success signal:
 - `world preflight` reports corrupted world JSON, traversal-shaped requested IDs, invalid history
   entries, incoherent object bounding boxes, stale run workspaces, unsafe artifact paths, and
   retention pressure without mutating local files.
+- `world migration-preview` reports schema versions, required changes, invalid fields, unsafe IDs,
+  bounding-box corrections, and `can_apply_safely` for persisted worlds or exported JSON without
+  mutating local files.
 
 Recovery guidance:
 
 - run `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
   --format json > worldforge-state-preflight.json` before moving or deleting any local state.
+- run `uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+  --format json > worldforge-migration-preview.json` before applying a schema rewrite to local
+  JSON; use `--source-path` for exported world JSON.
 - if local JSON is corrupted, restore from the host application's backup of exported world JSON.
 - if the report names stale run workspaces or unsafe artifact paths, export a run bundle when a
   manifest is valid; otherwise quarantine the run directory after preserving the preflight report.

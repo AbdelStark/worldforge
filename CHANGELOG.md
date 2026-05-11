@@ -40,6 +40,10 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a safe report-renderer registry for comparison and evidence bundle artifacts. Built-in
   JSON/Markdown/CSV/HTML renderers keep their output unchanged, while external code can register
   validated safe-to-attach or local-only renderers without file-based plugin loading.
+- Added read-only world migration previews through `worldforge world migration-preview`. The report
+  covers persisted worlds and exported world JSON, schema versions, required canonicalization
+  changes, invalid fields, unsafe IDs, bounding-box corrections, safe-to-attach status, and whether
+  an explicit migration can be applied safely without silently rewriting local state.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

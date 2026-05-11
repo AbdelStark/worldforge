@@ -68,6 +68,8 @@ uv run worldforge world show <world-id>
 uv run worldforge world objects <world-id>
 uv run worldforge world history <world-id>
 uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
+uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name imported-lab
 uv run worldforge world fork <world-id> --name forked-lab
@@ -84,6 +86,12 @@ rejected before filesystem access.
 corrupted world JSON, invalid history entries, object bounding-box coherence, preserved run
 manifests, stale run directories, unsafe artifact paths, and run-retention pressure. JSON output is
 safe to attach by default; the command exits non-zero when it finds error-severity state.
+
+`world migration-preview` is also read-only. It accepts either a persisted world id or
+`--source-path` pointing at persisted or exported world JSON, then reports the world schema version,
+required canonicalization changes, invalid fields, unsafe IDs, bounding-box corrections,
+`can_apply_safely`, and the first triage step. It does not rewrite state; actual migration remains
+an explicit second step.
 
 ## Scene Mutations And Prediction
 

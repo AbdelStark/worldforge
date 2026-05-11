@@ -1511,6 +1511,65 @@ def test_report_renderer_extension_docs_cover_issue_254_contract() -> None:
     assert "issue_bundle_artifact" in evidence_tests
 
 
+def test_world_migration_preview_docs_cover_issue_255_contract() -> None:
+    cli_docs = (ROOT / "docs/src/cli.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    implementation = (ROOT / "src/worldforge/world_migration_preview.py").read_text(
+        encoding="utf-8"
+    )
+    cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    lifecycle_tests = (ROOT / "tests/test_world_lifecycle.py").read_text(encoding="utf-8")
+    cli_tests = (ROOT / "tests/test_cli_world_commands.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "worldforge world migration-preview <world-id>",
+        "worldforge world migration-preview world.json --source-path",
+        "schema version",
+        "required changes",
+        "invalid fields",
+        "unsafe IDs",
+        "bounding-box corrections",
+        "can_apply_safely",
+        "does not rewrite state",
+    ):
+        assert signal in cli_docs or signal in operations or signal in playbooks
+    assert "World migration previews" in schemas
+    assert "WORLD_MIGRATION_PREVIEW_SCHEMA_VERSION" in schemas
+    assert "read-only world migration previews" in changelog
+    assert "World migration previews are read-only issue-facing reports" in agents
+    for checkbox in (
+        "- [x] Preview is read-only by default and works on a temp copy in tests.",
+        "- [x] Invalid state reports exact failure reasons instead of coercing silently.",
+        "- [x] Output can be attached to issues safely.",
+        "- [x] Docs explain import/export and local persistence migration boundaries.",
+    ):
+        assert checkbox in roadmap
+    for implementation_signal in (
+        "WORLD_MIGRATION_PREVIEW_SCHEMA_VERSION",
+        "preview_world_migration_from_world_id",
+        "preview_world_migration_from_path",
+        "render_world_migration_preview_markdown",
+        "bounding_box_corrections",
+        "can_apply_safely",
+    ):
+        assert implementation_signal in implementation
+    assert '"migration-preview"' in cli
+    assert "_cmd_world_migration_preview" in cli
+    for test_signal in (
+        "test_world_migration_preview_accepts_current_persisted_and_exported_state",
+        "test_world_migration_preview_reports_legacy_schema_and_position_changes",
+        "test_world_migration_preview_reports_invalid_fields_and_unsafe_ids",
+        "test_world_migration_preview_reports_bbox_correction_without_rewriting",
+    ):
+        assert test_signal in lifecycle_tests
+    assert "test_world_cli_migration_preview_is_read_only_and_attachable" in cli_tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")

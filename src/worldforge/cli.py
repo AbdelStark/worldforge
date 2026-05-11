@@ -56,6 +56,7 @@ CLI_EPILOG = """Common commands:
   worldforge world predict <world-id> --object-id <object-id> --x 0.4 --y 0.5 --z 0
   worldforge world list
   worldforge world preflight
+  worldforge world migration-preview <world-id>
   worldforge world objects <world-id>
   worldforge world history <world-id>
   worldforge world delete <world-id>
@@ -887,6 +888,32 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("json", "markdown"),
         default="json",
         help="Output format for the world diff.",
+    )
+
+    world_migration_preview = world_subparsers.add_parser(
+        "migration-preview",
+        help="Preview world JSON migration requirements without rewriting state.",
+    )
+    world_migration_preview.add_argument(
+        "source",
+        help="World id relative to --state-dir, or a JSON file when --source-path is set.",
+    )
+    world_migration_preview.add_argument(
+        "--state-dir",
+        type=Path,
+        default=Path(".worldforge/worlds"),
+        help="World state directory used when source is a world id.",
+    )
+    world_migration_preview.add_argument(
+        "--source-path",
+        action="store_true",
+        help="Treat source as an explicit persisted or exported JSON file path.",
+    )
+    world_migration_preview.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the migration preview report.",
     )
 
     world_preflight = world_subparsers.add_parser(
@@ -1954,6 +1981,24 @@ def _cmd_world_preflight(args: argparse.Namespace) -> int:
     return 1 if report["status"] == "failed" else 0
 
 
+def _cmd_world_migration_preview(args: argparse.Namespace) -> int:
+    from worldforge.world_migration_preview import (
+        preview_world_migration_from_path,
+        preview_world_migration_from_world_id,
+        render_world_migration_preview_markdown,
+    )
+
+    if args.source_path:
+        report = preview_world_migration_from_path(Path(args.source))
+    else:
+        report = preview_world_migration_from_world_id(args.source, state_dir=args.state_dir)
+    if args.format == "markdown":
+        print(render_world_migration_preview_markdown(report), end="")
+    else:
+        _print_json(report)
+    return 0 if report["can_apply_safely"] else 1
+
+
 def _cmd_world_diff(args: argparse.Namespace, forge: WorldForge) -> int:
     from worldforge.world_diff import diff_worlds, diff_worlds_from_paths
 
@@ -2664,9 +2709,11 @@ def main() -> int:
         except (ProviderError, WorldForgeError, ValueError) as exc:
             parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
-    if args.command == "world" and args.world_command == "preflight":
+    if args.command == "world" and args.world_command in {"preflight", "migration-preview"}:
         try:
-            return _cmd_world_preflight(args)
+            if args.world_command == "preflight":
+                return _cmd_world_preflight(args)
+            return _cmd_world_migration_preview(args)
         except (WorldForgeError, ValueError) as exc:
             parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
@@ -2719,6 +2766,11 @@ def _first_triage_step(args: argparse.Namespace, message: str) -> str:
     if command == "world":
         if getattr(args, "world_command", None) == "preflight":
             return "run `uv run worldforge world preflight --workspace-dir .worldforge`."
+        if getattr(args, "world_command", None) == "migration-preview":
+            return (
+                "run `uv run worldforge world migration-preview <world-id> --state-dir "
+                ".worldforge/worlds --format json`."
+            )
         return (
             "run `uv run worldforge world list --state-dir <state-dir>` and retry with a "
             "listed world id."
