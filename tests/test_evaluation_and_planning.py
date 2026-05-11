@@ -13,8 +13,13 @@ from worldforge import (
     StructuredGoal,
     WorldForge,
     WorldForgeError,
+    action_candidates_to_score_payload,
+    bounded_move_grid_candidates,
+    cartesian_offset_candidates,
     list_eval_suites,
+    object_near_candidates,
     run_eval,
+    swap_action_candidates,
 )
 from worldforge.evaluation import (
     EvaluationReport,
@@ -143,6 +148,119 @@ def test_evaluation_result_contract_rejects_invalid_public_payloads() -> None:
         )
     with pytest.raises(WorldForgeError, match="EvaluationReport results"):
         EvaluationReport("suite", "Suite", [object()])  # type: ignore[list-item]
+
+
+def test_action_candidate_helpers_return_validated_action_sequences() -> None:
+    plans = cartesian_offset_candidates(
+        Position(0.0, 0.5, 0.0),
+        [
+            Position(0.1, 0.0, 0.0),
+            [Position(0.2, 0.0, 0.0), Position(0.4, 0.0, 0.0)],
+        ],
+        object_id="cube-1",
+    )
+    assert [[action.to_dict() for action in plan] for plan in plans] == [
+        [
+            {
+                "type": "move_to",
+                "parameters": {
+                    "target": {"x": 0.1, "y": 0.5, "z": 0.0},
+                    "speed": 1.0,
+                    "object_id": "cube-1",
+                },
+            }
+        ],
+        [
+            {
+                "type": "move_to",
+                "parameters": {
+                    "target": {"x": 0.2, "y": 0.5, "z": 0.0},
+                    "speed": 1.0,
+                    "object_id": "cube-1",
+                },
+            },
+            {
+                "type": "move_to",
+                "parameters": {
+                    "target": {"x": 0.4, "y": 0.5, "z": 0.0},
+                    "speed": 1.0,
+                    "object_id": "cube-1",
+                },
+            },
+        ],
+    ]
+
+    near = object_near_candidates(
+        Position(0.5, 0.5, 0.0),
+        [Position(0.1, 0.0, 0.0)],
+        object_id="cube-1",
+    )
+    assert near[0][0].parameters["target"] == {"x": 0.6, "y": 0.5, "z": 0.0}
+
+    swap = swap_action_candidates(
+        first_object_id="cube-1",
+        first_position=Position(0.0, 0.5, 0.0),
+        second_object_id="mug-1",
+        second_position=Position(0.4, 0.8, 0.0),
+    )
+    assert len(swap) == 2
+    assert [action.parameters["object_id"] for action in swap[0]] == ["cube-1", "mug-1"]
+    assert action_candidates_to_score_payload(swap)[0][0]["parameters"]["target"] == {
+        "x": 0.4,
+        "y": 0.8,
+        "z": 0.0,
+    }
+
+
+def test_bounded_move_grid_candidates_validate_bounds_and_non_finite_inputs() -> None:
+    grid = bounded_move_grid_candidates(
+        x_bounds=(0.1, 0.7),
+        y_bounds=(0.5, 0.5),
+        z_bounds=(0.0, 0.0),
+        x_steps=3,
+        y_steps=1,
+        z_steps=1,
+        object_id="cube-1",
+    )
+
+    assert [candidate[0].parameters["target"]["x"] for candidate in grid] == [0.1, 0.4, 0.7]
+
+    with pytest.raises(WorldForgeError, match="x_bounds lower bound"):
+        bounded_move_grid_candidates(
+            x_bounds=(1.0, 0.0),
+            y_bounds=(0.5, 0.5),
+            z_bounds=(0.0, 0.0),
+            x_steps=3,
+            y_steps=1,
+            z_steps=1,
+        )
+    with pytest.raises(WorldForgeError, match=r"y_bounds\[1\]"):
+        bounded_move_grid_candidates(
+            x_bounds=(0.0, 1.0),
+            y_bounds=(0.5, math.nan),
+            z_bounds=(0.0, 0.0),
+            x_steps=3,
+            y_steps=1,
+            z_steps=1,
+        )
+    with pytest.raises(WorldForgeError, match="x_steps"):
+        bounded_move_grid_candidates(
+            x_bounds=(0.0, 1.0),
+            y_bounds=(0.5, 0.5),
+            z_bounds=(0.0, 0.0),
+            x_steps=0,
+            y_steps=1,
+            z_steps=1,
+        )
+    with pytest.raises(WorldForgeError, match="offsets"):
+        cartesian_offset_candidates(Position(0.0, 0.0, 0.0), [])
+    with pytest.raises(WorldForgeError, match="distinct"):
+        swap_action_candidates(
+            first_object_id="cube-1",
+            first_position=Position(0.0, 0.5, 0.0),
+            second_object_id="cube-1",
+            second_position=Position(0.4, 0.8, 0.0),
+        )
 
 
 def test_structured_goal_targets_selected_object_and_validates_inputs(tmp_path) -> None:

@@ -858,6 +858,67 @@ def test_custom_evaluation_suite_authoring_docs_cover_issue_201_contract() -> No
         assert f"- [x] {criterion}" in expansion
 
 
+def test_action_candidate_helper_docs_cover_issue_204_contract() -> None:
+    python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    expansion = (ROOT / "docs/src/roadmap-expansion.md").read_text(encoding="utf-8")
+    action_candidates = (ROOT / "src/worldforge/action_candidates.py").read_text(encoding="utf-8")
+    root_init = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
+    demos = (ROOT / "src/worldforge/demos/__init__.py").read_text(encoding="utf-8")
+    planning_tests = (ROOT / "tests/test_evaluation_and_planning.py").read_text(encoding="utf-8")
+    leworldmodel_tests = (ROOT / "tests/test_leworldmodel_provider.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "bounded_move_grid_candidates",
+        "cartesian_offset_candidates",
+        "object_near_candidates",
+        "swap_action_candidates",
+        "action_candidates_to_score_payload",
+        "provider-agnostic",
+        "score_action_candidates",
+        "do not preprocess images",
+        "do not reinterpret robot action spaces",
+    ):
+        assert signal in python_api
+
+    for implementation_signal in (
+        "normalize_action_candidates",
+        "bounded_move_grid_candidates",
+        "cartesian_offset_candidates",
+        "object_near_candidates",
+        "swap_action_candidates",
+        "ActionCandidatePlans",
+        "lower bound must be less than or equal to upper bound",
+    ):
+        assert implementation_signal in action_candidates
+
+    for export_signal in (
+        "normalize_action_candidates",
+        "bounded_move_grid_candidates",
+        "cartesian_offset_candidates",
+        "object_near_candidates",
+        "swap_action_candidates",
+        "ActionCandidatePlans",
+        "action_candidates_to_score_payload",
+    ):
+        assert export_signal in root_init
+
+    assert "cartesian_offset_candidates" in demos
+    assert "test_action_candidate_helpers_return_validated_action_sequences" in planning_tests
+    assert "test_bounded_move_grid_candidates_validate_bounds_and_non_finite_inputs" in (
+        planning_tests
+    )
+    assert "bounded_move_grid_candidates" in leworldmodel_tests
+    assert "action candidate helpers" in changelog
+    for criterion in (
+        "Candidate helpers return validated `Action` sequences",
+        "Invalid bounds and non-finite inputs fail explicitly",
+        "Planning examples use helpers",
+        "Tests cover helper output and score-planning integration",
+    ):
+        assert f"- [x] {criterion}" in expansion
+
+
 def test_cross_provider_comparison_docs_cover_issue_150_contract() -> None:
     benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")

@@ -225,18 +225,23 @@ score provider. Pass `score_action_candidates` when the scorer expects a provide
 latent candidate payload:
 
 ```python
-from worldforge import Action
+from worldforge import action_candidates_to_score_payload, bounded_move_grid_candidates
 
+candidate_actions = bounded_move_grid_candidates(
+    x_bounds=(0.1, 0.7),
+    y_bounds=(0.5, 0.5),
+    z_bounds=(0.0, 0.0),
+    x_steps=3,
+    y_steps=1,
+    z_steps=1,
+)
 plan = world.plan(
     goal="choose the lowest-cost LeWorldModel action",
     provider="leworldmodel",
     planner="leworldmodel-mpc",
-    candidate_actions=[
-        [Action.move_to(0.1, 0.5, 0.0)],
-        [Action.move_to(0.4, 0.5, 0.0)],
-    ],
+    candidate_actions=candidate_actions,
     score_info=info,
-    score_action_candidates=action_candidates,
+    score_action_candidates=action_candidates_to_score_payload(candidate_actions),
     execution_provider="mock",
 )
 
@@ -247,6 +252,15 @@ Score-based plans do not ask the score provider to predict state. `Plan.predicte
 empty, score details are stored in `Plan.metadata`, and `execute_plan(...)` uses
 `execution_provider` when the scoring provider does not implement `predict()`. The planner requires
 one score per candidate action plan; mismatched score counts fail before a plan is returned.
+
+Candidate helpers are provider-agnostic and return validated `Action` sequences. Use
+`cartesian_offset_candidates(...)` for relative move candidates, `object_near_candidates(...)` for
+reference-relative placements, `swap_action_candidates(...)` for two-object swaps, and
+`bounded_move_grid_candidates(...)` for inclusive Cartesian grids. They do not preprocess images,
+do not infer provider-native tensors, and do not reinterpret robot action spaces; pass
+`score_action_candidates`
+explicitly when a score provider needs a task-specific tensor instead of serialized `Action`
+payloads.
 
 ## Action Policy
 

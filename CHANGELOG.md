@@ -59,6 +59,10 @@ releases may still include breaking changes when the public API needs to tighten
   `EvaluationScenario.from_callable(...)`, `EvaluationContext`, and `EvaluationScenarioOutcome`.
   Custom reports reuse the existing provenance, failure-gallery, artifact, and claim-boundary
   machinery while rejecting non-JSON metric payloads.
+- Added provider-agnostic action candidate helpers for score and policy+score workflows:
+  `cartesian_offset_candidates(...)`, `object_near_candidates(...)`,
+  `swap_action_candidates(...)`, `bounded_move_grid_candidates(...)`,
+  `normalize_action_candidates(...)`, and `action_candidates_to_score_payload(...)`.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import

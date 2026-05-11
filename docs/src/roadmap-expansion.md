@@ -870,10 +870,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Candidate helpers return validated `Action` sequences.
-- [ ] Invalid bounds and non-finite inputs fail explicitly.
-- [ ] Planning examples use helpers without changing provider capability claims.
-- [ ] Tests cover helper output and score-planning integration.
+- [x] Candidate helpers return validated `Action` sequences.
+- [x] Invalid bounds and non-finite inputs fail explicitly.
+- [x] Planning examples use helpers without changing provider capability claims.
+- [x] Tests cover helper output and score-planning integration.
 
 Validation:
 

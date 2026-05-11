@@ -21,6 +21,14 @@ except PackageNotFoundError:  # pragma: no cover - fallback for editable local i
     __version__ = "0.0.0"
 
 _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov by plugins
+    "ActionCandidatePlan": "worldforge.action_candidates",
+    "ActionCandidatePlans": "worldforge.action_candidates",
+    "action_candidates_to_score_payload": "worldforge.action_candidates",
+    "bounded_move_grid_candidates": "worldforge.action_candidates",
+    "cartesian_offset_candidates": "worldforge.action_candidates",
+    "normalize_action_candidates": "worldforge.action_candidates",
+    "object_near_candidates": "worldforge.action_candidates",
+    "swap_action_candidates": "worldforge.action_candidates",
     "BenchmarkBudget": "worldforge.benchmark",
     "BenchmarkGateReport": "worldforge.benchmark",
     "BenchmarkGateViolation": "worldforge.benchmark",
