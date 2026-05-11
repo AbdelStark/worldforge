@@ -5,7 +5,9 @@ from pathlib import Path
 import pytest
 
 from worldforge.harness.report_compare import (
+    compare_preserved_run_regression,
     compare_preserved_run_reports,
+    comparison_artifact,
     comparison_to_csv,
     comparison_to_markdown,
 )
@@ -159,6 +161,145 @@ def test_comparison_surfaces_missing_evidence_and_skip_reasons(tmp_path: Path) -
     assert "optional runtime unavailable" in markdown
 
 
+def test_regression_comparison_reports_improved_candidate(tmp_path: Path) -> None:
+    baseline = _benchmark_run(
+        tmp_path,
+        run_id="20260101T000000Z-00000001",
+        provider="mock",
+        average_latency_ms=12.0,
+        budget_passed=False,
+    )
+    candidate = _benchmark_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        provider="manual-mock",
+        average_latency_ms=8.0,
+        budget_passed=True,
+    )
+
+    payload = compare_preserved_run_reports(
+        [baseline.path, candidate.path],
+        mode="regression",
+    )
+
+    assert payload["mode"] == "regression"
+    assert payload["kind"] == "benchmark"
+    assert payload["regression_summary"]["status"] == "improved"
+    average_latency = _metric(payload, "average_latency_ms")
+    assert average_latency["delta"] == -4.0
+    assert average_latency["status"] == "improved"
+    assert payload["budget_status_changes"]["status"] == "improved"
+    assert payload["artifact_changes"]["status"] == "changed"
+
+    markdown = comparison_artifact(payload, output_format="markdown")
+    assert "# WorldForge Regression Comparison" in markdown
+    assert "Budget Status" in markdown
+    html = comparison_artifact(payload, output_format="html")
+    assert "WorldForge Regression Comparison" in html
+    assert "Regression Summary" in html
+    csv_output = comparison_artifact(payload, output_format="csv")
+    assert "metric,average_latency_ms,improved" in csv_output
+
+
+def test_regression_comparison_reports_regression_and_excludes_unsafe_artifacts(
+    tmp_path: Path,
+) -> None:
+    baseline = _benchmark_run(
+        tmp_path,
+        run_id="20260101T000000Z-00000001",
+        provider="mock",
+        average_latency_ms=10.0,
+        budget_passed=True,
+    )
+    candidate = _benchmark_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        provider="manual-mock",
+        average_latency_ms=15.0,
+        budget_passed=False,
+        errors=[{"message": "timeout"}],
+        unsafe_artifact=True,
+    )
+
+    payload = compare_preserved_run_regression([baseline.path, candidate.path])
+
+    assert payload["regression_summary"]["status"] == "regressed"
+    assert _metric(payload, "average_latency_ms")["status"] == "regressed"
+    assert payload["budget_status_changes"]["status"] == "budget-violation"
+    assert payload["failure_changes"]["new_failures"] == ["benchmark:predict:timeout"]
+    assert payload["artifact_changes"]["excluded_unsafe_count"] == 1
+    rendered = comparison_artifact(payload, output_format="markdown")
+    assert "/private/checkpoint.bin" not in rendered
+    assert "Unsafe artifacts excluded from rendered reports: `1`" in rendered
+
+
+def test_regression_comparison_supports_demo_showcase_runs(tmp_path: Path) -> None:
+    baseline = _demo_showcase_run(
+        tmp_path,
+        run_id="20260101T000000Z-00000001",
+        workflow="first-run",
+        status="passed",
+        safe_to_attach=True,
+        summary="baseline completed",
+    )
+    candidate = _demo_showcase_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        workflow="first-run",
+        status="failed",
+        safe_to_attach=False,
+        summary="candidate failed",
+    )
+
+    payload = compare_preserved_run_reports(
+        [baseline.path, candidate.path],
+        mode="regression",
+    )
+
+    assert payload["kind"] == "demo_showcase"
+    assert payload["regression_summary"]["status"] == "regressed"
+    assert _metric(payload, "safe_to_attach")["status"] == "regressed"
+    assert payload["failure_changes"]["new_failures"] == ["run:failed:failed"]
+
+
+def test_regression_comparison_reports_missing_baseline(tmp_path: Path) -> None:
+    candidate = _benchmark_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        provider="mock",
+        average_latency_ms=8.0,
+    )
+
+    with pytest.raises(WorldForgeError, match="Baseline run does not exist"):
+        compare_preserved_run_reports(
+            [tmp_path / "missing-baseline", candidate.path],
+            mode="regression",
+        )
+
+
+def test_regression_comparison_rejects_incompatible_run_schema(tmp_path: Path) -> None:
+    baseline = _benchmark_run(
+        tmp_path,
+        run_id="20260101T000000Z-00000001",
+        provider="mock",
+        average_latency_ms=10.0,
+    )
+    candidate = _benchmark_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        provider="manual-mock",
+        average_latency_ms=8.0,
+    )
+    manifest = baseline.manifest_path.read_text(encoding="utf-8")
+    baseline.manifest_path.write_text(
+        manifest.replace('"schema_version": 1', '"schema_version": 99'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(WorldForgeError, match="unsupported run workspace schema_version"):
+        compare_preserved_run_regression([baseline.path, candidate.path])
+
+
 def _benchmark_run(
     workspace_dir: Path,
     *,
@@ -171,6 +312,8 @@ def _benchmark_run(
     budget_digest: str = BUDGET_DIGEST,
     suite_version: str = "benchmark:1",
     budget_passed: bool | None = True,
+    errors: list[object] | None = None,
+    unsafe_artifact: bool = False,
 ):
     workspace = create_run_workspace(
         workspace_dir,
@@ -185,6 +328,7 @@ def _benchmark_run(
             "capabilities": [capability],
         },
     )
+    resolved_errors = list(errors or [])
     report = {
         "claim_boundary": "benchmark claim boundary",
         "run_metadata": {
@@ -216,21 +360,24 @@ def _benchmark_run(
                 "provider": provider,
                 "operation": operation,
                 "iterations": 2,
-                "success_count": 2,
-                "error_count": 0,
+                "success_count": 2 if not resolved_errors else 1,
+                "error_count": len(resolved_errors),
                 "retry_count": 1,
                 "average_latency_ms": average_latency_ms,
                 "p95_latency_ms": average_latency_ms,
                 "throughput_per_second": 4.0,
                 "operation_metrics": {"events": [{"request_count": 3}]},
-                "errors": [],
+                "errors": resolved_errors,
             }
         ],
     }
     workspace.write_json("reports/report.json", report)
-    result_summary = {"result_count": 1, "error_count": 0, "retry_count": 1}
+    result_summary = {"result_count": 1, "error_count": len(resolved_errors), "retry_count": 1}
     if budget_passed is not None:
         result_summary["budget_passed"] = budget_passed
+    artifact_paths = {"json": "reports/report.json"}
+    if unsafe_artifact:
+        artifact_paths["checkpoint"] = "/private/checkpoint.bin"
     write_run_manifest(
         workspace,
         kind="benchmark",
@@ -244,7 +391,7 @@ def _benchmark_run(
             "capabilities": [capability],
         },
         result_summary=result_summary,
-        artifact_paths={"json": "reports/report.json"},
+        artifact_paths=artifact_paths,
         event_count=3,
     )
     return workspace
@@ -361,3 +508,59 @@ def _minimal_skipped_benchmark_run(
         event_count=0,
     )
     return workspace
+
+
+def _demo_showcase_run(
+    workspace_dir: Path,
+    *,
+    run_id: str,
+    workflow: str,
+    status: str,
+    safe_to_attach: bool,
+    summary: str,
+):
+    workspace = create_run_workspace(
+        workspace_dir,
+        kind="demo_showcase",
+        command=f"uv run python scripts/demo_showcases.py run {workflow}",
+        provider="fixture",
+        operation=workflow,
+        run_id=run_id,
+        input_summary={"workflow": workflow, "issue": 189},
+    )
+    workspace.write_json(
+        "results/summary.json",
+        {
+            "status": status,
+            "safe_to_attach": safe_to_attach,
+            "summary": summary,
+            "first_triage_step": "inspect summary",
+        },
+    )
+    workspace.write_text("reports/summary.md", f"# {workflow}\n\n{summary}\n")
+    write_run_manifest(
+        workspace,
+        kind="demo_showcase",
+        command=f"uv run python scripts/demo_showcases.py run {workflow}",
+        provider="fixture",
+        operation=workflow,
+        status=status,
+        input_summary={"workflow": workflow, "issue": 189},
+        result_summary={
+            "summary": summary,
+            "safe_to_attach": safe_to_attach,
+            "failure_reason": "failed" if status == "failed" else "",
+        },
+        artifact_paths={
+            "summary_json": "results/summary.json",
+            "summary_markdown": "reports/summary.md",
+        },
+    )
+    return workspace
+
+
+def _metric(payload: dict[str, object], name: str) -> dict[str, object]:
+    for metric in payload["metric_deltas"]:  # type: ignore[index]
+        if isinstance(metric, dict) and metric["metric"] == name:
+            return metric
+    raise AssertionError(f"metric not found: {name}")

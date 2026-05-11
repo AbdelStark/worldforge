@@ -13,6 +13,10 @@ releases may still include breaking changes when the public API needs to tighten
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for
   lifecycle readiness and skip reasons.
+- Added `worldforge runs compare --mode regression` for baseline-vs-candidate review across
+  preserved benchmark, evaluation, and demo-showcase runs. Regression reports include metric
+  deltas, budget status changes, new and removed failures, safe artifact drift, provenance
+  differences, and unsafe artifact exclusion counts in JSON, Markdown, CSV, and HTML.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

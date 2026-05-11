@@ -89,6 +89,13 @@ uv run worldforge runs compare \
 uv run worldforge runs compare \
   .worldforge/runs/<baseline-run-id> \
   .worldforge/runs/<candidate-run-id> \
+  --mode regression \
+  --format html \
+  --output .worldforge/runs/regression-comparison.html
+
+uv run worldforge runs compare \
+  .worldforge/runs/<baseline-run-id> \
+  .worldforge/runs/<candidate-run-id> \
   --format csv \
   --output .worldforge/runs/benchmark-comparison.csv
 ```
@@ -101,6 +108,14 @@ Markdown starts with claim boundary language and the shared context; JSON, Markd
 include metric deltas, event counts, budget status, missing evidence, skip reasons, artifact paths,
 and input or budget provenance references. The output is stable enough to attach to issues, but it
 is not a public leaderboard or a ranking across different tasks or capabilities.
+
+Use `--mode regression` when the first run is the preserved baseline and the second run is the
+candidate. Regression mode supports preserved benchmark, evaluation, and demo-showcase runs. It
+reports metric deltas, budget status changes, new and removed failures, safe artifact drift, and
+provenance differences in JSON, Markdown, CSV, or HTML. Unsafe artifact references such as absolute
+paths, traversal-shaped paths, binary/checkpoint suffixes, or raw private artifacts are counted as
+excluded and are not rendered in the comparison report. Regression reports are review artifacts only:
+they do not update baselines or weaken budgets automatically.
 
 Use `--input-file` when a benchmark result needs to be reproducible from preserved inputs. The
 file can contain input fields directly, or an `inputs` object plus metadata. The checked-in

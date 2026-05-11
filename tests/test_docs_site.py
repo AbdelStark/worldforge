@@ -1062,6 +1062,60 @@ def test_cross_provider_comparison_docs_cover_issue_150_contract() -> None:
     )
 
 
+def test_regression_comparison_docs_cover_issue_248_contract() -> None:
+    benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
+    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+    html_reports = (ROOT / "docs/src/html-reports.md").read_text(encoding="utf-8")
+    claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    compare_impl = (ROOT / "src/worldforge/harness/report_compare.py").read_text(encoding="utf-8")
+    cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    tests = (ROOT / "tests/test_harness_report_compare.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "--mode regression",
+        "preserved benchmark, evaluation, and demo-showcase runs",
+        "metric deltas",
+        "budget status changes",
+        "new and removed failures",
+        "safe artifact drift",
+        "provenance differences",
+        "Unsafe artifact references",
+        "do not update baselines",
+    ):
+        assert signal in benchmarking or signal in harness or signal in claim_map
+
+    assert "--mode regression --format html" in html_reports
+    assert "Regression comparisons review a candidate run" in claim_map
+    assert "worldforge runs compare --mode regression" in changelog
+    for checkbox in (
+        "- [x] Users can compare a candidate run against a preserved baseline run.",
+        "- [x] Report distinguishes metric delta, budget violation, and artifact drift.",
+        "- [x] Unsafe artifacts remain excluded from rendered reports.",
+        "- [x] Tests cover improved, regressed, missing baseline, and incompatible schema cases.",
+    ):
+        assert checkbox in roadmap
+
+    for implementation_signal in (
+        "compare_preserved_run_regression",
+        "_regression_artifact_changes",
+        "_SAFE_ARTIFACT_SUFFIXES",
+        "demo_showcase",
+        "regression_to_markdown",
+    ):
+        assert implementation_signal in compare_impl
+    assert 'choices=("comparison", "regression")' in cli
+    for test_signal in (
+        "test_regression_comparison_reports_improved_candidate",
+        "test_regression_comparison_reports_regression_and_excludes_unsafe_artifacts",
+        "test_regression_comparison_supports_demo_showcase_runs",
+        "test_regression_comparison_reports_missing_baseline",
+        "test_regression_comparison_rejects_incompatible_run_schema",
+    ):
+        assert test_signal in tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")

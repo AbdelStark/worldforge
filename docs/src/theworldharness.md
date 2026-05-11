@@ -199,11 +199,14 @@ uv run worldforge harness --runs --status failed --artifact-type json --format j
 uv run worldforge runs bundle <run-id> --workspace-dir .worldforge
 ```
 
-Use `runs compare --format json|markdown|csv` to export attachment-safe comparisons across
-preserved eval runs or preserved benchmark runs. The CLI and harness comparison path share one
+Use `runs compare --format json|markdown|csv|html` to export attachment-safe comparisons across
+preserved eval, benchmark, or demo-showcase runs. The CLI and harness comparison path share one
 report model: compatible cross-provider runs keep metric deltas, event counts, budget status,
 fixture digest, suite version, missing evidence, and skip reasons; mismatched capability,
-operation, fixture, budget, or suite context fails before writing a comparison.
+operation, fixture, budget, or suite context fails before writing a comparison. Add
+`--mode regression` when the first path is the preserved baseline and the second path is the
+candidate; the report calls out metric deltas, budget violations, new or removed failures, safe
+artifact drift, provenance differences, and unsafe artifact exclusions without updating baselines.
 
 ## Interface Contract
 

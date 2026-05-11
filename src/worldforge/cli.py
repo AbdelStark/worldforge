@@ -903,6 +903,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for the comparison summary.",
     )
     runs_compare.add_argument(
+        "--mode",
+        choices=("comparison", "regression"),
+        default="comparison",
+        help="Comparison mode: multi-run table or baseline-vs-candidate regression report.",
+    )
+    runs_compare.add_argument(
         "--output",
         type=Path,
         help="Optional path to write the comparison artifact instead of stdout.",
@@ -1403,7 +1409,7 @@ def _cmd_runs(args: argparse.Namespace) -> int:
             comparison_artifact,
         )
 
-        payload = compare_preserved_run_reports(args.paths)
+        payload = compare_preserved_run_reports(args.paths, mode=args.mode)
         rendered = comparison_artifact(payload, output_format=args.format)
         if args.output is not None:
             args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -21,6 +21,10 @@ uv run worldforge benchmark --provider mock --operation predict \
 uv run worldforge runs compare path/to/run_a path/to/run_b \
     --format html --output review/compare.html
 
+# Baseline-vs-candidate regression report → HTML.
+uv run worldforge runs compare path/to/baseline path/to/candidate \
+    --mode regression --format html --output review/regression.html
+
 # Issue-ready bundle for one preserved run.
 uv run worldforge runs bundle <run-id> --workspace-dir .worldforge \
     --format html > issue.html

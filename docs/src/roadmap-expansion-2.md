@@ -837,10 +837,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Users can compare a candidate run against a preserved baseline run.
-- [ ] Report distinguishes metric delta, budget violation, and artifact drift.
-- [ ] Unsafe artifacts remain excluded from rendered reports.
-- [ ] Tests cover improved, regressed, missing baseline, and incompatible schema cases.
+- [x] Users can compare a candidate run against a preserved baseline run.
+- [x] Report distinguishes metric delta, budget violation, and artifact drift.
+- [x] Unsafe artifacts remain excluded from rendered reports.
+- [x] Tests cover improved, regressed, missing baseline, and incompatible schema cases.
 
 Validation:
 
