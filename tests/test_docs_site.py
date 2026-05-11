@@ -1452,6 +1452,65 @@ def test_config_profile_docs_cover_issue_253_contract() -> None:
     assert "test_benchmark_cli_profile_applies_defaults_and_preserves_provenance" in workspace_tests
 
 
+def test_report_renderer_extension_docs_cover_issue_254_contract() -> None:
+    html_docs = (ROOT / "docs/src/html-reports.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    implementation = (ROOT / "src/worldforge/report_renderers.py").read_text(encoding="utf-8")
+    comparison = (ROOT / "src/worldforge/harness/report_compare.py").read_text(encoding="utf-8")
+    evidence = (ROOT / "src/worldforge/evidence_bundle.py").read_text(encoding="utf-8")
+    exports = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
+    comparison_tests = (ROOT / "tests/test_harness_report_compare.py").read_text(encoding="utf-8")
+    evidence_tests = (ROOT / "tests/test_evidence_bundle.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "## Renderer Extension Points",
+        "ReportRenderer",
+        "register_report_renderer",
+        "render_report_artifact",
+        "safe to attach or local-only",
+        "WorldForge does not load renderer plugins from arbitrary files",
+        "Built-in renderer families include `comparison`, `evidence-bundle`, and",
+    ):
+        assert signal in html_docs
+    assert "safe report-renderer registry" in changelog
+    assert "Report renderer extensions must declare" in agents
+    for checkbox in (
+        "- [x] External code can register a renderer for a supported artifact family.",
+        "- [x] Renderer output is marked safe-to-attach or local-only.",
+        "- [x] Invalid renderer metadata fails explicitly.",
+        (
+            "- [x] Tests cover built-in renderers, custom renderer, duplicate format, "
+            "and unsafe output cases."
+        ),
+    ):
+        assert checkbox in roadmap
+    for implementation_signal in (
+        "class ReportRenderer",
+        "class ReportRenderResult",
+        "register_report_renderer",
+        "render_report_artifact",
+        "safe-to-attach or local-only",
+    ):
+        assert implementation_signal in implementation
+    assert "_register_builtin_report_renderers" in comparison
+    assert 'render_report_artifact("comparison"' in comparison
+    assert "evidence_bundle_artifact" in evidence
+    assert "issue_bundle_artifact" in evidence
+    for export_signal in (
+        "ReportRenderer",
+        "ReportRenderResult",
+        "register_report_renderer",
+        "render_report_artifact",
+    ):
+        assert export_signal in exports
+    assert "test_builtin_comparison_renderers_are_registered_and_safe" in comparison_tests
+    assert "test_custom_renderer_registration_duplicate_and_unsafe_output" in comparison_tests
+    assert "evidence_bundle_artifact" in evidence_tests
+    assert "issue_bundle_artifact" in evidence_tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")

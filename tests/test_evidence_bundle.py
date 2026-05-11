@@ -6,7 +6,12 @@ import sys
 from pathlib import Path
 
 from worldforge.cli import main
-from worldforge.evidence_bundle import generate_evidence_bundle, generate_issue_bundle
+from worldforge.evidence_bundle import (
+    evidence_bundle_artifact,
+    generate_evidence_bundle,
+    generate_issue_bundle,
+    issue_bundle_artifact,
+)
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest
 from worldforge.testing import DeterministicIdFactory, stable_json_dumps, stable_snapshot
 
@@ -96,6 +101,10 @@ def test_evidence_bundle_collects_mock_eval_and_benchmark_runs(
     assert "# WorldForge Evidence Bundle" in summary
     assert "Safe to attach: `true`" in summary
     assert "worldforge benchmark --preset mock-smoke" in summary
+    rendered = evidence_bundle_artifact(manifest, "html")
+    assert rendered.media_type == "text/html"
+    assert rendered.safe_to_attach is True
+    assert rendered.content.startswith("<!DOCTYPE html>")
 
 
 def test_evidence_bundle_marks_unsafe_and_local_only_artifacts(tmp_path: Path) -> None:
@@ -221,6 +230,9 @@ def test_issue_bundle_uses_deterministic_controls_for_exact_snapshot(tmp_path: P
     assert snapshot["runs"][0]["run_id"] == "20260101T000000Z-00000001"
     assert snapshot["runs"][0]["source_path"] == "<host-local:20260101T000000Z-00000001>"
     assert snapshot["safe_to_attach"] is True
+    issue_rendered = issue_bundle_artifact(result.manifest, "markdown")
+    assert issue_rendered.safe_to_attach is True
+    assert "WorldForge Run Issue" in issue_rendered.content
     assert set(digest_fields) == {
         "runs/20260101T000000Z-00000001/reports/report.json",
         "runs/20260101T000000Z-00000001/run_manifest.json",

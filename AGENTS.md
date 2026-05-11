@@ -315,6 +315,9 @@ generated documentation surfaces.
 - Non-secret configuration profiles are shareable defaults, not a secret manager. Keep profile
   paths relative, reject secret-looking keys and signed URLs, and store only safe `config_profile`
   provenance in run manifests.
+- Report renderer extensions must declare artifact family, output format, media type, supported
+  schemas, and safe-to-attach versus local-only behavior. Do not load renderers from arbitrary
+  files, and reject unsafe output before returning attachable artifacts.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.
 - Keep operator docs concrete: every new runtime, provider, persistence, or release workflow
   should state the command to run, the expected success signal, and the first triage step.

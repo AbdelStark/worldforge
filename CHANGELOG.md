@@ -37,6 +37,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added non-secret JSON/TOML configuration profiles for repeatable eval and benchmark CLI defaults.
   Profiles reject secret-looking keys and unsafe paths, and preserved run manifests now include
   safe `config_profile` provenance with the profile digest instead of profile contents.
+- Added a safe report-renderer registry for comparison and evidence bundle artifacts. Built-in
+  JSON/Markdown/CSV/HTML renderers keep their output unchanged, while external code can register
+  validated safe-to-attach or local-only renderers without file-based plugin loading.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

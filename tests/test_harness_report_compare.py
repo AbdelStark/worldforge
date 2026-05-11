@@ -13,6 +13,14 @@ from worldforge.harness.report_compare import (
 )
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest
 from worldforge.models import WorldForgeError
+from worldforge.report_renderers import (
+    ReportRenderer,
+    ReportRenderResult,
+    get_report_renderer,
+    list_report_renderers,
+    register_report_renderer,
+    render_report_artifact,
+)
 
 FIXTURE_DIGEST = "sha256:" + "a" * 64
 BUDGET_DIGEST = "sha256:" + "b" * 64
@@ -231,6 +239,80 @@ def test_regression_comparison_reports_regression_and_excludes_unsafe_artifacts(
     rendered = comparison_artifact(payload, output_format="markdown")
     assert "/private/checkpoint.bin" not in rendered
     assert "Unsafe artifacts excluded from rendered reports: `1`" in rendered
+
+
+def test_builtin_comparison_renderers_are_registered_and_safe(tmp_path: Path) -> None:
+    baseline = _benchmark_run(
+        tmp_path,
+        run_id="20260101T000000Z-00000001",
+        provider="mock",
+        average_latency_ms=10.0,
+    )
+    candidate = _benchmark_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        provider="manual-mock",
+        average_latency_ms=12.0,
+    )
+    payload = compare_preserved_run_reports([baseline.path, candidate.path])
+
+    renderer = get_report_renderer("comparison", "markdown")
+    result = render_report_artifact("comparison", "markdown", payload)
+
+    assert renderer.media_type == "text/markdown"
+    assert renderer.safe_to_attach is True
+    assert result.safe_to_attach is True
+    assert result.local_only is False
+    assert result.content == comparison_to_markdown(payload)
+    assert {"json", "markdown", "csv", "html"}.issubset(
+        {item["output_format"] for item in list_report_renderers(artifact_family="comparison")}
+    )
+
+
+def test_custom_renderer_registration_duplicate_and_unsafe_output() -> None:
+    renderer = ReportRenderer(
+        artifact_family="comparison",
+        output_format="summary-test",
+        media_type="text/plain",
+        supported_schemas=("comparison:2",),
+        safe_to_attach=True,
+        render=lambda payload: f"kind={payload['kind']}",
+        description="test renderer",
+    )
+    register_report_renderer(renderer)
+
+    result = render_report_artifact("comparison", "summary-test", {"kind": "benchmark"})
+    assert result.content == "kind=benchmark"
+    assert result.to_dict()["media_type"] == "text/plain"
+
+    with pytest.raises(WorldForgeError, match="already registered"):
+        register_report_renderer(renderer)
+    with pytest.raises(WorldForgeError, match="media_type"):
+        ReportRenderer(
+            artifact_family="comparison",
+            output_format="bad-media-test",
+            media_type="not-a-media-type",
+            supported_schemas=("comparison:2",),
+            safe_to_attach=True,
+            render=lambda payload: "ok",
+        )
+    register_report_renderer(
+        ReportRenderer(
+            artifact_family="comparison",
+            output_format="unsafe-test",
+            media_type="text/plain",
+            supported_schemas=("comparison:2",),
+            safe_to_attach=True,
+            render=lambda payload: ReportRenderResult(
+                content="unsafe",
+                media_type="text/plain",
+                safe_to_attach=False,
+                local_only=False,
+            ),
+        )
+    )
+    with pytest.raises(WorldForgeError, match="safe-to-attach or local-only"):
+        render_report_artifact("comparison", "unsafe-test", {"kind": "benchmark"})
 
 
 def test_regression_comparison_supports_demo_showcase_runs(tmp_path: Path) -> None:

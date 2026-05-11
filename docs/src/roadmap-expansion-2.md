@@ -1050,10 +1050,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] External code can register a renderer for a supported artifact family.
-- [ ] Renderer output is marked safe-to-attach or local-only.
-- [ ] Invalid renderer metadata fails explicitly.
-- [ ] Tests cover built-in renderers, custom renderer, duplicate format, and unsafe output cases.
+- [x] External code can register a renderer for a supported artifact family.
+- [x] Renderer output is marked safe-to-attach or local-only.
+- [x] Invalid renderer metadata fails explicitly.
+- [x] Tests cover built-in renderers, custom renderer, duplicate format, and unsafe output cases.
 
 Validation:
 

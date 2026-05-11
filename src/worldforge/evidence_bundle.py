@@ -14,6 +14,12 @@ from pathlib import Path
 from worldforge.harness.workspace import runs_dir
 from worldforge.html_report import render_evidence_bundle_html, render_issue_bundle_html
 from worldforge.models import JSONDict, WorldForgeError, dump_json
+from worldforge.report_renderers import (
+    ReportRenderer,
+    ReportRenderResult,
+    register_report_renderer,
+    render_report_artifact,
+)
 from worldforge.testing.capability_fixtures import CAPABILITY_FIXTURE_NAMES
 
 EVIDENCE_BUNDLE_SCHEMA_VERSION = 1
@@ -122,9 +128,13 @@ def generate_evidence_bundle(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    summary_path.write_text(render_evidence_bundle_summary(manifest), encoding="utf-8")
+    summary_path.write_text(
+        evidence_bundle_artifact(manifest, "markdown").content, encoding="utf-8"
+    )
     summary_html_path = output / "summary.html"
-    summary_html_path.write_text(render_evidence_bundle_html(manifest), encoding="utf-8")
+    summary_html_path.write_text(
+        evidence_bundle_artifact(manifest, "html").content, encoding="utf-8"
+    )
     return BundleResult(
         output_dir=output,
         manifest_path=manifest_path,
@@ -163,13 +173,17 @@ def generate_issue_bundle(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    result.summary_path.write_text(render_evidence_bundle_summary(manifest), encoding="utf-8")
-    issue_path.write_text(render_issue_bundle_template(manifest), encoding="utf-8")
+    result.summary_path.write_text(
+        evidence_bundle_artifact(manifest, "markdown").content,
+        encoding="utf-8",
+    )
+    issue_path.write_text(issue_bundle_artifact(manifest, "markdown").content, encoding="utf-8")
     (result.output_dir / "summary.html").write_text(
-        render_evidence_bundle_html(manifest), encoding="utf-8"
+        evidence_bundle_artifact(manifest, "html").content,
+        encoding="utf-8",
     )
     issue_html_path = result.output_dir / "issue.html"
-    issue_html_path.write_text(render_issue_bundle_html(manifest), encoding="utf-8")
+    issue_html_path.write_text(issue_bundle_artifact(manifest, "html").content, encoding="utf-8")
     return BundleResult(
         output_dir=result.output_dir,
         manifest_path=result.manifest_path,
@@ -316,6 +330,83 @@ def render_issue_bundle_template(manifest: JSONDict) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def evidence_bundle_artifact(manifest: JSONDict, output_format: str) -> ReportRenderResult:
+    """Render an evidence bundle manifest through the registered renderer surface."""
+
+    try:
+        return render_report_artifact("evidence-bundle", output_format, manifest)
+    except WorldForgeError as exc:
+        if "No report renderer registered" in str(exc):
+            raise WorldForgeError(
+                "evidence bundle format must be a registered renderer; built-ins are "
+                "json, markdown, or html."
+            ) from exc
+        raise
+
+
+def issue_bundle_artifact(manifest: JSONDict, output_format: str) -> ReportRenderResult:
+    """Render an issue bundle manifest through the registered renderer surface."""
+
+    try:
+        return render_report_artifact("issue-bundle", output_format, manifest)
+    except WorldForgeError as exc:
+        if "No report renderer registered" in str(exc):
+            raise WorldForgeError(
+                "issue bundle format must be a registered renderer; built-ins are "
+                "json, markdown, or html."
+            ) from exc
+        raise
+
+
+def _json_renderer(payload: JSONDict) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True)
+
+
+def _evidence_bundle_html_renderer(payload: JSONDict) -> str:
+    return render_evidence_bundle_html(payload)
+
+
+def _issue_bundle_html_renderer(payload: JSONDict) -> str:
+    return render_issue_bundle_html(payload)
+
+
+def _register_builtin_report_renderers() -> None:
+    for artifact_family, markdown_renderer, html_renderer, description in (
+        (
+            "evidence-bundle",
+            render_evidence_bundle_summary,
+            _evidence_bundle_html_renderer,
+            "evidence bundle",
+        ),
+        (
+            "issue-bundle",
+            render_issue_bundle_template,
+            _issue_bundle_html_renderer,
+            "issue bundle",
+        ),
+    ):
+        for output_format, media_type, renderer in (
+            ("json", "application/json", _json_renderer),
+            ("markdown", "text/markdown", markdown_renderer),
+            ("html", "text/html", html_renderer),
+        ):
+            register_report_renderer(
+                ReportRenderer(
+                    artifact_family=artifact_family,
+                    output_format=output_format,
+                    media_type=media_type,
+                    supported_schemas=(f"{artifact_family}:{EVIDENCE_BUNDLE_SCHEMA_VERSION}",),
+                    safe_to_attach=True,
+                    render=renderer,
+                    description=f"Built-in {description} {output_format} renderer.",
+                ),
+                replace=True,
+            )
+
+
+_register_builtin_report_renderers()
 
 
 @dataclass(slots=True)

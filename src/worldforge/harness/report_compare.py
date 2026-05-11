@@ -10,6 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from worldforge.models import JSONDict, WorldForgeError, dump_json
+from worldforge.report_renderers import (
+    ReportRenderer,
+    register_report_renderer,
+    render_report_artifact,
+)
 
 _SUPPORTED_KINDS = {"benchmark", "demo_showcase", "eval"}
 _COMPARISON_SCHEMA_VERSION = 2
@@ -492,17 +497,53 @@ def regression_to_csv(payload: JSONDict) -> str:
 def comparison_artifact(payload: JSONDict, *, output_format: str) -> str:
     """Render a comparison payload in one of the public export formats."""
 
-    if output_format == "json":
-        return json.dumps(payload, indent=2, sort_keys=True)
-    if output_format == "markdown":
-        return comparison_to_markdown(payload)
-    if output_format == "csv":
-        return comparison_to_csv(payload)
-    if output_format == "html":
-        from worldforge.html_report import render_comparison_html
+    try:
+        return render_report_artifact("comparison", output_format, payload).content
+    except WorldForgeError as exc:
+        if "No report renderer registered" in str(exc):
+            raise WorldForgeError(
+                "comparison format must be a registered renderer; built-ins are "
+                "json, markdown, csv, or html."
+            ) from exc
+        raise
 
-        return render_comparison_html(payload)
-    raise WorldForgeError("comparison format must be json, markdown, csv, or html.")
+
+def _comparison_json_renderer(payload: JSONDict) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True)
+
+
+def _comparison_html_renderer(payload: JSONDict) -> str:
+    from worldforge.html_report import render_comparison_html
+
+    return render_comparison_html(payload)
+
+
+def _register_builtin_report_renderers() -> None:
+    schemas = (
+        f"comparison:{_COMPARISON_SCHEMA_VERSION}",
+        f"regression:{_REGRESSION_SCHEMA_VERSION}",
+    )
+    for output_format, media_type, renderer in (
+        ("json", "application/json", _comparison_json_renderer),
+        ("markdown", "text/markdown", comparison_to_markdown),
+        ("csv", "text/csv", comparison_to_csv),
+        ("html", "text/html", _comparison_html_renderer),
+    ):
+        register_report_renderer(
+            ReportRenderer(
+                artifact_family="comparison",
+                output_format=output_format,
+                media_type=media_type,
+                supported_schemas=schemas,
+                safe_to_attach=True,
+                render=renderer,
+                description=f"Built-in preserved run comparison {output_format} renderer.",
+            ),
+            replace=True,
+        )
+
+
+_register_builtin_report_renderers()
 
 
 def _read_json_object(path: Path, *, name: str) -> JSONDict:
