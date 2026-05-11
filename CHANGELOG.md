@@ -44,6 +44,10 @@ releases may still include breaking changes when the public API needs to tighten
   covers persisted worlds and exported world JSON, schema versions, required canonicalization
   changes, invalid fields, unsafe IDs, bounding-box corrections, safe-to-attach status, and whether
   an explicit migration can be applied safely without silently rewriting local state.
+- Added schema-versioned workflow trace artifacts for composed operations. Plans now include
+  sanitized trace metadata, evaluation reports export trace JSON/Markdown and render trace tables
+  in HTML, provider events can be converted into trace steps, and the optional Rerun artifact logger
+  can record workflow traces without changing provider capability semantics.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

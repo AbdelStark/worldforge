@@ -158,10 +158,11 @@ uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-
 ```
 
 The checkout-safe Rerun demo records provider event logs, world snapshots, a predictive plan,
-3D object boxes, and benchmark metrics into a local `.rrd` file. The robotics showcase records the
-real PushT policy+score run with candidate target points, selected trajectory, score bars, latency
-bars, provider events, plan payload, and replay snapshots. Use `--spawn`, `--connect-url`, or
-`--serve-grpc-port` for live viewer workflows in the checkout-safe demo.
+workflow trace artifacts, 3D object boxes, and benchmark metrics into a local `.rrd` file. The
+robotics showcase records the real PushT policy+score run with candidate target points, selected
+trajectory, score bars, latency bars, provider events, plan payload, and replay snapshots. Use
+`--spawn`, `--connect-url`, or `--serve-grpc-port` for live viewer workflows in the checkout-safe
+demo.
 
 More detail: [Rerun integration docs](https://abdelstark.github.io/worldforge/rerun/).
 
@@ -196,8 +197,8 @@ application's responsibility.
 | **Composable planning** | Combine predictive, score, and policy providers in a single planning loop. Rank candidates, roll out futures, execute actions, persist state. |
 | **Deterministic by default** | Built-in `mock` provider, reusable contract assertions (`worldforge.testing`), and packaged demos that run from a clean checkout without credentials or GPUs. |
 | **Host-owned runtimes** | No torch, CUDA, robot controllers, or checkpoints in base dependencies. LeWorldModel, GR00T, LeRobot, Cosmos, and Runway integrate through their own surfaces. |
-| **Diagnostics** | `worldforge doctor`, provider events, benchmark and evaluation harnesses, and an optional Textual TUI (`TheWorldHarness`) for inspecting traces. |
-| **Rerun observability** | Optional `rerun-sdk` bridge for event streams, world snapshots, plans, and benchmark artifacts. |
+| **Diagnostics** | `worldforge doctor`, provider events, workflow traces, benchmark and evaluation harnesses, and an optional Textual TUI (`TheWorldHarness`). |
+| **Rerun observability** | Optional `rerun-sdk` bridge for event streams, workflow traces, world snapshots, plans, and benchmark artifacts. |
 | **Quality gates** | `py.typed`, import-isolated pytest, ruff, a 90% coverage floor, strict docs, and wheel + sdist contract tests in CI on Python 3.13. |
 
 ## Install

@@ -88,6 +88,11 @@ def test_planning_comparison_and_execution_flow(tmp_path) -> None:
         "position": {"x": 1.0, "y": 0.5, "z": 0.0},
         "tolerance": 0.05,
     }
+    trace = computed_plan.metadata["workflow_trace"]
+    assert trace["schema_version"] == 1
+    assert trace["workflow_id"] == "plan:predict"
+    assert trace["status"] == "success"
+    assert [step["status"] for step in trace["steps"]] == ["success", "success"]
 
     plan_json = json.loads(computed_plan.to_json())
     final_state = plan_json["predicted_states"][-1]
@@ -111,10 +116,17 @@ def test_evaluation_reports_carry_claim_boundaries(tmp_path) -> None:
     report = EvaluationSuite.from_builtin("physics").run_report(["mock"], forge=forge)
     payload = json.loads(report.to_json())
     markdown = report.to_markdown()
+    artifacts = report.artifacts()
 
     assert "deterministic adapter contract checks" in payload["claim_boundary"]
     assert "typed contract" in payload["metric_semantics"]
     assert "Claim boundary:" in markdown
+    assert payload["workflow_trace"]["schema_version"] == 1
+    assert payload["workflow_trace"]["workflow_id"] == "evaluation:physics"
+    assert payload["workflow_trace"]["status"] == "success"
+    assert "workflow_trace.json" in artifacts
+    assert "Workflow Trace" in artifacts["workflow_trace.md"]
+    assert "Workflow Trace" in artifacts["html"]
 
 
 def test_evaluation_result_contract_rejects_invalid_public_payloads() -> None:
@@ -469,6 +481,8 @@ def test_evaluation_reports_and_eval_helpers(tmp_path) -> None:
         "html",
         "failure_gallery.json",
         "failure_gallery.md",
+        "workflow_trace.json",
+        "workflow_trace.md",
     }
     assert json.loads(artifacts["json"])["suite_id"] == "physics"
     assert artifacts["markdown"].startswith("# Evaluation Report")

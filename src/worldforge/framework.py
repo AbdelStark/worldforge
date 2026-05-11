@@ -82,6 +82,7 @@ from worldforge.providers.entry_points import (
     discover_entry_point_providers,
 )
 from worldforge.providers.observable import CAPABILITY_METHOD_MAP, _ObservableCapability
+from worldforge.workflow_trace import WorkflowArtifactRef, WorkflowTrace, WorkflowTraceStep
 
 if TYPE_CHECKING:
     from worldforge.evaluation import EvaluationReport, EvaluationResult
@@ -182,6 +183,105 @@ def _require_score_count_matches_candidates(
             f"Provider '{provider}' returned {score_count} score(s) for "
             f"{candidate_count} candidate action plan(s)."
         )
+
+
+def _plan_workflow_trace(
+    *,
+    mode: str,
+    planner: str,
+    provider: str,
+    action_count: int,
+    candidate_count: int | None = None,
+    policy_provider: str | None = None,
+    score_provider: str | None = None,
+    predict_step_count: int = 0,
+) -> JSONDict:
+    steps: list[WorkflowTraceStep] = [
+        WorkflowTraceStep(
+            step_id="plan",
+            operation=f"{mode} planning",
+            status="success",
+            provider=provider,
+            input_artifacts=(WorkflowArtifactRef(label="world-state"),),
+            output_artifacts=(WorkflowArtifactRef(label="plan"),),
+        )
+    ]
+    if mode in {"policy", "policy+score"}:
+        steps.append(
+            WorkflowTraceStep(
+                step_id="policy",
+                parent_id="plan",
+                operation="select action candidates",
+                status="success",
+                provider=policy_provider or provider,
+                capability="policy",
+                output_artifacts=(WorkflowArtifactRef(label="policy-candidates"),),
+            )
+        )
+    elif mode == "score":
+        steps.append(
+            WorkflowTraceStep(
+                step_id="policy",
+                parent_id="plan",
+                operation="select action candidates",
+                status="skipped",
+                capability="policy",
+                error_summary=(
+                    "Policy provider not requested; score planning used caller candidates."
+                ),
+            )
+        )
+    if mode in {"score", "policy+score"}:
+        steps.append(
+            WorkflowTraceStep(
+                step_id="score",
+                parent_id="plan",
+                operation="rank action candidates",
+                status="success",
+                provider=score_provider or provider,
+                capability="score",
+                input_artifacts=(WorkflowArtifactRef(label="action-candidates"),),
+                output_artifacts=(WorkflowArtifactRef(label="score-ranking"),),
+            )
+        )
+    elif mode == "policy":
+        steps.append(
+            WorkflowTraceStep(
+                step_id="score",
+                parent_id="plan",
+                operation="rank action candidates",
+                status="skipped",
+                capability="score",
+                error_summary="Score provider not requested; policy result used directly.",
+            )
+        )
+    if mode == "predict":
+        steps.extend(
+            (
+                WorkflowTraceStep(
+                    step_id=f"predict-{index + 1}",
+                    parent_id="plan",
+                    operation="predict next state",
+                    status="success",
+                    provider=provider,
+                    capability="predict",
+                    input_artifacts=(WorkflowArtifactRef(label="world-state"),),
+                    output_artifacts=(WorkflowArtifactRef(label=f"predicted-state-{index + 1}"),),
+                )
+            )
+            for index in range(max(0, predict_step_count))
+        )
+    return WorkflowTrace(
+        workflow_id=f"plan:{mode.replace('+', '-')}",
+        name=f"World plan ({mode})",
+        steps=steps,
+        metadata={
+            "planner": planner,
+            "planning_mode": mode,
+            "action_count": action_count,
+            "candidate_count": candidate_count,
+        },
+    ).to_dict()
 
 
 def _world_file(state_dir: Path, world_id: str) -> Path:
@@ -1167,6 +1267,15 @@ class World:
                     "candidate_count": len(candidate_action_plans),
                     "success_probability_source": "inverse_best_cost_heuristic",
                 }
+                metadata["workflow_trace"] = _plan_workflow_trace(
+                    mode="policy+score",
+                    planner=planner,
+                    provider=selected_score_provider,
+                    action_count=len(selected_actions),
+                    candidate_count=len(candidate_action_plans),
+                    policy_provider=selected_policy_provider,
+                    score_provider=selected_score_provider,
+                )
                 if execution_provider is not None:
                     metadata["execution_provider"] = execution_provider
                 return Plan(
@@ -1188,6 +1297,14 @@ class World:
                 "candidate_count": len(candidate_action_plans),
                 "success_probability_source": "policy_provider_no_world_model",
             }
+            metadata["workflow_trace"] = _plan_workflow_trace(
+                mode="policy",
+                planner=planner,
+                provider=selected_policy_provider,
+                action_count=len(selected_actions),
+                candidate_count=len(candidate_action_plans),
+                policy_provider=selected_policy_provider,
+            )
             if execution_provider is not None:
                 metadata["execution_provider"] = execution_provider
             return Plan(
@@ -1238,6 +1355,14 @@ class World:
                 "candidate_count": len(candidate_action_plans),
                 "success_probability_source": "inverse_best_cost_heuristic",
             }
+            metadata["workflow_trace"] = _plan_workflow_trace(
+                mode="score",
+                planner=planner,
+                provider=selected_score_provider,
+                action_count=len(selected_actions),
+                candidate_count=len(candidate_action_plans),
+                score_provider=selected_score_provider,
+            )
             if execution_provider is not None:
                 metadata["execution_provider"] = execution_provider
             return Plan(
@@ -1273,7 +1398,16 @@ class World:
             actions=actions,
             predicted_states=predicted_states,
             success_probability=max(0.65, min(0.98, average(scores) if scores else 0.7)),
-            metadata={"planning_mode": "predict"},
+            metadata={
+                "planning_mode": "predict",
+                "workflow_trace": _plan_workflow_trace(
+                    mode="predict",
+                    planner=planner,
+                    provider=selected_provider,
+                    action_count=len(actions),
+                    predict_step_count=len(predicted_states),
+                ),
+            },
         )
 
     def execute_plan(

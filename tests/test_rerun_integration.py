@@ -27,6 +27,7 @@ from worldforge.rerun import (
     RerunSession,
     create_rerun_event_handler,
 )
+from worldforge.workflow_trace import WorkflowTrace, WorkflowTraceStep
 
 
 class _FakeRerun:
@@ -273,6 +274,36 @@ def test_rerun_artifact_logger_logs_world_plan_and_benchmark(tmp_path: Path) -> 
     assert ("worldforge_step", 0) in fake.times
     assert ("worldforge_plan", 0) in fake.times
     assert ("worldforge_benchmark_result", 0) in fake.times
+
+
+def test_rerun_artifact_logger_logs_workflow_trace() -> None:
+    fake = _FakeRerun()
+    logger = RerunArtifactLogger(session=RerunSession(sdk=fake))
+    trace = WorkflowTrace(
+        workflow_id="demo-trace",
+        name="Demo trace",
+        steps=[
+            WorkflowTraceStep(step_id="root", operation="demo workflow", status="success"),
+            WorkflowTraceStep(
+                step_id="score",
+                parent_id="root",
+                operation="score candidates",
+                provider="leworldmodel",
+                capability="score",
+                status="success",
+                duration_ms=12.0,
+            ),
+        ],
+    )
+
+    logger.log_workflow_trace(trace, label="demo")
+
+    paths = [path for path, _entity in fake.logs]
+    assert "worldforge/workflow_traces/demo-trace/payload" in paths
+    assert "worldforge/workflow_traces/demo-trace/step_count" in paths
+    assert "worldforge/workflow_traces/demo-trace/steps/score/payload" in paths
+    assert any(entity["kind"] == "AnyValues" for _path, entity in fake.logs)
+    assert ("worldforge_workflow_trace", 0) in fake.times
 
 
 def test_rerun_artifact_logger_validates_payload_shapes() -> None:

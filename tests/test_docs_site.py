@@ -1570,6 +1570,70 @@ def test_world_migration_preview_docs_cover_issue_255_contract() -> None:
     assert "test_world_cli_migration_preview_is_read_only_and_attachable" in cli_tests
 
 
+def test_workflow_trace_docs_cover_issue_256_contract() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
+    schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    implementation = (ROOT / "src/worldforge/workflow_trace.py").read_text(encoding="utf-8")
+    framework = (ROOT / "src/worldforge/framework.py").read_text(encoding="utf-8")
+    evaluation = (ROOT / "src/worldforge/evaluation/suites.py").read_text(encoding="utf-8")
+    html_report = (ROOT / "src/worldforge/html_report.py").read_text(encoding="utf-8")
+    rerun = (ROOT / "src/worldforge/rerun.py").read_text(encoding="utf-8")
+    provider_tests = (ROOT / "tests/test_provider_events.py").read_text(encoding="utf-8")
+    evaluation_tests = (ROOT / "tests/test_evaluation_and_planning.py").read_text(encoding="utf-8")
+    rerun_tests = (ROOT / "tests/test_rerun_integration.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "WorkflowTrace",
+        "schema-versioned",
+        "step IDs",
+        "provider/capability slots",
+        "input/output artifact references",
+        "parent-child relationships",
+        'Plan.metadata["workflow_trace"]',
+        "workflow_trace.json",
+        "RerunArtifactLogger.log_workflow_trace",
+        "raw prompts, tensors, credentials",
+    ):
+        assert signal in operations or signal in python_api
+    assert "Workflow trace artifacts" in schemas
+    assert "WORKFLOW_TRACE_SCHEMA_VERSION" in schemas
+    assert "schema-versioned workflow trace artifacts" in changelog
+    assert "Workflow traces are artifact-facing records" in agents
+    for checkbox in (
+        (
+            "- [x] Composed workflows can emit trace artifacts without changing provider "
+            "capability semantics."
+        ),
+        "- [x] Trace artifacts are sanitized and schema-versioned.",
+        "- [x] Failure propagation is visible without hiding the original provider error.",
+        "- [x] Tests cover successful, skipped, failed, and nested workflow traces.",
+    ):
+        assert checkbox in roadmap
+    for implementation_signal in (
+        "WORKFLOW_TRACE_SCHEMA_VERSION",
+        "class WorkflowTrace",
+        "class WorkflowTraceStep",
+        "class WorkflowArtifactRef",
+        "workflow_trace_from_provider_events",
+    ):
+        assert implementation_signal in implementation
+    assert '"workflow_trace"' in framework
+    assert '"workflow_trace.json"' in evaluation
+    assert "Workflow Trace" in html_report
+    assert "log_workflow_trace" in rerun
+    assert (
+        "test_workflow_trace_from_provider_events_sanitizes_failures_and_artifacts"
+        in provider_tests
+    )
+    assert "test_workflow_trace_validates_skipped_failed_and_nested_steps" in provider_tests
+    assert "workflow_trace.json" in evaluation_tests
+    assert "test_rerun_artifact_logger_logs_workflow_trace" in rerun_tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")

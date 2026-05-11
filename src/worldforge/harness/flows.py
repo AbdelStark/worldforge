@@ -1691,6 +1691,14 @@ def _eval_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
         if isinstance(payload.get("provenance"), dict)
         else None
     )
+    report_kwargs: dict[str, object] = {}
+    workflow_trace = payload.get("workflow_trace")
+    if isinstance(workflow_trace, dict):
+        report_kwargs["workflow_trace"] = workflow_trace
+    if isinstance(payload.get("claim_boundary"), str):
+        report_kwargs["claim_boundary"] = payload["claim_boundary"]
+    if isinstance(payload.get("metric_semantics"), str):
+        report_kwargs["metric_semantics"] = payload["metric_semantics"]
     report = EvaluationReport(
         suite_id=suite_id,
         suite=suite,
@@ -1707,6 +1715,7 @@ def _eval_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
             for result in payload.get("results", [])
         ],
         provenance=provenance,
+        **report_kwargs,
     )
     return report.artifacts()
 

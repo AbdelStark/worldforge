@@ -37,6 +37,7 @@ from worldforge.provenance import (
     collect_runtime_manifests,
     digest_payload,
 )
+from worldforge.workflow_trace import WorkflowArtifactRef, WorkflowTrace, WorkflowTraceStep
 
 if TYPE_CHECKING:
     from worldforge.framework import World, WorldForge
@@ -766,6 +767,7 @@ class EvaluationReport:
         results: Sequence[EvaluationResult],
         *,
         provenance: ProvenanceEnvelope | None = None,
+        workflow_trace: WorkflowTrace | JSONDict | None = None,
         claim_boundary: str = EVALUATION_CLAIM_BOUNDARY,
         metric_semantics: str = EVALUATION_METRIC_SEMANTICS,
     ) -> None:
@@ -806,6 +808,23 @@ class EvaluationReport:
                     "EvaluationReport provenance suite_id must match the report's suite_id."
                 )
         self.provenance = provenance
+        if workflow_trace is None:
+            self.workflow_trace = None
+        elif isinstance(workflow_trace, WorkflowTrace):
+            self.workflow_trace = workflow_trace
+        elif isinstance(workflow_trace, dict):
+            self.workflow_trace = WorkflowTrace(
+                workflow_id=workflow_trace.get("workflow_id", ""),
+                name=workflow_trace.get("name", ""),
+                status=workflow_trace.get("status"),
+                schema_version=workflow_trace.get("schema_version", 1),
+                steps=workflow_trace.get("steps") or (),
+                metadata=workflow_trace.get("metadata") or {},
+            )
+        else:
+            raise WorldForgeError(
+                "EvaluationReport workflow_trace must be a WorkflowTrace, JSON object, or None."
+            )
 
     def _build_provider_summaries(self) -> list[ProviderSummary]:
         provider_names = sorted({result.provider for result in self.results})
@@ -838,6 +857,8 @@ class EvaluationReport:
             payload["failure_gallery"] = failure_gallery.to_dict()
         if self.provenance is not None:
             payload["provenance"] = self.provenance.to_dict()
+        if self.workflow_trace is not None:
+            payload["workflow_trace"] = self.workflow_trace.to_dict()
         return payload
 
     def to_markdown(self) -> str:
@@ -884,6 +905,9 @@ class EvaluationReport:
         if failure_gallery.case_count:
             lines.extend(["", "## Failure Gallery", ""])
             lines.extend(failure_gallery.to_markdown(include_title=False).splitlines())
+        if self.workflow_trace is not None:
+            lines.extend(["", "## Workflow Trace", ""])
+            lines.extend(self.workflow_trace.to_markdown().splitlines()[2:])
         return "\n".join(lines)
 
     def to_csv(self) -> str:
@@ -971,6 +995,14 @@ class EvaluationReport:
             "html": self.to_html(),
             "failure_gallery.json": failure_gallery.to_json(),
             "failure_gallery.md": failure_gallery.to_markdown(),
+            **(
+                {
+                    "workflow_trace.json": self.workflow_trace.to_json(),
+                    "workflow_trace.md": self.workflow_trace.to_markdown(),
+                }
+                if self.workflow_trace is not None
+                else {}
+            ),
         }
 
 
@@ -1345,8 +1377,62 @@ class EvaluationSuite:
             self.name,
             results,
             provenance=provenance,
+            workflow_trace=self._build_workflow_trace(provider_names, results),
             claim_boundary=self.claim_boundary,
             metric_semantics=self.metric_semantics,
+        )
+
+    def _build_workflow_trace(
+        self,
+        provider_names: Sequence[str],
+        results: Sequence[EvaluationResult],
+    ) -> WorkflowTrace:
+        steps: list[WorkflowTraceStep] = [
+            WorkflowTraceStep(
+                step_id="evaluation",
+                operation="run evaluation suite",
+                status="success" if all(result.passed for result in results) else "failed",
+                output_artifacts=(WorkflowArtifactRef(label="evaluation-report"),),
+            )
+        ]
+        for provider_index, provider in enumerate(provider_names, start=1):
+            provider_results = [result for result in results if result.provider == provider]
+            provider_step_id = f"provider-{provider_index}"
+            steps.append(
+                WorkflowTraceStep(
+                    step_id=provider_step_id,
+                    parent_id="evaluation",
+                    operation="evaluate provider",
+                    status=(
+                        "success"
+                        if provider_results and all(result.passed for result in provider_results)
+                        else "failed"
+                    ),
+                    provider=provider,
+                    output_artifacts=(WorkflowArtifactRef(label=f"{provider}-results"),),
+                )
+            )
+            for scenario_index, result in enumerate(provider_results, start=1):
+                steps.append(
+                    WorkflowTraceStep(
+                        step_id=f"{provider_step_id}-scenario-{scenario_index}",
+                        parent_id=provider_step_id,
+                        operation=result.scenario,
+                        status="success" if result.passed else "failed",
+                        provider=provider,
+                        output_artifacts=(WorkflowArtifactRef(label="scenario-result"),),
+                    )
+                )
+        return WorkflowTrace(
+            workflow_id=f"evaluation:{self.suite_id}",
+            name=f"Evaluation suite ({self.suite_id})",
+            steps=steps,
+            metadata={
+                "suite_id": self.suite_id,
+                "suite_version": self.suite_version,
+                "provider_count": len(provider_names),
+                "scenario_count": len(self.scenarios),
+            },
         )
 
     def _build_provenance(

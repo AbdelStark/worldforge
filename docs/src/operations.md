@@ -365,6 +365,15 @@ fields redact obvious bearer tokens, API keys, signatures, passwords, and signed
 applications should still avoid placing raw credentials in provider exception messages or custom
 metadata.
 
+Composed workflows can also emit `WorkflowTrace` artifacts. A trace is JSON-native,
+schema-versioned, and safe to attach by default; it records step IDs, operations,
+provider/capability slots, input/output artifact references, status, optional duration, sanitized
+error summaries, and parent-child relationships. Planning stores a trace under
+`Plan.metadata["workflow_trace"]`; evaluation reports export `workflow_trace.json` and
+`workflow_trace.md`; `RerunArtifactLogger.log_workflow_trace(...)` can add the same trace to an
+optional Rerun recording. Traces do not capture raw prompts, tensors, credentials, controller
+telemetry, or distributed tracing backend state.
+
 Host services can attach correlation IDs directly to a `ProviderEvent` when the provider adapter
 knows them, or through `JsonLoggerSink(extra_fields=...)` when the host owns them outside the
 adapter. Optional event fields are `run_id`, `request_id`, `trace_id`, `span_id`, `artifact_id`,

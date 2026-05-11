@@ -118,6 +118,7 @@ import logging
 from pathlib import Path
 
 from worldforge import WorldForge
+from worldforge.workflow_trace import workflow_trace_from_provider_events
 from worldforge.observability import (
     JsonLoggerSink,
     ProviderMetricsExporterSink,
@@ -153,6 +154,11 @@ package does not import OpenTelemetry or configure collectors.
 `ProviderMetricsExporterSink` is also optional and accepts a host-owned metrics exporter with
 bounded labels for provider, operation, phase, status class, and capability.
 
+Composed operations can emit safe workflow trace artifacts. `Plan.metadata["workflow_trace"]`
+records planning steps, evaluation reports export `workflow_trace.json` and `workflow_trace.md`,
+and `workflow_trace_from_provider_events(...)` can compact emitted `ProviderEvent` records into a
+schema-versioned trace without storing raw prompts, tensors, credentials, or controller telemetry.
+
 Rerun is available as an optional observability and artifact layer:
 
 <!-- worldforge-snippet: skip-host-owned -->
@@ -167,6 +173,7 @@ plan = world.plan("move the first object right")
 
 artifacts.log_world(world)
 artifacts.log_plan(plan)
+artifacts.log_workflow_trace(plan.metadata["workflow_trace"])
 session.close()
 ```
 

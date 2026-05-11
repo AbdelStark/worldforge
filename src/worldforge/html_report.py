@@ -222,6 +222,38 @@ def render_evaluation_html(report: EvaluationReport) -> str:
             )
         )
 
+    workflow_trace = payload.get("workflow_trace")
+    if isinstance(workflow_trace, dict):
+        body_parts.append("<h2>Workflow Trace</h2>")
+        body_parts.append(
+            _summary_list(
+                (
+                    ("Workflow", workflow_trace.get("name")),
+                    ("Status", workflow_trace.get("status")),
+                    ("Steps", workflow_trace.get("step_count")),
+                )
+            )
+        )
+        steps = workflow_trace.get("steps", [])
+        if isinstance(steps, list):
+            body_parts.append(
+                _table(
+                    ("Step", "Parent", "Operation", "Provider", "Capability", "Status"),
+                    (
+                        (
+                            step.get("step_id", "-"),
+                            step.get("parent_id", "-"),
+                            step.get("operation", "-"),
+                            step.get("provider", "-"),
+                            step.get("capability", "-"),
+                            step.get("status", "-"),
+                        )
+                        for step in steps
+                        if isinstance(step, dict)
+                    ),
+                )
+            )
+
     return _document(
         title=title,
         body="\n".join(body_parts),

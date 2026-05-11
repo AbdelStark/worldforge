@@ -1122,10 +1122,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Composed workflows can emit trace artifacts without changing provider capability semantics.
-- [ ] Trace artifacts are sanitized and schema-versioned.
-- [ ] Failure propagation is visible without hiding the original provider error.
-- [ ] Tests cover successful, skipped, failed, and nested workflow traces.
+- [x] Composed workflows can emit trace artifacts without changing provider capability semantics.
+- [x] Trace artifacts are sanitized and schema-versioned.
+- [x] Failure propagation is visible without hiding the original provider error.
+- [x] Tests cover successful, skipped, failed, and nested workflow traces.
 
 Validation:
 

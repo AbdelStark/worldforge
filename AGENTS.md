@@ -47,10 +47,12 @@ evaluation harnesses, and testable prototypes.
 - `src/worldforge/benchmark.py`: capability-aware provider latency, retry, and throughput harness.
 - `src/worldforge/observability.py`: composable `ProviderEvent` sinks for JSON logging, in-memory
   recording, and metrics aggregation.
+- `src/worldforge/workflow_trace.py`: JSON-native composed workflow trace artifacts for planning,
+  evaluation, provider-event conversion, Markdown export, and optional Rerun logging.
 - `src/worldforge/rerun.py`: optional Rerun SDK bridge for sanitized provider events, world
-  snapshots, plans, benchmark reports, robotics showcase visual layers, and JSON artifacts. Rerun
-  is not a provider capability and stays behind the `rerun` extra or host-owned optional runtimes
-  that already provide `rerun-sdk`.
+  snapshots, plans, workflow traces, benchmark reports, robotics showcase visual layers, and JSON
+  artifacts. Rerun is not a provider capability and stays behind the `rerun` extra or host-owned
+  optional runtimes that already provide `rerun-sdk`.
 - `src/worldforge/testing/`: reusable adapter contract helpers, fixture loaders, fixture snapshot
   manifest helpers, runtime markers, and deterministic controls for artifact/report tests.
 - `src/worldforge/demos/`: packaged demo entry points exposed through `uv run` console scripts.
@@ -286,6 +288,10 @@ generated documentation surfaces.
 - Provider events are log-facing records. Keep `target`, `message`, and `metadata` sanitized so
   bearer tokens, API keys, signed URL query strings, and secret-like metadata never reach event
   sinks.
+- Workflow traces are artifact-facing records for composed operations. Keep step IDs, artifact
+  references, error summaries, metadata, and parent-child relationships JSON-native and sanitized;
+  do not capture raw prompts, tensors, credentials, controller telemetry, or distributed tracing
+  backend state.
 - Keep public API models typed and serializable. Validate boundary values before persistence or
   outbound network I/O.
 - Keep action parameters, scene metadata, provider-event metadata, score metadata, policy raw

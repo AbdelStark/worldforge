@@ -413,7 +413,9 @@ class RerunArtifactLogger:
     plan_timeline: str = "worldforge_plan"
     benchmark_timeline: str = "worldforge_benchmark_result"
     robotics_timeline: str = "worldforge_robotics_showcase"
+    workflow_timeline: str = "worldforge_workflow_trace"
     _plan_sequence: int = field(default=0, init=False, repr=False)
+    _workflow_sequence: int = field(default=0, init=False, repr=False)
     _lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -427,6 +429,10 @@ class RerunArtifactLogger:
         self.robotics_timeline = _require_text(
             self.robotics_timeline,
             name="robotics_timeline",
+        )
+        self.workflow_timeline = _require_text(
+            self.workflow_timeline,
+            name="workflow_timeline",
         )
 
     def log_world(self, world: object, *, label: str | None = None) -> None:
@@ -580,6 +586,42 @@ class RerunArtifactLogger:
         payload = require_json_dict(payload, name="payload")
         rr = self.session.rr
         self._log_json(rr, _entity_path(self.path_prefix, entity_path), payload)
+
+    def log_workflow_trace(self, trace: object, *, label: str | None = None) -> None:
+        """Log a workflow trace artifact as JSON plus per-step status markers."""
+
+        payload = _as_json_payload(trace, name="workflow_trace")
+        if payload.get("schema_version") != 1:
+            raise WorldForgeError("workflow_trace schema_version must be 1.")
+        workflow_id = _require_text(payload.get("workflow_id"), name="workflow_trace.workflow_id")
+        steps = payload.get("steps", [])
+        if not isinstance(steps, list):
+            raise WorldForgeError("workflow_trace.steps must be a list.")
+        with self._lock:
+            sequence = self._workflow_sequence
+            self._workflow_sequence += 1
+        rr = self.session.rr
+        rr.set_time(self.workflow_timeline, sequence=sequence)
+        trace_path = _entity_path(self.path_prefix, "workflow_traces", workflow_id)
+        self._log_json(rr, f"{trace_path}/payload", payload)
+        if label is not None:
+            self._log_text(rr, f"{trace_path}/label", label)
+        self._log_scalar(rr, f"{trace_path}/step_count", float(len(steps)))
+        for index, step in enumerate(steps):
+            if not isinstance(step, dict):
+                continue
+            rr.set_time(self.workflow_timeline, sequence=index)
+            step_path = _entity_path(trace_path, "steps", step.get("step_id", index))
+            self._log_json(rr, f"{step_path}/payload", step)
+            self._log_any_values(
+                rr,
+                f"{step_path}/summary",
+                operation=step.get("operation", ""),
+                provider=step.get("provider", ""),
+                capability=step.get("capability", ""),
+                status=step.get("status", ""),
+                parent_id=step.get("parent_id", ""),
+            )
 
     def log_robotics_showcase_summary(self, summary: JSONDict) -> None:
         """Log a robotics showcase summary as a visual Rerun inspection scene."""
