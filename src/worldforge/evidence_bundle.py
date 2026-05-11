@@ -776,7 +776,7 @@ def _contains_unsafe_url(value: object) -> bool:
         return False
     return bool(
         re.search(
-            r"https?://[^\\s\"']+[?&](token|signature|sig|key|api_key)=",
+            r"https?://[^\s\"']+[?&](token|signature|sig|key|api_key)=",
             value,
             re.I,
         )

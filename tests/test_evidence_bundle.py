@@ -275,6 +275,44 @@ def test_evidence_bundle_excludes_run_workspace_symlink_escape(tmp_path: Path) -
     ).exists()
 
 
+def test_evidence_bundle_detects_signed_url_sig_query(tmp_path: Path) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        run_id="20260101T000000Z-00000001",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+    )
+    workspace.write_json(
+        "reports/report.json",
+        {"artifact": "https://assets.example.test/output.json?sig=credential"},
+    )
+    write_run_manifest(
+        workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        status="failed",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+        result_summary={"failed_count": 1},
+        artifact_paths={"json": "reports/report.json"},
+    )
+
+    result = generate_evidence_bundle(
+        workspace_dir=tmp_path,
+        output_dir=tmp_path / "bundle",
+    )
+
+    manifest = result.manifest
+    excluded = {item["path"]: item for item in manifest["files"] if not item["included"]}
+    report = excluded["runs/20260101T000000Z-00000001/reports/report.json"]
+    assert report["reason"] == "signed or credentialed URL detected"
+    assert manifest["safe_to_attach"] is False
+
+
 def test_release_evidence_can_link_generated_bundle(tmp_path: Path) -> None:
     manifest_path = tmp_path / "bundle" / "evidence_manifest.json"
     manifest_path.parent.mkdir()
