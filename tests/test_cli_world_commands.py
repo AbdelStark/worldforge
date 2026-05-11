@@ -124,7 +124,12 @@ def test_world_cli_deletes_persisted_world(tmp_path, monkeypatch, capsys) -> Non
     with pytest.raises(SystemExit) as excinfo:
         main()
     assert excinfo.value.code == 2
-    assert f"World '{world_id}' is not present" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert f"World '{world_id}' is not present" in error
+    assert "WorldForge CLI error [world delete]" in error
+    assert "First triage:" in error
+    assert "worldforge world list --state-dir <state-dir>" in error
+    assert str(tmp_path) not in error
 
 
 def test_world_cli_prediction_saves_or_dry_runs_persisted_world(
@@ -235,3 +240,34 @@ def test_world_cli_rejects_incomplete_object_updates(tmp_path, monkeypatch, caps
 
     assert excinfo.value.code == 2
     assert "Position updates require --x, --y, and --z together." in capsys.readouterr().err
+
+
+def test_world_cli_public_error_contract_for_malformed_state(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "broken.json").write_text("{not-json", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "world",
+            "show",
+            "broken",
+            "--state-dir",
+            str(tmp_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+
+    error = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "WorldForge CLI error [world show]" in error
+    assert "World file '<host-local-path>' is invalid" in error
+    assert "First triage:" in error
+    assert "Traceback" not in error
+    assert str(tmp_path) not in error

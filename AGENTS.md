@@ -277,6 +277,8 @@ generated documentation surfaces.
 - Artifact/report tests that compare exact rendered output should use
   `worldforge.testing.DeterministicClock`, `DeterministicIdFactory`, `stable_snapshot`, and
   `stable_json_dumps` instead of local paths, random IDs, or live wall-clock timestamps.
+- Public CLI error messages must keep command owner context, include a first triage step when a
+  recovery path exists, and redact signed URLs, secret-like assignments, and host-local paths.
 - Put remote provider payload fixtures under `tests/fixtures/providers/` and assert both parser
   errors and public provider errors.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.

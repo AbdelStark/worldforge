@@ -239,10 +239,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Error messages for the main public failure modes have regression coverage.
-- [ ] Security-sensitive failures do not print secrets, signed URLs, or host-local unsafe payloads.
-- [ ] CLI failures point to concrete commands or docs when a recovery path exists.
-- [ ] Tests distinguish public message contracts from private implementation details.
+- [x] Error messages for the main public failure modes have regression coverage.
+- [x] Security-sensitive failures do not print secrets, signed URLs, or host-local unsafe payloads.
+- [x] CLI failures point to concrete commands or docs when a recovery path exists.
+- [x] Tests distinguish public message contracts from private implementation details.
 
 Validation:
 

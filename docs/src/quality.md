@@ -68,6 +68,9 @@ framework should track:
   adapter validation does not disappear when tests run under optimized Python.
 - Public exception assertions should match literal messages precisely enough to catch regressions
   without depending on unrelated text.
+- Public CLI error contracts must preserve owner context, a first triage step, and safe wording.
+  Regression tests should assert exact text only for stable messages; use semantic assertions for
+  paths, timings, provider endpoints, and other host-owned values.
 - `xfail` is strict. A test that starts passing should be investigated and either promoted or
   removed.
 

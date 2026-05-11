@@ -89,6 +89,32 @@ def test_parse_scenario_rejects_invalid_json(tmp_path: Path) -> None:
         load_scenario(bad)
 
 
+def test_scenario_cli_error_contract_for_invalid_json(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not-json", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["worldforge", "scenario", "validate", str(bad), "--format", "json"],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        worldforge_main()
+
+    error = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "WorldForge CLI error [scenario validate]" in error
+    assert "invalid JSON" in error
+    assert "First triage:" in error
+    assert "worldforge scenario validate <scenario.json>" in error
+    assert "Traceback" not in error
+    assert str(tmp_path) not in error
+
+
 def test_parse_scenario_rejects_unsupported_schema_version() -> None:
     payload = {**_VALID_PAYLOAD, "schema_version": 99}
     with pytest.raises(WorldForgeError, match="schema_version"):

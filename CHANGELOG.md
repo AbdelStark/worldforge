@@ -33,6 +33,10 @@ releases may still include breaking changes when the public API needs to tighten
   timeouts, first diagnostic command, smoke command, and evidence level from provider metadata and
   runtime manifests. The provider-docs generator now checks that index alongside the provider
   catalog tables.
+- Added user-facing error-message regression coverage for CLI world/scenario failures, unsupported
+  capability names, provider budget failures, and secret/path redaction. CLI errors now include a
+  command owner context plus a first triage step while redacting signed URLs, secret assignments,
+  and host-local paths.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import

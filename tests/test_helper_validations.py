@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from argparse import Namespace
 
 import httpx
 import pytest
@@ -33,6 +34,7 @@ from worldforge import (
     WorldForgeError,
     WorldStateError,
 )
+from worldforge.cli import _format_public_cli_error
 from worldforge.models import HistoryEntry, average, dump_json
 from worldforge.providers import PredictionPayload, ProviderError
 from worldforge.providers.http_utils import (
@@ -173,6 +175,67 @@ def test_http_request_policy_budget_failures_are_observable() -> None:
         ("healthcheck", "budget_exceeded")
     ]
     assert events[0].metadata == {"max_elapsed_seconds": 1.0}
+
+
+def test_public_budget_error_message_keeps_provider_and_operation_context() -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _request: httpx.Response(503, text="warming")),
+        base_url="http://providers.test",
+    )
+
+    with (
+        client,
+        pytest.raises(ProviderBudgetExceededError) as excinfo,
+    ):
+        request_json_with_policy(
+            client,
+            method="GET",
+            url="/health",
+            provider_name="mock",
+            operation_name="healthcheck",
+            policy=RequestOperationPolicy(
+                timeout_seconds=1.0,
+                retry=RetryPolicy(max_attempts=3, backoff_seconds=2.0),
+                max_elapsed_seconds=1.0,
+            ),
+            emit_event=lambda _event: None,
+        )
+
+    message = str(excinfo.value)
+    assert message.startswith("Provider 'mock' healthcheck exceeded budget 1.000s")
+    assert "Traceback" not in message
+    assert "httpx" not in message
+
+
+def test_public_capability_error_message_lists_supported_names() -> None:
+    with pytest.raises(WorldForgeError) as excinfo:
+        ProviderCapabilities().supports("generation")
+
+    assert str(excinfo.value) == (
+        "Unknown provider capability 'generation'. Known capabilities: predict, generate, "
+        "reason, embed, plan, transfer, score, policy."
+    )
+
+
+def test_cli_public_error_formatter_redacts_secrets_urls_and_host_paths(tmp_path) -> None:
+    args = Namespace(command="provider", provider_command="health")
+    message = _format_public_cli_error(
+        args,
+        WorldForgeError(
+            "provider failed for https://example.test/artifact.json?token=secret "
+            f"at {tmp_path / 'secret.json'} with api_key=abc123"
+        ),
+    )
+
+    assert "WorldForge CLI error [provider health]" in message
+    assert "First triage:" in message
+    assert "worldforge provider health <provider>" in message
+    assert "https://example.test/artifact.json?token=secret" not in message
+    assert "https://example.test/artifact.json" in message
+    assert "api_key=[redacted]" in message
+    assert "abc123" not in message
+    assert str(tmp_path) not in message
+    assert "<host-local-path>" in message
 
 
 def test_http_request_policy_budget_can_fail_before_first_attempt(monkeypatch) -> None:

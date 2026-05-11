@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
@@ -35,7 +36,7 @@ from worldforge.benchmark_presets import (
     preset_inputs_payload,
 )
 from worldforge.evaluation import EvaluationSuite
-from worldforge.models import CAPABILITY_NAMES
+from worldforge.models import CAPABILITY_NAMES, _redact_observable_text
 from worldforge.operator_drills import DRILL_IDS, DRILL_WORKSPACE_DEFAULT
 from worldforge.providers import ProviderError
 from worldforge.providers.catalog import provider_docs_index
@@ -67,6 +68,10 @@ CLI_EPILOG = """Common commands:
   worldforge runs list
   worldforge drills list
 """
+
+_HOST_LOCAL_PATH_PATTERN = re.compile(
+    r"(?P<path>(?:/Users|/private|/var/folders|/tmp)/[^\s,;:)'\"]+)"
+)
 
 EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
     {
@@ -2420,7 +2425,7 @@ def main() -> int:
         try:
             return _cmd_provider_workbench(args)
         except (ProviderError, WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "harness":
         return _cmd_harness(args)
@@ -2429,25 +2434,25 @@ def main() -> int:
         try:
             return _cmd_runs(args)
         except (WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "drills":
         try:
             return _cmd_drills(args)
         except (WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "scenario":
         try:
             return _cmd_scenario(args)
         except (ProviderError, WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "world" and args.world_command == "preflight":
         try:
             return _cmd_world_preflight(args)
         except (WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     forge = WorldForge(state_dir=args.state_dir)
 
@@ -2456,12 +2461,68 @@ def main() -> int:
         try:
             result = handler(args, forge)
         except (ProviderError, WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
         if result is not None:
             return result
 
     parser.error(f"Unknown command: {args.command}")
     return 2
+
+
+def _format_public_cli_error(args: argparse.Namespace, exc: Exception) -> str:
+    command_path = _cli_command_path(args)
+    message = _safe_cli_error_text(str(exc))
+    return (
+        f"WorldForge CLI error [{command_path}]: {message}\n"
+        f"First triage: {_first_triage_step(args, message)}"
+    )
+
+
+def _cli_command_path(args: argparse.Namespace) -> str:
+    parts = [str(getattr(args, "command", "") or "unknown")]
+    for field_name in (
+        "provider_command",
+        "world_command",
+        "scenario_command",
+        "runs_command",
+        "drill_command",
+    ):
+        value = getattr(args, field_name, None)
+        if isinstance(value, str) and value:
+            parts.append(value)
+    return " ".join(parts)
+
+
+def _safe_cli_error_text(message: str) -> str:
+    redacted = _redact_observable_text(message)
+    return _HOST_LOCAL_PATH_PATTERN.sub("<host-local-path>", redacted)
+
+
+def _first_triage_step(args: argparse.Namespace, message: str) -> str:
+    command = getattr(args, "command", None)
+    if command == "world":
+        if getattr(args, "world_command", None) == "preflight":
+            return "run `uv run worldforge world preflight --workspace-dir .worldforge`."
+        return (
+            "run `uv run worldforge world list --state-dir <state-dir>` and retry with a "
+            "listed world id."
+        )
+    if command == "scenario":
+        return "run `uv run worldforge scenario validate <scenario.json>` before `scenario run`."
+    if command == "benchmark":
+        return (
+            "validate benchmark input/budget JSON, then run `uv run worldforge benchmark --help`."
+        )
+    if command == "provider" or "provider" in message.lower():
+        return "run `uv run worldforge doctor` and `uv run worldforge provider health <provider>`."
+    if command == "runs":
+        return (
+            "inspect the run manifest and rerun `uv run worldforge runs --help` for bundle "
+            "or cleanup syntax."
+        )
+    if command == "drills":
+        return "run `uv run worldforge drills list` and rerun the named drill with `--format json`."
+    return f"run `uv run worldforge {command or '<command>'} --help`."
 
 
 if __name__ == "__main__":
