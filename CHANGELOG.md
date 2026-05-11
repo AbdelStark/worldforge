@@ -41,6 +41,10 @@ releases may still include breaking changes when the public API needs to tighten
   evaluation/benchmark, and CLI/operator work, with issue-template links and docs tests guarding
   required sections, validation commands, evidence artifacts, docs/changelog expectations, and
   review checklists.
+- Added `scripts/generate_release_notes.py`, a maintainer-editable release notes draft generator
+  that assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
+  validation summaries, docs/public-surface links, caveats, compatibility notes, and host-owned
+  optional runtime evidence without publishing a GitHub release or changing tag/signing workflows.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import

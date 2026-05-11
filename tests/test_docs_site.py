@@ -1147,6 +1147,67 @@ def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
         assert implementation_signal in release_script
 
 
+def test_release_notes_draft_docs_cover_issue_234_contract() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    integrity = (ROOT / "docs/src/artifact-integrity.md").read_text(encoding="utf-8")
+    changelog_doc = (ROOT / "docs/src/changelog.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    expansion = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    distribution = (ROOT / "scripts/check_distribution.py").read_text(encoding="utf-8")
+    release_notes_script = (ROOT / "scripts/generate_release_notes.py").read_text(encoding="utf-8")
+    release_notes_tests = (ROOT / "tests/test_release_notes.py").read_text(encoding="utf-8")
+
+    for doc in (operations, playbooks, integrity, changelog_doc, agents):
+        assert "uv run python scripts/generate_release_notes.py" in doc
+
+    for signal in (
+        ".worldforge/release-notes/release-notes-draft.md",
+        "--issues-json",
+        "--require-validation-evidence",
+        "maintainer-editable",
+        "never creates a GitHub release",
+        "validation evidence is missing",
+        "host-owned optional-runtime",
+    ):
+        assert (
+            signal in operations
+            or signal in playbooks
+            or signal in integrity
+            or signal in changelog_doc
+        )
+
+    for implementation_signal in (
+        "GITHUB_ISSUE_EXPORT_COMMAND",
+        "ReleaseNotesDraft",
+        "build_release_notes_draft",
+        "Closed Issues By Label",
+        "Compatibility Notes",
+        "Host-Owned Optional Runtime Evidence",
+        "Missing changelog",
+        "Validation evidence missing",
+    ):
+        assert implementation_signal in release_notes_script
+
+    for test_signal in (
+        "test_release_notes_draft_collects_changelog_issues_and_evidence",
+        "test_release_notes_main_reports_missing_validation_evidence",
+        "test_release_notes_main_reports_missing_changelog",
+    ):
+        assert test_signal in release_notes_tests
+
+    assert "scripts/generate_release_notes.py" in distribution
+    assert "release notes draft generator" in changelog
+    for criterion in (
+        "Command produces a Markdown draft",
+        "Draft includes validation evidence references",
+        "Missing changelog or missing validation evidence",
+        "Docs explain how maintainers review",
+    ):
+        assert f"- [x] {criterion}" in expansion
+
+
 def test_public_api_stability_docs_cover_issue_180_contract() -> None:
     policy = (ROOT / "docs/src/api-stability.md").read_text(encoding="utf-8")
     python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")

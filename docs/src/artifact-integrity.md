@@ -19,6 +19,7 @@ without requiring signing credentials or optional model runtimes.
 | Wrapper portability | `uv run python scripts/check_wrapper_portability.py` | wrappers have expected shebangs, executable bits, Python 3.13 uv invocations, and docs | fix the named wrapper or documented command |
 | Core checkout performance | `uv run python scripts/check_core_performance.py` | report has `passed: true` for checkout-safe core paths | inspect the failing row and fix the regression before changing budgets |
 | Release evidence | `uv run python scripts/generate_release_evidence.py --run-gates` | Markdown and JSON summaries link gate status, artifacts, hashes, and live-smoke manifests | inspect the failed gate row and its first triage step |
+| Release notes draft | `uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json` | maintainer-editable Markdown links changelog entries, closed issues, validation evidence, caveats, and host-owned optional runtime evidence | regenerate release evidence or fix `CHANGELOG.md`, then rerun the draft command |
 | Release provenance | `.github/workflows/release.yml` build provenance attestation | tagged release builds upload distributions and request GitHub artifact provenance | inspect the release workflow run and attached GitHub attestation |
 | Package publish identity | `.github/workflows/release.yml` PyPI environment with OIDC permissions | `uv publish dist/*` runs from the protected `pypi` environment | verify the release environment and PyPI trusted publishing configuration before tagging |
 
@@ -40,6 +41,17 @@ bundles, run manifests, benchmark reports, and live-smoke manifests should be li
 notes instead of copied by hand. Use [Artifact Schemas](./artifact-schemas.md) to identify the
 owning module, version field, migration rule, and validation surface before changing a public
 artifact contract.
+
+Draft release notes after evidence exists:
+
+```bash
+uv run python scripts/generate_release_notes.py \
+  --release-evidence .worldforge/release-evidence/release-evidence.json
+```
+
+The draft is not a publishing step. It is safe to attach for review because missing validation
+evidence is called out explicitly, host-local paths are redacted, and optional runtime claims remain
+scoped to linked live-smoke manifests.
 
 Unsafe artifacts stay out of public bundles: `.env` files, credentials, signed URL query strings,
 checkpoint archives, downloaded datasets, robot-controller logs, local cache directories, and

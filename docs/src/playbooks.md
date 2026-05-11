@@ -960,6 +960,28 @@ and artifact summaries. Gate rows are explicit `passed`, `failed`, or `skipped` 
 first triage step. Use `--known-limitation` for release-scoped caveats that should travel with the
 bundle.
 
+Then create a maintainer-editable release notes draft from the changelog, evidence JSON, and
+optional closed-issue metadata:
+
+```bash
+mkdir -p .worldforge/release-notes
+gh issue list --state closed --limit 200 \
+  --json number,title,url,labels,closedAt,state \
+  > .worldforge/release-notes/closed-issues.json
+uv run python scripts/generate_release_notes.py \
+  --release-evidence .worldforge/release-evidence/release-evidence.json \
+  --issues-json .worldforge/release-notes/closed-issues.json \
+  --known-caveat "No prepared-host live smoke was run for <provider>."
+```
+
+Success signal: `.worldforge/release-notes/release-notes-draft.md` includes `Added`, `Changed`,
+`Fixed`, `Docs`, `Validation`, `Compatibility Notes`, `Known Caveats`, and `Host-Owned Optional
+Runtime Evidence` sections. The draft is source material for release editing, not a publish step:
+it never creates a GitHub release or tag, signs artifacts, or edits trusted publishing. If the
+draft says validation evidence is missing, run
+`uv run python scripts/generate_release_evidence.py --run-gates` first. Use
+`--require-validation-evidence` when release automation should fail on missing evidence.
+
 Success signal:
 
 - validation passes from a clean checkout.
@@ -967,6 +989,8 @@ Success signal:
 - release evidence links validation expectations, optional live-smoke manifests, benchmark
   artifacts, generated evidence bundles, distribution artifacts, JSON summaries, first triage
   steps, and known limitations.
+- release notes draft links changelog entries, closed issues by label, validation evidence,
+  compatibility notes, caveats, and host-owned optional-runtime evidence for maintainer review.
 - README, docs, changelog, and `AGENTS.md` reflect public behavior.
 - no optional runtime dependency, checkpoint, credential, generated artifact, or `.env` file is
   committed accidentally.

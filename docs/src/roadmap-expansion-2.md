@@ -311,11 +311,11 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Command produces a Markdown draft from local changelog and optional GitHub issue data.
-- [ ] Draft includes validation evidence references and caveats without overclaiming runtime
+- [x] Command produces a Markdown draft from local changelog and optional GitHub issue data.
+- [x] Draft includes validation evidence references and caveats without overclaiming runtime
       behavior.
-- [ ] Missing changelog or missing validation evidence is reported clearly.
-- [ ] Docs explain how maintainers review and edit the draft before release.
+- [x] Missing changelog or missing validation evidence is reported clearly.
+- [x] Docs explain how maintainers review and edit the draft before release.
 
 Validation:
 

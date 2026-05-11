@@ -52,6 +52,7 @@ SDIST_REQUIRED_SUFFIXES = (
     "docs/src/robotics-showcase-deep-dive.md",
     "docs/src/use-case-cookbook.md",
     "scripts/demo_showcases.py",
+    "scripts/generate_release_notes.py",
     "scripts/check_wrapper_portability.py",
     "scripts/contributor_doctor.py",
     "scripts/check_distribution.py",

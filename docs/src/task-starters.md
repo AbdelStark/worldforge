@@ -229,6 +229,7 @@ run indexes, provenance, artifact integrity, or schema-versioned output.
 - `src/worldforge/harness/report_compare.py`
 - `src/worldforge/smoke/run_manifest.py`
 - `scripts/generate_release_evidence.py`
+- `scripts/generate_release_notes.py`
 - `docs/src/artifact-schemas.md`
 - `docs/src/artifact-integrity.md`
 - `docs/src/html-reports.md`

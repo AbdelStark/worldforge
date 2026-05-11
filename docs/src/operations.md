@@ -634,6 +634,28 @@ triage step. Optional live provider evidence is `host-owned` unless a prepared-h
 `run_manifest.json` is linked. Attach the Markdown report, JSON summary, and linked artifacts when a
 release note or provider promotion claims live-provider coverage.
 
+After evidence exists, draft release notes for maintainer editing:
+
+```bash
+mkdir -p .worldforge/release-notes
+gh issue list --state closed --limit 200 \
+  --json number,title,url,labels,closedAt,state \
+  > .worldforge/release-notes/closed-issues.json
+uv run python scripts/generate_release_notes.py \
+  --release-evidence .worldforge/release-evidence/release-evidence.json \
+  --issues-json .worldforge/release-notes/closed-issues.json \
+  --known-caveat "No prepared-host live smoke was run for <provider>."
+```
+
+The release-notes command writes `.worldforge/release-notes/release-notes-draft.md`. It is a draft
+artifact only: maintainers must edit it before publishing, and the command never creates a tag,
+GitHub release, signature, or trusted-publishing artifact. Success signal: the draft contains
+added, changed, fixed, docs, validation, compatibility, caveat, and host-owned optional-runtime
+sections. First triage step when validation is missing: run
+`uv run python scripts/generate_release_evidence.py --run-gates` and regenerate the draft. Use
+`--require-validation-evidence` in release scripts when a missing or invalid evidence JSON should
+fail the command.
+
 `uv run python scripts/check_core_performance.py` writes a checkout-safe JSON report for world
 persistence, benchmark fixture loading, provider diagnostics, evidence-bundle creation, and report
 rendering. Success signal: `passed` is true and each result row has a preserved artifact path when

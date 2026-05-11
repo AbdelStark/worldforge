@@ -61,6 +61,9 @@ evaluation harnesses, and testable prototypes.
 - `scripts/demo_showcases.py`: checkout-safe demo evidence runner for the first-run, diagnostics,
   robotics replay, remote dry-run, adapter authoring, batch eval, service host, Rerun gallery,
   failure lab, and cookbook workflows.
+- `scripts/generate_release_notes.py`: maintainer-editable release notes draft generator that
+  assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
+  validation summaries, caveats, and host-owned optional runtime evidence without publishing.
 - `src/worldforge/harness/`: optional TheWorldHarness TUI package. Keep flow metadata and runners
   independent from Textual; `tui.py` is the only Textual-dependent module. Current flows cover
   LeWorldModel score planning, LeRobot policy-plus-score planning, Cosmos-Policy ALOHA replay,
@@ -133,6 +136,7 @@ uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
+uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
