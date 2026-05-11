@@ -31,6 +31,7 @@ DEFAULT_RUNS_DIR = ROOT / ".worldforge" / "runs"
 DEFAULT_REPORTS_DIR = ROOT / ".worldforge" / "reports"
 DEFAULT_DIST_DIR = ROOT / "dist"
 DEFAULT_EVIDENCE_BUNDLES_DIR = ROOT / ".worldforge" / "evidence-bundles"
+DEFAULT_DEPENDENCY_AUDIT_DIR = ROOT / ".worldforge" / "dependency-audit"
 
 MAX_CAPTURE_CHARS = 4_000
 
@@ -150,14 +151,11 @@ CHECKOUT_SAFE_GATES = (
     ),
     ReleaseGate(
         "Dependency audit",
+        "uv run python scripts/generate_dependency_audit_evidence.py",
         (
-            'tmp_req="$(mktemp requirements-audit.XXXXXX)" && '
-            'uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" '
-            ">/dev/null && "
-            'uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip '
-            '--progress-spinner off; status=$?; rm -f "$tmp_req"; exit $status'
+            "Inspect `.worldforge/dependency-audit/dependency-audit.md`, update or document "
+            "the dependency decision, then rerun the audit."
         ),
-        "Inspect the advisory, update or document the dependency decision, then rerun the audit.",
     ),
 )
 VALIDATION_COMMANDS = tuple((gate.name, gate.command) for gate in CHECKOUT_SAFE_GATES)
@@ -285,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
             *args.artifact,
             *_glob_existing(DEFAULT_DIST_DIR, "*"),
             *_glob_existing(DEFAULT_EVIDENCE_BUNDLES_DIR, "*/evidence_manifest.json"),
+            *_glob_existing(DEFAULT_DEPENDENCY_AUDIT_DIR, "dependency-audit.*"),
         ]
     )
     report = render_release_evidence(

@@ -605,14 +605,21 @@ The artifact integrity contract is documented in [Artifact Integrity](./artifact
 covers package hashes, current package/evidence checks, unsafe artifact exclusions, and future SBOM,
 provenance, and attestation work that is not claimed today.
 
-Then run the locked dependency audit:
+Then generate locked dependency-audit evidence:
 
 ```bash
-tmp_req="$(mktemp requirements-audit.XXXXXX)"
-uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" >/dev/null
-uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-spinner off
-rm -f "$tmp_req"
+uv run python scripts/generate_dependency_audit_evidence.py
 ```
+
+The wrapper runs the documented `uv export --frozen --all-groups --no-emit-project --no-hashes`
+plus `uvx --from pip-audit pip-audit ... --format json` flow using a temporary requirements file
+that is removed after the audit. It writes `.worldforge/dependency-audit/dependency-audit.json`
+and `.worldforge/dependency-audit/dependency-audit.md`, records tool versions, dependency-set
+digest, vulnerability summary, explicit `--ignore-advisory ADVISORY=RATIONALE` rows, command
+output tails, and a first triage step. Success signal: status is `passed`; findings,
+tool-unavailable, and failed states still leave safe-to-attach evidence. First triage step for
+findings: inspect the Markdown advisory row, upgrade or document the dependency decision, then
+rerun the audit.
 
 Generate the release-readiness evidence after local gates and optional smokes finish. The command
 writes both Markdown and JSON summaries by default; use `--run-gates` when the evidence run itself
@@ -623,6 +630,7 @@ uv run python scripts/generate_release_evidence.py \
   --run-gates \
   --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
+  --artifact .worldforge/dependency-audit/dependency-audit.json \
   --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
 ```

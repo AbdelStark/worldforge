@@ -61,6 +61,9 @@ evaluation harnesses, and testable prototypes.
 - `scripts/demo_showcases.py`: checkout-safe demo evidence runner for the first-run, diagnostics,
   robotics replay, remote dry-run, adapter authoring, batch eval, service host, Rerun gallery,
   failure lab, and cookbook workflows.
+- `scripts/generate_dependency_audit_evidence.py`: checkout-safe dependency-audit evidence wrapper
+  around the documented `uv export` plus `pip-audit` flow; writes JSON and Markdown summaries
+  without preserving the temporary requirements file.
 - `scripts/generate_release_notes.py`: maintainer-editable release notes draft generator that
   assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
   validation summaries, caveats, and host-owned optional runtime evidence without publishing.
@@ -136,6 +139,7 @@ uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
+uv run python scripts/generate_dependency_audit_evidence.py
 uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json
 uv run mkdocs build --strict
 uv run pytest
@@ -178,13 +182,10 @@ uv run python scripts/scaffold_provider.py "Acme WM" \
   --planned-capability score
 ```
 
-Local security audit:
+Local security audit evidence:
 
 ```bash
-tmp_req="$(mktemp requirements-audit.XXXXXX)"
-uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" >/dev/null
-uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-spinner off
-rm -f "$tmp_req"
+uv run python scripts/generate_dependency_audit_evidence.py
 ```
 
 ## Documentation Map
@@ -419,6 +420,8 @@ generated documentation surfaces.
   generated provider docs, documented command drift, executable docs snippets, wrapper portability,
   optional-runtime import boundaries, checkout-safe core performance budgets, and the MkDocs
   Material site. A warning in the published docs build is a release blocker.
+- `uv run python scripts/generate_dependency_audit_evidence.py` preserves dependency-audit JSON and
+  Markdown evidence for release review without keeping the temporary requirements file.
 - `worldforge benchmark --budget-file <path>` evaluates direct provider benchmark results against
   JSON thresholds and exits non-zero on violations. Keep benchmark budgets tied to preserved run
   artifacts when using them for release or paper claims.

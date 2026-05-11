@@ -45,6 +45,11 @@ releases may still include breaking changes when the public API needs to tighten
   that assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
   validation summaries, docs/public-surface links, caveats, compatibility notes, and host-owned
   optional runtime evidence without publishing a GitHub release or changing tag/signing workflows.
+- Added `scripts/generate_dependency_audit_evidence.py`, a checkout-safe dependency-audit evidence
+  wrapper that runs the documented locked `uv export` plus `pip-audit` flow through a temporary
+  requirements file and writes JSON/Markdown summaries with tool versions, dependency-set digest,
+  vulnerability summaries, explicit ignore rationales, sanitized command output, and first triage
+  steps.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import

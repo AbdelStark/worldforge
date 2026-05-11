@@ -1208,6 +1208,72 @@ def test_release_notes_draft_docs_cover_issue_234_contract() -> None:
         assert f"- [x] {criterion}" in expansion
 
 
+def test_dependency_audit_evidence_docs_cover_issue_235_contract() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    integrity = (ROOT / "docs/src/artifact-integrity.md").read_text(encoding="utf-8")
+    quality = (ROOT / "docs/src/quality.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    expansion = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    distribution = (ROOT / "scripts/check_distribution.py").read_text(encoding="utf-8")
+    release_evidence = (ROOT / "scripts/generate_release_evidence.py").read_text(encoding="utf-8")
+    audit_script = (ROOT / "scripts/generate_dependency_audit_evidence.py").read_text(
+        encoding="utf-8"
+    )
+    audit_tests = (ROOT / "tests/test_dependency_audit_evidence.py").read_text(encoding="utf-8")
+
+    for doc in (operations, playbooks, integrity, quality, agents):
+        assert "uv run python scripts/generate_dependency_audit_evidence.py" in doc
+
+    for signal in (
+        ".worldforge/dependency-audit/dependency-audit.json",
+        ".worldforge/dependency-audit/dependency-audit.md",
+        "--ignore-advisory ADVISORY=RATIONALE",
+        "temporary requirements file",
+        "tool-unavailable",
+        "findings",
+        "uvx --from pip-audit pip-audit",
+    ):
+        assert (
+            signal in operations or signal in playbooks or signal in integrity or signal in quality
+        )
+
+    for implementation_signal in (
+        "DEPENDENCY_AUDIT_EVIDENCE_SCHEMA_VERSION",
+        "generate_dependency_audit_evidence",
+        "render_dependency_audit_markdown",
+        "temporary uv export file removed after audit",
+        "vulnerability_summary",
+        "ignored_advisories",
+        "tool-unavailable",
+        "safe_to_attach",
+    ):
+        assert implementation_signal in audit_script
+
+    for test_signal in (
+        "test_dependency_audit_evidence_records_clean_run",
+        "test_dependency_audit_evidence_preserves_findings_and_ignore_rationales",
+        "test_dependency_audit_evidence_records_tool_unavailable",
+    ):
+        assert test_signal in audit_tests
+
+    assert "DEFAULT_DEPENDENCY_AUDIT_DIR" in release_evidence
+    assert "generate_dependency_audit_evidence.py" in release_evidence
+    assert "scripts/generate_dependency_audit_evidence.py" in distribution
+    assert "Dependency audit evidence" in schemas
+    assert "tests/test_dependency_audit_evidence.py" in schemas
+    assert "dependency-audit evidence" in changelog
+    for criterion in (
+        "Audit evidence writes JSON and Markdown summaries",
+        "Vulnerability findings are preserved",
+        "Release-readiness docs and package validation docs",
+        "Tests cover clean, finding, and tool-unavailable",
+    ):
+        assert f"- [x] {criterion}" in expansion
+
+
 def test_public_api_stability_docs_cover_issue_180_contract() -> None:
     policy = (ROOT / "docs/src/api-stability.md").read_text(encoding="utf-8")
     python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
@@ -1268,6 +1334,11 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
             "Release evidence JSON",
             "scripts/generate_release_evidence.py",
             "tests/test_release_evidence.py",
+        ),
+        (
+            "Dependency audit evidence",
+            "DEPENDENCY_AUDIT_EVIDENCE_SCHEMA_VERSION",
+            "tests/test_dependency_audit_evidence.py",
         ),
         (
             "Benchmark inputs and budgets",

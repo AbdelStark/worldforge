@@ -348,10 +348,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Audit evidence writes JSON and Markdown summaries.
-- [ ] Vulnerability findings are preserved without leaking host-local paths or credentials.
-- [ ] Release-readiness docs and package validation docs link the audit artifact.
-- [ ] Tests cover clean, finding, and tool-unavailable paths through fixtures.
+- [x] Audit evidence writes JSON and Markdown summaries.
+- [x] Vulnerability findings are preserved without leaking host-local paths or credentials.
+- [x] Release-readiness docs and package validation docs link the audit artifact.
+- [x] Tests cover clean, finding, and tool-unavailable paths through fixtures.
 
 Validation:
 

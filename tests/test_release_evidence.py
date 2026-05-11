@@ -235,3 +235,38 @@ def test_release_evidence_main_discovers_evidence_bundle_manifest(
 
     report = output.read_text(encoding="utf-8")
     assert "evidence_manifest.json" in report
+
+
+def test_release_evidence_main_discovers_dependency_audit_artifact(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    dependency_audit_dir = tmp_path / "dependency-audit"
+    dependency_audit_json = dependency_audit_dir / "dependency-audit.json"
+    dependency_audit_json.parent.mkdir(parents=True)
+    dependency_audit_json.write_text(
+        json.dumps({"schema_version": 1, "status": "passed"}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        generate_release_evidence,
+        "DEFAULT_DEPENDENCY_AUDIT_DIR",
+        dependency_audit_dir,
+    )
+    monkeypatch.setattr(
+        generate_release_evidence,
+        "DEFAULT_EVIDENCE_BUNDLES_DIR",
+        tmp_path / "evidence-bundles",
+    )
+    monkeypatch.setattr(generate_release_evidence, "DEFAULT_DIST_DIR", tmp_path / "dist")
+    output = tmp_path / "release-evidence.md"
+
+    assert main(["--output", str(output)]) == 0
+
+    report = output.read_text(encoding="utf-8")
+    payload = json.loads(output.with_suffix(".json").read_text(encoding="utf-8"))
+    assert "dependency-audit.json" in report
+    assert any(
+        artifact["path"].endswith("dependency-audit.json")
+        for artifact in payload["release_artifacts"]
+    )

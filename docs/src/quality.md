@@ -139,13 +139,12 @@ and is not a cross-machine benchmark or optional-runtime performance claim. Befo
 also run:
 
 ```bash
-tmp_req="$(mktemp requirements-audit.XXXXXX)"
-uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" >/dev/null
-uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-spinner off
-rm -f "$tmp_req"
+uv run python scripts/generate_dependency_audit_evidence.py
 ```
 
-For release hardening, use the dependency audit in [Operations](./operations.md).
+For release hardening, use the dependency-audit evidence workflow in
+[Operations](./operations.md). It preserves JSON and Markdown summaries without keeping the
+temporary requirements file.
 
 ## Optional Live Robotics CI
 

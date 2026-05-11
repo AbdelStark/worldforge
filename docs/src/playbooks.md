@@ -926,14 +926,19 @@ non-TUI harness modules without importing Textual, Rerun, torch, stable-worldmod
 GR00T, or Cosmos-Policy packages. First triage step: move the named import behind the provider,
 smoke, `worldforge.rerun`, or `harness.tui` boundary identified by the report.
 
-Then run the locked dependency audit:
+Then generate locked dependency-audit evidence:
 
 ```bash
-tmp_req="$(mktemp requirements-audit.XXXXXX)"
-uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" >/dev/null
-uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-spinner off
-rm -f "$tmp_req"
+uv run python scripts/generate_dependency_audit_evidence.py
 ```
+
+Success signal: `.worldforge/dependency-audit/dependency-audit.json` and
+`.worldforge/dependency-audit/dependency-audit.md` exist, the status is `passed`, and the
+requirements summary states that the temporary requirements file was not preserved. The wrapper
+uses `uv export --frozen --all-groups --no-emit-project --no-hashes` plus
+`uvx --from pip-audit pip-audit ... --format json`; use `--ignore-advisory ADVISORY=RATIONALE`
+only for explicit release-reviewed exceptions. First triage step for `findings`: inspect the
+Markdown advisory table, upgrade or document the dependency decision, then rerun.
 
 Finally generate the release-readiness evidence. This command writes
 `.worldforge/release-evidence/release-evidence.md` and
@@ -948,6 +953,7 @@ uv run python scripts/generate_release_evidence.py \
   --run-gates \
   --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
+  --artifact .worldforge/dependency-audit/dependency-audit.json \
   --artifact .worldforge/evidence-bundles/release-candidate/evidence_manifest.json \
   --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
@@ -987,8 +993,8 @@ Success signal:
 - validation passes from a clean checkout.
 - generated provider docs have no drift and the Pages site builds in strict mode.
 - release evidence links validation expectations, optional live-smoke manifests, benchmark
-  artifacts, generated evidence bundles, distribution artifacts, JSON summaries, first triage
-  steps, and known limitations.
+  artifacts, generated evidence bundles, dependency-audit evidence, distribution artifacts, JSON
+  summaries, first triage steps, and known limitations.
 - release notes draft links changelog entries, closed issues by label, validation evidence,
   compatibility notes, caveats, and host-owned optional-runtime evidence for maintainer review.
 - README, docs, changelog, and `AGENTS.md` reflect public behavior.
