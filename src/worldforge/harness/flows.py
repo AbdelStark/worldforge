@@ -23,7 +23,13 @@ from worldforge.harness.workspace import (
     workspace_root_for_state_dir,
     write_run_manifest,
 )
-from worldforge.models import JSONDict, ProviderEvent, WorldForgeError, WorldStateError
+from worldforge.models import (
+    JSONDict,
+    ProviderEvent,
+    WorldForgeError,
+    WorldStateError,
+    _redact_observable_text,
+)
 from worldforge.provenance import ProvenanceEnvelope
 from worldforge.providers.base import ProviderError
 
@@ -1688,7 +1694,7 @@ def _run_robotics_compare_demo(*, state_dir: Path, emit: bool = False) -> JSONDi
             state_dir=state_dir,
             subflows=subflows,
             source_validation=source_validation,
-            validation_errors=[f"robotics-compare: {type(exc).__name__}: {exc}"],
+            validation_errors=[_robotics_compare_exception_error("robotics-compare", exc)],
             emit=emit,
         )
 
@@ -1717,25 +1723,52 @@ def _run_robotics_compare_subflow(
     state_dir: Path,
 ) -> JSONDict:
     try:
-        return runner(state_dir=state_dir, emit=False)
+        summary = runner(state_dir=state_dir, emit=False)
     except Exception as exc:
-        message = f"{type(exc).__name__}: {exc}"
-        event = ProviderEvent(
-            provider=flow_index()[flow_id].provider,
-            operation=flow_id,
-            phase="failure",
-            message=message,
-            metadata={"stage": "robotics-compare-subflow"},
+        return _robotics_compare_failed_subflow_summary(
+            flow_id,
+            state_dir,
+            _robotics_compare_exception_error("", exc),
         )
-        return {
-            "demo_kind": "robotics_compare_subflow",
-            "state_dir": str(state_dir),
-            "status": "failed",
-            "providers": [flow_id],
-            "event_phases": [event.phase],
-            "provider_events": [event.to_dict()],
-            "validation_errors": [message],
-        }
+    if not isinstance(summary, dict):
+        return _robotics_compare_failed_subflow_summary(
+            flow_id,
+            state_dir,
+            f"WorldStateError: {flow_id} subflow returned {type(summary).__name__}, "
+            "expected JSON object",
+        )
+    return summary
+
+
+def _robotics_compare_failed_subflow_summary(
+    flow_id: str,
+    state_dir: Path,
+    message: str,
+) -> JSONDict:
+    safe_message = _redact_observable_text(message).strip()
+    event = ProviderEvent(
+        provider=flow_index()[flow_id].provider,
+        operation=flow_id,
+        phase="failure",
+        message=safe_message,
+        metadata={"stage": "robotics-compare-subflow"},
+    )
+    return {
+        "demo_kind": "robotics_compare_subflow",
+        "state_dir": str(state_dir),
+        "status": "failed",
+        "providers": [flow_id],
+        "event_phases": [event.phase],
+        "provider_events": [event.to_dict()],
+        "validation_errors": [safe_message],
+    }
+
+
+def _robotics_compare_exception_error(prefix: str, exc: BaseException) -> str:
+    detail = _redact_observable_text(str(exc)).strip()
+    type_name = type(exc).__name__
+    message = f"{type_name}: {detail}" if detail else type_name
+    return f"{prefix}: {message}" if prefix else message
 
 
 def _robotics_compare_failure_summary(
@@ -1746,6 +1779,7 @@ def _robotics_compare_failure_summary(
     validation_errors: list[str],
     emit: bool,
 ) -> JSONDict:
+    validation_errors = [_redact_observable_text(error) for error in validation_errors]
     comparison_payload: JSONDict = {
         "schema_version": 1,
         "flow_id": "robotics-compare",
@@ -1800,7 +1834,7 @@ def _robotics_compare_validation_errors(subflows: dict[str, JSONDict]) -> list[s
     for flow_id, summary in subflows.items():
         flow_errors = summary.get("validation_errors")
         if isinstance(flow_errors, list):
-            errors.extend(f"{flow_id}: {error}" for error in flow_errors)
+            errors.extend(_redact_observable_text(f"{flow_id}: {error}") for error in flow_errors)
     return errors
 
 

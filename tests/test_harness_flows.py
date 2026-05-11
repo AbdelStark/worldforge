@@ -263,8 +263,17 @@ def test_harness_runs_robotics_compare_flow(tmp_path) -> None:
     assert rows["gr00t-replay"]["raw_tensor_count"] == 3
     assert rows["gr00t-replay"]["translated_action_count"] == 40
     assert run.summary["total_translated_actions"] == 92
-    assert len(run.provider_events) == 7
     assert {event["phase"] for event in run.provider_events} == {"success"}
+    comparison_events = [
+        event
+        for event in run.provider_events
+        if event["operation"] == "robotics-compare" and event["metadata"].get("flow_id") in rows
+    ]
+    assert {event["metadata"]["flow_id"] for event in comparison_events} == {
+        "lerobot",
+        "cosmos-policy",
+        "gr00t-replay",
+    }
     assert {
         event["metadata"]["subflow_id"]
         for event in run.provider_events
@@ -339,13 +348,19 @@ def test_harness_robotics_compare_preserves_other_artifacts_when_subflow_raises(
 
     def failed_cosmos(*, state_dir: Path, emit: bool = False) -> dict:
         _ = (state_dir, emit)
-        raise RuntimeError("transport exploded")
+        raise RuntimeError(
+            "transport exploded for https://example.test/act?token=cosmos-secret "
+            "with api_key=raw-secret"
+        )
 
     monkeypatch.setattr(flows, "_run_cosmos_policy_demo", failed_cosmos)
 
     run = run_flow("robotics-compare", state_dir=tmp_path)
 
-    assert run.validation_errors == ("cosmos-policy: RuntimeError: transport exploded",)
+    assert run.validation_errors == (
+        "cosmos-policy: RuntimeError: transport exploded for https://example.test/act "
+        "with api_key=[redacted]",
+    )
     assert run.workspace_path is not None
     manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
     assert manifest["status"] == "failed"
@@ -358,10 +373,41 @@ def test_harness_robotics_compare_preserves_other_artifacts_when_subflow_raises(
         (run.workspace_path / "artifacts/robotics-policy-comparison.json").read_text()
     )
     assert comparison["artifacts"] == {"gr00t_replay": "artifacts/gr00t-replay.json"}
+    comparison_text = json.dumps(comparison)
+    assert "cosmos-secret" not in comparison_text
+    assert "raw-secret" not in comparison_text
+    assert "token=" not in comparison_text
     assert run.provider_events[-1]["phase"] == "failure"
     assert any(
         event["metadata"].get("subflow_id") == "cosmos-policy" for event in run.provider_events
     )
+
+
+def test_harness_robotics_compare_handles_non_dict_subflow_result(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from worldforge.harness import flows
+
+    def invalid_cosmos(*, state_dir: Path, emit: bool = False) -> None:
+        _ = (state_dir, emit)
+
+    monkeypatch.setattr(flows, "_run_cosmos_policy_demo", invalid_cosmos)
+
+    run = run_flow("robotics-compare", state_dir=tmp_path)
+
+    assert run.validation_errors == (
+        "cosmos-policy: WorldStateError: cosmos-policy subflow returned NoneType, "
+        "expected JSON object",
+    )
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["artifact_paths"]["robotics_comparison"] == (
+        "artifacts/robotics-policy-comparison.json"
+    )
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    assert "cosmos_policy_replay" not in manifest["artifact_paths"]
 
 
 @pytest.mark.parametrize(
