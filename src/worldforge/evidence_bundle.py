@@ -585,6 +585,16 @@ def _record_manifest_artifact_references(
                 kind="artifact-reference",
                 local_only=True,
             )
+            continue
+        if not resolved.is_file():
+            _record_excluded(
+                context,
+                destination=Path("runs") / run_id / f"artifacts/{label}",
+                source=raw_path,
+                reason="artifact reference does not exist",
+                kind="artifact-reference",
+                local_only=True,
+            )
 
 
 def _resolve_report_reference(value: object) -> Path | None:

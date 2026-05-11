@@ -198,6 +198,41 @@ def test_evidence_bundle_marks_unsafe_and_local_only_artifacts(tmp_path: Path) -
     assert manifest["runs"][0]["skip_reason"] == "fixture drill"
 
 
+def test_evidence_bundle_reports_missing_manifest_artifact_reference(tmp_path: Path) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        run_id="20260101T000000Z-00000001",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+    )
+    write_run_manifest(
+        workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        status="failed",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+        result_summary={"failed_count": 1},
+        artifact_paths={"missing": "artifacts/missing.json"},
+    )
+
+    result = generate_evidence_bundle(
+        workspace_dir=tmp_path,
+        output_dir=tmp_path / "bundle",
+    )
+
+    manifest = result.manifest
+    excluded = {item["path"]: item for item in manifest["files"] if not item["included"]}
+    missing = excluded["runs/20260101T000000Z-00000001/artifacts/missing"]
+    assert missing["reason"] == "artifact reference does not exist"
+    assert missing["local_only"] is True
+    assert manifest["safe_to_attach"] is False
+
+
 def test_release_evidence_can_link_generated_bundle(tmp_path: Path) -> None:
     manifest_path = tmp_path / "bundle" / "evidence_manifest.json"
     manifest_path.parent.mkdir()
