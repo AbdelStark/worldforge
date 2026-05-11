@@ -38,7 +38,12 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
     payload = json.loads(completed.stdout)
     workflows = payload["workflows"]
 
-    assert [workflow["issue"] for workflow in workflows] == [*list(range(189, 199)), 237, 238]
+    assert [workflow["issue"] for workflow in workflows] == [
+        *list(range(189, 199)),
+        237,
+        238,
+        239,
+    ]
     assert [workflow["id"] for workflow in workflows] == [
         "first-run",
         "diagnostics-issue-bundle",
@@ -52,6 +57,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "use-case-cookbook",
         "external-provider-package",
         "custom-evaluation-suite",
+        "policy-score-candidate-lab",
     ]
 
 
@@ -59,7 +65,7 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     module = _load_demo_showcases()
     results = module.run_workflows("all", workspace_dir=tmp_path, overwrite=True)
 
-    assert len(results) == 12
+    assert len(results) == 13
     assert all(result["safe_to_attach"] is True for result in results)
     assert all(result["status"] in {"passed", "skipped"} for result in results)
 
@@ -146,6 +152,16 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     assert walkthrough["failed_count"] == 1
     assert walkthrough["failure_gallery_cases"] == 1
     assert {"json", "markdown", "html", "failure_gallery.md"} <= set(walkthrough["artifact_paths"])
+
+    candidate_lab = summaries["policy-score-candidate-lab"]
+    lab_report = candidate_lab["report"]
+    assert lab_report["planning_mode"] == "policy+score"
+    assert lab_report["candidate_count"] == 3
+    assert lab_report["selected_candidate_index"] == 1
+    assert lab_report["raw_policy_actions"]["raw_policy_action_preserved"] is True
+    assert "lower bound" in lab_report["expected_failures"]["invalid_candidate_bounds"]
+    assert "action_translator" in lab_report["expected_failures"]["missing_translator"]
+    assert Path(str(candidate_lab["artifact_paths"]["lab_markdown"])).is_file()
 
 
 def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:

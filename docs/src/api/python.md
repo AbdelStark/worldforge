@@ -274,6 +274,13 @@ do not infer provider-native tensors, and do not reinterpret robot action spaces
 explicitly when a score provider needs a task-specific tensor instead of serialized `Action`
 payloads.
 
+For a checkout-safe policy+score candidate lab that preserves raw policy actions, ranks generated
+candidates, and shows invalid-bounds plus missing-translator failures, run:
+
+```bash
+uv run python scripts/demo_showcases.py run policy-score-candidate-lab --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
 ## Action Policy
 
 Providers that expose the `policy` capability select executable action chunks from observations.

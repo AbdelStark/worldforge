@@ -205,6 +205,11 @@ plan = world.plan(
 WorldForge serializes policy candidates into `Action.to_dict()` payloads before calling the score
 provider unless `score_action_candidates=...` supplies model-native candidates.
 
+For a checkout-safe version of the candidate-ranking loop without LeRobot, checkpoints, or robot
+control, run `uv run python scripts/demo_showcases.py run policy-score-candidate-lab`. The lab
+shows generated candidates, raw policy action preservation, selected action metadata, invalid
+candidate bounds, and missing-translator failure handling.
+
 ## Runtime Checks
 
 Checkout-safe end-to-end demo:

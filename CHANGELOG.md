@@ -18,6 +18,10 @@ releases may still include breaking changes when the public API needs to tighten
   deterministic custom suite against `mock`, preserves JSON/Markdown/HTML/failure-gallery
   artifacts with provenance, and includes one controlled failed case for report review without
   claiming model quality.
+- Added a checkout-safe policy+score candidate lab. The demo builds deterministic bounded move
+  candidates, preserves raw policy actions, scores candidate plans, records the selected action and
+  workflow trace, and captures invalid candidate bounds plus missing-translator failures without
+  requiring a robot, simulator, or checkpoint.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

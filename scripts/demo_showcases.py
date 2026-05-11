@@ -24,10 +24,15 @@ if str(SRC) not in sys.path:
 from worldforge import (  # noqa: E402
     ENTRY_POINT_GROUP,
     Action,
+    ActionPolicyResult,
+    ActionScoreResult,
     BBox,
     Position,
+    ProviderCapabilities,
     SceneObject,
     WorldForge,
+    action_candidates_to_score_payload,
+    bounded_move_grid_candidates,
     discover_entry_point_providers,
 )
 from worldforge.demos import lerobot_e2e  # noqa: E402
@@ -36,6 +41,8 @@ from worldforge.harness.workspace import create_run_workspace, write_run_manifes
 from worldforge.models import JSONDict, ProviderEvent, dump_json  # noqa: E402
 from worldforge.operator_drills import run_operator_drill  # noqa: E402
 from worldforge.persistence_preflight import preflight_local_state  # noqa: E402
+from worldforge.providers import BaseProvider, ProviderProfileSpec  # noqa: E402
+from worldforge.providers.base import ProviderError  # noqa: E402
 from worldforge.providers.catalog import PROVIDER_CATALOG  # noqa: E402
 
 DEFAULT_WORKSPACE = Path(".worldforge/demo-showcases")
@@ -47,6 +54,77 @@ class DemoWorkflow:
     title: str
     issue: int
     runner: Callable[[Path], JSONDict]
+
+
+class _CandidateLabPolicy(BaseProvider):
+    def __init__(
+        self,
+        candidate_plans: list[list[Action]],
+        *,
+        translator_available: bool = True,
+    ) -> None:
+        super().__init__(
+            "candidate-lab-policy",
+            capabilities=ProviderCapabilities(policy=True),
+            profile=ProviderProfileSpec(
+                description="Deterministic checkout-safe policy candidate lab provider.",
+                implementation_status="demo",
+                is_local=True,
+                deterministic=True,
+            ),
+        )
+        self._candidate_plans = candidate_plans
+        self._translator_available = translator_available
+
+    def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
+        if not self._translator_available:
+            raise ProviderError("candidate lab action_translator is required.")
+        raw_actions = {
+            "policy_logits": [0.2, 0.6, 0.2],
+            "raw_policy_action_preserved": True,
+            "observation_keys": sorted(info),
+        }
+        return ActionPolicyResult(
+            provider=self.name,
+            actions=list(self._candidate_plans[0]),
+            raw_actions=raw_actions,
+            action_horizon=len(self._candidate_plans[0]),
+            embodiment_tag="candidate-lab",
+            metadata={
+                "candidate_count": len(self._candidate_plans),
+                "translator": "checkout-safe deterministic mapper",
+            },
+            action_candidates=[list(plan) for plan in self._candidate_plans],
+        )
+
+
+class _CandidateLabScore(BaseProvider):
+    def __init__(self, scores: list[float]) -> None:
+        super().__init__(
+            "candidate-lab-score",
+            capabilities=ProviderCapabilities(score=True),
+            profile=ProviderProfileSpec(
+                description="Deterministic checkout-safe candidate scorer.",
+                implementation_status="demo",
+                is_local=True,
+                deterministic=True,
+            ),
+        )
+        self._scores = scores
+
+    def score_actions(self, *, info: JSONDict, action_candidates: object) -> ActionScoreResult:
+        if not isinstance(action_candidates, list) or len(action_candidates) != len(self._scores):
+            raise ProviderError("candidate lab scorer received mismatched action candidates.")
+        return ActionScoreResult(
+            provider=self.name,
+            scores=list(self._scores),
+            best_index=min(range(len(self._scores)), key=self._scores.__getitem__),
+            metadata={
+                "candidate_count": len(self._scores),
+                "score_source": "deterministic checkout lab",
+                "goal": str(info.get("goal", "")),
+            },
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -919,6 +997,151 @@ def _custom_evaluation_suite(workflow_dir: Path) -> JSONDict:
     }
 
 
+def _policy_score_candidate_lab(workflow_dir: Path) -> JSONDict:
+    candidate_plans = bounded_move_grid_candidates(
+        x_bounds=(0.1, 0.7),
+        y_bounds=(0.5, 0.5),
+        z_bounds=(0.0, 0.0),
+        x_steps=3,
+        y_steps=1,
+        z_steps=1,
+        object_id="cube-1",
+    )
+    score_payload = action_candidates_to_score_payload(candidate_plans)
+    scores = [0.72, 0.18, 0.44]
+    forge = WorldForge(state_dir=workflow_dir / "worlds", auto_register_remote=False)
+    forge.register_provider(_CandidateLabPolicy(candidate_plans))
+    forge.register_provider(_CandidateLabScore(scores))
+    world = forge.create_world("candidate-lab-world", provider="mock")
+    world.add_object(
+        SceneObject(
+            "cube",
+            Position(0.0, 0.5, 0.0),
+            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+            id="cube-1",
+        )
+    )
+    plan = world.plan(
+        goal="choose the lowest-cost candidate",
+        policy_provider="candidate-lab-policy",
+        score_provider="candidate-lab-score",
+        policy_info={"observation": "checkout-safe grid"},
+        score_info={"goal": "move cube near center"},
+        execution_provider="mock",
+    )
+    execution = world.execute_plan(plan)
+    selected_index = int(plan.metadata["score_result"]["best_index"])
+
+    invalid_bounds_error = ""
+    try:
+        bounded_move_grid_candidates(
+            x_bounds=(1.0, 0.0),
+            y_bounds=(0.5, 0.5),
+            z_bounds=(0.0, 0.0),
+            x_steps=3,
+            y_steps=1,
+            z_steps=1,
+        )
+    except Exception as exc:
+        invalid_bounds_error = str(exc)
+
+    translator_missing_error = ""
+    try:
+        _CandidateLabPolicy(candidate_plans, translator_available=False).select_actions(
+            info={"observation": "checkout-safe grid"}
+        )
+    except ProviderError as exc:
+        translator_missing_error = str(exc)
+
+    candidate_table = [
+        {
+            "index": index,
+            "score": scores[index],
+            "selected": index == selected_index,
+            "actions": [action.to_dict() for action in candidate],
+        }
+        for index, candidate in enumerate(candidate_plans)
+    ]
+    report = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "planning_mode": plan.metadata["planning_mode"],
+        "policy_provider": plan.metadata["policy_provider"],
+        "score_provider": plan.metadata["score_provider"],
+        "candidate_count": len(candidate_plans),
+        "score_payload": score_payload,
+        "candidate_table": candidate_table,
+        "selected_candidate_index": selected_index,
+        "selected_action": plan.actions[0].to_dict(),
+        "raw_policy_actions": plan.metadata["policy_result"]["raw_actions"],
+        "score_metadata": plan.metadata["score_result"]["metadata"],
+        "workflow_trace": plan.metadata["workflow_trace"],
+        "execution_final_step": execution.final_world().step,
+        "expected_failures": {
+            "invalid_candidate_bounds": invalid_bounds_error,
+            "missing_translator": translator_missing_error,
+        },
+        "claim_boundary": (
+            "Checkout-safe deterministic candidate lab only; no robot controller, simulator, "
+            "checkpoint download, or physical-performance claim."
+        ),
+    }
+    report_path = workflow_dir / "policy-score-candidate-lab.json"
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    markdown_path = workflow_dir / "policy-score-candidate-lab.md"
+    markdown_lines = [
+        "# Policy+Score Candidate Lab",
+        "",
+        f"- planning_mode: `{report['planning_mode']}`",
+        f"- selected_candidate_index: `{selected_index}`",
+        f"- candidate_count: `{len(candidate_plans)}`",
+        "",
+        "| index | score | selected | target_x |",
+        "| ---: | ---: | --- | ---: |",
+    ]
+    markdown_lines.extend(
+        "| {index} | {score:.2f} | {selected} | {target_x:.2f} |".format(
+            index=row["index"],
+            score=row["score"],
+            selected="yes" if row["selected"] else "no",
+            target_x=row["actions"][0]["parameters"]["target"]["x"],
+        )
+        for row in candidate_table
+    )
+    markdown_lines.extend(
+        [
+            "",
+            "## Expected Failures",
+            "",
+            f"- invalid_candidate_bounds: {invalid_bounds_error}",
+            f"- missing_translator: {translator_missing_error}",
+            "",
+            report["claim_boundary"],
+        ]
+    )
+    markdown_path.write_text("\n".join(markdown_lines) + "\n", encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "candidate-lab-policy+candidate-lab-score",
+        "safe_to_attach": True,
+        "summary": (
+            "Generated deterministic action candidates, preserved raw policy actions, ranked "
+            "them with a score provider, selected the lowest-cost action, and captured invalid "
+            "bounds plus missing-translator failures."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "lab_report": str(report_path),
+            "lab_markdown": str(markdown_path),
+        },
+        "first_triage_step": (
+            "Open `policy-score-candidate-lab.md` and verify the selected row matches "
+            "`score_result.best_index`."
+        ),
+        "claim_boundary": report["claim_boundary"],
+    }
+
+
 def _copy_artifact_paths(run_workspace: Any, artifact_paths: object) -> dict[str, str]:
     if not isinstance(artifact_paths, dict):
         return {}
@@ -993,6 +1216,12 @@ WORKFLOWS = (
         "Custom evaluation suite walkthrough",
         238,
         _custom_evaluation_suite,
+    ),
+    DemoWorkflow(
+        "policy-score-candidate-lab",
+        "Policy+score candidate lab",
+        239,
+        _policy_score_candidate_lab,
     ),
 )
 

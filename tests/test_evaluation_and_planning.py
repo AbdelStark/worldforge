@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -28,6 +31,9 @@ from worldforge.evaluation import (
     ProviderSummary,
 )
 from worldforge.providers import MockProvider
+
+ROOT = Path(__file__).resolve().parents[1]
+DEMO_SHOWCASES = ROOT / "scripts" / "demo_showcases.py"
 
 
 def _seed_world(forge: WorldForge):
@@ -273,6 +279,35 @@ def test_bounded_move_grid_candidates_validate_bounds_and_non_finite_inputs() ->
             second_object_id="cube-1",
             second_position=Position(0.4, 0.8, 0.0),
         )
+
+
+def test_policy_score_candidate_lab_demo_preserves_selection_and_failures(tmp_path) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "worldforge_policy_score_candidate_lab_test",
+        DEMO_SHOWCASES,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    results = module.run_workflows(
+        "policy-score-candidate-lab",
+        workspace_dir=tmp_path,
+        overwrite=True,
+    )
+    summary_path = Path(results[0]["artifact_paths"]["summary_json"])
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    report = summary["report"]
+
+    assert report["planning_mode"] == "policy+score"
+    assert report["selected_candidate_index"] == 1
+    assert report["candidate_table"][1]["selected"] is True
+    assert report["raw_policy_actions"]["raw_policy_action_preserved"] is True
+    assert report["score_metadata"]["candidate_count"] == 3
+    assert "lower bound" in report["expected_failures"]["invalid_candidate_bounds"]
+    assert "action_translator" in report["expected_failures"]["missing_translator"]
 
 
 def test_structured_goal_targets_selected_object_and_validates_inputs(tmp_path) -> None:

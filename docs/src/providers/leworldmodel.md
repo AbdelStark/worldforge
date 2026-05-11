@@ -119,6 +119,10 @@ The selected `Plan.actions` come from `candidate_actions[best_index]`. `Plan.pre
 stays empty because a score provider ranks candidate futures without returning a WorldForge state
 rollout. Use `execute_plan(...)` with an execution provider that supports `predict`.
 
+For a checkout-safe lab that builds action candidates, ranks them through policy+score planning,
+and records selected action artifacts without LeWorldModel or torch, run
+`uv run python scripts/demo_showcases.py run policy-score-candidate-lab`.
+
 ## Task Bridges
 
 WorldForge ships a small bridge registry for smoke commands, not a generic tensor preprocessor.

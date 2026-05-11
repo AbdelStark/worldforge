@@ -2690,6 +2690,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         ("use-case-cookbook", 198),
         ("external-provider-package", 237),
         ("custom-evaluation-suite", 238),
+        ("policy-score-candidate-lab", 239),
     )
     for workflow, issue in workflows:
         assert workflow in script
@@ -2703,6 +2704,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "scaffold is intentionally fail-closed",
         "entry-point discovery",
         "failure-gallery",
+        "raw action preservation",
         "physical-fidelity",
     ):
         assert boundary in showcase_docs or boundary in cookbook
@@ -2729,6 +2731,23 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "- [x] Tests cover the walkthrough artifact set.",
     ):
         assert checkbox in roadmap
+    for checkbox in (
+        "- [x] Lab demonstrates candidate generation through score and policy+score planning.",
+        "- [x] Invalid candidate bounds and translator-missing cases are visible and tested.",
+        "- [x] Docs explain how prepared-host robotics runs differ from the lab.",
+        "- [x] Output artifacts are safe to attach.",
+    ):
+        assert checkbox in roadmap
+
+    for provider_doc in (
+        "docs/src/api/python.md",
+        "docs/src/providers/lerobot.md",
+        "docs/src/providers/gr00t.md",
+        "docs/src/providers/leworldmodel.md",
+        "docs/src/robotics-showcase.md",
+    ):
+        text = (ROOT / provider_doc).read_text(encoding="utf-8")
+        assert "policy-score-candidate-lab" in text
 
 
 def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:

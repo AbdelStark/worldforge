@@ -44,6 +44,7 @@ The default workspace is `.worldforge/demo-showcases/`.
 | `use-case-cookbook` | #198 | `uv run python scripts/demo_showcases.py run use-case-cookbook` | cookbook recipe count and docs artifact reference | `docs/src/use-case-cookbook.md` | open the recipe matching the failed command and artifact |
 | `external-provider-package` | #237 | `uv run python scripts/demo_showcases.py run external-provider-package` | temp external provider package generated and entry-point discovery report preserved | `external-provider-package/external-provider-discovery.json` | inspect the discovery report, then run the generated package tests before publishing |
 | `custom-evaluation-suite` | #238 | `uv run python scripts/demo_showcases.py run custom-evaluation-suite` | custom suite runs with provenance, one controlled failure, and report artifacts | `custom-evaluation-suite/custom-eval-artifacts/` | open `markdown`, then inspect `failure_gallery.md` for the controlled failed case |
+| `policy-score-candidate-lab` | #239 | `uv run python scripts/demo_showcases.py run policy-score-candidate-lab` | deterministic action candidates ranked by a score provider with raw policy actions preserved | `policy-score-candidate-lab/policy-score-candidate-lab.json` | verify the selected row matches `score_result.best_index` |
 
 ## Runtime Boundaries
 
@@ -62,6 +63,9 @@ quality or physical execution. Optional runtimes remain host-owned:
   treated as real adapter evidence.
 - Custom evaluation suite output is deterministic adapter-contract evidence. Its controlled failed
   case demonstrates report and failure-gallery handling, not provider quality or physical fidelity.
+- The policy+score candidate lab uses local deterministic providers to show candidate generation,
+  scoring, raw action preservation, translator boundaries, and safe artifact shape. It is not a
+  robot controller, simulator, checkpoint run, or physical-performance claim.
 - Benchmark failures in the batch workflow are controlled budget failures so the issue and release
   evidence path can be tested without changing production thresholds.
 

@@ -503,10 +503,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Lab demonstrates candidate generation through score and policy+score planning.
-- [ ] Invalid candidate bounds and translator-missing cases are visible and tested.
-- [ ] Docs explain how prepared-host robotics runs differ from the lab.
-- [ ] Output artifacts are safe to attach.
+- [x] Lab demonstrates candidate generation through score and policy+score planning.
+- [x] Invalid candidate bounds and translator-missing cases are visible and tested.
+- [x] Docs explain how prepared-host robotics runs differ from the lab.
+- [x] Output artifacts are safe to attach.
 
 Validation:
 
