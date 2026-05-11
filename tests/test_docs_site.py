@@ -472,19 +472,20 @@ def test_gr00t_replay_harness_docs_cover_issue_226_contract() -> None:
     tests = (ROOT / "tests/test_harness_flows.py").read_text(encoding="utf-8")
 
     for signal in (
-        "uv run --extra harness worldforge-harness --flow gr00t",
-        "validated_tensors: eef_9d, gripper_position, joint_position",
-        "artifacts/gr00t-policy-replay.json",
-        "observations, private endpoints, GPU logs, checkpoints",
-        "prepared GPU host validates the live GR00T server shape",
+        "uv run --extra harness worldforge-harness --flow gr00t-replay",
+        "raw tensor shapes for `eef_9d`, `gripper_position`, and",
+        "artifacts/gr00t-replay.json",
+        "GPU logs, checkpoints, private endpoints, or raw observations",
+        "live RTX A6000 validation is mentioned as provenance",
     ):
         assert signal in harness_doc
 
     for implementation_signal in (
-        "_run_gr00t_demo",
-        "_load_gr00t_replay_artifact",
-        "_SavedGrootReplayClient",
+        "_run_gr00t_replay_demo",
+        "_load_groot_replay_artifact",
+        "ReplayPolicyClient",
         "GrootPolicyClientProvider",
+        "raw_action_shapes",
         "eef_9d",
         "gripper_position",
         "joint_position",
@@ -492,11 +493,11 @@ def test_gr00t_replay_harness_docs_cover_issue_226_contract() -> None:
         assert implementation_signal in flows
 
     for test_signal in (
-        "test_harness_runs_gr00t_flow",
-        "test_harness_loads_gr00t_replay_artifact",
-        "test_harness_rejects_gr00t_replay_missing_named_tensor",
-        "test_harness_rejects_gr00t_replay_bad_tensor_shape",
-        "test_harness_rejects_unredacted_gr00t_replay_observation",
+        "test_harness_runs_groot_replay_flow",
+        "test_harness_loads_groot_replay_artifact",
+        "test_harness_rejects_groot_replay_schema_drift",
+        "test_harness_rejects_groot_replay_bad_raw_tensor_shape",
+        "test_harness_rejects_unredacted_groot_replay_observation",
     ):
         assert test_signal in tests
 

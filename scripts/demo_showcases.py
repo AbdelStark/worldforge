@@ -1566,15 +1566,15 @@ def _policy_missing_translator_checks() -> list[JSONDict]:
 
 
 def _embodied_policy_replay_comparison(workflow_dir: Path) -> JSONDict:
-    from worldforge.harness.flows import _run_cosmos_policy_demo, _run_gr00t_demo
+    from worldforge.harness.flows import _run_cosmos_policy_demo, _run_gr00t_replay_demo
 
     lerobot_summary = lerobot_e2e.run_demo(state_dir=workflow_dir / "lerobot", emit=False)
-    gr00t_summary = _run_gr00t_demo(state_dir=workflow_dir / "gr00t", emit=False)
+    gr00t_summary = _run_gr00t_replay_demo(state_dir=workflow_dir / "gr00t", emit=False)
     cosmos_summary = _run_cosmos_policy_demo(state_dir=workflow_dir / "cosmos-policy", emit=False)
 
     lerobot_policy = lerobot_summary["plan"]["metadata"]["policy_result"]
     lerobot_metadata = lerobot_policy["metadata"]
-    gr00t_artifact = gr00t_summary["harness_artifacts"]["gr00t_policy_replay"]["payload"]
+    gr00t_artifact = gr00t_summary["harness_artifacts"]["gr00t_replay"]["payload"]
     cosmos_artifact = cosmos_summary["harness_artifacts"]["cosmos_policy_replay"]["payload"]
 
     provider_rows = [
@@ -1609,7 +1609,7 @@ def _embodied_policy_replay_comparison(workflow_dir: Path) -> JSONDict:
             "candidate_count": gr00t_summary["candidate_count"],
             "translated_action_count": gr00t_summary["translated_action_count"],
             "raw_action_keys": sorted(gr00t_artifact["policy_output"]["raw_actions"].keys()),
-            "raw_tensor_shapes": gr00t_summary["raw_tensor_shapes"],
+            "raw_tensor_shapes": gr00t_summary["raw_action_shapes"],
             "provider_specific_fields": gr00t_artifact["policy_output"]["provider_info"],
             "live_follow_up": "uv run python scripts/smoke_gr00t_policy.py --help",
         },

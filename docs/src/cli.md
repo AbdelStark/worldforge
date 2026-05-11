@@ -140,7 +140,7 @@ uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow leworldmodel
 uv run --extra harness worldforge-harness --flow lerobot
 uv run --extra harness worldforge-harness --flow cosmos-policy
-uv run --extra harness worldforge-harness --flow gr00t
+uv run --extra harness worldforge-harness --flow gr00t-replay
 uv run --extra harness worldforge-harness --flow diagnostics
 uv run --extra harness worldforge-harness --flow workbench
 uv run --extra harness worldforge-harness --flow runs
@@ -158,11 +158,11 @@ recovery actions without printing secret values.
 Expected success signal: the selected flow reaches a completed run workspace and the inspector
 shows its saved artifact paths. For `cosmos-policy`, the replay should report
 `raw_action_shape: [50, 14]`, `translated_actions: 50`, and
-`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. For `gr00t`, it should report
-`validated_tensors: eef_9d, gripper_position, joint_position`, `translated_actions: 4`, and
-`saved_replay_artifact: artifacts/gr00t-policy-replay.json`. First triage step: open the saved run
-workspace and inspect `logs/provider-events.jsonl` plus the replay artifact; for live-provider
-readiness checks, run `uv run worldforge harness --connectors --format json`.
+`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. For `gr00t-replay`, expect
+`translated_actions: 40` and `saved_replay_artifact: artifacts/gr00t-replay.json`. First triage
+step: open the saved run workspace and inspect `logs/provider-events.jsonl` plus the flow-specific
+artifact, either `artifacts/cosmos-policy-replay.json` or `artifacts/gr00t-replay.json`;
+for live-provider readiness checks, run `uv run worldforge harness --connectors --format json`.
 
 ## Packaged Demos
 
