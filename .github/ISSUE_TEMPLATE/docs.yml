@@ -3,6 +3,13 @@ description: Report unclear, stale, or missing documentation.
 title: "[Docs]: "
 labels: ["documentation"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the docs-only starter pack:
+        https://abdelstark.github.io/worldforge/task-starters/#docs-only-or-public-surface
+        It lists likely files, validation commands, evidence artifacts, docs/changelog
+        expectations, and review checks for documentation-only work.
   - type: input
     id: page
     attributes:

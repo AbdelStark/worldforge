@@ -19,6 +19,8 @@
 - Decisions
   - [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md)
 - [Providers](./providers/README.md)
+  - [Provider Configuration Index](./provider-configuration-index.md)
+  - [Provider Failure Mode Gallery](./provider-failure-gallery.md)
   - [Cosmos](./providers/cosmos.md)
   - [Cosmos-Policy](./providers/cosmos-policy.md)
   - [Genie](./providers/genie.md)
@@ -42,6 +44,7 @@
   - [Benchmarking](./benchmarking.md)
   - [Live Smoke Evidence Registry](./live-smoke-evidence.md)
   - [Claim-To-Evidence Map](./claim-evidence-map.md)
+  - [Artifact Schemas](./artifact-schemas.md)
   - [Artifact Integrity](./artifact-integrity.md)
 - Operations And Quality
   - [User And Operator Playbooks](./playbooks.md)
@@ -53,6 +56,7 @@
   - [Security](./security.md)
   - [Support](./support.md)
   - [Contributing](./contributing.md)
+  - [Contributor Task Starters](./task-starters.md)
 - Planning Records
   - [Roadmap](./roadmap.md)
   - [Roadmap Expansion 2](./roadmap-expansion-2.md)

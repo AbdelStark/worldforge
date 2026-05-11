@@ -250,6 +250,11 @@ Do not expose the policy server world-open.
 `COSMOS_POLICY_BASE_URL` is enough for endpoint readiness checks. A provider instance still needs
 a trusted host `action_translator` before it can return executable policy actions.
 
+For a checkout-safe side-by-side policy replay comparison across LeRobot, GR00T, and Cosmos-Policy,
+run `uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison`. Use the report
+to inspect the 50 x 14 ALOHA action rows, value prediction metadata, and translator blockers before
+moving to the prepared-host `uv run worldforge-smoke-cosmos-policy --help` path.
+
 ### 4. Run the health-only smoke
 
 Prepared hosts can pass `--health-only` to validate WorldForge configuration without sending a

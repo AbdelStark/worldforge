@@ -26,6 +26,7 @@ from typing import Any
 
 from worldforge.providers import LeWorldModelProvider
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
+from worldforge.smoke.runtime_assets import leworldmodel_checkpoint_asset
 
 DEFAULT_STABLEWM_HOME = "~/.stable-wm"
 ANSI_CODES = {
@@ -469,6 +470,15 @@ def main() -> int:
         cache_dir=args.cache_dir,
         checkpoint=args.checkpoint,
     )
+    runtime_assets = (
+        leworldmodel_checkpoint_asset(
+            policy=args.policy,
+            checkpoint=object_path,
+            cache_root=cache_dir,
+            exists=object_path.exists(),
+        ),
+    )
+    runtime_asset_refs = [asset.to_reference() for asset in runtime_assets]
     resolve_latency_ms = (perf_counter() - resolve_started) * 1000
     if not args.json_only:
         _log_step(
@@ -531,6 +541,7 @@ def main() -> int:
             "checkpoint_display": _display_path(object_path),
             "error": "runtime preflight failed",
             "health": health,
+            "runtime_assets": runtime_asset_refs,
             "metrics": {
                 "resolve_latency_ms": resolve_latency_ms,
                 "preflight_latency_ms": health.get("latency_ms"),
@@ -550,6 +561,7 @@ def main() -> int:
                     env_vars=("LEWORLDMODEL_CHECKPOINT", "LEWORLDMODEL_POLICY", "STABLEWM_HOME"),
                     event_count=len(provider_events),
                     result=payload,
+                    runtime_assets=runtime_assets,
                     artifact_paths=(
                         {"summary_json": args.json_output} if args.json_output is not None else {}
                     ),
@@ -642,6 +654,7 @@ def main() -> int:
         "checkpoint": str(object_path),
         "checkpoint_display": _display_path(object_path),
         "health": health,
+        "runtime_assets": runtime_asset_refs,
         "inputs": {
             "batch": args.batch,
             "samples": args.samples,
@@ -674,6 +687,7 @@ def main() -> int:
                 env_vars=("LEWORLDMODEL_CHECKPOINT", "LEWORLDMODEL_POLICY", "STABLEWM_HOME"),
                 event_count=len(provider_events),
                 result=payload,
+                runtime_assets=runtime_assets,
                 artifact_paths=(
                     {"summary_json": json_output_path} if json_output_path is not None else {}
                 ),

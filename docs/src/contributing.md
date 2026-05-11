@@ -9,8 +9,11 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
+uv run python scripts/generate_quality_dashboard.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -32,15 +35,67 @@ assuming LeWorldModel, LeRobot, GR00T, or Rerun are present. Its Markdown output
 into public issues.
 
 `uv run python scripts/generate_provider_docs.py --check`,
-`uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_wrapper_portability.py`,
-and `uv run mkdocs build --strict` verify generated provider docs, documented command drift,
-wrapper portability, and the MkDocs Material site in strict mode. `bash scripts/test_package.sh`
-checks the wheel/sdist contents before installing the built wheel and running tests against the
-installed package. See [Artifact Integrity](./artifact-integrity.md) for the release artifact
-hashing and evidence-linking contract.
+`uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_docs_snippets.py`,
+`uv run python scripts/manage_fixture_snapshots.py --format markdown`,
+`uv run python scripts/check_wrapper_portability.py`,
+`uv run python scripts/check_optional_import_boundaries.py`, and `uv run mkdocs build --strict`
+verify generated provider docs, documented command drift, selected executable docs snippets,
+fixture snapshot drift, wrapper portability, optional-runtime import boundaries, and the MkDocs
+Material site in strict mode. `bash scripts/test_package.sh` checks the wheel/sdist contents before
+installing the built wheel and running tests against the installed package. See
+[Artifact Integrity](./artifact-integrity.md) for the release artifact hashing, quality dashboard,
+and evidence-linking contract.
+
+### Docs snippet markers
+
+Use snippet markers directly before fenced code blocks when a Python or JSON example is stable
+enough to gate:
+
+````markdown
+<!-- worldforge-snippet: execute -->
+```python
+from worldforge import WorldForge
+forge = WorldForge()
+print(forge.providers())
+```
+````
+
+Use `<!-- worldforge-snippet: parse -->` for JSON blocks. The gate parses generic JSON and applies
+schema checks for selected scenario and benchmark examples. Use explicit skip markers instead of
+leaving fragile examples unmarked:
+
+- `<!-- worldforge-snippet: skip-host-owned -->` for optional runtimes, checkpoints, GPU hosts, or
+  prepared robotics environments.
+- `<!-- worldforge-snippet: skip-credentialed -->` for paid providers, private endpoints, or
+  examples requiring secrets.
+- `<!-- worldforge-snippet: skip-illustrative -->` for fragments with placeholders such as
+  `...`, undefined host objects, or intentionally incomplete code.
+
+Run `uv run python scripts/check_docs_snippets.py` before changing Python or JSON examples in the
+Python API, scenarios, provider routing, external provider, benchmarking, artifact, or report docs.
+
+### Deterministic artifact tests
+
+Use `worldforge.testing` determinism helpers when tests compare exact artifact, report, or manifest
+output:
+
+```python
+from worldforge.testing import DeterministicIdFactory, stable_json_dumps, stable_snapshot
+
+ids = DeterministicIdFactory()
+snapshot = stable_snapshot(payload, path_roots={tmp_path: "<tmp>"})
+assert stable_json_dumps(snapshot) == expected_json
+```
+
+Exact snapshots are useful for schema-versioned JSON artifacts, issue templates, rendered reports,
+and stable CLI text. Prefer semantic assertions for real latency or throughput measurements, host
+paths, current git metadata, live timestamps, optional runtime warning text, and values owned by a
+prepared external runtime. Do not globally monkeypatch clocks or randomness for host-owned smokes;
+pass deterministic clocks or explicit IDs into the test helper or renderer being tested.
 
 Before changing public imports, CLI flags, provider capabilities, or artifact schemas, classify the
-surface through [Public API Stability](./api-stability.md). Stable and provisional surfaces need a
+surface through [Public API Stability](./api-stability.md) and the
+[Artifact Schemas](./artifact-schemas.md) ownership map. Stable and provisional surfaces need a
 deprecation or migration plan unless the change fixes a security exposure, false capability claim,
 or persisted-state incoherence.
 
@@ -49,7 +104,10 @@ Key directories:
 - `src/worldforge/models.py`: public data contracts and validation.
 - `src/worldforge/framework.py`: runtime facade, worlds, planning, persistence, and diagnostics.
 - `src/worldforge/providers/`: provider interfaces, catalog, adapters, and scaffolds.
-- `src/worldforge/testing/`: reusable provider contract helpers.
+- `src/worldforge/testing/`: reusable provider contract helpers, fixture loaders, runtime markers,
+  and deterministic artifact test controls.
+- `tests/fixtures/fixture-snapshots.json`: manifest of tracked JSON fixtures; update it with
+  `uv run python scripts/manage_fixture_snapshots.py --write` after intentional fixture changes.
 - `src/worldforge/evaluation/`: deterministic evaluation suites.
 - `src/worldforge/benchmark.py`: provider benchmark harness.
 - `src/worldforge/observability.py`: provider event sinks.
@@ -60,6 +118,11 @@ Key directories:
 
 Provider work belongs in `src/worldforge/providers/`. Keep adapter capabilities honest and add
 tests for every new supported path.
+
+Before editing, pick the matching [Contributor Task Starters](./task-starters.md) entry. The
+starter packs list likely files, forbidden shortcuts, validation commands, evidence artifacts,
+docs/changelog expectations, and review checklist items for provider, docs-only, demo, artifact,
+evaluation, and CLI work.
 
 For adapter packages and in-repo providers, use the reusable contract helper:
 
@@ -120,6 +183,7 @@ Before publishing a branch:
 - update provider docs and generated catalog tables for provider behavior changes.
 - update [Python API](./api/python.md) for public API or exception changes.
 - update [Architecture](./architecture.md) for new flows or ownership boundaries.
+- update [Artifact Schemas](./artifact-schemas.md) for new or changed public artifact families.
 - update [Operations](./operations.md) and [Playbooks](./playbooks.md) for new operator work.
 - update `CHANGELOG.md` for user-visible changes.
 - update `mkdocs.yml` when the docs navigation changes.

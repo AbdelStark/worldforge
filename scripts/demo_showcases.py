@@ -10,7 +10,10 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from contextlib import suppress
+from dataclasses import dataclass, replace
+from html import escape as html_escape
+from importlib.metadata import EntryPoint
 from pathlib import Path
 from typing import Any
 
@@ -19,13 +22,37 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from worldforge import Action, BBox, Position, SceneObject, WorldForge  # noqa: E402
+from worldforge import (  # noqa: E402
+    ENTRY_POINT_GROUP,
+    Action,
+    ActionPolicyResult,
+    ActionScoreResult,
+    BBox,
+    Position,
+    ProviderCapabilities,
+    ProviderHealth,
+    SceneObject,
+    WorldForge,
+    action_candidates_to_score_payload,
+    bounded_move_grid_candidates,
+    discover_entry_point_providers,
+)
+from worldforge.capability_negotiation import negotiate  # noqa: E402
 from worldforge.demos import lerobot_e2e  # noqa: E402
 from worldforge.evidence_bundle import generate_issue_bundle  # noqa: E402
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest  # noqa: E402
 from worldforge.models import JSONDict, ProviderEvent, dump_json  # noqa: E402
 from worldforge.operator_drills import run_operator_drill  # noqa: E402
 from worldforge.persistence_preflight import preflight_local_state  # noqa: E402
+from worldforge.providers import BaseProvider, ProviderProfileSpec  # noqa: E402
+from worldforge.providers.base import ProviderError  # noqa: E402
+from worldforge.providers.catalog import PROVIDER_CATALOG  # noqa: E402
+from worldforge.testing import (  # noqa: E402
+    FixtureSnapshotEntry,
+    FixtureSnapshotManifest,
+    build_fixture_snapshot_manifest,
+    validate_fixture_snapshot_manifest,
+)
 
 DEFAULT_WORKSPACE = Path(".worldforge/demo-showcases")
 
@@ -36,6 +63,99 @@ class DemoWorkflow:
     title: str
     issue: int
     runner: Callable[[Path], JSONDict]
+
+
+class _CandidateLabPolicy(BaseProvider):
+    def __init__(
+        self,
+        candidate_plans: list[list[Action]],
+        *,
+        translator_available: bool = True,
+    ) -> None:
+        super().__init__(
+            "candidate-lab-policy",
+            capabilities=ProviderCapabilities(policy=True),
+            profile=ProviderProfileSpec(
+                description="Deterministic checkout-safe policy candidate lab provider.",
+                implementation_status="demo",
+                is_local=True,
+                deterministic=True,
+            ),
+        )
+        self._candidate_plans = candidate_plans
+        self._translator_available = translator_available
+
+    def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
+        if not self._translator_available:
+            raise ProviderError("candidate lab action_translator is required.")
+        raw_actions = {
+            "policy_logits": [0.2, 0.6, 0.2],
+            "raw_policy_action_preserved": True,
+            "observation_keys": sorted(info),
+        }
+        return ActionPolicyResult(
+            provider=self.name,
+            actions=list(self._candidate_plans[0]),
+            raw_actions=raw_actions,
+            action_horizon=len(self._candidate_plans[0]),
+            embodiment_tag="candidate-lab",
+            metadata={
+                "candidate_count": len(self._candidate_plans),
+                "translator": "checkout-safe deterministic mapper",
+            },
+            action_candidates=[list(plan) for plan in self._candidate_plans],
+        )
+
+
+class _CandidateLabScore(BaseProvider):
+    def __init__(self, scores: list[float]) -> None:
+        super().__init__(
+            "candidate-lab-score",
+            capabilities=ProviderCapabilities(score=True),
+            profile=ProviderProfileSpec(
+                description="Deterministic checkout-safe candidate scorer.",
+                implementation_status="demo",
+                is_local=True,
+                deterministic=True,
+            ),
+        )
+        self._scores = scores
+
+    def score_actions(self, *, info: JSONDict, action_candidates: object) -> ActionScoreResult:
+        if not isinstance(action_candidates, list) or len(action_candidates) != len(self._scores):
+            raise ProviderError("candidate lab scorer received mismatched action candidates.")
+        return ActionScoreResult(
+            provider=self.name,
+            scores=list(self._scores),
+            best_index=min(range(len(self._scores)), key=self._scores.__getitem__),
+            metadata={
+                "candidate_count": len(self._scores),
+                "score_source": "deterministic checkout lab",
+                "goal": str(info.get("goal", "")),
+            },
+        )
+
+
+class _UnhealthyTransferProvider(BaseProvider):
+    def __init__(self) -> None:
+        super().__init__(
+            "demo-unhealthy-transfer",
+            capabilities=ProviderCapabilities(transfer=True),
+            profile=ProviderProfileSpec(
+                description="Demo provider with configured runtime but unhealthy dependency.",
+                implementation_status="demo",
+                is_local=True,
+                deterministic=True,
+            ),
+        )
+
+    def health(self) -> ProviderHealth:
+        return ProviderHealth(
+            name=self.name,
+            healthy=False,
+            latency_ms=0.0,
+            details="demo optional runtime dependency is unavailable",
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -683,6 +803,1440 @@ def _cookbook(workflow_dir: Path) -> JSONDict:
     }
 
 
+def _external_provider_package(workflow_dir: Path) -> JSONDict:
+    package_root = workflow_dir / "external-provider-package"
+    source_root = package_root / "src"
+    package_dir = source_root / "worldforge_demo_provider"
+    tests_dir = package_root / "tests"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    (package_dir / "__init__.py").write_text('"""Checkout-safe WorldForge demo provider."""\n')
+    pyproject_path = package_root / "pyproject.toml"
+    pyproject_path.write_text(
+        "\n".join(
+            [
+                "[project]",
+                'name = "worldforge-demo-provider"',
+                'version = "0.0.0"',
+                'description = "Checkout-safe WorldForge external provider demo"',
+                'requires-python = ">=3.13,<3.14"',
+                'dependencies = ["worldforge"]',
+                "",
+                '[project.entry-points."worldforge.providers"]',
+                'demo-external = "worldforge_demo_provider.provider:create_provider"',
+                'needs-optional = "worldforge_demo_provider.needs_optional:create_provider"',
+                'mock = "worldforge_demo_provider.provider:create_provider"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    provider_path = package_dir / "provider.py"
+    provider_path.write_text(
+        "\n".join(
+            [
+                "from __future__ import annotations",
+                "",
+                "from worldforge import Action, ProviderCapabilities",
+                "from worldforge.providers import BaseProvider, PredictionPayload, "
+                "ProviderProfileSpec",
+                "",
+                "",
+                "class DemoExternalProvider(BaseProvider):",
+                "    def __init__(self, *, event_handler=None) -> None:",
+                "        super().__init__(",
+                '            name="demo-external",',
+                "            capabilities=ProviderCapabilities(predict=True),",
+                "            profile=ProviderProfileSpec(",
+                '                description="Checkout-safe external provider package demo.",',
+                '                implementation_status="demo",',
+                "                is_local=True,",
+                "                deterministic=True,",
+                "            ),",
+                "            event_handler=event_handler,",
+                "        )",
+                "",
+                "    def predict(",
+                "        self, world_state: dict, action: Action, steps: int",
+                "    ) -> PredictionPayload:",
+                "        next_state = dict(world_state)",
+                '        next_state["provider"] = self.name',
+                '        next_state["step"] = int(next_state.get("step", 0)) + steps',
+                "        return PredictionPayload(",
+                "            world_state=next_state,",
+                "            confidence=0.91,",
+                "            physics_score=0.89,",
+                "            latency_ms=0.5,",
+                "        )",
+                "",
+                "",
+                "def create_provider(*, event_handler=None) -> DemoExternalProvider:",
+                "    return DemoExternalProvider(event_handler=event_handler)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    missing_path = package_dir / "needs_optional.py"
+    missing_path.write_text(
+        "\n".join(
+            [
+                "import worldforge_demo_missing_runtime",
+                "",
+                "",
+                "def create_provider(*, event_handler=None):",
+                "    return worldforge_demo_missing_runtime.create_provider(",
+                "        event_handler=event_handler",
+                "    )",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    generated_test = tests_dir / "test_demo_external_provider.py"
+    generated_test.write_text(
+        "\n".join(
+            [
+                "from worldforge_demo_provider.provider import create_provider",
+                "",
+                "",
+                "def test_provider_factory_name_matches_entry_point():",
+                '    assert create_provider().name == "demo-external"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    for path in (provider_path, missing_path, generated_test):
+        py_compile.compile(str(path), doraise=True)
+
+    entry_points = (
+        EntryPoint(
+            name="demo-external",
+            value="worldforge_demo_provider.provider:create_provider",
+            group=ENTRY_POINT_GROUP,
+        ),
+        EntryPoint(
+            name="needs-optional",
+            value="worldforge_demo_provider.needs_optional:create_provider",
+            group=ENTRY_POINT_GROUP,
+        ),
+        EntryPoint(
+            name="mock",
+            value="worldforge_demo_provider.provider:create_provider",
+            group=ENTRY_POINT_GROUP,
+        ),
+    )
+
+    def entry_points_provider(group: str) -> tuple[EntryPoint, ...]:
+        return entry_points if group == ENTRY_POINT_GROUP else ()
+
+    sys.path.insert(0, str(source_root))
+    try:
+        discovery = discover_entry_point_providers(
+            enabled=True,
+            catalog=PROVIDER_CATALOG,
+            entry_points_provider=entry_points_provider,
+        )
+        disabled = discover_entry_point_providers(
+            enabled=False,
+            catalog=PROVIDER_CATALOG,
+            entry_points_provider=entry_points_provider,
+        )
+        provider = discovery.entries[0].create()
+    finally:
+        with suppress(ValueError):
+            sys.path.remove(str(source_root))
+        for module_name in tuple(sys.modules):
+            if module_name.startswith("worldforge_demo_provider"):
+                sys.modules.pop(module_name, None)
+
+    report = {
+        "schema_version": 1,
+        "entry_point_group": ENTRY_POINT_GROUP,
+        "package_root": str(package_root),
+        "generated_files": sorted(
+            str(path.relative_to(package_root))
+            for path in package_root.rglob("*")
+            if path.is_file()
+        ),
+        "discovery_enabled": discovery.to_dict(),
+        "discovery_disabled": disabled.to_dict(),
+        "provider": {
+            "name": provider.name,
+            "capabilities": provider.capabilities.to_dict(),
+            "configured": provider.configured(),
+            "description": provider.description,
+        },
+        "skip_reasons": {skip.name: skip.reason for skip in discovery.skipped},
+        "safe_to_attach": True,
+    }
+    report_path = workflow_dir / "external-provider-discovery.json"
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    return {
+        "status": "passed",
+        "provider": "demo-external",
+        "safe_to_attach": True,
+        "summary": (
+            "Generated a temp external provider package and proved entry-point discovery, "
+            "disabled discovery, duplicate-name skips, and missing optional dependency skips."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "discovery_report": str(report_path),
+            "pyproject": str(pyproject_path),
+            "provider": str(provider_path),
+            "generated_test": str(generated_test),
+        },
+        "first_triage_step": (
+            "Inspect `external-provider-discovery.json`, then run the generated provider package "
+            "tests in the temp package before publishing."
+        ),
+        "claim_boundary": (
+            "Checkout-safe package-shape demo only; no PyPI publishing, credentialed provider, "
+            "or remote call."
+        ),
+    }
+
+
+def _custom_evaluation_suite(workflow_dir: Path) -> JSONDict:
+    example = _load_module(
+        ROOT / "examples/custom_evaluation_suite.py",
+        "worldforge_custom_evaluation_demo",
+    )
+    walkthrough = example.run_walkthrough(
+        output_dir=workflow_dir / "custom-eval-artifacts",
+        state_dir=workflow_dir / "worlds",
+    )
+    artifact_paths = dict(walkthrough["artifact_paths"])
+    return {
+        "status": "passed",
+        "provider": "mock",
+        "safe_to_attach": True,
+        "summary": (
+            "Ran a custom evaluation suite with provenance, deterministic metrics, one "
+            "controlled failure, and JSON/Markdown/HTML/failure-gallery artifacts."
+        ),
+        "walkthrough": walkthrough,
+        "artifact_paths": artifact_paths,
+        "first_triage_step": (
+            "Open `custom-eval-artifacts/markdown` first, then inspect "
+            "`failure_gallery.md` for the controlled failed case."
+        ),
+        "claim_boundary": walkthrough["claim_boundary"],
+    }
+
+
+def _policy_score_candidate_lab(workflow_dir: Path) -> JSONDict:
+    candidate_plans = bounded_move_grid_candidates(
+        x_bounds=(0.1, 0.7),
+        y_bounds=(0.5, 0.5),
+        z_bounds=(0.0, 0.0),
+        x_steps=3,
+        y_steps=1,
+        z_steps=1,
+        object_id="cube-1",
+    )
+    score_payload = action_candidates_to_score_payload(candidate_plans)
+    scores = [0.72, 0.18, 0.44]
+    forge = WorldForge(state_dir=workflow_dir / "worlds", auto_register_remote=False)
+    forge.register_provider(_CandidateLabPolicy(candidate_plans))
+    forge.register_provider(_CandidateLabScore(scores))
+    world = forge.create_world("candidate-lab-world", provider="mock")
+    world.add_object(
+        SceneObject(
+            "cube",
+            Position(0.0, 0.5, 0.0),
+            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+            id="cube-1",
+        )
+    )
+    plan = world.plan(
+        goal="choose the lowest-cost candidate",
+        policy_provider="candidate-lab-policy",
+        score_provider="candidate-lab-score",
+        policy_info={"observation": "checkout-safe grid"},
+        score_info={"goal": "move cube near center"},
+        execution_provider="mock",
+    )
+    execution = world.execute_plan(plan)
+    selected_index = int(plan.metadata["score_result"]["best_index"])
+
+    invalid_bounds_error = ""
+    try:
+        bounded_move_grid_candidates(
+            x_bounds=(1.0, 0.0),
+            y_bounds=(0.5, 0.5),
+            z_bounds=(0.0, 0.0),
+            x_steps=3,
+            y_steps=1,
+            z_steps=1,
+        )
+    except Exception as exc:
+        invalid_bounds_error = str(exc)
+
+    translator_missing_error = ""
+    try:
+        _CandidateLabPolicy(candidate_plans, translator_available=False).select_actions(
+            info={"observation": "checkout-safe grid"}
+        )
+    except ProviderError as exc:
+        translator_missing_error = str(exc)
+
+    candidate_table = [
+        {
+            "index": index,
+            "score": scores[index],
+            "selected": index == selected_index,
+            "actions": [action.to_dict() for action in candidate],
+        }
+        for index, candidate in enumerate(candidate_plans)
+    ]
+    report = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "planning_mode": plan.metadata["planning_mode"],
+        "policy_provider": plan.metadata["policy_provider"],
+        "score_provider": plan.metadata["score_provider"],
+        "candidate_count": len(candidate_plans),
+        "score_payload": score_payload,
+        "candidate_table": candidate_table,
+        "selected_candidate_index": selected_index,
+        "selected_action": plan.actions[0].to_dict(),
+        "raw_policy_actions": plan.metadata["policy_result"]["raw_actions"],
+        "score_metadata": plan.metadata["score_result"]["metadata"],
+        "workflow_trace": plan.metadata["workflow_trace"],
+        "execution_final_step": execution.final_world().step,
+        "expected_failures": {
+            "invalid_candidate_bounds": invalid_bounds_error,
+            "missing_translator": translator_missing_error,
+        },
+        "claim_boundary": (
+            "Checkout-safe deterministic candidate lab only; no robot controller, simulator, "
+            "checkpoint download, or physical-performance claim."
+        ),
+    }
+    report_path = workflow_dir / "policy-score-candidate-lab.json"
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    markdown_path = workflow_dir / "policy-score-candidate-lab.md"
+    markdown_lines = [
+        "# Policy+Score Candidate Lab",
+        "",
+        f"- planning_mode: `{report['planning_mode']}`",
+        f"- selected_candidate_index: `{selected_index}`",
+        f"- candidate_count: `{len(candidate_plans)}`",
+        "",
+        "| index | score | selected | target_x |",
+        "| ---: | ---: | --- | ---: |",
+    ]
+    markdown_lines.extend(
+        "| {index} | {score:.2f} | {selected} | {target_x:.2f} |".format(
+            index=row["index"],
+            score=row["score"],
+            selected="yes" if row["selected"] else "no",
+            target_x=row["actions"][0]["parameters"]["target"]["x"],
+        )
+        for row in candidate_table
+    )
+    markdown_lines.extend(
+        [
+            "",
+            "## Expected Failures",
+            "",
+            f"- invalid_candidate_bounds: {invalid_bounds_error}",
+            f"- missing_translator: {translator_missing_error}",
+            "",
+            report["claim_boundary"],
+        ]
+    )
+    markdown_path.write_text("\n".join(markdown_lines) + "\n", encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "candidate-lab-policy+candidate-lab-score",
+        "safe_to_attach": True,
+        "summary": (
+            "Generated deterministic action candidates, preserved raw policy actions, ranked "
+            "them with a score provider, selected the lowest-cost action, and captured invalid "
+            "bounds plus missing-translator failures."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "lab_report": str(report_path),
+            "lab_markdown": str(markdown_path),
+        },
+        "first_triage_step": (
+            "Open `policy-score-candidate-lab.md` and verify the selected row matches "
+            "`score_result.best_index`."
+        ),
+        "claim_boundary": report["claim_boundary"],
+    }
+
+
+def _fixture_drift_review(workflow_dir: Path) -> JSONDict:
+    lab_root = workflow_dir / "fixture-drift-lab"
+    provider_fixture = lab_root / "tests/fixtures/providers/demo_provider_payload.json"
+    benchmark_fixture = lab_root / "examples/demo-benchmark-inputs.json"
+    scenario_fixture = lab_root / "examples/scenarios/demo-scenario.json"
+    for path, payload in (
+        (
+            provider_fixture,
+            {"schema_version": 1, "provider": "mock", "status": "baseline"},
+        ),
+        (
+            benchmark_fixture,
+            {"schema_version": 1, "inputs": [{"provider": "mock", "operation": "predict"}]},
+        ),
+        (
+            scenario_fixture,
+            {
+                "schema_version": 1,
+                "id": "demo-scenario",
+                "description": "Fixture drift walkthrough scenario.",
+            },
+        ),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    baseline = build_fixture_snapshot_manifest(
+        (provider_fixture, benchmark_fixture, scenario_fixture),
+        root=lab_root,
+    )
+    baseline_report = validate_fixture_snapshot_manifest(baseline, root=lab_root)
+    baseline_manifest_path = lab_root / "fixture-snapshots-baseline.json"
+    baseline_manifest_path.write_text(
+        json.dumps(baseline.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    missing_fixture = lab_root / "tests/fixtures/providers/missing_payload.json"
+    provider_path = provider_fixture.relative_to(lab_root).as_posix()
+    benchmark_path = benchmark_fixture.relative_to(lab_root).as_posix()
+    scenario_path = scenario_fixture.relative_to(lab_root).as_posix()
+    missing_entry = replace(
+        next(entry for entry in baseline.entries if entry.path == provider_path),
+        path=missing_fixture.relative_to(lab_root).as_posix(),
+    )
+    changed_payload = {"schema_version": 1, "inputs": [{"provider": "mock", "operation": "embed"}]}
+    benchmark_fixture.write_text(
+        json.dumps(changed_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    scenario_fixture.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "id": "demo-scenario",
+                "description": "Fixture drift walkthrough schema change.",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    unsafe_entry = FixtureSnapshotEntry(
+        path="../private/provider-secret.json",
+        sha256="sha256:" + "0" * 64,
+        size_bytes=1,
+        fixture_kind="provider-payload-fixture",
+        fixture_schema_version=1,
+    )
+    review_manifest = FixtureSnapshotManifest(
+        entries=(
+            missing_entry,
+            *baseline.entries[1:],
+            unsafe_entry,
+        )
+    )
+    review_report = validate_fixture_snapshot_manifest(review_manifest, root=lab_root)
+    review_manifest_path = lab_root / "fixture-snapshots-review.json"
+    review_json_path = workflow_dir / "fixture-drift-review.json"
+    review_markdown_path = workflow_dir / "fixture-drift-review.md"
+    review_manifest_path.write_text(
+        json.dumps(review_manifest.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    review_json_path.write_text(
+        json.dumps(review_report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    review_markdown_path.write_text(review_report.to_markdown() + "\n", encoding="utf-8")
+
+    intended_manifest = FixtureSnapshotManifest(
+        entries=tuple(
+            replace(entry, review_status="intended-update")
+            if entry.path in {benchmark_path, scenario_path}
+            else entry
+            for entry in baseline.entries
+        )
+    )
+    intended_report = validate_fixture_snapshot_manifest(
+        intended_manifest,
+        root=lab_root,
+        allow_intended_updates=True,
+    )
+    refreshed = build_fixture_snapshot_manifest(
+        (provider_fixture, benchmark_fixture, scenario_fixture),
+        root=lab_root,
+    )
+    refreshed_manifest_path = lab_root / "fixture-snapshots-refreshed.json"
+    intended_json_path = workflow_dir / "fixture-drift-intended-update.json"
+    refreshed_manifest_path.write_text(
+        json.dumps(refreshed.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    intended_json_path.write_text(
+        json.dumps(intended_report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    report = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "baseline_passed": baseline_report.passed,
+        "review_passed": review_report.passed,
+        "intended_update_passed": intended_report.passed,
+        "review_summary": review_report.summary,
+        "review_statuses": [issue.status for issue in review_report.issues],
+        "managed_fixture_kinds": sorted({entry.fixture_kind for entry in baseline.entries}),
+        "approved_update_path": [
+            "Mark the reviewed manifest entry as review_status=intended-update.",
+            "Run the snapshot manager with --allow-intended-updates for human review.",
+            "After approving fixture and manifest diffs, refresh the manifest with --write.",
+        ],
+        "claim_boundary": (
+            "Checkout-safe fixture drift walkthrough only; all mutations occur under the "
+            "selected demo workspace."
+        ),
+    }
+    summary_path = workflow_dir / "fixture-drift-summary.json"
+    summary_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "fixture-snapshot-manager",
+        "safe_to_attach": True,
+        "summary": (
+            "Created a controlled fixture drift review covering missing, changed, schema-change, "
+            "unsafe-path, and intended-update paths under a temp workspace."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "summary": str(summary_path),
+            "baseline_manifest": str(baseline_manifest_path),
+            "review_manifest": str(review_manifest_path),
+            "review_json": str(review_json_path),
+            "review_markdown": str(review_markdown_path),
+            "intended_update_json": str(intended_json_path),
+            "refreshed_manifest": str(refreshed_manifest_path),
+        },
+        "first_triage_step": (
+            "Open `fixture-drift-review.md`, inspect every changed fixture diff, then approve "
+            "intentional updates before rewriting the manifest."
+        ),
+        "claim_boundary": report["claim_boundary"],
+    }
+
+
+def _capability_negotiation_preflight(workflow_dir: Path) -> JSONDict:
+    clear_env = {
+        "COSMOS_BASE_URL": "",
+        "RUNWAYML_API_SECRET": "",
+        "RUNWAY_API_SECRET": "",
+        "LEWORLDMODEL_POLICY": "",
+        "LEWM_POLICY": "",
+        "LEROBOT_POLICY_PATH": "",
+        "LEROBOT_POLICY": "",
+        "GROOT_POLICY_HOST": "",
+    }
+    forge = WorldForge(state_dir=workflow_dir / "worlds", auto_register_remote=False)
+    forge.register_provider(_UnhealthyTransferProvider())
+    main_report = negotiate(
+        [
+            "predict-only",
+            "generate-only",
+            "transfer-only",
+            "score-only",
+            "policy-plus-score",
+            "evaluation-physics",
+        ],
+        forge=forge,
+        environ=clear_env,
+    )
+    not_registered_forge = WorldForge(
+        state_dir=workflow_dir / "not-registered-worlds",
+        auto_register_remote=False,
+    )
+    not_registered_report = negotiate(
+        ["generate-only"],
+        forge=not_registered_forge,
+        environ={"COSMOS_BASE_URL": "https://cosmos.example.invalid"},
+    )
+    reports_dir = workflow_dir / "capability-negotiation"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    main_json = reports_dir / "preflight-report.json"
+    main_markdown = reports_dir / "preflight-report.md"
+    not_registered_json = reports_dir / "not-registered-report.json"
+    main_json.write_text(
+        json.dumps(main_report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    main_markdown.write_text(main_report.to_markdown(), encoding="utf-8")
+    not_registered_json.write_text(
+        json.dumps(not_registered_report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    readiness_values = sorted(
+        {
+            status["readiness"]
+            for workflow in main_report.to_dict()["workflows"]
+            for requirement in workflow["requirements"]
+            for status in requirement["candidates"]
+        }
+        | {
+            status["readiness"]
+            for workflow in not_registered_report.to_dict()["workflows"]
+            for requirement in workflow["requirements"]
+            for status in requirement["candidates"]
+        }
+    )
+    unsupported_example = {
+        "provider": "demo-unhealthy-transfer",
+        "capability": "policy",
+        "readiness": "unsupported",
+        "reason": "provider 'demo-unhealthy-transfer' does not advertise capability 'policy'",
+    }
+    report = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "workflow_shapes": [
+            "predict-only",
+            "generate-only",
+            "transfer-only",
+            "score-only",
+            "policy-plus-score",
+            "evaluation-physics",
+        ],
+        "readiness_values": readiness_values,
+        "unsupported_example": unsupported_example,
+        "recommended_actions": [
+            action
+            for workflow in main_report.to_dict()["workflows"]
+            for action in workflow["recommended_actions"]
+        ],
+        "claim_boundary": (
+            "Checkout-safe preflight only; this report does not install dependencies, configure "
+            "credentials, or execute fallback workflows."
+        ),
+    }
+    summary_path = workflow_dir / "capability-negotiation-preflight.json"
+    summary_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "capability-negotiation",
+        "safe_to_attach": True,
+        "summary": (
+            "Preserved capability negotiation reports for ready, missing-config, "
+            "missing-dependency, unsupported, and not-registered preflight cases."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "summary": str(summary_path),
+            "preflight_json": str(main_json),
+            "preflight_markdown": str(main_markdown),
+            "not_registered_json": str(not_registered_json),
+        },
+        "first_triage_step": (
+            "Open `capability-negotiation/preflight-report.md` and follow the first "
+            "recommended action for the blocked capability slot."
+        ),
+        "claim_boundary": report["claim_boundary"],
+    }
+
+
+class _TranslatorMissingLeRobotPolicy:
+    def to(self, _device: str) -> _TranslatorMissingLeRobotPolicy:
+        return self
+
+    def eval(self) -> _TranslatorMissingLeRobotPolicy:
+        return self
+
+    def requires_grad_(self, _enabled: bool) -> None:
+        return None
+
+    def select_action(self, _observation: object) -> list[list[float]]:
+        return [[0.1, 0.5, 0.0]]
+
+
+class _TranslatorMissingGrootClient:
+    def ping(self) -> bool:
+        return True
+
+    def get_action(self, _observation: object, options: object | None = None) -> object:
+        if options is not None:
+            _ = options
+        return {"eef_9d": [[[0.1, 0.5, 0.0]]]}, {"runtime": "missing-translator-check"}
+
+
+def _policy_missing_translator_checks() -> list[JSONDict]:
+    import httpx
+
+    from worldforge.providers import (
+        CosmosPolicyProvider,
+        GrootPolicyClientProvider,
+        LeRobotPolicyProvider,
+    )
+
+    checks: list[JSONDict] = []
+    providers = [
+        (
+            "lerobot",
+            LeRobotPolicyProvider(
+                policy=_TranslatorMissingLeRobotPolicy(),
+                policy_path="demo/lerobot-missing-translator",
+            ),
+            {
+                "observation": {"observation.state": [[0.0, 0.5, 0.0]]},
+                "embodiment_tag": "aloha",
+                "action_horizon": 1,
+            },
+        ),
+        (
+            "gr00t",
+            GrootPolicyClientProvider(
+                policy_client=_TranslatorMissingGrootClient(),
+                embodiment_tag="GR1",
+            ),
+            {
+                "observation": {"state": {"eef_9d": [[[0.0 for _ in range(9)]]]}},
+                "embodiment_tag": "GR1",
+                "action_horizon": 1,
+            },
+        ),
+        (
+            "cosmos-policy",
+            CosmosPolicyProvider(
+                base_url="http://93.184.216.34",
+                transport=httpx.MockTransport(
+                    lambda _request: httpx.Response(
+                        200,
+                        json={"actions": [[0.0 for _ in range(14)]]},
+                    )
+                ),
+            ),
+            {
+                "observation": {
+                    "primary_image": [[[[0, 0, 0]]]],
+                    "left_wrist_image": [[[[0, 0, 0]]]],
+                    "right_wrist_image": [[[[0, 0, 0]]]],
+                    "proprio": [0.0 for _ in range(14)],
+                },
+                "task_description": "translator check",
+                "embodiment_tag": "aloha",
+                "action_horizon": 1,
+            },
+        ),
+    ]
+    for provider_name, provider, policy_info in providers:
+        try:
+            provider.select_actions(info=policy_info)
+        except ProviderError as exc:
+            checks.append(
+                {
+                    "provider": provider_name,
+                    "capability": "policy",
+                    "status": "blocked",
+                    "requires": "host action_translator",
+                    "message": str(exc),
+                    "advertised_capabilities": provider.profile().capabilities.enabled_names(),
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "provider": provider_name,
+                    "capability": "policy",
+                    "status": "unexpected-pass",
+                    "requires": "host action_translator",
+                    "message": "provider returned executable actions without translator",
+                    "advertised_capabilities": provider.profile().capabilities.enabled_names(),
+                }
+            )
+    return checks
+
+
+def _embodied_policy_replay_comparison(workflow_dir: Path) -> JSONDict:
+    from worldforge.harness.flows import _run_cosmos_policy_demo, _run_gr00t_replay_demo
+
+    lerobot_summary = lerobot_e2e.run_demo(state_dir=workflow_dir / "lerobot", emit=False)
+    gr00t_summary = _run_gr00t_replay_demo(state_dir=workflow_dir / "gr00t", emit=False)
+    cosmos_summary = _run_cosmos_policy_demo(state_dir=workflow_dir / "cosmos-policy", emit=False)
+
+    lerobot_policy = lerobot_summary["plan"]["metadata"]["policy_result"]
+    lerobot_metadata = lerobot_policy["metadata"]
+    gr00t_artifact = gr00t_summary["harness_artifacts"]["gr00t_replay"]["payload"]
+    cosmos_artifact = cosmos_summary["harness_artifacts"]["cosmos_policy_replay"]["payload"]
+
+    provider_rows = [
+        {
+            "provider": "lerobot",
+            "runtime_contract": (
+                "injected deterministic LeRobot policy through LeRobotPolicyProvider"
+            ),
+            "readiness": "checkout-safe fixture",
+            "capability": "policy",
+            "action_horizon": lerobot_policy["action_horizon"],
+            "embodiment_tag": lerobot_policy["embodiment_tag"],
+            "candidate_count": lerobot_metadata["candidate_count"],
+            "translated_action_count": len(lerobot_policy["actions"]),
+            "raw_action_keys": sorted(lerobot_policy["raw_actions"].keys()),
+            "raw_action_shape": lerobot_metadata["raw_action_summary"]["shape"],
+            "provider_specific_fields": {
+                "policy_path": lerobot_metadata["policy_path"],
+                "policy_type": lerobot_metadata["policy_type"],
+                "mode": lerobot_metadata["mode"],
+                "device": lerobot_metadata["device"],
+            },
+            "live_follow_up": "uv run python scripts/smoke_lerobot_policy.py --help",
+        },
+        {
+            "provider": "gr00t",
+            "runtime_contract": gr00t_summary["runtime_contract"],
+            "readiness": "checkout-safe fixture",
+            "capability": "policy",
+            "action_horizon": gr00t_summary["action_horizon"],
+            "embodiment_tag": gr00t_summary["embodiment_tag"],
+            "candidate_count": gr00t_summary["candidate_count"],
+            "translated_action_count": gr00t_summary["translated_action_count"],
+            "raw_action_keys": sorted(gr00t_artifact["policy_output"]["raw_actions"].keys()),
+            "raw_tensor_shapes": gr00t_summary["raw_action_shapes"],
+            "provider_specific_fields": gr00t_artifact["policy_output"]["provider_info"],
+            "live_follow_up": "uv run python scripts/smoke_gr00t_policy.py --help",
+        },
+        {
+            "provider": "cosmos-policy",
+            "runtime_contract": cosmos_summary["runtime_contract"],
+            "readiness": "checkout-safe fixture",
+            "capability": "policy",
+            "action_horizon": cosmos_summary["action_horizon"],
+            "embodiment_tag": "aloha",
+            "candidate_count": cosmos_summary["candidate_count"],
+            "translated_action_count": cosmos_summary["translated_action_count"],
+            "raw_action_keys": sorted(cosmos_artifact["policy_output"].keys()),
+            "raw_action_shape": cosmos_summary["raw_action_shape"],
+            "provider_specific_fields": {
+                "server_path": cosmos_summary["server_path"],
+                "value_prediction": cosmos_summary["value_prediction"],
+                "json_numpy_rows": cosmos_artifact["response"]["json_numpy_rows"],
+            },
+            "live_follow_up": "uv run worldforge-smoke-cosmos-policy --help",
+        },
+    ]
+    comparison = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "providers": provider_rows,
+        "missing_translator_checks": _policy_missing_translator_checks(),
+        "common_policy_contract": [
+            "provider",
+            "capability",
+            "action_horizon",
+            "embodiment_tag",
+            "raw_actions",
+            "translated Action candidates",
+            "provider metadata",
+        ],
+        "non_normalization_boundary": (
+            "Rows compare policy contracts side by side; they do not convert LeRobot tensors, "
+            "GR00T named tensors, or Cosmos-Policy 14D ALOHA rows into a shared action space."
+        ),
+        "prepared_host_follow_ups": {
+            row["provider"]: row["live_follow_up"] for row in provider_rows
+        },
+        "claim_boundary": (
+            "Checkout-safe replay comparison only; no robot controller, cross-provider action "
+            "conversion, live GPU server, checkpoint download, or physical-safety claim."
+        ),
+    }
+    report_path = workflow_dir / "embodied-policy-replay-comparison.json"
+    report_path.write_text(
+        json.dumps(comparison, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    markdown_path = workflow_dir / "embodied-policy-replay-comparison.md"
+    markdown_lines = [
+        "# Embodied Policy Replay Comparison",
+        "",
+        comparison["claim_boundary"],
+        "",
+        "| provider | horizon | translated | provider-specific raw fields | live follow-up |",
+        "| --- | ---: | ---: | --- | --- |",
+    ]
+    for row in provider_rows:
+        raw_fields = ", ".join(row["raw_action_keys"])
+        if "raw_tensor_shapes" in row:
+            raw_fields = raw_fields + " / " + ", ".join(row["raw_tensor_shapes"])
+        markdown_lines.append(
+            "| {provider} | {horizon} | {translated} | {raw_fields} | `{follow_up}` |".format(
+                provider=row["provider"],
+                horizon=row["action_horizon"],
+                translated=row["translated_action_count"],
+                raw_fields=raw_fields,
+                follow_up=row["live_follow_up"],
+            )
+        )
+    markdown_lines.extend(
+        [
+            "",
+            "## Missing Translator Checks",
+            "",
+            "| provider | status | message |",
+            "| --- | --- | --- |",
+        ]
+    )
+    markdown_lines.extend(
+        f"| {check['provider']} | {check['status']} | {check['message']} |"
+        for check in comparison["missing_translator_checks"]
+    )
+    markdown_lines.extend(["", comparison["non_normalization_boundary"], ""])
+    markdown_path.write_text("\n".join(markdown_lines), encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "embodied-policy-replay-comparison",
+        "safe_to_attach": True,
+        "summary": (
+            "Compared LeRobot, GR00T, and Cosmos-Policy policy replay contracts while preserving "
+            "provider-specific raw action metadata and translator requirements."
+        ),
+        "report": comparison,
+        "artifact_paths": {
+            "comparison_json": str(report_path),
+            "comparison_markdown": str(markdown_path),
+        },
+        "first_triage_step": (
+            "Open `embodied-policy-replay-comparison.md` and check the provider-specific raw "
+            "fields before selecting a prepared-host live smoke."
+        ),
+        "claim_boundary": comparison["claim_boundary"],
+    }
+
+
+def _non_developer_evidence_review(workflow_dir: Path) -> JSONDict:
+    review_dir = workflow_dir / "non-developer-evidence-review"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    evaluation_payload = {
+        "schema_version": 1,
+        "kind": "evaluation",
+        "title": "Planning report <script>alert(1)</script>",
+        "provider": "mock",
+        "status": "passed",
+        "summary": "2/2 deterministic contract scenarios passed.",
+        "claim_boundary": (
+            "Evaluation evidence is a checkout-safe contract signal, not model-quality or "
+            "physical-fidelity proof."
+        ),
+    }
+    benchmark_payload = {
+        "schema_version": 1,
+        "kind": "benchmark",
+        "provider": "mock",
+        "status": "passed",
+        "average_latency_ms": 1.25,
+        "claim_boundary": "Benchmark row is a fixture for review flow only.",
+    }
+    world_diff_payload = {
+        "schema_version": 1,
+        "kind": "world_diff",
+        "status": "changed",
+        "changes": [
+            {
+                "path": "objects.cube.position.x",
+                "before": 0.0,
+                "after": 0.35,
+                "safe_to_attach": True,
+            }
+        ],
+    }
+    _write_json(review_dir / "evaluation-report.json", evaluation_payload)
+    _write_json(review_dir / "benchmark-report.json", benchmark_payload)
+    _write_json(review_dir / "world-diff.json", world_diff_payload)
+    (review_dir / "evaluation-report.md").write_text(
+        "# Evaluation Evidence\n\n"
+        "- Status: `passed`\n"
+        "- Claim boundary: checkout-safe contract signal only.\n",
+        encoding="utf-8",
+    )
+
+    issue_workspace = workflow_dir / "issue-workspace"
+    run_id = "20260101T000000Z-aabbccdd"
+    run_workspace = create_run_workspace(
+        issue_workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        run_id=run_id,
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+    )
+    run_workspace.write_json("reports/report.json", evaluation_payload)
+    run_workspace.write_text(
+        "logs/provider-events.jsonl",
+        '{"target":"https://example.invalid/artifact.json?token=secret"}\n',
+    )
+    write_run_manifest(
+        run_workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        status="failed",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+        result_summary={"failed_count": 1, "safe_to_attach": False},
+        artifact_paths={
+            "report": "reports/report.json",
+            "unsafe_events": "logs/provider-events.jsonl",
+            "host_local": "/Users/example/private/provider-payload.json",
+        },
+    )
+    issue_bundle = generate_issue_bundle(
+        workspace_dir=issue_workspace,
+        run_id=run_id,
+        output_dir=review_dir / "issue-bundle",
+        overwrite=True,
+        generated_at="2026-01-01T00:00:00+00:00",
+    )
+    issue_manifest = issue_bundle.manifest
+    local_only_entries = [
+        {
+            "kind": "unsafe-provider-event",
+            "path": "<host-local:provider-events.jsonl>",
+            "share_policy": "local-only",
+            "reason": "secret-like signed URL query string excluded from the review package",
+        },
+        {
+            "kind": "raw-provider-payload",
+            "path": "<host-local:provider-payload.json>",
+            "share_policy": "local-only",
+            "reason": "raw provider payload is host-local and not embedded",
+        },
+    ]
+    artifacts = [
+        _review_artifact(
+            "evaluation",
+            "evaluation-report.json",
+            "safe",
+            "deterministic evaluation summary",
+        ),
+        _review_artifact(
+            "benchmark",
+            "benchmark-report.json",
+            "safe",
+            "checkout-safe benchmark summary",
+        ),
+        _review_artifact(
+            "world-diff",
+            "world-diff.json",
+            "safe",
+            "world state change summary",
+        ),
+        _review_artifact(
+            "issue-bundle",
+            "issue-bundle/evidence_manifest.json",
+            "local-only" if issue_manifest["safe_to_attach"] is False else "safe",
+            "issue bundle manifest with unsafe file exclusions",
+        ),
+        *local_only_entries,
+    ]
+    manifest = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "review_title": evaluation_payload["title"],
+        "review_audience": "issue reviewer, research collaborator, or release reader",
+        "artifacts": artifacts,
+        "local_only_count": sum(1 for item in artifacts if item["share_policy"] != "safe"),
+        "reviewer_guide": [
+            "Evidence: safe JSON and Markdown summaries linked from this package.",
+            (
+                "Local-only: host paths, signed URLs, and raw provider payloads are named "
+                "but not embedded."
+            ),
+            (
+                "Unsupported claims: model quality, physical fidelity, robot safety, or live "
+                "provider availability."
+            ),
+        ],
+        "claim_boundary": (
+            "Static review package only; it does not host a dashboard, execute JavaScript, embed "
+            "unsafe local files, or include raw provider payloads."
+        ),
+    }
+    manifest_path = review_dir / "review-package.json"
+    markdown_path = review_dir / "review-package.md"
+    html_path = review_dir / "review-package.html"
+    _write_json(manifest_path, manifest)
+    markdown_path.write_text(_render_review_markdown(manifest), encoding="utf-8")
+    html_path.write_text(_render_review_html(manifest), encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "non-developer-evidence-review",
+        "safe_to_attach": True,
+        "summary": (
+            "Built a static HTML/JSON/Markdown evidence review package with safe links, escaped "
+            "text, and local-only unsafe artifact markers."
+        ),
+        "report": manifest,
+        "artifact_paths": {
+            "review_html": str(html_path),
+            "review_json": str(manifest_path),
+            "review_markdown": str(markdown_path),
+            "issue_bundle_manifest": str(issue_bundle.manifest_path),
+        },
+        "first_triage_step": (
+            "Open `review-package.html`, then inspect local-only rows before attaching anything "
+            "besides the review package."
+        ),
+        "claim_boundary": manifest["claim_boundary"],
+    }
+
+
+def _review_artifact(kind: str, path: str, share_policy: str, evidence_role: str) -> JSONDict:
+    return {
+        "kind": kind,
+        "path": path,
+        "share_policy": share_policy,
+        "safe_to_attach": share_policy == "safe",
+        "evidence_role": evidence_role,
+    }
+
+
+def _render_review_markdown(manifest: JSONDict) -> str:
+    lines = [
+        "# Non-Developer Evidence Review",
+        "",
+        str(manifest["review_title"]),
+        "",
+        manifest["claim_boundary"],
+        "",
+        "| Artifact | Share policy | Evidence role |",
+        "| --- | --- | --- |",
+    ]
+    lines.extend(
+        f"| `{item['path']}` | `{item['share_policy']}` | "
+        f"{item.get('evidence_role') or item.get('reason') or '-'} |"
+        for item in manifest["artifacts"]
+    )
+    lines.extend(["", "## Reviewer Guide", ""])
+    lines.extend(f"- {line}" for line in manifest["reviewer_guide"])
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_review_html(manifest: JSONDict) -> str:
+    rows = []
+    for item in manifest["artifacts"]:
+        path = str(item["path"])
+        path_cell = (
+            f'<a href="{html_escape(path, quote=True)}">{html_escape(path)}</a>'
+            if item["share_policy"] == "safe" and _is_safe_relative_link(path)
+            else html_escape(path)
+        )
+        rows.append(
+            "<tr>"
+            f"<td>{html_escape(str(item['kind']))}</td>"
+            f"<td>{path_cell}</td>"
+            f"<td>{html_escape(str(item['share_policy']))}</td>"
+            f"<td>{html_escape(str(item.get('evidence_role') or item.get('reason') or '-'))}</td>"
+            "</tr>"
+        )
+    guide_items = "\n".join(
+        f"<li>{html_escape(str(line))}</li>" for line in manifest["reviewer_guide"]
+    )
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '  <meta charset="utf-8">\n'
+        f"  <title>{html_escape(str(manifest['review_title']))}</title>\n"
+        "  <style>body{font-family:system-ui,sans-serif;max-width:980px;margin:2rem auto;"
+        "line-height:1.45}table{border-collapse:collapse;width:100%}td,th{border:1px solid "
+        "#ccd;padding:.5rem;text-align:left}.warning{background:#fff4ce;padding:1rem}</style>\n"
+        "</head>\n"
+        "<body>\n"
+        f"  <h1>{html_escape(str(manifest['review_title']))}</h1>\n"
+        f"  <p>{html_escape(str(manifest['claim_boundary']))}</p>\n"
+        '  <section class="warning"><strong>Local-only rows are not attachments.</strong> '
+        "They name excluded host material so reviewers understand the boundary.</section>\n"
+        "  <h2>Artifacts</h2>\n"
+        "  <table><thead><tr><th>Kind</th><th>Path</th><th>Share policy</th>"
+        "<th>Evidence role</th></tr></thead><tbody>\n"
+        f"{''.join(rows)}\n"
+        "  </tbody></table>\n"
+        "  <h2>Reviewer Guide</h2>\n"
+        f"  <ul>{guide_items}</ul>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+
+
+def _is_safe_relative_link(path: str) -> bool:
+    candidate = Path(path)
+    return not candidate.is_absolute() and ".." not in candidate.parts and "://" not in path
+
+
+def build_provider_failure_gallery_entries() -> list[JSONDict]:
+    return [
+        _provider_failure_entry(
+            entry_id="mock-invalid-prediction-state",
+            provider="mock-contract",
+            failure_mode="invalid prediction state",
+            source="tests/test_provider_contracts.py::test_provider_contract_uses_explicit_failure_for_invalid_prediction_state",
+            expected_event="none; contract helper rejects the returned prediction payload",
+            expected_error="invalid world state",
+            expected_artifact="provider contract JSON with a failed capability-contract row",
+            owner="adapter contributor",
+            first_triage_command="uv run pytest tests/test_provider_contracts.py -q",
+            first_triage_step=(
+                "Inspect the failed contract row before changing the provider payload schema."
+            ),
+            safe_artifact_behavior="Attach the contract JSON or Markdown report only.",
+        ),
+        _provider_failure_entry(
+            entry_id="provider-event-secret-material",
+            provider="provider-events",
+            failure_mode="unsafe provider event metadata",
+            source="tests/test_provider_contracts.py::test_provider_event_conformance_helper_rejects_secret_material",
+            expected_event="ProviderEvent rejected before unsafe metadata reaches an event sink",
+            expected_error="secret material",
+            expected_artifact="redacted conformance failure; raw provider event stays local-only",
+            owner="adapter contributor and security reviewer",
+            first_triage_command="uv run pytest tests/test_provider_contracts.py -q",
+            first_triage_step=(
+                "Remove secret-shaped metadata and preserve only sanitized provider events."
+            ),
+            safe_artifact_behavior="Do not attach raw event logs captured before redaction.",
+        ),
+        _provider_failure_entry(
+            entry_id="cosmos-malformed-health",
+            provider="cosmos",
+            failure_mode="malformed health response",
+            source="tests/fixtures/providers/cosmos_health_malformed.json",
+            expected_event="healthcheck failure details on ProviderHealth",
+            expected_error="healthcheck response field 'status'",
+            expected_artifact="provider health JSON with sanitized details",
+            owner="adapter maintainer",
+            first_triage_command="uv run worldforge provider health cosmos",
+            first_triage_step=(
+                "Compare the health response shape with docs/src/providers/cosmos.md."
+            ),
+            safe_artifact_behavior="Attach health JSON only after checking host names.",
+        ),
+        _provider_failure_entry(
+            entry_id="cosmos-generation-unauthorized",
+            provider="cosmos",
+            failure_mode="remote authentication failure",
+            source="tests/test_remote_video_providers.py::test_cosmos_provider_events_cover_auth_failures_and_timeouts",
+            expected_event="generation request failure status_code=401 target=/v1/infer",
+            expected_error="generation request failed with status 401",
+            expected_artifact="redacted provider-events.jsonl",
+            owner="host runtime owner",
+            first_triage_command="uv run worldforge provider info cosmos",
+            first_triage_step=(
+                "Check credential presence through config_summary; never paste tokens."
+            ),
+            safe_artifact_behavior="Attach only redacted provider events or issue bundles.",
+        ),
+        _provider_failure_entry(
+            entry_id="cosmos-generation-timeout",
+            provider="cosmos",
+            failure_mode="retry exhaustion or timeout",
+            source="tests/test_remote_video_providers.py::test_cosmos_provider_events_cover_auth_failures_and_timeouts",
+            expected_event="generation request failure target=/v1/infer",
+            expected_error="failed after 1 attempt",
+            expected_artifact="provider-events.jsonl with operation, phase, and target",
+            owner="host runtime owner",
+            first_triage_command=(
+                "jq 'select(.phase==\"failure\")' "
+                ".worldforge/runs/<run-id>/logs/provider-events.jsonl"
+            ),
+            first_triage_step="Inspect timeout and retry policy before increasing request budgets.",
+            safe_artifact_behavior="Attach sanitized event rows without raw request bodies.",
+        ),
+        _provider_failure_entry(
+            entry_id="runway-missing-task-id",
+            provider="runway",
+            failure_mode="malformed task creation response",
+            source="tests/fixtures/providers/runway_create_missing_id.json",
+            expected_event="generation request parser failure after create response",
+            expected_error="field 'id'",
+            expected_artifact="fixture-backed parser error report",
+            owner="adapter maintainer",
+            first_triage_command=(
+                "uv run pytest tests/test_remote_video_providers.py -k missing_id -q"
+            ),
+            first_triage_step="Attach the sanitized fixture and fix the parser or docs contract.",
+            safe_artifact_behavior="Attach the tiny JSON fixture; do not attach raw provider logs.",
+        ),
+        _provider_failure_entry(
+            entry_id="runway-expired-artifact",
+            provider="runway",
+            failure_mode="expired generated artifact",
+            source="tests/test_remote_video_providers.py::test_runway_provider_rejects_expired_artifacts_and_bad_content_types",
+            expected_event="artifact download failure status_code=403",
+            expected_error="expired or unavailable",
+            expected_artifact="redacted provider event plus regenerated safe artifact path",
+            owner="host runtime owner",
+            first_triage_command="uv run worldforge provider info runway",
+            first_triage_step="Rerun the provider workflow and preserve a fresh issue bundle.",
+            safe_artifact_behavior="Do not attach signed or expired artifact URLs.",
+        ),
+        _provider_failure_entry(
+            entry_id="runway-unsafe-artifact-url",
+            provider="runway",
+            failure_mode="unsafe artifact URL",
+            source="tests/test_remote_video_providers.py::test_runway_provider_rejects_unsafe_artifact_urls",
+            expected_event="task poll success followed by artifact URL validation failure",
+            expected_error="artifact URL",
+            expected_artifact="local-only unsafe URL marker",
+            owner="adapter maintainer and security reviewer",
+            first_triage_command=(
+                "uv run pytest tests/test_remote_video_providers.py -k unsafe_artifact_urls -q"
+            ),
+            first_triage_step="Reject local-network, credentialed, or non-HTTP artifact URLs.",
+            safe_artifact_behavior="Mark unsafe URLs local-only instead of linking them.",
+        ),
+        _provider_failure_entry(
+            entry_id="optional-runtime-missing-dependency",
+            provider="gr00t",
+            failure_mode="missing optional runtime package",
+            source="src/worldforge/providers/runtime_manifests/gr00t.json",
+            expected_event="provider health unhealthy with setup hint",
+            expected_error="missing optional dependency",
+            expected_artifact="runtime manifest and provider info JSON",
+            owner="prepared host owner",
+            first_triage_command="uv run worldforge provider info gr00t",
+            first_triage_step=(
+                "Install or point to the host-owned runtime; do not add it to base dependencies."
+            ),
+            safe_artifact_behavior="Attach runtime manifest and redacted provider info only.",
+        ),
+        _provider_failure_entry(
+            entry_id="genie-scaffold-fail-closed",
+            provider="genie",
+            failure_mode="scaffold provider remains fail-closed",
+            source="tests/test_provider_contracts.py::test_configured_scaffold_remote_providers_stay_fail_closed",
+            expected_event="none; no provider capability is exercised",
+            expected_error="configured scaffold with exercised_operations=[]",
+            expected_artifact="provider contract report showing no exercised operations",
+            owner="provider maintainer",
+            first_triage_command="uv run worldforge provider contract genie --format json",
+            first_triage_step=(
+                "Keep scaffold behavior explicit until a real upstream contract exists."
+            ),
+            safe_artifact_behavior="Attach contract output; do not claim real Genie integration.",
+        ),
+    ]
+
+
+def _provider_failure_entry(
+    *,
+    entry_id: str,
+    provider: str,
+    failure_mode: str,
+    source: str,
+    expected_event: str,
+    expected_error: str,
+    expected_artifact: str,
+    owner: str,
+    first_triage_command: str,
+    first_triage_step: str,
+    safe_artifact_behavior: str,
+) -> JSONDict:
+    return {
+        "id": entry_id,
+        "provider": provider,
+        "failure_mode": failure_mode,
+        "source": source,
+        "expected_event": expected_event,
+        "expected_error": expected_error,
+        "expected_artifact": expected_artifact,
+        "owner": owner,
+        "first_triage_command": first_triage_command,
+        "first_triage_step": first_triage_step,
+        "safe_artifact_behavior": safe_artifact_behavior,
+        "safe_to_attach": True,
+    }
+
+
+def _provider_failure_gallery(workflow_dir: Path) -> JSONDict:
+    gallery_dir = workflow_dir / "provider-failure-gallery"
+    gallery_dir.mkdir(parents=True, exist_ok=True)
+    entries = build_provider_failure_gallery_entries()
+    report = {
+        "schema_version": 1,
+        "entry_count": len(entries),
+        "providers": sorted({str(entry["provider"]) for entry in entries}),
+        "entries": entries,
+        "safe_to_attach": True,
+        "claim_boundary": (
+            "Fixture-backed provider failure gallery only; it does not call paid providers, "
+            "install optional runtimes, store secrets, or preserve signed URLs."
+        ),
+    }
+    json_path = gallery_dir / "provider-failure-gallery.json"
+    markdown_path = gallery_dir / "provider-failure-gallery.md"
+    _write_json(json_path, report)
+    markdown_path.write_text(_render_provider_failure_gallery_markdown(report), encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "provider-failure-fixtures",
+        "safe_to_attach": True,
+        "summary": (
+            "Built a fixture-backed provider failure mode gallery with expected events, errors, "
+            "safe artifacts, owners, and first triage commands."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "gallery_json": str(json_path),
+            "gallery_markdown": str(markdown_path),
+        },
+        "first_triage_step": (
+            "Find the matching gallery row, run its first triage command, and attach only the "
+            "listed safe artifacts."
+        ),
+        "claim_boundary": report["claim_boundary"],
+    }
+
+
+def _render_provider_failure_gallery_markdown(report: JSONDict) -> str:
+    lines = [
+        "# Provider Failure Mode Gallery",
+        "",
+        str(report["claim_boundary"]),
+        "",
+        "| ID | Provider | Failure mode | Expected error | Owner | First triage command |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    lines.extend(
+        (
+            "| "
+            f"`{entry['id']}` | `{entry['provider']}` | {entry['failure_mode']} | "
+            f"`{entry['expected_error']}` | {entry['owner']} | "
+            f"`{entry['first_triage_command']}` |"
+        )
+        for entry in report["entries"]
+    )
+    lines.extend(["", "## Safe Artifact Behavior", ""])
+    lines.extend(
+        f"- `{entry['id']}`: {entry['safe_artifact_behavior']}" for entry in report["entries"]
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _write_json(path: Path, payload: JSONDict) -> None:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def _copy_artifact_paths(run_workspace: Any, artifact_paths: object) -> dict[str, str]:
     if not isinstance(artifact_paths, dict):
         return {}
@@ -746,6 +2300,54 @@ WORKFLOWS = (
     DemoWorkflow("rerun-gallery", "Rerun visual gallery showcase", 196, _rerun_gallery),
     DemoWorkflow("failure-lab", "Failure recovery lab", 197, _failure_lab),
     DemoWorkflow("use-case-cookbook", "Use case cookbook", 198, _cookbook),
+    DemoWorkflow(
+        "external-provider-package",
+        "External provider package demo",
+        237,
+        _external_provider_package,
+    ),
+    DemoWorkflow(
+        "custom-evaluation-suite",
+        "Custom evaluation suite walkthrough",
+        238,
+        _custom_evaluation_suite,
+    ),
+    DemoWorkflow(
+        "policy-score-candidate-lab",
+        "Policy+score candidate lab",
+        239,
+        _policy_score_candidate_lab,
+    ),
+    DemoWorkflow(
+        "fixture-drift-review",
+        "Fixture drift review walkthrough",
+        240,
+        _fixture_drift_review,
+    ),
+    DemoWorkflow(
+        "capability-negotiation-preflight",
+        "Capability negotiation preflight demo",
+        241,
+        _capability_negotiation_preflight,
+    ),
+    DemoWorkflow(
+        "embodied-policy-replay-comparison",
+        "Embodied policy replay comparison",
+        242,
+        _embodied_policy_replay_comparison,
+    ),
+    DemoWorkflow(
+        "non-developer-evidence-review",
+        "Non-developer evidence review demo",
+        245,
+        _non_developer_evidence_review,
+    ),
+    DemoWorkflow(
+        "provider-failure-gallery",
+        "Provider failure mode gallery",
+        246,
+        _provider_failure_gallery,
+    ),
 )
 
 

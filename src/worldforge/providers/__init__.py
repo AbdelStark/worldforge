@@ -2,6 +2,8 @@
 
 from worldforge.models import (
     ProviderEvent,
+    ProviderLifecycleResult,
+    ProviderLifecycleStatus,
     ProviderRequestPolicy,
     RequestOperationPolicy,
     RetryPolicy,
@@ -34,12 +36,18 @@ from .lerobot import LeRobotPolicyProvider
 from .leworldmodel import LeWorldModelProvider
 from .mock import MockProvider
 from .remote import GenieProvider, JepaProvider, StubRemoteProvider
+from .runtime_manifest import (
+    RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION,
+    RuntimeAssetManifest,
+    validate_runtime_asset_manifest,
+)
 from .runway import RunwayProvider
 
 __all__ = [
     "ENTRY_POINT_DISABLE_ENV_VAR",
     "ENTRY_POINT_GROUP",
     "PROVIDER_CATALOG",
+    "RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION",
     "BaseProvider",
     "ConfigFieldSummary",
     "CosmosPolicyProvider",
@@ -60,15 +68,19 @@ __all__ = [
     "ProviderConfigSummary",
     "ProviderError",
     "ProviderEvent",
+    "ProviderLifecycleResult",
+    "ProviderLifecycleStatus",
     "ProviderProfileSpec",
     "ProviderRequestPolicy",
     "RemoteProvider",
     "RequestOperationPolicy",
     "RetryPolicy",
+    "RuntimeAssetManifest",
     "RunwayProvider",
     "StubRemoteProvider",
     "create_known_providers",
     "discover_entry_point_providers",
     "validate_generation_request",
+    "validate_runtime_asset_manifest",
     "validate_transfer_request",
 ]

@@ -21,6 +21,10 @@ uv run worldforge benchmark --provider mock --operation predict \
 uv run worldforge runs compare path/to/run_a path/to/run_b \
     --format html --output review/compare.html
 
+# Baseline-vs-candidate regression report → HTML.
+uv run worldforge runs compare path/to/baseline path/to/candidate \
+    --mode regression --format html --output review/regression.html
+
 # Issue-ready bundle for one preserved run.
 uv run worldforge runs bundle <run-id> --workspace-dir .worldforge \
     --format html > issue.html
@@ -35,6 +39,20 @@ preview alongside the JSON/Markdown counterparts under
 `worldforge runs bundle` always writes both `summary.html` and
 `issue.html` next to the existing `summary.md` and `issue.md` files;
 selecting `--format html` simply prints `issue.html` to stdout.
+
+For a checkout-safe non-developer review package that combines evaluation,
+benchmark, world-diff, and issue-bundle evidence into one static artifact set:
+
+```bash
+uv run python scripts/demo_showcases.py run non-developer-evidence-review \
+  --workspace-dir .worldforge/demo-showcases
+```
+
+Attach the generated `review-package.html`, `review-package.json`, and
+`review-package.md` only after checking the `share_policy` rows. Relative safe
+artifacts are linked for local inspection; host-local paths, signed URLs, and
+raw provider payloads are marked `local-only` or excluded and should not be
+uploaded to issues or release review.
 
 ## When to use HTML
 
@@ -103,3 +121,35 @@ from worldforge import (
 
 `HTML_REPORT_SCHEMA_VERSION` is exposed so callers can branch on
 renderer-version drift; today it is `1`.
+
+## Renderer Extension Points
+
+External suites and host applications can register safe renderers without
+patching WorldForge internals. A renderer declares its artifact family,
+output format, media type, supported schema ids, and whether its output is
+safe to attach or local-only. Registration accepts callable renderers only;
+WorldForge does not load renderer plugins from arbitrary files.
+
+```python
+from worldforge import ReportRenderer, register_report_renderer, render_report_artifact
+
+
+register_report_renderer(
+    ReportRenderer(
+        artifact_family="comparison",
+        output_format="summary",
+        media_type="text/plain",
+        supported_schemas=("comparison:2",),
+        safe_to_attach=True,
+        render=lambda payload: f"runs={payload['run_count']}",
+    )
+)
+
+artifact = render_report_artifact("comparison", "summary", {"run_count": 2})
+assert artifact.safe_to_attach is True
+```
+
+Built-in renderer families include `comparison`, `evidence-bundle`, and
+`issue-bundle`. Duplicate family/format registrations fail unless the caller
+explicitly replaces a renderer. Safe-to-attach renderer output is validated for
+secret-like material before it can be returned.

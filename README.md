@@ -158,10 +158,11 @@ uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-
 ```
 
 The checkout-safe Rerun demo records provider event logs, world snapshots, a predictive plan,
-3D object boxes, and benchmark metrics into a local `.rrd` file. The robotics showcase records the
-real PushT policy+score run with candidate target points, selected trajectory, score bars, latency
-bars, provider events, plan payload, and replay snapshots. Use `--spawn`, `--connect-url`, or
-`--serve-grpc-port` for live viewer workflows in the checkout-safe demo.
+workflow trace artifacts, 3D object boxes, and benchmark metrics into a local `.rrd` file. The
+robotics showcase records the real PushT policy+score run with candidate target points, selected
+trajectory, score bars, latency bars, provider events, plan payload, and replay snapshots. Use
+`--spawn`, `--connect-url`, or `--serve-grpc-port` for live viewer workflows in the checkout-safe
+demo.
 
 More detail: [Rerun integration docs](https://abdelstark.github.io/worldforge/rerun/).
 
@@ -196,8 +197,8 @@ application's responsibility.
 | **Composable planning** | Combine predictive, score, and policy providers in a single planning loop. Rank candidates, roll out futures, execute actions, persist state. |
 | **Deterministic by default** | Built-in `mock` provider, reusable contract assertions (`worldforge.testing`), and packaged demos that run from a clean checkout without credentials or GPUs. |
 | **Host-owned runtimes** | No torch, CUDA, robot controllers, or checkpoints in base dependencies. LeWorldModel, GR00T, LeRobot, Cosmos, and Runway integrate through their own surfaces. |
-| **Diagnostics** | `worldforge doctor`, provider events, benchmark and evaluation harnesses, and an optional Textual TUI (`TheWorldHarness`) for inspecting traces. |
-| **Rerun observability** | Optional `rerun-sdk` bridge for event streams, world snapshots, plans, and benchmark artifacts. |
+| **Diagnostics** | `worldforge doctor`, provider events, workflow traces, benchmark and evaluation harnesses, and an optional Textual TUI (`TheWorldHarness`). |
+| **Rerun observability** | Optional `rerun-sdk` bridge for event streams, workflow traces, world snapshots, plans, and benchmark artifacts. |
 | **Quality gates** | `py.typed`, import-isolated pytest, ruff, a 90% coverage floor, strict docs, and wheel + sdist contract tests in CI on Python 3.13. |
 
 ## Install
@@ -310,10 +311,12 @@ uv run worldforge world list                                            # persis
 uv run worldforge world objects <world-id>                              # scene objects
 uv run worldforge world history <world-id>                              # object edits + predictions
 uv run worldforge world preflight                                       # read-only local state diagnostics
+uv run worldforge world migration-preview <world-id>                    # read-only schema review
 uv run worldforge world export <world-id> --output world.json           # portable state JSON
 uv run worldforge world delete <world-id>                               # remove local JSON state
 uv run worldforge provider list                                         # registered providers
-uv run worldforge provider info mock                                    # capability surface
+uv run worldforge provider info mock                                    # capability and lifecycle surface
+uv run worldforge provider contract mock --format json                  # attachable contract evidence
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 uv run worldforge eval --suite planning --provider mock --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format json
@@ -472,9 +475,11 @@ surface and runtime-specific entrypoints:
   caller converts them into executable `Action` objects.
 - Local JSON persistence is single-writer and available through both Python APIs and
   `worldforge world` CLI commands. Services needing locking, transactions, or migrations own that
-  layer.
+  layer; `worldforge world migration-preview` reports schema changes before any explicit rewrite.
 - Built-in evaluation suites are deterministic contract harnesses. They are not physical-fidelity,
   media-quality, or real-world safety claims.
+- Evaluation dataset manifests cite fixture, remote, or host-owned asset provenance by digest and
+  license/safety metadata; they do not store or download datasets.
 - Scaffold adapters (`jepa`, `genie`, `jepa-wms`) are placeholders, not real integrations.
 - World IDs are local storage identifiers. Path separators and traversal-shaped IDs are rejected.
 
@@ -489,7 +494,9 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest

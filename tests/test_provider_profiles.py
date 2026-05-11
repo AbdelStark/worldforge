@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from worldforge import DoctorReport, WorldForge, WorldForgeError
+from worldforge import (
+    DoctorReport,
+    ProviderLifecycleResult,
+    ReasoningResult,
+    WorldForge,
+    WorldForgeError,
+)
+from worldforge.providers import BaseProvider, ProviderError, ProviderProfileSpec
 
 
 def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, monkeypatch) -> None:
@@ -118,3 +125,136 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         forge.provider_healths(capability="generation")
     with pytest.raises(WorldForgeError, match="Unknown provider capability"):
         forge.doctor(capability="generation")
+
+
+class _LifecycleReadyReasoner:
+    name = "lifecycle-ready"
+    profile = ProviderProfileSpec(
+        description="Reasoner with lifecycle hooks for diagnostics.",
+        implementation_status="experimental",
+        deterministic=True,
+    )
+
+    def preflight(self) -> ProviderLifecycleResult:
+        return ProviderLifecycleResult(
+            provider=self.name,
+            hook="preflight",
+            status="ready",
+            ready=True,
+            latency_ms=0.1,
+            details="runtime reachable",
+            evidence={"runtime": "fixture"},
+        )
+
+    def warmup(self) -> ProviderLifecycleResult:
+        return ProviderLifecycleResult(
+            provider=self.name,
+            hook="warmup",
+            status="ready",
+            ready=True,
+            latency_ms=0.1,
+            details="warm cache prepared",
+            evidence={"cache": "prepared"},
+        )
+
+    def reason(self, query: str, *, world_state=None) -> ReasoningResult:
+        return ReasoningResult(
+            provider=self.name,
+            answer=f"answer: {query}",
+            confidence=0.9,
+            evidence=["fixture"],
+        )
+
+
+class _FailingPreflightProvider(BaseProvider):
+    def __init__(self) -> None:
+        super().__init__(
+            "lifecycle-failed",
+            profile=ProviderProfileSpec(description="Preflight failure fixture."),
+        )
+
+    def preflight(self) -> ProviderLifecycleResult:
+        raise ProviderError("dependency probe failed")
+
+
+class _FailingTeardownProvider(BaseProvider):
+    def __init__(self) -> None:
+        super().__init__(
+            "lifecycle-teardown-failed",
+            profile=ProviderProfileSpec(description="Teardown failure fixture."),
+        )
+
+    def teardown(self) -> ProviderLifecycleResult:
+        raise RuntimeError("socket close failed")
+
+
+def test_provider_lifecycle_status_covers_noop_ready_skipped_failed_and_teardown(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("WF_LIFECYCLE_REQUIRED", raising=False)
+    forge = WorldForge(state_dir=tmp_path)
+
+    noop = forge.provider_lifecycle_status("mock")
+    assert noop.status == "no-op"
+    assert noop.ready is True
+    assert noop.preflight.evidence == {"configured": True}
+
+    skipped = BaseProvider(
+        "lifecycle-skipped",
+        profile=ProviderProfileSpec(required_env_vars=("WF_LIFECYCLE_REQUIRED",)),
+    )
+    forge.register_provider(skipped)
+    skipped_status = forge.provider_lifecycle_status("lifecycle-skipped")
+    assert skipped_status.status == "skipped"
+    assert skipped_status.ready is False
+    assert "WF_LIFECYCLE_REQUIRED" in skipped_status.skip_reason
+
+    ready_reasoner = _LifecycleReadyReasoner()
+    forge.register_reasoner(ready_reasoner)
+    ready_status = forge.provider_lifecycle_status("lifecycle-ready", run_warmup=True)
+    assert ready_status.status == "ready"
+    assert ready_status.ready is True
+    assert ready_status.preflight.evidence == {"runtime": "fixture"}
+    assert ready_status.warmup is not None
+    assert ready_status.warmup.evidence == {"cache": "prepared"}
+
+    forge.register_provider(_FailingPreflightProvider())
+    failed_status = forge.provider_lifecycle_status("lifecycle-failed")
+    assert failed_status.status == "failed"
+    assert failed_status.ready is False
+    assert "dependency probe failed" in failed_status.details
+
+    forge.register_provider(_FailingTeardownProvider())
+    teardown_status = forge.provider_lifecycle_status(
+        "lifecycle-teardown-failed",
+        run_teardown=True,
+    )
+    assert teardown_status.status == "teardown-failed"
+    assert teardown_status.ready is False
+    assert teardown_status.teardown is not None
+    assert "socket close failed" in teardown_status.teardown.details
+
+
+def test_doctor_report_includes_lifecycle_readiness_and_skip_reasons(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("WF_LIFECYCLE_REQUIRED", raising=False)
+    forge = WorldForge(state_dir=tmp_path)
+    forge.register_provider(
+        BaseProvider(
+            "lifecycle-skipped",
+            profile=ProviderProfileSpec(required_env_vars=("WF_LIFECYCLE_REQUIRED",)),
+        )
+    )
+
+    report = forge.doctor(registered_only=True)
+    payload = report.to_dict()
+    statuses = {provider["name"]: provider for provider in payload["providers"]}
+
+    assert statuses["mock"]["lifecycle"]["status"] == "no-op"
+    skipped = statuses["lifecycle-skipped"]["lifecycle"]
+    assert skipped["status"] == "skipped"
+    assert skipped["ready"] is False
+    assert "WF_LIFECYCLE_REQUIRED" in skipped["skip_reason"]

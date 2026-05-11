@@ -304,6 +304,16 @@ For non-PushT tasks, the host must provide:
   objects;
 - a candidate builder that preserves the model's expected action dimension and horizon.
 
+Before moving to prepared-host checkpoints, use the checkout-safe candidate lab:
+
+```bash
+uv run python scripts/demo_showcases.py run policy-score-candidate-lab --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+It proves the WorldForge policy+score artifact path, raw action preservation, selected candidate,
+invalid candidate bounds, and missing-translator failure behavior without robot hardware,
+simulators, or checkpoint downloads.
+
 When the default LeWorldModel object checkpoint is missing, the polished command can build it from
 Hugging Face assets. By default it uses the pinned Hugging Face commit
 `22b330c28c27ead4bfd1888615af1340e3fe9052`; use

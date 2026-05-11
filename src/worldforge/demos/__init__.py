@@ -9,6 +9,7 @@ LeRobot demos stay in sync.
 from __future__ import annotations
 
 from worldforge import Action, BBox, Position, SceneObject, StructuredGoal
+from worldforge.action_candidates import cartesian_offset_candidates
 
 _BLUE_CUBE_START = Position(0.0, 0.5, 0.0)
 _BLUE_CUBE_BBOX = BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05))
@@ -38,17 +39,12 @@ def blue_cube_goal(cube: SceneObject) -> StructuredGoal:
 def make_candidate_plans(cube_id: str) -> list[list[Action]]:
     """Return the three two-step PushT candidate plans used by the demos."""
 
-    return [
+    return cartesian_offset_candidates(
+        _BLUE_CUBE_START,
         [
-            Action.move_to(0.20, 0.50, 0.00, object_id=cube_id),
-            Action.move_to(0.35, 0.50, 0.00, object_id=cube_id),
+            [Position(0.20, 0.00, 0.00), Position(0.35, 0.00, 0.00)],
+            [Position(0.30, 0.00, 0.00), Position(0.55, 0.00, 0.00)],
+            [Position(0.70, 0.00, 0.00), Position(0.95, 0.00, 0.00)],
         ],
-        [
-            Action.move_to(0.30, 0.50, 0.00, object_id=cube_id),
-            Action.move_to(0.55, 0.50, 0.00, object_id=cube_id),
-        ],
-        [
-            Action.move_to(0.70, 0.50, 0.00, object_id=cube_id),
-            Action.move_to(0.95, 0.50, 0.00, object_id=cube_id),
-        ],
-    ]
+        object_id=cube_id,
+    )

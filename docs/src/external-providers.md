@@ -22,6 +22,7 @@ The entry-point **name** (``my-policy``) is the provider name WorldForge will su
 
 The referenced callable takes one optional keyword argument and returns a `BaseProvider`:
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from worldforge.providers import BaseProvider, ProviderProfileSpec
 from worldforge import ProviderCapabilities
@@ -42,6 +43,24 @@ Three rules:
    ``configured()`` must return ``True`` for the provider to be auto-registered. Hosts can
    still register an unconfigured provider explicitly via ``forge.register_provider(...)``.
 
+## Contract CLI
+
+Run the provider contract CLI before opening an issue or PR for an external adapter:
+
+```bash
+uv run worldforge provider contract my-policy --format json
+uv run worldforge provider contract --factory my_pkg.adapters:make_my_policy_provider --format markdown
+```
+
+The command accepts either a registered provider name or a direct ``module:factory`` path. It emits
+safe-to-attach JSON or Markdown evidence with provider metadata, passed checks, skipped host-owned
+checks, failures, next steps, and validation commands.
+
+WorldForge does not call non-local provider capabilities by default. A configured remote, robotics,
+or optional-runtime provider records those capability checks as skipped until the host reruns with
+``--live`` on a prepared machine. Use ``--score-info``, ``--score-candidates``, and
+``--policy-info`` when a score or policy adapter needs provider-native fixture payloads.
+
 ## Failure behaviour
 
 Discovery never crashes the host. Each entry-point that cannot be wrapped is recorded with a
@@ -58,6 +77,7 @@ typed reason:
 
 The full report lives on ``WorldForge.entry_point_discovery()``:
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import WorldForge
 
@@ -67,6 +87,21 @@ print(report.discovered_count, "external providers discovered")
 for skip in report.skipped:
     print(f"skipped {skip.name}: {skip.reason}")
 ```
+
+## Checkout-safe package demo
+
+Run the demo workflow when you want a complete package-shape example without publishing or
+installing anything globally:
+
+```bash
+uv run python scripts/demo_showcases.py run external-provider-package --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+It writes a temp package under the demo workspace with a `pyproject.toml`, provider factory, and
+package-local test. The preserved `external-provider-discovery.json` shows successful discovery,
+explicit disabled-discovery behavior, duplicate in-repo provider-name handling, and a missing
+optional dependency skip reason. The output is safe to attach, but it is package-shape evidence
+only; it is not PyPI publishing, a live provider call, or promotion evidence.
 
 ## Disabling discovery
 
@@ -101,5 +136,6 @@ diagnostics rather than a machine-parseable contract. Treat them like log messag
 
 ```bash
 uv run pytest tests/test_provider_entry_points.py tests/test_provider_catalog.py
+uv run pytest tests/test_provider_contracts.py
 uv run mkdocs build --strict
 ```

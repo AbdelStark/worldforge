@@ -51,10 +51,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Docs list every public artifact schema, owner, version field, and validation surface.
-- [ ] Contributors can tell when a schema change needs migration notes, changelog text, and tests.
-- [ ] At least one automated guard catches missing schema ownership for public artifacts.
-- [ ] Existing artifacts remain JSON-native and safe-artifact boundaries stay explicit.
+- [x] Docs list every public artifact schema, owner, version field, and validation surface.
+- [x] Contributors can tell when a schema change needs migration notes, changelog text, and tests.
+- [x] At least one automated guard catches missing schema ownership for public artifacts.
+- [x] Existing artifacts remain JSON-native and safe-artifact boundaries stay explicit.
 
 Validation:
 
@@ -89,10 +89,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Selected Python snippets execute in a temp workspace.
-- [ ] Selected JSON snippets parse and satisfy the expected schema where a schema exists.
-- [ ] Skip markers distinguish host-owned, credentialed, and illustrative snippets.
-- [ ] Docs explain how contributors add new snippets to the gate.
+- [x] Selected Python snippets execute in a temp workspace.
+- [x] Selected JSON snippets parse and satisfy the expected schema where a schema exists.
+- [x] Skip markers distinguish host-owned, credentialed, and illustrative snippets.
+- [x] Docs explain how contributors add new snippets to the gate.
 
 Validation:
 
@@ -127,10 +127,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Base imports succeed without optional runtime packages installed.
-- [ ] The audit fails with a precise module path when an optional dependency leaks into base code.
-- [ ] Docs identify the only modules allowed to import each optional runtime directly.
-- [ ] Existing optional smoke commands keep their host-owned dependency behavior.
+- [x] Base imports succeed without optional runtime packages installed.
+- [x] The audit fails with a precise module path when an optional dependency leaks into base code.
+- [x] Docs identify the only modules allowed to import each optional runtime directly.
+- [x] Existing optional smoke commands keep their host-owned dependency behavior.
 
 Validation:
 
@@ -164,10 +164,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Tests for artifact renderers avoid local path, clock, and ordering flake.
-- [ ] Helpers are reusable by future report and demo tests.
-- [ ] Docs explain deterministic fixture policy for contributors.
-- [ ] Existing runtime timing fields remain truthful in real runs.
+- [x] Tests for artifact renderers avoid local path, clock, and ordering flake.
+- [x] Helpers are reusable by future report and demo tests.
+- [x] Docs explain deterministic fixture policy for contributors.
+- [x] Existing runtime timing fields remain truthful in real runs.
 
 Validation:
 
@@ -201,10 +201,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Each catalog provider has a configuration row with required and optional inputs.
-- [ ] The index flags provider docs or `.env.example` drift.
-- [ ] Scaffold providers remain clearly marked as scaffold behavior.
-- [ ] Docs link the index from provider authoring, operations, and support pages.
+- [x] Each catalog provider has a configuration row with required and optional inputs.
+- [x] The index flags provider docs or `.env.example` drift.
+- [x] Scaffold providers remain clearly marked as scaffold behavior.
+- [x] Docs link the index from provider authoring, operations, and support pages.
 
 Validation:
 
@@ -239,10 +239,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Error messages for the main public failure modes have regression coverage.
-- [ ] Security-sensitive failures do not print secrets, signed URLs, or host-local unsafe payloads.
-- [ ] CLI failures point to concrete commands or docs when a recovery path exists.
-- [ ] Tests distinguish public message contracts from private implementation details.
+- [x] Error messages for the main public failure modes have regression coverage.
+- [x] Security-sensitive failures do not print secrets, signed URLs, or host-local unsafe payloads.
+- [x] CLI failures point to concrete commands or docs when a recovery path exists.
+- [x] Tests distinguish public message contracts from private implementation details.
 
 Validation:
 
@@ -275,10 +275,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] At least six starter packs exist and match current repository structure.
-- [ ] Starter packs include validation commands and docs/changelog expectations.
-- [ ] Issue templates or contributing docs point contributors to the right starter.
-- [ ] Tests guard the presence of required sections.
+- [x] At least six starter packs exist and match current repository structure.
+- [x] Starter packs include validation commands and docs/changelog expectations.
+- [x] Issue templates or contributing docs point contributors to the right starter.
+- [x] Tests guard the presence of required sections.
 
 Validation:
 
@@ -311,11 +311,11 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Command produces a Markdown draft from local changelog and optional GitHub issue data.
-- [ ] Draft includes validation evidence references and caveats without overclaiming runtime
+- [x] Command produces a Markdown draft from local changelog and optional GitHub issue data.
+- [x] Draft includes validation evidence references and caveats without overclaiming runtime
       behavior.
-- [ ] Missing changelog or missing validation evidence is reported clearly.
-- [ ] Docs explain how maintainers review and edit the draft before release.
+- [x] Missing changelog or missing validation evidence is reported clearly.
+- [x] Docs explain how maintainers review and edit the draft before release.
 
 Validation:
 
@@ -348,10 +348,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Audit evidence writes JSON and Markdown summaries.
-- [ ] Vulnerability findings are preserved without leaking host-local paths or credentials.
-- [ ] Release-readiness docs and package validation docs link the audit artifact.
-- [ ] Tests cover clean, finding, and tool-unavailable paths through fixtures.
+- [x] Audit evidence writes JSON and Markdown summaries.
+- [x] Vulnerability findings are preserved without leaking host-local paths or credentials.
+- [x] Release-readiness docs and package validation docs link the audit artifact.
+- [x] Tests cover clean, finding, and tool-unavailable paths through fixtures.
 
 Validation:
 
@@ -383,10 +383,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Dashboard aggregates existing gate outputs without hiding raw failure details.
-- [ ] Output distinguishes failures, warnings, skips, and not-run checks.
-- [ ] Docs explain how the dashboard differs from release evidence.
-- [ ] Tests cover mixed pass/fail/skip aggregation.
+- [x] Dashboard aggregates existing gate outputs without hiding raw failure details.
+- [x] Output distinguishes failures, warnings, skips, and not-run checks.
+- [x] Docs explain how the dashboard differs from release evidence.
+- [x] Tests cover mixed pass/fail/skip aggregation.
 
 Validation:
 
@@ -427,10 +427,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Demo proves external package discovery through documented entry points.
-- [ ] Missing optional dependencies show explicit skip reasons.
-- [ ] Generated or example package files do not mutate tracked source during normal demo runs.
-- [ ] Docs link the demo from external provider and provider authoring pages.
+- [x] Demo proves external package discovery through documented entry points.
+- [x] Missing optional dependencies show explicit skip reasons.
+- [x] Generated or example package files do not mutate tracked source during normal demo runs.
+- [x] Docs link the demo from external provider and provider authoring pages.
 
 Validation:
 
@@ -464,10 +464,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Walkthrough runs in a clean checkout without credentials or optional runtimes.
-- [ ] Custom suite output includes provenance and failure-gallery behavior.
-- [ ] Docs explain deterministic contract-signal framing.
-- [ ] Tests cover the walkthrough artifact set.
+- [x] Walkthrough runs in a clean checkout without credentials or optional runtimes.
+- [x] Custom suite output includes provenance and failure-gallery behavior.
+- [x] Docs explain deterministic contract-signal framing.
+- [x] Tests cover the walkthrough artifact set.
 
 Validation:
 
@@ -503,10 +503,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Lab demonstrates candidate generation through score and policy+score planning.
-- [ ] Invalid candidate bounds and translator-missing cases are visible and tested.
-- [ ] Docs explain how prepared-host robotics runs differ from the lab.
-- [ ] Output artifacts are safe to attach.
+- [x] Lab demonstrates candidate generation through score and policy+score planning.
+- [x] Invalid candidate bounds and translator-missing cases are visible and tested.
+- [x] Docs explain how prepared-host robotics runs differ from the lab.
+- [x] Output artifacts are safe to attach.
 
 Validation:
 
@@ -540,10 +540,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Walkthrough distinguishes missing fixture, digest mismatch, schema change, and unsafe path.
-- [ ] Approved update path is explicit and reviewable.
-- [ ] Docs link from testing and provider authoring pages.
-- [ ] Tests cover the demo without changing tracked fixtures.
+- [x] Walkthrough distinguishes missing fixture, digest mismatch, schema change, and unsafe path.
+- [x] Approved update path is explicit and reviewable.
+- [x] Docs link from testing and provider authoring pages.
+- [x] Tests cover the demo without changing tracked fixtures.
 
 Validation:
 
@@ -578,10 +578,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Demo runs checkout-safe and covers at least five workflow shapes.
-- [ ] Reports name the exact provider/capability slot that blocks a workflow.
-- [ ] Docs route users to negotiation before prepared-host smokes.
-- [ ] Tests cover the demo report fixtures.
+- [x] Demo runs checkout-safe and covers at least five workflow shapes.
+- [x] Reports name the exact provider/capability slot that blocks a workflow.
+- [x] Docs route users to negotiation before prepared-host smokes.
+- [x] Tests cover the demo report fixtures.
 
 Validation:
 
@@ -616,10 +616,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Replay compares provider policy contracts without normalizing away provider-specific fields.
-- [ ] Missing translator behavior is explicit and tested.
-- [ ] Docs explain prepared-host live-smoke follow-ups for each provider.
-- [ ] The comparison artifact is safe to attach.
+- [x] Replay compares provider policy contracts without normalizing away provider-specific fields.
+- [x] Missing translator behavior is explicit and tested.
+- [x] Docs explain prepared-host live-smoke follow-ups for each provider.
+- [x] The comparison artifact is safe to attach.
 
 Validation:
 
@@ -653,10 +653,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Gallery scenarios validate and run through the CLI.
-- [ ] Failure scenarios are intentionally marked and tested.
-- [ ] Docs show expected artifacts and first triage steps.
-- [ ] Scenario examples stay JSON-native and deterministic.
+- [x] Gallery scenarios validate and run through the CLI.
+- [x] Failure scenarios are intentionally marked and tested.
+- [x] Docs show expected artifacts and first triage steps.
+- [x] Scenario examples stay JSON-native and deterministic.
 
 Validation:
 
@@ -689,10 +689,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Drill produces release evidence artifacts without publishing anything.
-- [ ] Controlled failure explains first failed gate and first triage command.
-- [ ] Docs distinguish drill evidence from actual release approval.
-- [ ] Tests cover pass, failure, and skipped optional-runtime evidence.
+- [x] Drill produces release evidence artifacts without publishing anything.
+- [x] Controlled failure explains first failed gate and first triage command.
+- [x] Docs distinguish drill evidence from actual release approval.
+- [x] Tests cover pass, failure, and skipped optional-runtime evidence.
 
 Validation:
 
@@ -726,10 +726,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Demo emits a single reviewable artifact set with HTML, JSON, and Markdown pointers.
-- [ ] Unsafe artifacts are excluded or marked local-only.
-- [ ] Docs explain how to attach the artifact to issues or release review.
-- [ ] Tests cover escaping and artifact manifest shape.
+- [x] Demo emits a single reviewable artifact set with HTML, JSON, and Markdown pointers.
+- [x] Unsafe artifacts are excluded or marked local-only.
+- [x] Docs explain how to attach the artifact to issues or release review.
+- [x] Tests cover escaping and artifact manifest shape.
 
 Validation:
 
@@ -762,10 +762,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Gallery covers at least eight provider failure modes.
-- [ ] Each entry includes expected signal, owner, first triage step, and safe artifact behavior.
-- [ ] Docs link from support, provider docs, and troubleshooting.
-- [ ] Tests verify gallery entries stay aligned with real error behavior.
+- [x] Gallery covers at least eight provider failure modes.
+- [x] Each entry includes expected signal, owner, first triage step, and safe artifact behavior.
+- [x] Docs link from support, provider docs, and troubleshooting.
+- [x] Tests verify gallery entries stay aligned with real error behavior.
 
 Validation:
 
@@ -801,10 +801,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Providers can implement lifecycle hooks without changing existing capability methods.
-- [ ] Diagnostics report lifecycle readiness and skip reasons.
-- [ ] Hooks are safe for missing optional dependencies.
-- [ ] Tests cover no-op, ready, skipped, failed, and teardown-failed states.
+- [x] Providers can implement lifecycle hooks without changing existing capability methods.
+- [x] Diagnostics report lifecycle readiness and skip reasons.
+- [x] Hooks are safe for missing optional dependencies.
+- [x] Tests cover no-op, ready, skipped, failed, and teardown-failed states.
 
 Validation:
 
@@ -837,10 +837,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Users can compare a candidate run against a preserved baseline run.
-- [ ] Report distinguishes metric delta, budget violation, and artifact drift.
-- [ ] Unsafe artifacts remain excluded from rendered reports.
-- [ ] Tests cover improved, regressed, missing baseline, and incompatible schema cases.
+- [x] Users can compare a candidate run against a preserved baseline run.
+- [x] Report distinguishes metric delta, budget violation, and artifact drift.
+- [x] Unsafe artifacts remain excluded from rendered reports.
+- [x] Tests cover improved, regressed, missing baseline, and incompatible schema cases.
 
 Validation:
 
@@ -872,10 +872,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Matrix scenarios validate before execution and reject unbounded or non-JSON-native values.
-- [ ] CLI runs every case in a temp or configured workspace.
-- [ ] Aggregate output reports pass/fail counts and failed case details.
-- [ ] Tests cover valid matrix, invalid substitution, failed expectation, and docs examples.
+- [x] Matrix scenarios validate before execution and reject unbounded or non-JSON-native values.
+- [x] CLI runs every case in a temp or configured workspace.
+- [x] Aggregate output reports pass/fail counts and failed case details.
+- [x] Tests cover valid matrix, invalid substitution, failed expectation, and docs examples.
 
 Validation:
 
@@ -908,10 +908,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Dataset manifests are JSON-native, schema-versioned, and validated.
-- [ ] Evaluation reports can cite dataset manifests without embedding datasets.
-- [ ] Unsafe or under-specified manifests fail explicitly.
-- [ ] Docs explain license/provenance boundaries and host-owned assets.
+- [x] Dataset manifests are JSON-native, schema-versioned, and validated.
+- [x] Evaluation reports can cite dataset manifests without embedding datasets.
+- [x] Unsafe or under-specified manifests fail explicitly.
+- [x] Docs explain license/provenance boundaries and host-owned assets.
 
 Validation:
 
@@ -943,10 +943,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] CLI can run contract checks for mock and fixture-backed providers.
-- [ ] Unsupported or unimplemented advertised capabilities fail loudly.
-- [ ] Output is safe to attach and includes validation commands.
-- [ ] Docs link the CLI from provider authoring and external provider docs.
+- [x] CLI can run contract checks for mock and fixture-backed providers.
+- [x] Unsupported or unimplemented advertised capabilities fail loudly.
+- [x] Output is safe to attach and includes validation commands.
+- [x] Docs link the CLI from provider authoring and external provider docs.
 
 Validation:
 
@@ -980,10 +980,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Runtime asset manifests validate local-only and attachable fields separately.
-- [ ] Optional smoke outputs can reference manifests without embedding assets.
-- [ ] Docs explain cache cleanup, rebuild, and evidence boundaries.
-- [ ] Tests cover valid, missing, unsafe, and local-only manifest cases.
+- [x] Runtime asset manifests validate local-only and attachable fields separately.
+- [x] Optional smoke outputs can reference manifests without embedding assets.
+- [x] Docs explain cache cleanup, rebuild, and evidence boundaries.
+- [x] Tests cover valid, missing, unsafe, and local-only manifest cases.
 
 Validation:
 
@@ -1016,10 +1016,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Profiles reject secret-looking keys and unsafe paths where applicable.
-- [ ] CLI commands can opt into a profile without changing existing defaults.
-- [ ] Profile provenance appears in run manifests.
-- [ ] Docs explain what belongs in profiles and what does not.
+- [x] Profiles reject secret-looking keys and unsafe paths where applicable.
+- [x] CLI commands can opt into a profile without changing existing defaults.
+- [x] Profile provenance appears in run manifests.
+- [x] Docs explain what belongs in profiles and what does not.
 
 Validation:
 
@@ -1050,10 +1050,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] External code can register a renderer for a supported artifact family.
-- [ ] Renderer output is marked safe-to-attach or local-only.
-- [ ] Invalid renderer metadata fails explicitly.
-- [ ] Tests cover built-in renderers, custom renderer, duplicate format, and unsafe output cases.
+- [x] External code can register a renderer for a supported artifact family.
+- [x] Renderer output is marked safe-to-attach or local-only.
+- [x] Invalid renderer metadata fails explicitly.
+- [x] Tests cover built-in renderers, custom renderer, duplicate format, and unsafe output cases.
 
 Validation:
 
@@ -1085,10 +1085,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Preview is read-only by default and works on a temp copy in tests.
-- [ ] Invalid state reports exact failure reasons instead of coercing silently.
-- [ ] Output can be attached to issues safely.
-- [ ] Docs explain import/export and local persistence migration boundaries.
+- [x] Preview is read-only by default and works on a temp copy in tests.
+- [x] Invalid state reports exact failure reasons instead of coercing silently.
+- [x] Output can be attached to issues safely.
+- [x] Docs explain import/export and local persistence migration boundaries.
 
 Validation:
 
@@ -1122,10 +1122,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Composed workflows can emit trace artifacts without changing provider capability semantics.
-- [ ] Trace artifacts are sanitized and schema-versioned.
-- [ ] Failure propagation is visible without hiding the original provider error.
-- [ ] Tests cover successful, skipped, failed, and nested workflow traces.
+- [x] Composed workflows can emit trace artifacts without changing provider capability semantics.
+- [x] Trace artifacts are sanitized and schema-versioned.
+- [x] Failure propagation is visible without hiding the original provider error.
+- [x] Tests cover successful, skipped, failed, and nested workflow traces.
 
 Validation:
 

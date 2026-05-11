@@ -27,8 +27,36 @@ pairs for `assert_provider_contract()`. Scenarios drive a full
 not adapter-level test data. Scenarios can reference any registered
 provider; fixtures are scoped to a single adapter.
 
+## Scenario Gallery
+
+The checkout-safe gallery under `examples/scenarios/` gives contributors
+small starting points for local worlds and scenario-result artifacts:
+
+| Scenario | Intent | Expected artifact | First triage step |
+| --- | --- | --- | --- |
+| `cube-on-table.json` | successful world setup | passing JSON result with one object and two mock steps | inspect the initial cube pose and mock provider setup |
+| `spawn-and-move.json` | spawn plus predict workflow | passing result with two objects and two steps | inspect `spawn_object` bbox and the following predict step |
+| `expected-failure-object-count.json` | intentionally failed expectation | non-zero `scenario run` result with `passed: false` expectation row | confirm the mismatch is intentional before changing the scenario |
+| `invalid-action-missing-target.json` | invalid action boundary | `scenario validate` passes, `scenario run` fails with missing `z` | inspect `actions[0].parameters` for the missing coordinate |
+| `evaluation-readiness.json` | evaluation-oriented setup | passing result with two static objects and `step=0` | inspect the initial world object payload before changing evaluation code |
+| `report-export-basic.json` | report/export example | passing JSON or Markdown result suitable for `--output` attachment | compare scenario result JSON before checking world export |
+
+Run the gallery through the same CLI surface as any local scenario:
+
+```bash
+uv run worldforge scenario validate examples/scenarios/report-export-basic.json
+uv run worldforge scenario run examples/scenarios/report-export-basic.json \
+    --state-dir .worldforge/scenario-gallery/report-export --format markdown \
+    --output .worldforge/scenario-gallery/report-export.md
+```
+
+The failed and invalid examples are deliberate. They are marked in
+`metadata.expected_failure` or `metadata.expected_cli_error` so tests can
+prove the failure mode without weakening the normal CLI contract.
+
 ## Schema (version 1)
 
+<!-- worldforge-snippet: parse -->
 ```json
 {
   "schema_version": 1,
@@ -98,6 +126,82 @@ Failed expectations do not raise; they appear as `passed: false` rows
 in the result so the caller (CI gate, human reviewer, scripted check)
 can decide whether to fail the run.
 
+## Scenario Parameter Matrices
+
+Add a top-level `matrix` object when one scenario should run over a
+small bounded sweep. `matrix.parameters` values are JSON-native arrays,
+the Cartesian product must fit under `max_cases`, and placeholders must
+occupy an entire JSON value such as `"${target_x}"`; they are
+whole-value placeholders. Partial
+interpolation like `"cube-${target_x}"` is rejected, and there is no
+expression language.
+
+<!-- worldforge-snippet: parse -->
+```json
+{
+  "schema_version": 1,
+  "id": "target-sweep",
+  "name": "Target sweep",
+  "description": "Run the same checkout-safe scenario against two target positions.",
+  "provider": "${provider_name}",
+  "world": {
+    "name": "target-sweep-world",
+    "objects": [
+      {
+        "name": "cube",
+        "position": {"x": "${object_x}", "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+          "max": {"x":  0.05, "y": 0.55, "z":  0.05}
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "kind": "predict",
+      "parameters": {
+        "provider": "${provider_name}",
+        "x": "${target_x}",
+        "y": 0.5,
+        "z": 0.0,
+        "steps": 2
+      }
+    }
+  ],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 1},
+    {"label": "step_count", "kind": "step", "value": "${expected_step}"}
+  ],
+  "matrix": {
+    "max_cases": 4,
+    "parameters": {
+      "expected_step": [2],
+      "object_x": [0.0],
+      "provider_name": ["mock"],
+      "target_x": [0.25, 0.5]
+    }
+  },
+  "metadata": {}
+}
+```
+
+Supported placeholder locations are intentionally narrow:
+
+| Location | Use |
+| --- | --- |
+| `provider` | Select the scenario provider name |
+| `actions[*].parameters.provider` | Override a step provider name |
+| `world.objects[*].position` and `.position.x/y/z` | Sweep object positions |
+| `actions[*].parameters.x/y/z` | Sweep action targets |
+| `expected_artifacts[*].value` and descendants | Sweep expected artifact values |
+
+`worldforge scenario validate <path>` expands and validates every case
+before execution. `worldforge scenario run <path>` creates one concrete
+scenario per case in the configured `--state-dir`, then returns aggregate
+`case_count`, `passed_case_count`, `failed_case_count`, and
+`failed_cases` fields. The command exits non-zero when any case fails.
+
 ## CLI
 
 ```bash
@@ -115,6 +219,7 @@ result to a file instead of stdout.
 
 ## Python surface
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from pathlib import Path
 from worldforge import WorldForge, load_scenario, run_scenario

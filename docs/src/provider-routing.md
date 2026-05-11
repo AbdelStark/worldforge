@@ -62,6 +62,7 @@ continues.
 
 ## Example
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import ProviderRoutingPolicy, WorldForge, route_capability
 

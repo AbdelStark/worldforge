@@ -54,6 +54,15 @@ def test_doctor_and_provider_info_cli(tmp_path, monkeypatch, capsys) -> None:
     provider_names = {provider["name"] for provider in doctor_payload["providers"]}
     assert {"mock", "cosmos"} <= provider_names
     assert doctor_payload["registered_provider_count"] >= 1
+    mock_doctor = next(
+        provider for provider in doctor_payload["providers"] if provider["name"] == "mock"
+    )
+    assert mock_doctor["lifecycle"]["status"] == "no-op"
+    cosmos_doctor = next(
+        provider for provider in doctor_payload["providers"] if provider["name"] == "cosmos"
+    )
+    assert cosmos_doctor["lifecycle"]["status"] == "skipped"
+    assert "COSMOS_BASE_URL" in cosmos_doctor["lifecycle"]["skip_reason"]
 
     monkeypatch.setattr(
         sys,
@@ -65,6 +74,7 @@ def test_doctor_and_provider_info_cli(tmp_path, monkeypatch, capsys) -> None:
     assert provider_payload["registered"] is True
     assert provider_payload["profile"]["implementation_status"] == "stable"
     assert provider_payload["health"]["healthy"] is True
+    assert provider_payload["lifecycle"]["status"] == "no-op"
 
 
 def test_provider_docs_cli_outputs_markdown_and_json(monkeypatch, capsys) -> None:

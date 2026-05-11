@@ -41,6 +41,8 @@
     {"label": "step_count", "kind": "step", "value": 2}
   ],
   "metadata": {
+    "gallery_intent": "world setup",
+    "first_triage_step": "If this fails, inspect spawn_object bbox and the following predict step.",
     "provider_required": "mock"
   }
 }

@@ -771,10 +771,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Users can define and run a custom suite without touching internal modules.
-- [ ] Custom reports include provenance and failure galleries where applicable.
-- [ ] Tests cover custom suite success and invalid metric payloads.
-- [ ] Docs explain suite authoring and non-claims.
+- [x] Users can define and run a custom suite without touching internal modules.
+- [x] Custom reports include provenance and failure galleries where applicable.
+- [x] Tests cover custom suite success and invalid metric payloads.
+- [x] Docs explain suite authoring and non-claims.
 
 Validation:
 
@@ -870,10 +870,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Candidate helpers return validated `Action` sequences.
-- [ ] Invalid bounds and non-finite inputs fail explicitly.
-- [ ] Planning examples use helpers without changing provider capability claims.
-- [ ] Tests cover helper output and score-planning integration.
+- [x] Candidate helpers return validated `Action` sequences.
+- [x] Invalid bounds and non-finite inputs fail explicitly.
+- [x] Planning examples use helpers without changing provider capability claims.
+- [x] Tests cover helper output and score-planning integration.
 
 Validation:
 
@@ -902,10 +902,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Fixture manifest validation fails on missing, changed, or unsafe fixture references.
-- [ ] Review output distinguishes intended updates from drift.
-- [ ] Docs explain when to update fixtures.
-- [ ] Tests cover manifest load, digest mismatch, and unsafe path cases.
+- [x] Fixture manifest validation fails on missing, changed, or unsafe fixture references.
+- [x] Review output distinguishes intended updates from drift.
+- [x] Docs explain when to update fixtures.
+- [x] Tests cover manifest load, digest mismatch, and unsafe path cases.
 
 Validation:
 

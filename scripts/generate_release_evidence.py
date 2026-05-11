@@ -31,6 +31,7 @@ DEFAULT_RUNS_DIR = ROOT / ".worldforge" / "runs"
 DEFAULT_REPORTS_DIR = ROOT / ".worldforge" / "reports"
 DEFAULT_DIST_DIR = ROOT / "dist"
 DEFAULT_EVIDENCE_BUNDLES_DIR = ROOT / ".worldforge" / "evidence-bundles"
+DEFAULT_DEPENDENCY_AUDIT_DIR = ROOT / ".worldforge" / "dependency-audit"
 
 MAX_CAPTURE_CHARS = 4_000
 
@@ -101,10 +102,20 @@ CHECKOUT_SAFE_GATES = (
         "Fix stale command references or document the missing public entry point, then rerun.",
     ),
     ReleaseGate(
+        "Docs snippets",
+        "uv run python scripts/check_docs_snippets.py",
+        "Fix the named docs snippet or mark it with the correct skip reason.",
+    ),
+    ReleaseGate(
         "Wrapper portability",
         "uv run python scripts/check_wrapper_portability.py",
         "Fix the named wrapper shebang, executable bit, documented command, or Python 3.13 uv "
         "invocation.",
+    ),
+    ReleaseGate(
+        "Optional import boundaries",
+        "uv run python scripts/check_optional_import_boundaries.py",
+        "Move the named optional-runtime import behind its allowed lazy module boundary.",
     ),
     ReleaseGate(
         "Core performance budgets",
@@ -140,14 +151,11 @@ CHECKOUT_SAFE_GATES = (
     ),
     ReleaseGate(
         "Dependency audit",
+        "uv run python scripts/generate_dependency_audit_evidence.py",
         (
-            'tmp_req="$(mktemp requirements-audit.XXXXXX)" && '
-            'uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" '
-            ">/dev/null && "
-            'uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip '
-            '--progress-spinner off; status=$?; rm -f "$tmp_req"; exit $status'
+            "Inspect `.worldforge/dependency-audit/dependency-audit.md`, update or document "
+            "the dependency decision, then rerun the audit."
         ),
-        "Inspect the advisory, update or document the dependency decision, then rerun the audit.",
     ),
 )
 VALIDATION_COMMANDS = tuple((gate.name, gate.command) for gate in CHECKOUT_SAFE_GATES)
@@ -275,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
             *args.artifact,
             *_glob_existing(DEFAULT_DIST_DIR, "*"),
             *_glob_existing(DEFAULT_EVIDENCE_BUNDLES_DIR, "*/evidence_manifest.json"),
+            *_glob_existing(DEFAULT_DEPENDENCY_AUDIT_DIR, "dependency-audit.*"),
         ]
     )
     report = render_release_evidence(
@@ -316,10 +325,14 @@ def release_gate_results(
     skip_gates: tuple[str, ...] = (),
     skip_reason: str = "",
     runner: Any = subprocess.run,
+    now_utc: Any | None = None,
+    monotonic_clock: Any | None = None,
 ) -> tuple[ReleaseGateResult, ...]:
     """Return release-readiness gate results, optionally executing commands."""
 
     skip_gate_names = set(skip_gates)
+    resolved_now_utc = now_utc or _utc_now
+    resolved_monotonic = monotonic_clock or monotonic
     results: list[ReleaseGateResult] = []
     for gate in gates:
         if gate.name in skip_gate_names:
@@ -343,8 +356,8 @@ def release_gate_results(
             )
             continue
 
-        started_at = datetime.now(UTC).replace(microsecond=0).isoformat()
-        start = monotonic()
+        started_at = _isoformat_utc(resolved_now_utc())
+        start = resolved_monotonic()
         completed = runner(
             gate.command,
             shell=True,
@@ -352,8 +365,8 @@ def release_gate_results(
             capture_output=True,
             text=True,
         )
-        finished_at = datetime.now(UTC).replace(microsecond=0).isoformat()
-        duration_ms = round((monotonic() - start) * 1000, 3)
+        finished_at = _isoformat_utc(resolved_now_utc())
+        duration_ms = round((resolved_monotonic() - start) * 1000, 3)
         return_code = int(completed.returncode)
         results.append(
             ReleaseGateResult(
@@ -384,10 +397,11 @@ def release_evidence_payload(
     gate_results: tuple[ReleaseGateResult, ...],
     live_smoke_registry: dict[str, Any] | None = None,
     known_limitations: tuple[str, ...] = (),
+    now_utc: Any | None = None,
 ) -> dict[str, Any]:
     """Return a JSON-native release-readiness evidence payload."""
 
-    generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    generated_at = _isoformat_utc((now_utc or _utc_now)())
     return {
         "schema_version": 1,
         "generated_at": generated_at,
@@ -431,10 +445,11 @@ def render_release_evidence(
     live_smoke_registry: dict[str, Any] | None = None,
     known_limitations: tuple[str, ...] = (),
     gate_results: tuple[ReleaseGateResult, ...] | None = None,
+    now_utc: Any | None = None,
 ) -> str:
     commit = _git_output("rev-parse", "--short", "HEAD") or "unknown"
     branch = _git_output("branch", "--show-current") or "unknown"
-    generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    generated_at = _isoformat_utc((now_utc or _utc_now)())
     resolved_gate_results = gate_results or release_gate_results(run=False)
     lines = [
         "# WorldForge Release Evidence",
@@ -737,6 +752,16 @@ def _git_output(*args: str) -> str:
         ).strip()
     except (OSError, subprocess.CalledProcessError):
         return ""
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC).replace(microsecond=0)
+
+
+def _isoformat_utc(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).replace(microsecond=0).isoformat()
 
 
 if __name__ == "__main__":

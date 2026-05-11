@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 from urllib.parse import urlsplit
 
+from worldforge.dataset_manifests import dataset_manifest_references
 from worldforge.models import (
     Action,
     BBox,
@@ -36,9 +37,15 @@ from worldforge.provenance import (
     collect_runtime_manifests,
     digest_payload,
 )
+from worldforge.workflow_trace import WorkflowArtifactRef, WorkflowTrace, WorkflowTraceStep
 
 if TYPE_CHECKING:
     from worldforge.framework import World, WorldForge
+
+EvaluationScenarioEvaluator = Callable[
+    ["EvaluationContext"],
+    "EvaluationScenarioOutcome | EvaluationResult | JSONDict",
+]
 
 EVALUATION_CLAIM_BOUNDARY = (
     "Built-in evaluation suites are deterministic adapter contract checks. Scores are synthetic "
@@ -130,6 +137,11 @@ def _provenance_markdown_lines(provenance: ProvenanceEnvelope | None) -> list[st
         lines.append(f"- Runtime manifests: {manifests}")
     if provenance.budget_file is not None:
         lines.append(f"- Budget file: {provenance.budget_file['path']}")
+    if provenance.dataset_manifests:
+        manifests = ", ".join(
+            f"{ref['id']} ({ref['sha256']})" for ref in provenance.dataset_manifests
+        )
+        lines.append(f"- Dataset manifests: {manifests}")
     if provenance.command:
         lines.append(f"- Command: `{' '.join(provenance.command)}`")
     if provenance.notes:
@@ -259,6 +271,52 @@ def _reference_count(clip: VideoClip) -> int:
     return 0
 
 
+@dataclass(frozen=True, slots=True)
+class EvaluationScenarioOutcome:
+    """Validated score, pass flag, and metrics returned by a custom scenario."""
+
+    score: float
+    passed: bool
+    metrics: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "score", require_probability(self.score, name="outcome score"))
+        object.__setattr__(self, "passed", require_bool(self.passed, name="outcome passed"))
+        object.__setattr__(
+            self,
+            "metrics",
+            require_json_dict(self.metrics, name="EvaluationScenarioOutcome metrics"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationContext:
+    """Runtime context passed to custom evaluation scenario callables."""
+
+    suite_id: str
+    suite: str
+    scenario: EvaluationScenario
+    provider: str
+    world: World
+    forge: WorldForge
+    index: int
+
+    def outcome(
+        self,
+        *,
+        score: float,
+        passed: bool,
+        metrics: JSONDict | None = None,
+    ) -> EvaluationScenarioOutcome:
+        """Build a validated custom-scenario outcome."""
+
+        return EvaluationScenarioOutcome(
+            score=score,
+            passed=passed,
+            metrics=metrics or {},
+        )
+
+
 @dataclass(slots=True)
 class EvaluationScenario:
     """A single scenario inside an evaluation suite."""
@@ -266,6 +324,38 @@ class EvaluationScenario:
     name: str
     description: str
     required_capabilities: tuple[str, ...] = ()
+    evaluator: EvaluationScenarioEvaluator | None = None
+
+    def __post_init__(self) -> None:
+        self.name = _required_text(self.name, name="EvaluationScenario name")
+        self.description = _required_text(
+            self.description,
+            name="EvaluationScenario description",
+        )
+        if not isinstance(self.required_capabilities, tuple):
+            self.required_capabilities = tuple(self.required_capabilities)
+        for capability in self.required_capabilities:
+            _required_text(capability, name="EvaluationScenario required capability")
+        if self.evaluator is not None and not callable(self.evaluator):
+            raise WorldForgeError("EvaluationScenario evaluator must be callable when provided.")
+
+    @classmethod
+    def from_callable(
+        cls,
+        *,
+        name: str,
+        description: str,
+        evaluator: EvaluationScenarioEvaluator,
+        required_capabilities: Sequence[str] = (),
+    ) -> EvaluationScenario:
+        """Create a custom scenario from a deterministic evaluator callable."""
+
+        return cls(
+            name=name,
+            description=description,
+            required_capabilities=tuple(required_capabilities),
+            evaluator=evaluator,
+        )
 
 
 @dataclass(slots=True)
@@ -421,6 +511,8 @@ class EvaluationFailureGallery:
     source_input_digest: str | None = None
     source_result_digest: str | None = None
     suite_version: str | None = None
+    claim_boundary: str = EVALUATION_CLAIM_BOUNDARY
+    metric_semantics: str = EVALUATION_METRIC_SEMANTICS
 
     def __post_init__(self) -> None:
         self.suite_id = _required_text(self.suite_id, name="EvaluationFailureGallery suite_id")
@@ -452,6 +544,14 @@ class EvaluationFailureGallery:
             if self.suite_version is not None
             else None
         )
+        self.claim_boundary = _required_text(
+            self.claim_boundary,
+            name="EvaluationFailureGallery claim_boundary",
+        )
+        self.metric_semantics = _required_text(
+            self.metric_semantics,
+            name="EvaluationFailureGallery metric_semantics",
+        )
 
     @property
     def case_count(self) -> int:
@@ -463,8 +563,8 @@ class EvaluationFailureGallery:
             "suite_id": self.suite_id,
             "suite": self.suite,
             "case_count": self.case_count,
-            "claim_boundary": EVALUATION_CLAIM_BOUNDARY,
-            "metric_semantics": EVALUATION_METRIC_SEMANTICS,
+            "claim_boundary": self.claim_boundary,
+            "metric_semantics": self.metric_semantics,
             "source_input_digest": self.source_input_digest,
             "source_result_digest": self.source_result_digest,
             "suite_version": self.suite_version,
@@ -483,8 +583,8 @@ class EvaluationFailureGallery:
         lines.extend(
             [
                 f"Suite: {self.suite} ({self.suite_id})",
-                f"Claim boundary: {EVALUATION_CLAIM_BOUNDARY}",
-                f"Metric semantics: {EVALUATION_METRIC_SEMANTICS}",
+                f"Claim boundary: {self.claim_boundary}",
+                f"Metric semantics: {self.metric_semantics}",
                 f"Cases: {self.case_count}",
             ]
         )
@@ -667,9 +767,20 @@ class EvaluationReport:
         results: Sequence[EvaluationResult],
         *,
         provenance: ProvenanceEnvelope | None = None,
+        workflow_trace: WorkflowTrace | JSONDict | None = None,
+        claim_boundary: str = EVALUATION_CLAIM_BOUNDARY,
+        metric_semantics: str = EVALUATION_METRIC_SEMANTICS,
     ) -> None:
         self.suite_id = _required_text(suite_id, name="EvaluationReport suite_id")
         self.suite = _required_text(suite, name="EvaluationReport suite")
+        self.claim_boundary = _required_text(
+            claim_boundary,
+            name="EvaluationReport claim_boundary",
+        )
+        self.metric_semantics = _required_text(
+            metric_semantics,
+            name="EvaluationReport metric_semantics",
+        )
         self.results = list(results)
         if not all(isinstance(result, EvaluationResult) for result in self.results):
             raise WorldForgeError("EvaluationReport results must contain only EvaluationResult.")
@@ -697,6 +808,23 @@ class EvaluationReport:
                     "EvaluationReport provenance suite_id must match the report's suite_id."
                 )
         self.provenance = provenance
+        if workflow_trace is None:
+            self.workflow_trace = None
+        elif isinstance(workflow_trace, WorkflowTrace):
+            self.workflow_trace = workflow_trace
+        elif isinstance(workflow_trace, dict):
+            self.workflow_trace = WorkflowTrace(
+                workflow_id=workflow_trace.get("workflow_id", ""),
+                name=workflow_trace.get("name", ""),
+                status=workflow_trace.get("status"),
+                schema_version=workflow_trace.get("schema_version", 1),
+                steps=workflow_trace.get("steps") or (),
+                metadata=workflow_trace.get("metadata") or {},
+            )
+        else:
+            raise WorldForgeError(
+                "EvaluationReport workflow_trace must be a WorkflowTrace, JSON object, or None."
+            )
 
     def _build_provider_summaries(self) -> list[ProviderSummary]:
         provider_names = sorted({result.provider for result in self.results})
@@ -720,8 +848,8 @@ class EvaluationReport:
         payload: JSONDict = {
             "suite_id": self.suite_id,
             "suite": self.suite,
-            "claim_boundary": EVALUATION_CLAIM_BOUNDARY,
-            "metric_semantics": EVALUATION_METRIC_SEMANTICS,
+            "claim_boundary": self.claim_boundary,
+            "metric_semantics": self.metric_semantics,
             "provider_summaries": [summary.to_dict() for summary in self.provider_summaries],
             "results": [result.to_dict() for result in self.results],
         }
@@ -729,6 +857,8 @@ class EvaluationReport:
             payload["failure_gallery"] = failure_gallery.to_dict()
         if self.provenance is not None:
             payload["provenance"] = self.provenance.to_dict()
+        if self.workflow_trace is not None:
+            payload["workflow_trace"] = self.workflow_trace.to_dict()
         return payload
 
     def to_markdown(self) -> str:
@@ -737,8 +867,8 @@ class EvaluationReport:
             "",
             f"Suite: {self.suite} ({self.suite_id})",
             "",
-            f"Claim boundary: {EVALUATION_CLAIM_BOUNDARY}",
-            f"Metric semantics: {EVALUATION_METRIC_SEMANTICS}",
+            f"Claim boundary: {self.claim_boundary}",
+            f"Metric semantics: {self.metric_semantics}",
             "",
         ]
         lines.extend(_provenance_markdown_lines(self.provenance))
@@ -775,6 +905,9 @@ class EvaluationReport:
         if failure_gallery.case_count:
             lines.extend(["", "## Failure Gallery", ""])
             lines.extend(failure_gallery.to_markdown(include_title=False).splitlines())
+        if self.workflow_trace is not None:
+            lines.extend(["", "## Workflow Trace", ""])
+            lines.extend(self.workflow_trace.to_markdown().splitlines()[2:])
         return "\n".join(lines)
 
     def to_csv(self) -> str:
@@ -844,6 +977,8 @@ class EvaluationReport:
             source_input_digest=self.provenance.input_digest if self.provenance else None,
             source_result_digest=self.provenance.result_digest if self.provenance else None,
             suite_version=self.provenance.suite_version if self.provenance else None,
+            claim_boundary=self.claim_boundary,
+            metric_semantics=self.metric_semantics,
         )
 
     def to_html(self) -> str:
@@ -860,6 +995,14 @@ class EvaluationReport:
             "html": self.to_html(),
             "failure_gallery.json": failure_gallery.to_json(),
             "failure_gallery.md": failure_gallery.to_markdown(),
+            **(
+                {
+                    "workflow_trace.json": self.workflow_trace.to_json(),
+                    "workflow_trace.md": self.workflow_trace.to_markdown(),
+                }
+                if self.workflow_trace is not None
+                else {}
+            ),
         }
 
 
@@ -879,10 +1022,113 @@ class EvaluationSuite:
         scenarios: Sequence[EvaluationScenario],
         *,
         suite_id: str | None = None,
+        suite_version: str | None = None,
+        claim_boundary: str = EVALUATION_CLAIM_BOUNDARY,
+        metric_semantics: str = EVALUATION_METRIC_SEMANTICS,
     ) -> None:
-        self.name = name
+        self.name = _required_text(name, name="EvaluationSuite name")
         self.scenarios = list(scenarios)
-        self.suite_id = suite_id or name.lower().replace(" ", "-")
+        if not self.scenarios:
+            raise WorldForgeError("EvaluationSuite scenarios must contain at least one scenario.")
+        if not all(isinstance(scenario, EvaluationScenario) for scenario in self.scenarios):
+            raise WorldForgeError("EvaluationSuite scenarios must contain only EvaluationScenario.")
+        self.suite_id = _required_text(
+            suite_id or name.lower().replace(" ", "-"),
+            name="EvaluationSuite suite_id",
+        )
+        self.suite_version = _required_text(
+            suite_version or f"evaluation:{EVALUATION_SUITE_CONTRACT_VERSION}",
+            name="EvaluationSuite suite_version",
+        )
+        self.claim_boundary = _required_text(
+            claim_boundary,
+            name="EvaluationSuite claim_boundary",
+        )
+        self.metric_semantics = _required_text(
+            metric_semantics,
+            name="EvaluationSuite metric_semantics",
+        )
+
+    _CUSTOM_REGISTRY: ClassVar[dict[str, Callable[[], EvaluationSuite]]] = {}
+
+    @classmethod
+    def custom(
+        cls,
+        *,
+        suite_id: str,
+        name: str,
+        scenarios: Sequence[EvaluationScenario],
+        suite_version: str,
+        claim_boundary: str,
+        metric_semantics: str = EVALUATION_METRIC_SEMANTICS,
+    ) -> EvaluationSuite:
+        """Build a deterministic custom evaluation suite from public scenario objects."""
+
+        return cls(
+            name,
+            scenarios,
+            suite_id=suite_id,
+            suite_version=suite_version,
+            claim_boundary=claim_boundary,
+            metric_semantics=metric_semantics,
+        )
+
+    @classmethod
+    def register(
+        cls,
+        name: str,
+        factory: Callable[[], EvaluationSuite],
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Register a process-local custom suite factory."""
+
+        suite_name = _required_text(name, name="EvaluationSuite registry name")
+        if not callable(factory):
+            raise WorldForgeError("EvaluationSuite.register() factory must be callable.")
+        if suite_name in cls._builtin_registry():
+            raise WorldForgeError(
+                f"Evaluation suite '{suite_name}' is built in and cannot be replaced."
+            )
+        if suite_name in cls._CUSTOM_REGISTRY and not replace:
+            raise WorldForgeError(
+                f"Evaluation suite '{suite_name}' is already registered; pass replace=True "
+                "to overwrite it."
+            )
+        cls._CUSTOM_REGISTRY[suite_name] = factory
+
+    @classmethod
+    def unregister(cls, name: str) -> None:
+        """Remove a process-local custom suite registration if present."""
+
+        cls._CUSTOM_REGISTRY.pop(_required_text(name, name="EvaluationSuite registry name"), None)
+
+    @classmethod
+    def registered_names(cls) -> list[str]:
+        """Return built-in and process-local custom suite names."""
+
+        return sorted((*cls._builtin_registry(), *cls._CUSTOM_REGISTRY))
+
+    @classmethod
+    def from_registered(cls, name: str) -> EvaluationSuite:
+        """Construct a built-in or process-local registered suite by name."""
+
+        suite_name = _required_text(name, name="EvaluationSuite registry name")
+        if suite_name in cls._builtin_registry():
+            return cls.from_builtin(suite_name)
+        try:
+            factory = cls._CUSTOM_REGISTRY[suite_name]
+        except KeyError as exc:
+            known = ", ".join(cls.registered_names())
+            raise WorldForgeError(
+                f"Unknown registered evaluation suite '{suite_name}'. Known suites: {known}."
+            ) from exc
+        suite = factory()
+        if not isinstance(suite, EvaluationSuite):
+            raise WorldForgeError(
+                f"Registered evaluation suite '{suite_name}' factory must return EvaluationSuite."
+            )
+        return suite
 
     @classmethod
     def _builtin_registry(cls) -> dict[str, Callable[[], EvaluationSuite]]:
@@ -965,6 +1211,14 @@ class EvaluationSuite:
         forge: WorldForge,
         index: int,
     ) -> EvaluationResult:
+        if scenario.evaluator is not None:
+            return self._evaluate_custom_scenario(
+                scenario,
+                provider,
+                world=world,
+                forge=forge,
+                index=index,
+            )
         prediction = world.predict(
             Action.move_to(0.1 * (index + 1), 0.5, 0.0),
             steps=1,
@@ -982,6 +1236,74 @@ class EvaluationSuite:
                 "physics_score": prediction.physics_score,
                 "confidence": prediction.confidence,
             },
+        )
+
+    def _evaluate_custom_scenario(
+        self,
+        scenario: EvaluationScenario,
+        provider: str,
+        *,
+        world: World,
+        forge: WorldForge,
+        index: int,
+    ) -> EvaluationResult:
+        if scenario.evaluator is None:  # pragma: no cover - call-site guard
+            raise WorldForgeError("Custom evaluation scenario is missing an evaluator.")
+        context = EvaluationContext(
+            suite_id=self.suite_id,
+            suite=self.name,
+            scenario=scenario,
+            provider=provider,
+            world=world,
+            forge=forge,
+            index=index,
+        )
+        return self._coerce_custom_result(
+            scenario.evaluator(context),
+            scenario=scenario,
+            provider=provider,
+        )
+
+    def _coerce_custom_result(
+        self,
+        value: EvaluationScenarioOutcome | EvaluationResult | JSONDict,
+        *,
+        scenario: EvaluationScenario,
+        provider: str,
+    ) -> EvaluationResult:
+        if isinstance(value, EvaluationResult):
+            if value.suite_id != self.suite_id:
+                raise WorldForgeError("Custom EvaluationResult suite_id must match its suite.")
+            if value.suite != self.name:
+                raise WorldForgeError("Custom EvaluationResult suite name must match its suite.")
+            if value.scenario != scenario.name:
+                raise WorldForgeError(
+                    "Custom EvaluationResult scenario must match the evaluated scenario."
+                )
+            if value.provider != provider:
+                raise WorldForgeError("Custom EvaluationResult provider must match the provider.")
+            return value
+        if isinstance(value, dict):
+            outcome = EvaluationScenarioOutcome(
+                score=value.get("score"),
+                passed=value.get("passed"),
+                metrics=value.get("metrics", {}),
+            )
+        elif isinstance(value, EvaluationScenarioOutcome):
+            outcome = value
+        else:
+            raise WorldForgeError(
+                "Custom evaluation scenarios must return EvaluationScenarioOutcome, "
+                "EvaluationResult, or a JSON object with score, passed, and metrics."
+            )
+        return EvaluationResult(
+            suite_id=self.suite_id,
+            suite=self.name,
+            scenario=scenario.name,
+            provider=provider,
+            score=outcome.score,
+            passed=outcome.passed,
+            metrics=outcome.metrics,
         )
 
     def run_with_world(
@@ -1021,6 +1343,7 @@ class EvaluationSuite:
         *,
         world: World | None = None,
         forge: WorldForge | None = None,
+        dataset_manifests: Sequence[object] | None = None,
     ) -> EvaluationReport:
         from worldforge.framework import WorldForge
 
@@ -1047,24 +1370,83 @@ class EvaluationSuite:
             with ThreadPoolExecutor(max_workers=min(8, len(provider_names))) as pool:
                 for provider_results in pool.map(_run_one, provider_names):
                     results.extend(provider_results)
-        provenance = self._build_provenance(provider_names, results)
+        dataset_refs = dataset_manifest_references(dataset_manifests)
+        provenance = self._build_provenance(provider_names, results, dataset_manifests=dataset_refs)
         return EvaluationReport(
             self.suite_id,
             self.name,
             results,
             provenance=provenance,
+            workflow_trace=self._build_workflow_trace(provider_names, results),
+            claim_boundary=self.claim_boundary,
+            metric_semantics=self.metric_semantics,
+        )
+
+    def _build_workflow_trace(
+        self,
+        provider_names: Sequence[str],
+        results: Sequence[EvaluationResult],
+    ) -> WorkflowTrace:
+        steps: list[WorkflowTraceStep] = [
+            WorkflowTraceStep(
+                step_id="evaluation",
+                operation="run evaluation suite",
+                status="success" if all(result.passed for result in results) else "failed",
+                output_artifacts=(WorkflowArtifactRef(label="evaluation-report"),),
+            )
+        ]
+        for provider_index, provider in enumerate(provider_names, start=1):
+            provider_results = [result for result in results if result.provider == provider]
+            provider_step_id = f"provider-{provider_index}"
+            steps.append(
+                WorkflowTraceStep(
+                    step_id=provider_step_id,
+                    parent_id="evaluation",
+                    operation="evaluate provider",
+                    status=(
+                        "success"
+                        if provider_results and all(result.passed for result in provider_results)
+                        else "failed"
+                    ),
+                    provider=provider,
+                    output_artifacts=(WorkflowArtifactRef(label=f"{provider}-results"),),
+                )
+            )
+            for scenario_index, result in enumerate(provider_results, start=1):
+                steps.append(
+                    WorkflowTraceStep(
+                        step_id=f"{provider_step_id}-scenario-{scenario_index}",
+                        parent_id=provider_step_id,
+                        operation=result.scenario,
+                        status="success" if result.passed else "failed",
+                        provider=provider,
+                        output_artifacts=(WorkflowArtifactRef(label="scenario-result"),),
+                    )
+                )
+        return WorkflowTrace(
+            workflow_id=f"evaluation:{self.suite_id}",
+            name=f"Evaluation suite ({self.suite_id})",
+            steps=steps,
+            metadata={
+                "suite_id": self.suite_id,
+                "suite_version": self.suite_version,
+                "provider_count": len(provider_names),
+                "scenario_count": len(self.scenarios),
+            },
         )
 
     def _build_provenance(
         self,
         provider_names: Sequence[str],
         results: Sequence[EvaluationResult],
+        *,
+        dataset_manifests: Sequence[JSONDict] = (),
     ) -> ProvenanceEnvelope:
         result_payload = [result.to_dict() for result in results]
         return ProvenanceEnvelope(
             kind="evaluation",
             suite_id=self.suite_id,
-            suite_version=f"evaluation:{EVALUATION_SUITE_CONTRACT_VERSION}",
+            suite_version=self.suite_version,
             providers=tuple(provider_names),
             capabilities=self._required_capabilities(),
             runtime_manifests=collect_runtime_manifests(provider_names),
@@ -1081,12 +1463,14 @@ class EvaluationSuite:
                         for scenario in self.scenarios
                     ],
                     "providers": list(provider_names),
+                    "dataset_manifests": list(dataset_manifests),
                 }
             ),
             result_digest=digest_payload(result_payload),
+            dataset_manifests=tuple(dataset_manifests),
             event_count=0,
-            claim_boundary=EVALUATION_CLAIM_BOUNDARY,
-            metric_semantics=EVALUATION_METRIC_SEMANTICS,
+            claim_boundary=self.claim_boundary,
+            metric_semantics=self.metric_semantics,
         )
 
     def run_report_artifacts(

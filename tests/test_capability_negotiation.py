@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -22,6 +25,9 @@ from worldforge import (
 )
 from worldforge.capability_negotiation import negotiate
 from worldforge.providers import BaseProvider, ProviderProfileSpec
+
+ROOT = Path(__file__).resolve().parents[1]
+DEMO_SHOWCASES = ROOT / "scripts" / "demo_showcases.py"
 
 REMOTE_ENV_VARS = (
     "COSMOS_BASE_URL",
@@ -175,6 +181,34 @@ def test_report_renders_markdown(monkeypatch, tmp_path) -> None:
     assert "Required capabilities: policy, score" in markdown
     assert "BLOCKED" in markdown
     assert "Recommended actions" in markdown
+
+
+def test_capability_negotiation_preflight_demo_preserves_blockers(tmp_path) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "worldforge_capability_negotiation_preflight_demo_test",
+        DEMO_SHOWCASES,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    results = module.run_workflows(
+        "capability-negotiation-preflight",
+        workspace_dir=tmp_path,
+        overwrite=True,
+    )
+    summary_path = Path(results[0]["artifact_paths"]["summary_json"])
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    report = summary["report"]
+
+    assert {"ready", "missing-config", "missing-dependency", "not-registered"} <= set(
+        report["readiness_values"]
+    )
+    assert report["unsupported_example"]["readiness"] == "unsupported"
+    assert "policy-plus-score" in report["workflow_shapes"]
+    assert report["recommended_actions"]
 
 
 def test_workflow_negotiation_to_dict_round_trip(tmp_path, monkeypatch) -> None:

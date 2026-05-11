@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
+import sys
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
@@ -34,8 +36,9 @@ from worldforge.benchmark_presets import (
     preset_budget_payload,
     preset_inputs_payload,
 )
+from worldforge.config_profiles import ConfigProfile, load_config_profile
 from worldforge.evaluation import EvaluationSuite
-from worldforge.models import CAPABILITY_NAMES
+from worldforge.models import CAPABILITY_NAMES, _redact_observable_text
 from worldforge.operator_drills import DRILL_IDS, DRILL_WORKSPACE_DEFAULT
 from worldforge.providers import ProviderError
 from worldforge.providers.catalog import provider_docs_index
@@ -53,12 +56,14 @@ CLI_EPILOG = """Common commands:
   worldforge world predict <world-id> --object-id <object-id> --x 0.4 --y 0.5 --z 0
   worldforge world list
   worldforge world preflight
+  worldforge world migration-preview <world-id>
   worldforge world objects <world-id>
   worldforge world history <world-id>
   worldforge world delete <world-id>
   worldforge provider list
   worldforge provider docs
   worldforge provider info mock
+  worldforge provider contract mock
   worldforge provider workbench mock
   worldforge harness --list
   worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
@@ -67,6 +72,14 @@ CLI_EPILOG = """Common commands:
   worldforge runs list
   worldforge drills list
 """
+
+_HOST_LOCAL_PATH_PATTERN = re.compile(
+    r"(?P<path>(?:/Users|/private|/var/folders|/tmp)/[^\s,;:)'\"]+)"
+)
+_PROFILE_FORMAT_CHOICES: dict[tuple[str, ...], set[str]] = {
+    ("eval",): {"markdown", "json", "csv", "html"},
+    ("benchmark",): {"markdown", "json", "csv", "html"},
+}
 
 EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
     {
@@ -450,6 +463,14 @@ def _add_generation_arguments(parser: argparse.ArgumentParser, *, include_fps: b
     )
 
 
+def _add_profile_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        help="Non-secret JSON/TOML configuration profile for CLI defaults.",
+    )
+
+
 def _build_generation_options(args: argparse.Namespace) -> GenerationOptions:
     return GenerationOptions(
         image=getattr(args, "image", None),
@@ -527,6 +548,45 @@ def _build_parser() -> argparse.ArgumentParser:
         "--capability",
         choices=CAPABILITY_NAMES,
         help="Filter providers by capability name.",
+    )
+
+    provider_contract = provider_subparsers.add_parser(
+        "contract",
+        help="Run provider contract checks and emit issue-ready evidence.",
+    )
+    provider_contract.add_argument("name", nargs="?", help="Registered or known provider name.")
+    provider_contract.add_argument(
+        "--factory",
+        help="Direct provider factory path as module:factory.",
+    )
+    provider_contract.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="Output format for contract evidence.",
+    )
+    provider_contract.add_argument(
+        "--live",
+        action="store_true",
+        help="Allow live provider calls on a prepared host.",
+    )
+    provider_contract.add_argument(
+        "--score-info",
+        type=Path,
+        help="JSON score info payload for score providers.",
+    )
+    provider_contract.add_argument(
+        "--score-candidates",
+        type=Path,
+        help="JSON action candidates payload for score providers.",
+    )
+    provider_contract.add_argument(
+        "--policy-info",
+        type=Path,
+        help="JSON policy info payload for policy providers.",
+    )
+    provider_contract.add_argument(
+        "--state-dir", default=".worldforge/worlds", help="World state directory."
     )
 
     provider_docs = provider_subparsers.add_parser(
@@ -830,6 +890,32 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for the world diff.",
     )
 
+    world_migration_preview = world_subparsers.add_parser(
+        "migration-preview",
+        help="Preview world JSON migration requirements without rewriting state.",
+    )
+    world_migration_preview.add_argument(
+        "source",
+        help="World id relative to --state-dir, or a JSON file when --source-path is set.",
+    )
+    world_migration_preview.add_argument(
+        "--state-dir",
+        type=Path,
+        default=Path(".worldforge/worlds"),
+        help="World state directory used when source is a world id.",
+    )
+    world_migration_preview.add_argument(
+        "--source-path",
+        action="store_true",
+        help="Treat source as an explicit persisted or exported JSON file path.",
+    )
+    world_migration_preview.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the migration preview report.",
+    )
+
     world_preflight = world_subparsers.add_parser(
         "preflight",
         help="Check local world JSON state and run workspaces without mutating them.",
@@ -896,6 +982,12 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("json", "markdown", "csv", "html"),
         default="markdown",
         help="Output format for the comparison summary.",
+    )
+    runs_compare.add_argument(
+        "--mode",
+        choices=("comparison", "regression"),
+        default="comparison",
+        help="Comparison mode: multi-run table or baseline-vs-candidate regression report.",
     )
     runs_compare.add_argument(
         "--output",
@@ -1180,6 +1272,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Provider name to evaluate. Can be repeated.",
     )
+    _add_profile_argument(evaluate)
     evaluate.add_argument(
         "--format",
         choices=("markdown", "json", "csv", "html"),
@@ -1194,6 +1287,14 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Preserve sanitized eval artifacts under RUN_WORKSPACE/runs/<run-id>/.",
     )
+    evaluate.add_argument(
+        "--dataset-manifest",
+        dest="dataset_manifests",
+        action="append",
+        type=Path,
+        default=None,
+        help="Dataset manifest JSON to cite in evaluation provenance. Can be repeated.",
+    )
 
     benchmark = subparsers.add_parser(
         "benchmark",
@@ -1206,6 +1307,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Provider name to benchmark. Can be repeated.",
     )
+    _add_profile_argument(benchmark)
     benchmark.add_argument(
         "--operation",
         dest="operations",
@@ -1268,6 +1370,8 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=(
             "leworldmodel",
             "lerobot",
+            "cosmos-policy",
+            "gr00t",
             "diagnostics",
             "workbench",
             "eval",
@@ -1396,7 +1500,7 @@ def _cmd_runs(args: argparse.Namespace) -> int:
             comparison_artifact,
         )
 
-        payload = compare_preserved_run_reports(args.paths)
+        payload = compare_preserved_run_reports(args.paths, mode=args.mode)
         rendered = comparison_artifact(payload, output_format=args.format)
         if args.output is not None:
             args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -1552,6 +1656,7 @@ def _cmd_provider_info(args: argparse.Namespace, forge: WorldForge) -> int:
         "registered": name in forge.providers(),
         "profile": forge.provider_profile(name).to_dict(),
         "health": forge.provider_health(name).to_dict(),
+        "lifecycle": forge.provider_lifecycle_status(name).to_dict(),
         "config_summary": forge.provider_config_summary(name).to_dict(),
     }
     if name in forge.providers():
@@ -1580,11 +1685,53 @@ def _cmd_provider_health(args: argparse.Namespace, forge: WorldForge) -> int:
     return 0
 
 
+def _cmd_provider_contract(args: argparse.Namespace, forge: WorldForge) -> int:
+    from worldforge.provider_contracts import (
+        load_json_contract_input,
+        provider_from_factory_path,
+        run_provider_contract,
+    )
+
+    if args.factory and args.name:
+        raise WorldForgeError("provider contract accepts either a provider name or --factory.")
+    if args.factory:
+        provider = provider_from_factory_path(args.factory)
+        registered = False
+        factory_path = args.factory
+    else:
+        if not args.name:
+            raise WorldForgeError("provider contract requires a provider name or --factory.")
+        provider = forge._registered_or_known_provider(args.name, include_known=True)
+        if provider is None:
+            raise ProviderError(f"Provider '{args.name}' is unknown.")
+        registered = args.name in forge.providers()
+        factory_path = None
+
+    evidence = run_provider_contract(
+        provider,
+        registered=registered,
+        factory_path=factory_path,
+        live=args.live,
+        score_info=load_json_contract_input(args.score_info, name="score-info"),
+        score_action_candidates=load_json_contract_input(
+            args.score_candidates,
+            name="score-candidates",
+        ),
+        policy_info=load_json_contract_input(args.policy_info, name="policy-info"),
+    )
+    if args.format == "json":
+        print(evidence.to_json(), end="")
+    else:
+        print(evidence.to_markdown(), end="")
+    return 0 if evidence.status == "passed" else 1
+
+
 def _cmd_provider(args: argparse.Namespace, forge: WorldForge) -> int | None:
     provider_dispatch = {
         "list": _cmd_provider_list,
         "info": _cmd_provider_info,
         "health": _cmd_provider_health,
+        "contract": _cmd_provider_contract,
     }
     handler = provider_dispatch.get(args.provider_command)
     if handler is None:
@@ -1834,6 +1981,24 @@ def _cmd_world_preflight(args: argparse.Namespace) -> int:
     return 1 if report["status"] == "failed" else 0
 
 
+def _cmd_world_migration_preview(args: argparse.Namespace) -> int:
+    from worldforge.world_migration_preview import (
+        preview_world_migration_from_path,
+        preview_world_migration_from_world_id,
+        render_world_migration_preview_markdown,
+    )
+
+    if args.source_path:
+        report = preview_world_migration_from_path(Path(args.source))
+    else:
+        report = preview_world_migration_from_world_id(args.source, state_dir=args.state_dir)
+    if args.format == "markdown":
+        print(render_world_migration_preview_markdown(report), end="")
+    else:
+        _print_json(report)
+    return 0 if report["can_apply_safely"] else 1
+
+
 def _cmd_world_diff(args: argparse.Namespace, forge: WorldForge) -> int:
     from worldforge.world_diff import diff_worlds, diff_worlds_from_paths
 
@@ -1884,26 +2049,43 @@ def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
 
 
 def _cmd_scenario(args: argparse.Namespace) -> int:
-    from worldforge.scenarios import load_scenario, run_scenario
+    from worldforge.scenarios import load_scenario_matrix, run_scenario, run_scenario_matrix
 
-    scenario = load_scenario(args.path)
+    matrix = load_scenario_matrix(args.path)
+    scenario = matrix.cases[0].scenario
     if args.scenario_command == "validate":
         if args.format == "markdown":
-            print(
-                f"# Scenario `{scenario.id}`\n\n"
-                f"- name: {scenario.name}\n"
-                f"- provider: {scenario.provider}\n"
-                f"- world: {scenario.world_name}\n"
-                f"- objects: {len(scenario.objects)}\n"
-                f"- actions: {len(scenario.actions)}\n"
-                f"- expected_artifacts: {len(scenario.expected_artifacts)}\n"
-            )
+            if matrix.is_matrix:
+                parameter_names = ", ".join(
+                    str(name) for name in matrix.metadata["parameter_names"]
+                )
+                case_ids = ", ".join(f"`{case.case_id}`" for case in matrix.cases)
+                print(
+                    f"# Scenario Matrix `{matrix.scenario_id}`\n\n"
+                    f"- case_count: {len(matrix.cases)}\n"
+                    f"- max_cases: {matrix.metadata['max_cases']}\n"
+                    f"- parameters: {parameter_names}\n"
+                    f"- cases: {case_ids}\n"
+                )
+            else:
+                print(
+                    f"# Scenario `{scenario.id}`\n\n"
+                    f"- name: {scenario.name}\n"
+                    f"- provider: {scenario.provider}\n"
+                    f"- world: {scenario.world_name}\n"
+                    f"- objects: {len(scenario.objects)}\n"
+                    f"- actions: {len(scenario.actions)}\n"
+                    f"- expected_artifacts: {len(scenario.expected_artifacts)}\n"
+                )
         else:
-            print(scenario.to_json(), end="")
+            print(matrix.to_json() if matrix.is_matrix else scenario.to_json(), end="")
         return 0
 
     forge = WorldForge(state_dir=args.state_dir)
-    result = run_scenario(forge, scenario)
+    result = (
+        run_scenario_matrix(forge, matrix) if matrix.is_matrix else run_scenario(forge, scenario)
+    )
+    passed = result.all_cases_passed() if matrix.is_matrix else result.all_expectations_passed()
     rendered = result.to_markdown() if args.format == "markdown" else result.to_json()
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -1911,9 +2093,9 @@ def _cmd_scenario(args: argparse.Namespace) -> int:
             rendered if rendered.endswith("\n") else rendered + "\n",
             encoding="utf-8",
         )
-        return 0 if result.all_expectations_passed() else 1
+        return 0 if passed else 1
     print(rendered, end="")
-    return 0 if result.all_expectations_passed() else 1
+    return 0 if passed else 1
 
 
 def _cmd_doctor(args: argparse.Namespace, forge: WorldForge) -> int:
@@ -2014,11 +2196,85 @@ def _cmd_predict(args: argparse.Namespace, forge: WorldForge) -> int:
     return 0
 
 
+def _explicit_cli_options(argv: list[str]) -> set[str]:
+    options: set[str] = set()
+    for item in argv:
+        if item == "--":
+            break
+        if item.startswith("--"):
+            options.add(item.split("=", maxsplit=1)[0])
+    return options
+
+
+def _profile_command_key(args: argparse.Namespace) -> tuple[str, ...]:
+    command = str(getattr(args, "command", ""))
+    if command == "runs":
+        return (command, str(getattr(args, "runs_command", "")))
+    if command == "world":
+        return (command, str(getattr(args, "world_command", "")))
+    return (command,)
+
+
+def _apply_cli_profile(args: argparse.Namespace, argv: list[str]) -> None:
+    profile_path = getattr(args, "profile", None)
+    if profile_path is None:
+        args.config_profile = None
+        return
+    profile = load_config_profile(profile_path)
+    explicit = _explicit_cli_options(argv)
+    if hasattr(args, "providers") and "--provider" not in explicit and profile.providers:
+        args.providers = list(profile.providers)
+    if (
+        getattr(args, "command", None) == "benchmark"
+        and hasattr(args, "operations")
+        and "--operation" not in explicit
+        and profile.operations
+    ):
+        args.operations = list(profile.operations)
+    if hasattr(args, "format") and "--format" not in explicit and profile.output_format:
+        allowed_formats = _PROFILE_FORMAT_CHOICES.get(_profile_command_key(args), set())
+        if profile.output_format not in allowed_formats:
+            raise WorldForgeError(
+                f"Configuration profile output_format '{profile.output_format}' is not "
+                f"supported by `{_cli_command_path(args)}`."
+            )
+        args.format = profile.output_format
+    if hasattr(args, "run_workspace") and "--run-workspace" not in explicit:
+        workspace = profile.run_workspace or profile.workspace_dir
+        if workspace is not None:
+            args.run_workspace = Path(workspace)
+    if hasattr(args, "state_dir") and "--state-dir" not in explicit and profile.state_dir:
+        args.state_dir = profile.state_dir
+    args.config_profile = profile
+
+
+def _config_profile_provenance(args: argparse.Namespace) -> dict[str, object] | None:
+    profile = getattr(args, "config_profile", None)
+    if isinstance(profile, ConfigProfile):
+        return profile.to_provenance()
+    return None
+
+
+def _profile_command_args(args: argparse.Namespace) -> list[str]:
+    profile = getattr(args, "config_profile", None)
+    if not isinstance(profile, ConfigProfile):
+        return []
+    return ["--profile", profile.source.removeprefix("profile:")]
+
+
 def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
     suite = EvaluationSuite.from_builtin(args.suite)
     providers = args.providers or ["mock"]
-    report = suite.run_report(providers, forge=forge)
-    eval_command = _command_string(["eval", "--suite", args.suite, *_provider_args(providers)])
+    report = suite.run_report(
+        providers,
+        forge=forge,
+        dataset_manifests=args.dataset_manifests,
+    )
+    eval_command = _command_string(
+        ["eval", "--suite", args.suite, *_provider_args(providers), *_profile_command_args(args)]
+    )
+    for manifest_path in args.dataset_manifests or ():
+        eval_command += f" --dataset-manifest {manifest_path}"
     if report.provenance is not None:
         report.provenance = report.provenance.with_overrides(
             command=tuple(eval_command.split()),
@@ -2034,6 +2290,7 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
             artifacts=artifacts,
             report=report,
             command=eval_command,
+            config_profile=_config_profile_provenance(args),
         )
     if args.format == "json":
         print(artifacts["json"])
@@ -2206,7 +2463,9 @@ def _run_preset_benchmark(
 
     report.run_metadata["preset"] = preset.to_dict()
 
-    benchmark_command = _command_string(["benchmark", "--preset", preset.name])
+    benchmark_command = _command_string(
+        ["benchmark", "--preset", preset.name, *_profile_command_args(args)]
+    )
     if report.provenance is not None:
         envelope_overrides: dict[str, object] = {
             "command": tuple(benchmark_command.split()),
@@ -2227,6 +2486,7 @@ def _run_preset_benchmark(
             report=report,
             command=benchmark_command,
             budget_passed=None if gate_report is None else gate_report.passed,
+            config_profile=_config_profile_provenance(args),
         )
 
     if args.format == "json":
@@ -2335,6 +2595,7 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
             "benchmark",
             *_provider_args(providers),
             *_operation_args(args.operations or []),
+            *_profile_command_args(args),
             "--iterations",
             str(args.iterations),
             "--concurrency",
@@ -2360,6 +2621,7 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
             report=report,
             command=benchmark_command,
             budget_passed=None if gate_report is None else gate_report.passed,
+            config_profile=_config_profile_provenance(args),
         )
 
     if args.format == "json":
@@ -2409,6 +2671,10 @@ _FORGE_COMMANDS: dict[str, _ForgeHandler] = {
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
+    try:
+        _apply_cli_profile(args, sys.argv[1:])
+    except (WorldForgeError, ValueError) as exc:
+        parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "examples":
         return _cmd_examples(args)
@@ -2420,7 +2686,7 @@ def main() -> int:
         try:
             return _cmd_provider_workbench(args)
         except (ProviderError, WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "harness":
         return _cmd_harness(args)
@@ -2429,25 +2695,27 @@ def main() -> int:
         try:
             return _cmd_runs(args)
         except (WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "drills":
         try:
             return _cmd_drills(args)
         except (WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "scenario":
         try:
             return _cmd_scenario(args)
         except (ProviderError, WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
-    if args.command == "world" and args.world_command == "preflight":
+    if args.command == "world" and args.world_command in {"preflight", "migration-preview"}:
         try:
-            return _cmd_world_preflight(args)
+            if args.world_command == "preflight":
+                return _cmd_world_preflight(args)
+            return _cmd_world_migration_preview(args)
         except (WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     forge = WorldForge(state_dir=args.state_dir)
 
@@ -2456,12 +2724,73 @@ def main() -> int:
         try:
             result = handler(args, forge)
         except (ProviderError, WorldForgeError, ValueError) as exc:
-            parser.exit(2, f"{exc}\n")
+            parser.exit(2, _format_public_cli_error(args, exc) + "\n")
         if result is not None:
             return result
 
     parser.error(f"Unknown command: {args.command}")
     return 2
+
+
+def _format_public_cli_error(args: argparse.Namespace, exc: Exception) -> str:
+    command_path = _cli_command_path(args)
+    message = _safe_cli_error_text(str(exc))
+    return (
+        f"WorldForge CLI error [{command_path}]: {message}\n"
+        f"First triage: {_first_triage_step(args, message)}"
+    )
+
+
+def _cli_command_path(args: argparse.Namespace) -> str:
+    parts = [str(getattr(args, "command", "") or "unknown")]
+    for field_name in (
+        "provider_command",
+        "world_command",
+        "scenario_command",
+        "runs_command",
+        "drill_command",
+    ):
+        value = getattr(args, field_name, None)
+        if isinstance(value, str) and value:
+            parts.append(value)
+    return " ".join(parts)
+
+
+def _safe_cli_error_text(message: str) -> str:
+    redacted = _redact_observable_text(message)
+    return _HOST_LOCAL_PATH_PATTERN.sub("<host-local-path>", redacted)
+
+
+def _first_triage_step(args: argparse.Namespace, message: str) -> str:
+    command = getattr(args, "command", None)
+    if command == "world":
+        if getattr(args, "world_command", None) == "preflight":
+            return "run `uv run worldforge world preflight --workspace-dir .worldforge`."
+        if getattr(args, "world_command", None) == "migration-preview":
+            return (
+                "run `uv run worldforge world migration-preview <world-id> --state-dir "
+                ".worldforge/worlds --format json`."
+            )
+        return (
+            "run `uv run worldforge world list --state-dir <state-dir>` and retry with a "
+            "listed world id."
+        )
+    if command == "scenario":
+        return "run `uv run worldforge scenario validate <scenario.json>` before `scenario run`."
+    if command == "benchmark":
+        return (
+            "validate benchmark input/budget JSON, then run `uv run worldforge benchmark --help`."
+        )
+    if command == "provider" or "provider" in message.lower():
+        return "run `uv run worldforge doctor` and `uv run worldforge provider health <provider>`."
+    if command == "runs":
+        return (
+            "inspect the run manifest and rerun `uv run worldforge runs --help` for bundle "
+            "or cleanup syntax."
+        )
+    if command == "drills":
+        return "run `uv run worldforge drills list` and rerun the named drill with `--format json`."
+    return f"run `uv run worldforge {command or '<command>'} --help`."
 
 
 if __name__ == "__main__":

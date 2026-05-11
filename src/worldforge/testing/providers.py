@@ -395,47 +395,12 @@ def assert_provider_contract(
     for every declared capability.
     """
 
-    profile = provider.profile()
-    info = provider.info()
-    health = provider.health()
-    configured = provider.configured()
-
-    _contract_check(profile.name == provider.name, "profile name must match provider name.")
-    _contract_check(info.name == provider.name, "provider info name must match provider name.")
-    _contract_check(
-        info.description == profile.description,
-        "provider info description must match profile description.",
-    )
-    _contract_check(
-        info.is_local == profile.is_local,
-        "provider info locality must match profile locality.",
-    )
-    _contract_check(
-        sorted(info.capabilities.enabled_names()) == sorted(profile.supported_tasks),
-        "provider info capabilities must match profile supported_tasks.",
-    )
-    _contract_check(health.name == provider.name, "provider health name must match provider name.")
-    if health.healthy:
-        _contract_check(configured, "healthy provider must report configured=True.")
-    if not configured and profile.requires_credentials:
-        _contract_check(
-            health.healthy is False,
-            "credential-gated unconfigured provider must report unhealthy health.",
-        )
-    if profile.capabilities.plan:
-        _contract_check(
-            profile.capabilities.predict,
-            "provider-level plan capability requires predict capability.",
-        )
+    report = assert_provider_metadata_conformance(provider)
+    profile = report.profile
+    configured = report.configured
 
     sample_state = world_state or sample_contract_world_state()
     sample_action = action or sample_contract_action()
-    report = ProviderContractReport(
-        provider=provider.name,
-        configured=configured,
-        profile=profile,
-        health=health,
-    )
     can_invoke = configured
 
     if profile.capabilities.predict:
@@ -540,3 +505,46 @@ def assert_provider_contract(
             )
 
     return report
+
+
+def assert_provider_metadata_conformance(provider: BaseProvider) -> ProviderContractReport:
+    """Assert that provider profile, info, health, and capability metadata agree."""
+
+    profile = provider.profile()
+    info = provider.info()
+    health = provider.health()
+    configured = provider.configured()
+
+    _contract_check(profile.name == provider.name, "profile name must match provider name.")
+    _contract_check(info.name == provider.name, "provider info name must match provider name.")
+    _contract_check(
+        info.description == profile.description,
+        "provider info description must match profile description.",
+    )
+    _contract_check(
+        info.is_local == profile.is_local,
+        "provider info locality must match profile locality.",
+    )
+    _contract_check(
+        sorted(info.capabilities.enabled_names()) == sorted(profile.supported_tasks),
+        "provider info capabilities must match profile supported_tasks.",
+    )
+    _contract_check(health.name == provider.name, "provider health name must match provider name.")
+    if health.healthy:
+        _contract_check(configured, "healthy provider must report configured=True.")
+    if not configured and profile.requires_credentials:
+        _contract_check(
+            health.healthy is False,
+            "credential-gated unconfigured provider must report unhealthy health.",
+        )
+    if profile.capabilities.plan:
+        _contract_check(
+            profile.capabilities.predict,
+            "provider-level plan capability requires predict capability.",
+        )
+    return ProviderContractReport(
+        provider=provider.name,
+        configured=configured,
+        profile=profile,
+        health=health,
+    )

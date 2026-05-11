@@ -39,10 +39,10 @@ changing a provider profile status, or changing runtime ownership needs a migrat
 provider page and changelog. Scaffold adapters must not be promoted by wording alone; promotion
 requires parser tests, contract tests, runtime evidence, and documentation updates.
 
-Artifact schemas must remain JSON-native and versioned when they leave a single process. This
-includes run manifests, evidence bundles, benchmark inputs, benchmark budgets, evaluation reports,
-failure galleries, release evidence JSON, and future scenario files. Readers should reject malformed
-or unsupported schema versions loudly instead of silently coercing invalid state.
+Artifact schemas must remain JSON-native and versioned when they leave a single process. The
+[Artifact Schemas](./artifact-schemas.md) ownership map lists the current public and semi-public
+families, version fields, owners, validation surfaces, and migration rules. Readers should reject
+malformed or unsupported schema versions loudly instead of silently coercing invalid state.
 
 ## Changelog Expectations
 

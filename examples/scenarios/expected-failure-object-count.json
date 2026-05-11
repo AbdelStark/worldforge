@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "expected-failure-object-count",
+  "name": "Intentional failed expectation",
+  "description": "Run a valid mock scenario whose declared object-count expectation is intentionally wrong.",
+  "provider": "mock",
+  "world": {
+    "name": "expected-failure-object-count-world",
+    "objects": [
+      {
+        "id": "failure-cube",
+        "name": "cube",
+        "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+          "max": {"x": 0.05, "y": 0.55, "z": 0.05}
+        }
+      }
+    ]
+  },
+  "actions": [],
+  "expected_artifacts": [
+    {"label": "intentional_object_count_mismatch", "kind": "object_count", "value": 2}
+  ],
+  "metadata": {
+    "expected_failure": true,
+    "gallery_intent": "failed expectation",
+    "first_triage_step": "Read expectation_checks and confirm the mismatch is intentional before changing the scenario."
+  }
+}

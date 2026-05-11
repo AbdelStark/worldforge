@@ -20,6 +20,74 @@ print(report.results[0].passed)
 print(report.to_json())
 ```
 
+## Custom suite authoring
+
+External packages can define deterministic suites without subclassing internal modules. A custom
+suite is a public `EvaluationSuite.custom(...)` with one or more `EvaluationScenario` objects. Each
+scenario can supply a callable evaluator that receives an `EvaluationContext` and returns
+`context.outcome(score=..., passed=..., metrics=...)`.
+
+```python
+from worldforge.evaluation import EvaluationContext, EvaluationScenario, EvaluationSuite
+
+
+def check_empty_world(context: EvaluationContext):
+    object_count = context.world.object_count
+    return context.outcome(
+        score=1.0,
+        passed=object_count == 0,
+        metrics={"object_count": object_count},
+    )
+
+
+suite = EvaluationSuite.custom(
+    suite_id="custom-empty-world",
+    name="Custom Empty World Evaluation",
+    suite_version="custom-empty-world:1",
+    claim_boundary=(
+        "This custom suite is a deterministic checkout example, not a model-quality claim."
+    ),
+    scenarios=[
+        EvaluationScenario.from_callable(
+            name="empty-world-readable",
+            description="Checks that a new world can be inspected.",
+            evaluator=check_empty_world,
+        )
+    ],
+)
+
+EvaluationSuite.register("custom-empty-world", lambda: suite, replace=True)
+report = EvaluationSuite.from_registered("custom-empty-world").run_report("mock", forge=forge)
+print(report.provenance.suite_version)
+print(report.artifacts()["failure_gallery.json"])
+```
+
+The callable may also return an `EvaluationResult` or a JSON object with `score`, `passed`, and
+`metrics`, but `context.outcome(...)` is the recommended path because it validates score ranges,
+boolean pass flags, and JSON-native metrics at the scenario boundary. Tuple-shaped values, object
+instances, non-finite numbers, and non-string metric keys raise `WorldForgeError` instead of being
+serialized into reports.
+
+Custom suite version strings are author-owned; use a stable value such as `my-suite:1` and bump it
+when scenario inputs, metrics, or pass/fail semantics change. The report provenance records that
+suite version, input digest, result digest, provider list, claim boundary, and metric semantics.
+Use the `claim_boundary` field to state exactly what the suite does not prove. Do not use custom
+suites as leaderboard, physical-fidelity, media-quality, safety, or real-robot-performance claims
+unless separate evidence establishes those claims.
+
+See `examples/custom_evaluation_suite.py` for a checkout-safe runnable example. To preserve the
+full walkthrough artifact set, run:
+
+```bash
+uv run python scripts/demo_showcases.py run custom-evaluation-suite --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+The workflow writes report JSON, Markdown, CSV, HTML, `failure_gallery.json`,
+`failure_gallery.md`, and a walkthrough summary under the selected demo workspace. It includes one
+controlled failed case so reviewers can inspect failure-gallery behavior. The claim boundary stays
+explicit: this is deterministic contract-signal evidence, not model quality, leaderboard,
+physical-fidelity, safety, or robot-performance evidence.
+
 ## CLI
 
 ```bash
@@ -40,6 +108,29 @@ uv run worldforge eval --suite planning --provider mock --run-workspace .worldfo
 
 The run workspace stores `run_manifest.json`, JSON/Markdown/CSV reports, and a result summary under
 `.worldforge/runs/<run-id>/`.
+
+## Dataset Manifests
+
+Evaluation reports can cite a dataset manifest without storing or downloading a dataset:
+
+```bash
+uv run worldforge eval --suite planning --provider mock \
+  --dataset-manifest examples/dataset-manifests/mock-evaluation-fixtures.json \
+  --format json
+```
+
+Dataset manifests are JSON-native artifacts with `schema_version: 1`. They record local fixture
+references, stable remote references, host-owned asset identifiers, `sha256:<hex>` checksums,
+license notes, provenance owner/source/version fields, privacy classification, safety review
+flags, and host-owned acquisition steps. Local fixtures must use repository-relative safe paths and
+match their checksum; remote references must be stable `https` URIs without signed query strings;
+host-owned assets must use `asset_id` plus acquisition steps rather than host-local paths.
+
+The evaluation provenance stores only a compact `dataset_manifests` reference: manifest id, digest,
+entry count, license, privacy and safety summaries, and a safe manifest path when the manifest is
+inside the repository. It does not embed dataset entries or raw assets. Evidence and issue bundles
+copy safe source-controlled manifest files, while host-owned datasets, checkpoints, and prepared
+runtime assets remain outside the repository.
 
 When a suite has failures, the JSON and Markdown reports include a compact failure gallery. The
 gallery is also exported through `report.artifacts()` as `failure_gallery.json` and
@@ -113,6 +204,7 @@ audited without console logs:
 | `command` | The command argv vector when produced through the CLI. |
 | `providers`, `capabilities` | Providers exercised and capabilities they covered. |
 | `runtime_manifests` | Provider runtime manifest references when available. |
+| `dataset_manifests` | Compact references to dataset manifests cited by the report. |
 | `input_digest`, `result_digest` | Deterministic `sha256:<hex>` digests of inputs and results. |
 | `event_count` | Emitted `ProviderEvent` count. |
 | `claim_boundary`, `metric_semantics` | Mirrors the report-level claim text. |
