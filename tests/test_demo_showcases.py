@@ -44,6 +44,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         238,
         239,
         240,
+        241,
     ]
     assert [workflow["id"] for workflow in workflows] == [
         "first-run",
@@ -60,6 +61,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "custom-evaluation-suite",
         "policy-score-candidate-lab",
         "fixture-drift-review",
+        "capability-negotiation-preflight",
     ]
 
 
@@ -67,7 +69,7 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     module = _load_demo_showcases()
     results = module.run_workflows("all", workspace_dir=tmp_path, overwrite=True)
 
-    assert len(results) == 14
+    assert len(results) == 15
     assert all(result["safe_to_attach"] is True for result in results)
     assert all(result["status"] in {"passed", "skipped"} for result in results)
 
@@ -175,6 +177,15 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     assert "benchmark-fixture" in drift_report["managed_fixture_kinds"]
     assert "scenario-fixture" in drift_report["managed_fixture_kinds"]
     assert Path(str(fixture_drift["artifact_paths"]["review_markdown"])).is_file()
+
+    negotiation = summaries["capability-negotiation-preflight"]
+    negotiation_report = negotiation["report"]
+    assert {"ready", "missing-config", "missing-dependency", "not-registered"} <= set(
+        negotiation_report["readiness_values"]
+    )
+    assert negotiation_report["unsupported_example"]["readiness"] == "unsupported"
+    assert "policy-plus-score" in negotiation_report["workflow_shapes"]
+    assert Path(str(negotiation["artifact_paths"]["preflight_markdown"])).is_file()
 
 
 def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:

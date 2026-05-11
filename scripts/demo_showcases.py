@@ -29,12 +29,14 @@ from worldforge import (  # noqa: E402
     BBox,
     Position,
     ProviderCapabilities,
+    ProviderHealth,
     SceneObject,
     WorldForge,
     action_candidates_to_score_payload,
     bounded_move_grid_candidates,
     discover_entry_point_providers,
 )
+from worldforge.capability_negotiation import negotiate  # noqa: E402
 from worldforge.demos import lerobot_e2e  # noqa: E402
 from worldforge.evidence_bundle import generate_issue_bundle  # noqa: E402
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest  # noqa: E402
@@ -130,6 +132,28 @@ class _CandidateLabScore(BaseProvider):
                 "score_source": "deterministic checkout lab",
                 "goal": str(info.get("goal", "")),
             },
+        )
+
+
+class _UnhealthyTransferProvider(BaseProvider):
+    def __init__(self) -> None:
+        super().__init__(
+            "demo-unhealthy-transfer",
+            capabilities=ProviderCapabilities(transfer=True),
+            profile=ProviderProfileSpec(
+                description="Demo provider with configured runtime but unhealthy dependency.",
+                implementation_status="demo",
+                is_local=True,
+                deterministic=True,
+            ),
+        )
+
+    def health(self) -> ProviderHealth:
+        return ProviderHealth(
+            name=self.name,
+            healthy=False,
+            latency_ms=0.0,
+            details="demo optional runtime dependency is unavailable",
         )
 
 
@@ -1313,6 +1337,122 @@ def _fixture_drift_review(workflow_dir: Path) -> JSONDict:
     }
 
 
+def _capability_negotiation_preflight(workflow_dir: Path) -> JSONDict:
+    clear_env = {
+        "COSMOS_BASE_URL": "",
+        "RUNWAYML_API_SECRET": "",
+        "RUNWAY_API_SECRET": "",
+        "LEWORLDMODEL_POLICY": "",
+        "LEWM_POLICY": "",
+        "LEROBOT_POLICY_PATH": "",
+        "LEROBOT_POLICY": "",
+        "GROOT_POLICY_HOST": "",
+    }
+    forge = WorldForge(state_dir=workflow_dir / "worlds", auto_register_remote=False)
+    forge.register_provider(_UnhealthyTransferProvider())
+    main_report = negotiate(
+        [
+            "predict-only",
+            "generate-only",
+            "transfer-only",
+            "score-only",
+            "policy-plus-score",
+            "evaluation-physics",
+        ],
+        forge=forge,
+        environ=clear_env,
+    )
+    not_registered_forge = WorldForge(
+        state_dir=workflow_dir / "not-registered-worlds",
+        auto_register_remote=False,
+    )
+    not_registered_report = negotiate(
+        ["generate-only"],
+        forge=not_registered_forge,
+        environ={"COSMOS_BASE_URL": "https://cosmos.example.invalid"},
+    )
+    reports_dir = workflow_dir / "capability-negotiation"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    main_json = reports_dir / "preflight-report.json"
+    main_markdown = reports_dir / "preflight-report.md"
+    not_registered_json = reports_dir / "not-registered-report.json"
+    main_json.write_text(
+        json.dumps(main_report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    main_markdown.write_text(main_report.to_markdown(), encoding="utf-8")
+    not_registered_json.write_text(
+        json.dumps(not_registered_report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    readiness_values = sorted(
+        {
+            status["readiness"]
+            for workflow in main_report.to_dict()["workflows"]
+            for requirement in workflow["requirements"]
+            for status in requirement["candidates"]
+        }
+        | {
+            status["readiness"]
+            for workflow in not_registered_report.to_dict()["workflows"]
+            for requirement in workflow["requirements"]
+            for status in requirement["candidates"]
+        }
+    )
+    unsupported_example = {
+        "provider": "demo-unhealthy-transfer",
+        "capability": "policy",
+        "readiness": "unsupported",
+        "reason": "provider 'demo-unhealthy-transfer' does not advertise capability 'policy'",
+    }
+    report = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "workflow_shapes": [
+            "predict-only",
+            "generate-only",
+            "transfer-only",
+            "score-only",
+            "policy-plus-score",
+            "evaluation-physics",
+        ],
+        "readiness_values": readiness_values,
+        "unsupported_example": unsupported_example,
+        "recommended_actions": [
+            action
+            for workflow in main_report.to_dict()["workflows"]
+            for action in workflow["recommended_actions"]
+        ],
+        "claim_boundary": (
+            "Checkout-safe preflight only; this report does not install dependencies, configure "
+            "credentials, or execute fallback workflows."
+        ),
+    }
+    summary_path = workflow_dir / "capability-negotiation-preflight.json"
+    summary_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "capability-negotiation",
+        "safe_to_attach": True,
+        "summary": (
+            "Preserved capability negotiation reports for ready, missing-config, "
+            "missing-dependency, unsupported, and not-registered preflight cases."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "summary": str(summary_path),
+            "preflight_json": str(main_json),
+            "preflight_markdown": str(main_markdown),
+            "not_registered_json": str(not_registered_json),
+        },
+        "first_triage_step": (
+            "Open `capability-negotiation/preflight-report.md` and follow the first "
+            "recommended action for the blocked capability slot."
+        ),
+        "claim_boundary": report["claim_boundary"],
+    }
+
+
 def _copy_artifact_paths(run_workspace: Any, artifact_paths: object) -> dict[str, str]:
     if not isinstance(artifact_paths, dict):
         return {}
@@ -1399,6 +1539,12 @@ WORKFLOWS = (
         "Fixture drift review walkthrough",
         240,
         _fixture_drift_review,
+    ),
+    DemoWorkflow(
+        "capability-negotiation-preflight",
+        "Capability negotiation preflight demo",
+        241,
+        _capability_negotiation_preflight,
     ),
 )
 

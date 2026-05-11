@@ -46,6 +46,7 @@ The default workspace is `.worldforge/demo-showcases/`.
 | `custom-evaluation-suite` | #238 | `uv run python scripts/demo_showcases.py run custom-evaluation-suite` | custom suite runs with provenance, one controlled failure, and report artifacts | `custom-evaluation-suite/custom-eval-artifacts/` | open `markdown`, then inspect `failure_gallery.md` for the controlled failed case |
 | `policy-score-candidate-lab` | #239 | `uv run python scripts/demo_showcases.py run policy-score-candidate-lab` | deterministic action candidates ranked by a score provider with raw policy actions preserved | `policy-score-candidate-lab/policy-score-candidate-lab.json` | verify the selected row matches `score_result.best_index` |
 | `fixture-drift-review` | #240 | `uv run python scripts/demo_showcases.py run fixture-drift-review` | temp fixture manifest review with missing, changed, schema-change, unsafe, and intended-update cases | `fixture-drift-review/fixture-drift-review.md` | inspect every fixture diff before approving an intended manifest update |
+| `capability-negotiation-preflight` | #241 | `uv run python scripts/demo_showcases.py run capability-negotiation-preflight` | negotiation reports for ready, missing-config, missing-dependency, unsupported, and not-registered preflight cases | `capability-negotiation-preflight/capability-negotiation/preflight-report.md` | follow the first recommended action for the blocked capability slot |
 
 ## Runtime Boundaries
 
@@ -70,6 +71,8 @@ quality or physical execution. Optional runtimes remain host-owned:
 - The fixture drift review workflow mutates only the selected demo workspace. It demonstrates
   review states and the approved update path; it does not refresh remote fixtures or rewrite the
   committed snapshot manifest.
+- The capability negotiation preflight workflow reports blockers only. It does not install
+  optional dependencies, configure credentials, or execute fallback workflows.
 - Benchmark failures in the batch workflow are controlled budget failures so the issue and release
   evidence path can be tested without changing production thresholds.
 

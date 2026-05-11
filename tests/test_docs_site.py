@@ -2692,6 +2692,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         ("custom-evaluation-suite", 238),
         ("policy-score-candidate-lab", 239),
         ("fixture-drift-review", 240),
+        ("capability-negotiation-preflight", 241),
     )
     for workflow, issue in workflows:
         assert workflow in script
@@ -2708,6 +2709,8 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "raw action preservation",
         "intended-update",
         "physical-fidelity",
+        "fallback workflows",
+        "missing-dependency",
     ):
         assert boundary in showcase_docs or boundary in cookbook
 
@@ -2753,6 +2756,18 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
     fixtures_doc = (ROOT / "docs/src/fixtures.md").read_text(encoding="utf-8")
     assert "fixture-drift-review" in fixtures_doc
     assert "fixture-drift-review" in provider_authoring
+
+    capability_docs = (ROOT / "docs/src/capability-negotiation.md").read_text(encoding="utf-8")
+    capability_tests = (ROOT / "tests/test_capability_negotiation.py").read_text(encoding="utf-8")
+    for checkbox in (
+        "- [x] Demo runs checkout-safe and covers at least five workflow shapes.",
+        "- [x] Reports name the exact provider/capability slot that blocks a workflow.",
+        "- [x] Docs route users to negotiation before prepared-host smokes.",
+        "- [x] Tests cover the demo report fixtures.",
+    ):
+        assert checkbox in roadmap
+    assert "capability-negotiation-preflight" in capability_docs
+    assert "test_capability_negotiation_preflight_demo_preserves_blockers" in capability_tests
 
     for provider_doc in (
         "docs/src/api/python.md",

@@ -26,6 +26,10 @@ releases may still include breaking changes when the public API needs to tighten
   manifest, shows missing fixture, digest drift, schema-version drift, unsafe path, and
   intended-update review outputs, and preserves the approved update path without touching tracked
   fixtures.
+- Added a checkout-safe capability negotiation preflight demo. The workflow preserves negotiation
+  JSON/Markdown for ready, missing-config, missing-dependency, unsupported, and not-registered
+  cases across generate, transfer, score, policy+score, and evaluation workflow shapes without
+  installing dependencies or executing fallback workflows.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

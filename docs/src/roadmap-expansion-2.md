@@ -578,10 +578,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Demo runs checkout-safe and covers at least five workflow shapes.
-- [ ] Reports name the exact provider/capability slot that blocks a workflow.
-- [ ] Docs route users to negotiation before prepared-host smokes.
-- [ ] Tests cover the demo report fixtures.
+- [x] Demo runs checkout-safe and covers at least five workflow shapes.
+- [x] Reports name the exact provider/capability slot that blocks a workflow.
+- [x] Docs route users to negotiation before prepared-host smokes.
+- [x] Tests cover the demo report fixtures.
 
 Validation:
 
