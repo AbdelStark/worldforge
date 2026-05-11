@@ -25,6 +25,15 @@ assert SPEC.loader is not None
 sys.modules["generate_release_evidence_for_bundle"] = generate_release_evidence
 SPEC.loader.exec_module(generate_release_evidence)
 render_release_evidence = generate_release_evidence.render_release_evidence
+DEMO_SCRIPT = ROOT / "scripts" / "demo_showcases.py"
+DEMO_SPEC = importlib.util.spec_from_file_location(
+    "demo_showcases_for_evidence_review", DEMO_SCRIPT
+)
+assert DEMO_SPEC is not None
+demo_showcases = importlib.util.module_from_spec(DEMO_SPEC)
+assert DEMO_SPEC.loader is not None
+sys.modules["demo_showcases_for_evidence_review"] = demo_showcases
+DEMO_SPEC.loader.exec_module(demo_showcases)
 
 
 def test_evidence_bundle_collects_mock_eval_and_benchmark_runs(
@@ -183,6 +192,29 @@ def test_release_evidence_can_link_generated_bundle(tmp_path: Path) -> None:
 
     assert "evidence_manifest.json" in report
     assert "Preserved Release Artifacts" in report
+
+
+def test_non_developer_evidence_review_demo_escapes_and_marks_local_only(
+    tmp_path: Path,
+) -> None:
+    results = demo_showcases.run_workflows(
+        "non-developer-evidence-review",
+        workspace_dir=tmp_path,
+        overwrite=True,
+    )
+    summary = json.loads(Path(results[0]["artifact_paths"]["summary_json"]).read_text())
+    report = summary["report"]
+    html = Path(summary["artifact_paths"]["review_html"]).read_text(encoding="utf-8")
+
+    assert summary["safe_to_attach"] is True
+    assert report["safe_to_attach"] is True
+    assert report["local_only_count"] >= 1
+    assert any(item["share_policy"] == "local-only" for item in report["artifacts"])
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "<script" not in html
+    assert '<a href="evaluation-report.json">' in html
+    assert '<a href="&lt;host-local:provider-events.jsonl&gt;">' not in html
+    assert "Unsupported claims: model quality" in html
 
 
 def test_issue_bundle_uses_deterministic_controls_for_exact_snapshot(tmp_path: Path) -> None:

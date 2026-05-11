@@ -46,6 +46,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         240,
         241,
         242,
+        245,
     ]
     assert [workflow["id"] for workflow in workflows] == [
         "first-run",
@@ -64,6 +65,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "fixture-drift-review",
         "capability-negotiation-preflight",
         "embodied-policy-replay-comparison",
+        "non-developer-evidence-review",
     ]
 
 
@@ -71,7 +73,7 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     module = _load_demo_showcases()
     results = module.run_workflows("all", workspace_dir=tmp_path, overwrite=True)
 
-    assert len(results) == 16
+    assert len(results) == 17
     assert all(result["safe_to_attach"] is True for result in results)
     assert all(result["status"] in {"passed", "skipped"} for result in results)
 
@@ -201,6 +203,19 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     )
     assert "cross-provider action conversion" in policy_replay_report["claim_boundary"]
     assert Path(str(policy_replay["artifact_paths"]["comparison_markdown"])).is_file()
+
+    evidence_review = summaries["non-developer-evidence-review"]
+    evidence_report = evidence_review["report"]
+    assert evidence_report["safe_to_attach"] is True
+    assert evidence_report["local_only_count"] >= 1
+    assert any(
+        artifact["share_policy"] == "local-only" for artifact in evidence_report["artifacts"]
+    )
+    review_html = Path(str(evidence_review["artifact_paths"]["review_html"]))
+    assert review_html.is_file()
+    html = review_html.read_text(encoding="utf-8")
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "<script" not in html
 
 
 def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:

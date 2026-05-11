@@ -12,6 +12,7 @@ import sys
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, replace
+from html import escape as html_escape
 from importlib.metadata import EntryPoint
 from pathlib import Path
 from typing import Any
@@ -1720,6 +1721,272 @@ def _embodied_policy_replay_comparison(workflow_dir: Path) -> JSONDict:
     }
 
 
+def _non_developer_evidence_review(workflow_dir: Path) -> JSONDict:
+    review_dir = workflow_dir / "non-developer-evidence-review"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    evaluation_payload = {
+        "schema_version": 1,
+        "kind": "evaluation",
+        "title": "Planning report <script>alert(1)</script>",
+        "provider": "mock",
+        "status": "passed",
+        "summary": "2/2 deterministic contract scenarios passed.",
+        "claim_boundary": (
+            "Evaluation evidence is a checkout-safe contract signal, not model-quality or "
+            "physical-fidelity proof."
+        ),
+    }
+    benchmark_payload = {
+        "schema_version": 1,
+        "kind": "benchmark",
+        "provider": "mock",
+        "status": "passed",
+        "average_latency_ms": 1.25,
+        "claim_boundary": "Benchmark row is a fixture for review flow only.",
+    }
+    world_diff_payload = {
+        "schema_version": 1,
+        "kind": "world_diff",
+        "status": "changed",
+        "changes": [
+            {
+                "path": "objects.cube.position.x",
+                "before": 0.0,
+                "after": 0.35,
+                "safe_to_attach": True,
+            }
+        ],
+    }
+    _write_json(review_dir / "evaluation-report.json", evaluation_payload)
+    _write_json(review_dir / "benchmark-report.json", benchmark_payload)
+    _write_json(review_dir / "world-diff.json", world_diff_payload)
+    (review_dir / "evaluation-report.md").write_text(
+        "# Evaluation Evidence\n\n"
+        "- Status: `passed`\n"
+        "- Claim boundary: checkout-safe contract signal only.\n",
+        encoding="utf-8",
+    )
+
+    issue_workspace = workflow_dir / "issue-workspace"
+    run_id = "20260101T000000Z-aabbccdd"
+    run_workspace = create_run_workspace(
+        issue_workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        run_id=run_id,
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+    )
+    run_workspace.write_json("reports/report.json", evaluation_payload)
+    run_workspace.write_text(
+        "logs/provider-events.jsonl",
+        '{"target":"https://example.invalid/artifact.json?token=secret"}\n',
+    )
+    write_run_manifest(
+        run_workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        status="failed",
+        input_summary={"suite_id": "planning", "providers": ["mock"]},
+        result_summary={"failed_count": 1, "safe_to_attach": False},
+        artifact_paths={
+            "report": "reports/report.json",
+            "unsafe_events": "logs/provider-events.jsonl",
+            "host_local": "/Users/example/private/provider-payload.json",
+        },
+    )
+    issue_bundle = generate_issue_bundle(
+        workspace_dir=issue_workspace,
+        run_id=run_id,
+        output_dir=review_dir / "issue-bundle",
+        overwrite=True,
+        generated_at="2026-01-01T00:00:00+00:00",
+    )
+    issue_manifest = issue_bundle.manifest
+    local_only_entries = [
+        {
+            "kind": "unsafe-provider-event",
+            "path": "<host-local:provider-events.jsonl>",
+            "share_policy": "local-only",
+            "reason": "secret-like signed URL query string excluded from the review package",
+        },
+        {
+            "kind": "raw-provider-payload",
+            "path": "<host-local:provider-payload.json>",
+            "share_policy": "local-only",
+            "reason": "raw provider payload is host-local and not embedded",
+        },
+    ]
+    artifacts = [
+        _review_artifact(
+            "evaluation",
+            "evaluation-report.json",
+            "safe",
+            "deterministic evaluation summary",
+        ),
+        _review_artifact(
+            "benchmark",
+            "benchmark-report.json",
+            "safe",
+            "checkout-safe benchmark summary",
+        ),
+        _review_artifact(
+            "world-diff",
+            "world-diff.json",
+            "safe",
+            "world state change summary",
+        ),
+        _review_artifact(
+            "issue-bundle",
+            "issue-bundle/evidence_manifest.json",
+            "local-only" if issue_manifest["safe_to_attach"] is False else "safe",
+            "issue bundle manifest with unsafe file exclusions",
+        ),
+        *local_only_entries,
+    ]
+    manifest = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "review_title": evaluation_payload["title"],
+        "review_audience": "issue reviewer, research collaborator, or release reader",
+        "artifacts": artifacts,
+        "local_only_count": sum(1 for item in artifacts if item["share_policy"] != "safe"),
+        "reviewer_guide": [
+            "Evidence: safe JSON and Markdown summaries linked from this package.",
+            (
+                "Local-only: host paths, signed URLs, and raw provider payloads are named "
+                "but not embedded."
+            ),
+            (
+                "Unsupported claims: model quality, physical fidelity, robot safety, or live "
+                "provider availability."
+            ),
+        ],
+        "claim_boundary": (
+            "Static review package only; it does not host a dashboard, execute JavaScript, embed "
+            "unsafe local files, or include raw provider payloads."
+        ),
+    }
+    manifest_path = review_dir / "review-package.json"
+    markdown_path = review_dir / "review-package.md"
+    html_path = review_dir / "review-package.html"
+    _write_json(manifest_path, manifest)
+    markdown_path.write_text(_render_review_markdown(manifest), encoding="utf-8")
+    html_path.write_text(_render_review_html(manifest), encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "non-developer-evidence-review",
+        "safe_to_attach": True,
+        "summary": (
+            "Built a static HTML/JSON/Markdown evidence review package with safe links, escaped "
+            "text, and local-only unsafe artifact markers."
+        ),
+        "report": manifest,
+        "artifact_paths": {
+            "review_html": str(html_path),
+            "review_json": str(manifest_path),
+            "review_markdown": str(markdown_path),
+            "issue_bundle_manifest": str(issue_bundle.manifest_path),
+        },
+        "first_triage_step": (
+            "Open `review-package.html`, then inspect local-only rows before attaching anything "
+            "besides the review package."
+        ),
+        "claim_boundary": manifest["claim_boundary"],
+    }
+
+
+def _review_artifact(kind: str, path: str, share_policy: str, evidence_role: str) -> JSONDict:
+    return {
+        "kind": kind,
+        "path": path,
+        "share_policy": share_policy,
+        "safe_to_attach": share_policy == "safe",
+        "evidence_role": evidence_role,
+    }
+
+
+def _render_review_markdown(manifest: JSONDict) -> str:
+    lines = [
+        "# Non-Developer Evidence Review",
+        "",
+        str(manifest["review_title"]),
+        "",
+        manifest["claim_boundary"],
+        "",
+        "| Artifact | Share policy | Evidence role |",
+        "| --- | --- | --- |",
+    ]
+    lines.extend(
+        f"| `{item['path']}` | `{item['share_policy']}` | "
+        f"{item.get('evidence_role') or item.get('reason') or '-'} |"
+        for item in manifest["artifacts"]
+    )
+    lines.extend(["", "## Reviewer Guide", ""])
+    lines.extend(f"- {line}" for line in manifest["reviewer_guide"])
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_review_html(manifest: JSONDict) -> str:
+    rows = []
+    for item in manifest["artifacts"]:
+        path = str(item["path"])
+        path_cell = (
+            f'<a href="{html_escape(path, quote=True)}">{html_escape(path)}</a>'
+            if item["share_policy"] == "safe" and _is_safe_relative_link(path)
+            else html_escape(path)
+        )
+        rows.append(
+            "<tr>"
+            f"<td>{html_escape(str(item['kind']))}</td>"
+            f"<td>{path_cell}</td>"
+            f"<td>{html_escape(str(item['share_policy']))}</td>"
+            f"<td>{html_escape(str(item.get('evidence_role') or item.get('reason') or '-'))}</td>"
+            "</tr>"
+        )
+    guide_items = "\n".join(
+        f"<li>{html_escape(str(line))}</li>" for line in manifest["reviewer_guide"]
+    )
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '  <meta charset="utf-8">\n'
+        f"  <title>{html_escape(str(manifest['review_title']))}</title>\n"
+        "  <style>body{font-family:system-ui,sans-serif;max-width:980px;margin:2rem auto;"
+        "line-height:1.45}table{border-collapse:collapse;width:100%}td,th{border:1px solid "
+        "#ccd;padding:.5rem;text-align:left}.warning{background:#fff4ce;padding:1rem}</style>\n"
+        "</head>\n"
+        "<body>\n"
+        f"  <h1>{html_escape(str(manifest['review_title']))}</h1>\n"
+        f"  <p>{html_escape(str(manifest['claim_boundary']))}</p>\n"
+        '  <section class="warning"><strong>Local-only rows are not attachments.</strong> '
+        "They name excluded host material so reviewers understand the boundary.</section>\n"
+        "  <h2>Artifacts</h2>\n"
+        "  <table><thead><tr><th>Kind</th><th>Path</th><th>Share policy</th>"
+        "<th>Evidence role</th></tr></thead><tbody>\n"
+        f"{''.join(rows)}\n"
+        "  </tbody></table>\n"
+        "  <h2>Reviewer Guide</h2>\n"
+        f"  <ul>{guide_items}</ul>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+
+
+def _is_safe_relative_link(path: str) -> bool:
+    candidate = Path(path)
+    return not candidate.is_absolute() and ".." not in candidate.parts and "://" not in path
+
+
+def _write_json(path: Path, payload: JSONDict) -> None:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def _copy_artifact_paths(run_workspace: Any, artifact_paths: object) -> dict[str, str]:
     if not isinstance(artifact_paths, dict):
         return {}
@@ -1818,6 +2085,12 @@ WORKFLOWS = (
         "Embodied policy replay comparison",
         242,
         _embodied_policy_replay_comparison,
+    ),
+    DemoWorkflow(
+        "non-developer-evidence-review",
+        "Non-developer evidence review demo",
+        245,
+        _non_developer_evidence_review,
     ),
 )
 

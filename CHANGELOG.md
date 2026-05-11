@@ -39,6 +39,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a checkout-safe release readiness drill script that renders clean-pass and controlled
   failure release-evidence artifacts, reports host-owned optional-runtime skips, and records the
   first failed gate without publishing, tagging, signing, or creating a release.
+- Added a non-developer evidence review demo that builds a static HTML/JSON/Markdown review
+  package from evaluation, benchmark, world-diff, and issue-bundle artifacts while escaping display
+  text and marking unsafe host-local references as local-only.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

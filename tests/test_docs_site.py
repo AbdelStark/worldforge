@@ -2800,6 +2800,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         ("fixture-drift-review", 240),
         ("capability-negotiation-preflight", 241),
         ("embodied-policy-replay-comparison", 242),
+        ("non-developer-evidence-review", 245),
     )
     for workflow, issue in workflows:
         assert workflow in script
@@ -2820,6 +2821,8 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "missing-dependency",
         "cross-provider action conversion",
         "controller safety",
+        "local-only",
+        "execute JavaScript",
     ):
         assert boundary in showcase_docs or boundary in cookbook
 
@@ -2910,6 +2913,28 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
     ):
         text = (ROOT / provider_doc).read_text(encoding="utf-8")
         assert "embodied-policy-replay-comparison" in text
+
+    html_reports = (ROOT / "docs/src/html-reports.md").read_text(encoding="utf-8")
+    evidence_tests = (ROOT / "tests/test_evidence_bundle.py").read_text(encoding="utf-8")
+    for checkbox in (
+        (
+            "- [x] Demo emits a single reviewable artifact set with HTML, JSON, and "
+            "Markdown pointers."
+        ),
+        "- [x] Unsafe artifacts are excluded or marked local-only.",
+        "- [x] Docs explain how to attach the artifact to issues or release review.",
+        "- [x] Tests cover escaping and artifact manifest shape.",
+    ):
+        assert checkbox in roadmap
+    for signal in (
+        "review-package.html",
+        "review-package.json",
+        "share_policy",
+        "host-local paths, signed URLs",
+        "raw provider payloads",
+    ):
+        assert signal in html_reports
+    assert "test_non_developer_evidence_review_demo_escapes_and_marks_local_only" in evidence_tests
 
 
 def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:

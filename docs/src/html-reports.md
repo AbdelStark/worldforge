@@ -40,6 +40,20 @@ preview alongside the JSON/Markdown counterparts under
 `issue.html` next to the existing `summary.md` and `issue.md` files;
 selecting `--format html` simply prints `issue.html` to stdout.
 
+For a checkout-safe non-developer review package that combines evaluation,
+benchmark, world-diff, and issue-bundle evidence into one static artifact set:
+
+```bash
+uv run python scripts/demo_showcases.py run non-developer-evidence-review \
+  --workspace-dir .worldforge/demo-showcases
+```
+
+Attach the generated `review-package.html`, `review-package.json`, and
+`review-package.md` only after checking the `share_policy` rows. Relative safe
+artifacts are linked for local inspection; host-local paths, signed URLs, and
+raw provider payloads are marked `local-only` or excluded and should not be
+uploaded to issues or release review.
+
 ## When to use HTML
 
 - The audience is non-developer (a release-review reader, a partner) and

@@ -7,10 +7,10 @@
       "kind": "local-fixture",
       "license": "MIT",
       "path": "examples/scenarios/cube-on-table.json",
-      "sha256": "sha256:72b95ee161e971da5eb37a54b426dda56863819d81cd6e4b32f1111f8336c086"
+      "sha256": "sha256:8f4d316e72de6e82881b9ee6d2d34251aa9940ece56791df20d2e5ab9fad3e16"
     },
     {
-      "description": "Stable remote reference to the same tiny checkout fixture pinned by commit.",
+      "description": "Stable remote reference to an earlier tiny checkout fixture revision pinned by commit.",
       "id": "cube-on-table-remote-reference",
       "kind": "remote-reference",
       "license": "MIT",

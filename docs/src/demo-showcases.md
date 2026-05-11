@@ -48,6 +48,7 @@ The default workspace is `.worldforge/demo-showcases/`.
 | `fixture-drift-review` | #240 | `uv run python scripts/demo_showcases.py run fixture-drift-review` | temp fixture manifest review with missing, changed, schema-change, unsafe, and intended-update cases | `fixture-drift-review/fixture-drift-review.md` | inspect every fixture diff before approving an intended manifest update |
 | `capability-negotiation-preflight` | #241 | `uv run python scripts/demo_showcases.py run capability-negotiation-preflight` | negotiation reports for ready, missing-config, missing-dependency, unsupported, and not-registered preflight cases | `capability-negotiation-preflight/capability-negotiation/preflight-report.md` | follow the first recommended action for the blocked capability slot |
 | `embodied-policy-replay-comparison` | #242 | `uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison` | side-by-side LeRobot, GR00T, and Cosmos-Policy replay contracts with provider-specific raw action fields | `embodied-policy-replay-comparison/embodied-policy-replay-comparison.md` | inspect raw fields and missing-translator blockers before running a prepared-host smoke |
+| `non-developer-evidence-review` | #245 | `uv run python scripts/demo_showcases.py run non-developer-evidence-review` | static HTML/JSON/Markdown review package for evaluation, benchmark, world diff, and issue-bundle evidence | `non-developer-evidence-review/non-developer-evidence-review/review-package.html` | attach only the review package and keep local-only rows out of issue uploads |
 
 ## Runtime Boundaries
 
@@ -77,6 +78,9 @@ quality or physical execution. Optional runtimes remain host-owned:
 - The embodied policy replay comparison preserves LeRobot, GR00T, and Cosmos-Policy action shapes
   separately. It does not perform cross-provider action conversion, contact a live GPU server, or
   claim controller safety.
+- The non-developer evidence review package escapes display text and links only relative safe
+  artifacts. Host-local paths, signed URLs, and raw provider payloads are marked local-only or
+  excluded; the package does not host a dashboard or execute JavaScript.
 - Benchmark failures in the batch workflow are controlled budget failures so the issue and release
   evidence path can be tested without changing production thresholds.
 

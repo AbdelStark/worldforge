@@ -726,10 +726,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Demo emits a single reviewable artifact set with HTML, JSON, and Markdown pointers.
-- [ ] Unsafe artifacts are excluded or marked local-only.
-- [ ] Docs explain how to attach the artifact to issues or release review.
-- [ ] Tests cover escaping and artifact manifest shape.
+- [x] Demo emits a single reviewable artifact set with HTML, JSON, and Markdown pointers.
+- [x] Unsafe artifacts are excluded or marked local-only.
+- [x] Docs explain how to attach the artifact to issues or release review.
+- [x] Tests cover escaping and artifact manifest shape.
 
 Validation:
 
