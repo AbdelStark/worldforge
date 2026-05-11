@@ -146,6 +146,8 @@ _EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov
     "ProviderEvent": "worldforge.models",
     "ProviderHealth": "worldforge.models",
     "ProviderInfo": "worldforge.models",
+    "ProviderLifecycleResult": "worldforge.models",
+    "ProviderLifecycleStatus": "worldforge.models",
     "ProviderProfile": "worldforge.models",
     "ProviderRequestPolicy": "worldforge.models",
     "ReasoningResult": "worldforge.models",

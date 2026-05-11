@@ -1559,6 +1559,7 @@ def _cmd_provider_info(args: argparse.Namespace, forge: WorldForge) -> int:
         "registered": name in forge.providers(),
         "profile": forge.provider_profile(name).to_dict(),
         "health": forge.provider_health(name).to_dict(),
+        "lifecycle": forge.provider_lifecycle_status(name).to_dict(),
         "config_summary": forge.provider_config_summary(name).to_dict(),
     }
     if name in forge.providers():

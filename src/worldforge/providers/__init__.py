@@ -2,6 +2,8 @@
 
 from worldforge.models import (
     ProviderEvent,
+    ProviderLifecycleResult,
+    ProviderLifecycleStatus,
     ProviderRequestPolicy,
     RequestOperationPolicy,
     RetryPolicy,
@@ -60,6 +62,8 @@ __all__ = [
     "ProviderConfigSummary",
     "ProviderError",
     "ProviderEvent",
+    "ProviderLifecycleResult",
+    "ProviderLifecycleStatus",
     "ProviderProfileSpec",
     "ProviderRequestPolicy",
     "RemoteProvider",

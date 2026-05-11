@@ -48,6 +48,8 @@ from worldforge.models import (
     ProviderEvent,
     ProviderHealth,
     ProviderInfo,
+    ProviderLifecycleResult,
+    ProviderLifecycleStatus,
     ProviderProfile,
     ReasoningResult,
     SceneObject,
@@ -1687,6 +1689,81 @@ class WorldForge:
             details=details,
         )
 
+    def _merged_lifecycle_status(
+        self,
+        name: str,
+        *,
+        legacy_provider: BaseProvider | None,
+        wrappers: Sequence[_ObservableCapability],
+        run_warmup: bool = False,
+        run_teardown: bool = False,
+    ) -> ProviderLifecycleStatus:
+        lifecycle_statuses: list[ProviderLifecycleStatus] = []
+        if legacy_provider is not None:
+            lifecycle_statuses.append(
+                legacy_provider.lifecycle_status(
+                    run_warmup=run_warmup,
+                    run_teardown=run_teardown,
+                )
+            )
+        lifecycle_statuses.extend(
+            wrapper.lifecycle_status(
+                run_warmup=run_warmup,
+                run_teardown=run_teardown,
+            )
+            for wrapper in wrappers
+        )
+        if not lifecycle_statuses:
+            raise ProviderError(f"Provider '{name}' is unknown.")
+        if len(lifecycle_statuses) == 1:
+            return lifecycle_statuses[0]
+        if any(status.status == "teardown-failed" for status in lifecycle_statuses):
+            status_value = "teardown-failed"
+        elif any(status.status == "failed" for status in lifecycle_statuses):
+            status_value = "failed"
+        elif any(status.status == "skipped" for status in lifecycle_statuses):
+            status_value = "skipped"
+        elif any(status.status == "ready" for status in lifecycle_statuses):
+            status_value = "ready"
+        else:
+            status_value = "no-op"
+        issue = next(
+            (
+                lifecycle
+                for lifecycle in lifecycle_statuses
+                if lifecycle.status in {"teardown-failed", "failed", "skipped"}
+            ),
+            None,
+        )
+        details = (
+            "; ".join(
+                f"{lifecycle.provider}: {lifecycle.details}"
+                for lifecycle in lifecycle_statuses
+                if lifecycle.details
+            )
+            or status_value
+        )
+        skip_reason = issue.skip_reason if issue and issue.status == "skipped" else ""
+        preflight = ProviderLifecycleResult(
+            provider=name,
+            hook="preflight",
+            status=status_value,
+            ready=status_value in {"no-op", "ready"},
+            latency_ms=sum(lifecycle.preflight.latency_ms for lifecycle in lifecycle_statuses),
+            details=details,
+            skip_reason=skip_reason,
+            evidence={"components": [lifecycle.to_dict() for lifecycle in lifecycle_statuses]},
+        )
+        return ProviderLifecycleStatus(
+            provider=name,
+            status=status_value,
+            ready=status_value in {"no-op", "ready"},
+            preflight=preflight,
+            details=details,
+            skip_reason=skip_reason,
+            evidence={"components": [lifecycle.to_dict() for lifecycle in lifecycle_statuses]},
+        )
+
     def _registered_or_known_provider(
         self,
         name: str,
@@ -1825,6 +1902,24 @@ class WorldForge:
             wrappers=wrappers,
         )
 
+    def provider_lifecycle_status(
+        self,
+        name: str,
+        *,
+        run_warmup: bool = False,
+        run_teardown: bool = False,
+    ) -> ProviderLifecycleStatus:
+        provider_name = _require_non_empty_text(name, name="Provider name")
+        legacy_provider = self._registered_or_known_provider(provider_name, include_known=True)
+        wrappers = self._capability_wrappers_for_name(provider_name)
+        return self._merged_lifecycle_status(
+            provider_name,
+            legacy_provider=legacy_provider,
+            wrappers=wrappers,
+            run_warmup=run_warmup,
+            run_teardown=run_teardown,
+        )
+
     def provider_config_summary(self, name: str) -> ProviderConfigSummary:
         """Return value-free configuration status for a registered or known provider."""
 
@@ -1878,11 +1973,17 @@ class WorldForge:
                 legacy_provider=legacy_provider,
                 wrappers=wrappers,
             )
+            lifecycle = self._merged_lifecycle_status(
+                name,
+                legacy_provider=legacy_provider,
+                wrappers=wrappers,
+            )
             statuses.append(
                 ProviderDoctorStatus(
                     registered=name in self._registered_provider_names(),
                     profile=profile,
                     health=health,
+                    lifecycle=lifecycle,
                 )
             )
             if not health.healthy:

@@ -83,6 +83,11 @@ implementations appear in `providers()`, `provider_profile(...)`, `doctor(...)`,
 benchmark harness. Existing calls such as `forge.generate("prompt", "mock")` keep resolving
 through the legacy provider registry.
 
+Capability protocol implementations and `BaseProvider` subclasses may also expose provider-owned
+`preflight`, `warmup`, and `teardown` hooks that return `ProviderLifecycleResult`. Diagnostics
+surface the aggregate `ProviderLifecycleStatus` through `doctor()` and
+`provider_lifecycle_status(...)` without changing the capability method contract.
+
 ## Persistence
 
 ```python

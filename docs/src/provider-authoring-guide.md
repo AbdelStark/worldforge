@@ -73,6 +73,51 @@ without turning into an accidental capability claim. It invokes only determinist
 by default. Use `--live` only on a prepared host when credentials, optional dependencies, injected
 runtimes, and runtime-owned artifacts are intentionally available.
 
+## Lifecycle Hooks
+
+Prepared-host providers can expose optional lifecycle hooks without changing their capability
+methods:
+
+```python
+from worldforge import ProviderLifecycleResult
+
+
+def preflight(self) -> ProviderLifecycleResult:
+    return ProviderLifecycleResult(
+        provider=self.name,
+        hook="preflight",
+        status="ready",
+        ready=True,
+        latency_ms=0.1,
+        details="runtime reachable",
+        evidence={"runtime": "prepared-host"},
+    )
+```
+
+The supported hooks are `preflight`, `warmup`, and `teardown`. The supported statuses are `no-op`,
+`ready`, `skipped`, `failed`, and `teardown-failed`. Evidence must be JSON-native and sanitized:
+record versions, shape summaries, feature flags, or manifest identifiers, not raw observations,
+tokens, private endpoints, checkpoint paths, GPU logs, or downloaded model files.
+
+Default hooks are safe for existing providers. Configured providers report `no-op`; missing required
+configuration reports `skipped` with a skip reason. Capability protocol implementations may define
+the same hook methods next to their existing `score_actions`, `select_actions`, `reason`, or other
+capability method; registration still happens through the capability method, and diagnostics pick up
+the lifecycle hooks through the observable wrapper.
+
+Diagnostics serialize the aggregate `ProviderLifecycleStatus` in `worldforge doctor` and
+`worldforge provider info <provider>`:
+
+```bash
+uv run worldforge doctor --registered-only
+uv run worldforge provider info gr00t --format json
+```
+
+Use lifecycle hooks for host-owned dependency checks, checkpoint presence checks, cheap server
+reachability probes, model warmup, cache preparation, and releasing provider-owned clients. Do not
+use them to install dependencies, provision credentials, start long-running daemons, download large
+assets unexpectedly, or claim an optional runtime is available when the host has not supplied it.
+
 ## Adapter Decision Tree
 
 Start with the provider's real contract, not its label or category.

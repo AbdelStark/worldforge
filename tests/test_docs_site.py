@@ -2109,6 +2109,70 @@ def test_demo_showcase_docs_cover_issues_189_to_198_contract() -> None:
         assert boundary in showcase_docs or boundary in cookbook
 
 
+def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:
+    authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    models = (ROOT / "src/worldforge/models.py").read_text(encoding="utf-8")
+    base = (ROOT / "src/worldforge/providers/base.py").read_text(encoding="utf-8")
+    observable = (ROOT / "src/worldforge/providers/observable.py").read_text(encoding="utf-8")
+    provider_tests = (ROOT / "tests/test_provider_profiles.py").read_text(encoding="utf-8")
+
+    for required in (
+        "ProviderLifecycleResult",
+        "ProviderLifecycleStatus",
+        "`preflight`, `warmup`, and `teardown`",
+        "The supported statuses are `no-op`",
+        "`teardown-failed`",
+        "missing required\nconfiguration reports `skipped`",
+        "without changing their capability\nmethods",
+        "worldforge provider info gr00t --format json",
+    ):
+        assert required in authoring
+
+    for required in (
+        "forge.provider_lifecycle_status(name).ready",
+        "lifecycle preflight is ready or no-op",
+        "`teardown-failed`",
+        "`skipped` is the expected result",
+    ):
+        assert required in operations
+
+    assert "provider_lifecycle_status(...)" in api
+    assert "lifecycle readiness and skip reasons" in changelog
+    for checkbox in (
+        "- [x] Providers can implement lifecycle hooks",
+        "- [x] Diagnostics report lifecycle readiness and skip reasons.",
+        "- [x] Hooks are safe for missing optional dependencies.",
+        "- [x] Tests cover no-op, ready, skipped, failed, and teardown-failed states.",
+    ):
+        assert checkbox in roadmap
+
+    for implementation_signal in (
+        "PROVIDER_LIFECYCLE_HOOKS",
+        "PROVIDER_LIFECYCLE_STATUSES",
+        "class ProviderLifecycleResult",
+        "class ProviderLifecycleStatus",
+    ):
+        assert implementation_signal in models
+    for implementation_signal in (
+        "def preflight",
+        "def warmup",
+        "def teardown",
+        "build_provider_lifecycle_status",
+    ):
+        assert implementation_signal in base
+        assert implementation_signal in observable
+    for test_signal in (
+        "test_provider_lifecycle_status_covers_noop_ready_skipped_failed_and_teardown",
+        "test_doctor_report_includes_lifecycle_readiness_and_skip_reasons",
+        "_LifecycleReadyReasoner",
+    ):
+        assert test_signal in provider_tests
+
+
 def test_genie_scaffold_docs_record_runtime_contract_defer_decision() -> None:
     provider_page = (ROOT / "docs/src/providers/genie.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")

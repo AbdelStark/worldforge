@@ -9,6 +9,10 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
+  `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
+  safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for
+  lifecycle readiness and skip reasons.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

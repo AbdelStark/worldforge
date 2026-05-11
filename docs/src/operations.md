@@ -22,6 +22,7 @@ Minimum startup preflight for a host process:
 ```bash
 uv run worldforge doctor --registered-only
 uv run worldforge provider health
+uv run worldforge provider info <provider> --format json
 ```
 
 The [Reference Host Deployment Recipes](./examples.md#reference-host-deployment-recipes) cover the
@@ -51,6 +52,7 @@ The stdlib reference host in `examples/hosts/service/app.py` uses this model:
 | process live | service handler returns `{"status": "live"}` | process and web stack are running | `GET /healthz` |
 | framework alive | `WorldForge(...)` can be constructed and `doctor()` can run | library import, local state path, and provider registry are usable | `GET /readyz` |
 | provider configured | provider appears in `forge.providers()` | required env vars or host injection registered the provider | `GET /readyz` |
+| provider lifecycle ready | `forge.provider_lifecycle_status(name).ready` is true | provider-owned preflight is `no-op` or `ready`; skipped and failed hooks stay visible in diagnostics | `GET /readyz` |
 | provider healthy | `forge.provider_health(name).healthy` is true | provider's cheap health check passed | `GET /readyz` |
 | workflow failing | provider is configured and health may pass, but a workflow returns a typed error | request input, upstream response, budget, or artifact handling failed | workflow response body |
 
@@ -58,7 +60,7 @@ The reference host returns one of these readiness statuses from `GET /readyz`:
 
 | `/readyz` status | Traffic decision | How to interpret it |
 | --- | --- | --- |
-| `ready` | accept | framework is alive, the selected provider is registered, and provider health passed. |
+| `ready` | accept | framework is alive, the selected provider is registered, lifecycle preflight is ready or no-op, and provider health passed. |
 | `provider_unconfigured` | drain | framework is alive, but the selected provider is not registered in this process. |
 | `provider_unhealthy` | drain | provider is registered, but its health check reports missing optional runtime, bad credentials, unreachable upstream, or another provider-owned failure detail. |
 
@@ -69,7 +71,12 @@ Map CLI diagnostics the same way during incidents:
 | `uv run worldforge doctor --registered-only` | registered provider count, health count, and local configuration issues. |
 | `uv run worldforge doctor --capability <capability>` | whether any known provider can satisfy the requested surface. |
 | `uv run worldforge provider health <name>` | provider-specific configured/healthy details. |
-| `uv run worldforge provider info <name>` | redacted config summary plus profile, capability, and health. |
+| `uv run worldforge provider info <name>` | redacted config summary plus profile, capability, lifecycle, and health. |
+
+Lifecycle diagnostics use typed hook statuses: `no-op`, `ready`, `skipped`, `failed`, and
+`teardown-failed`. `skipped` is the expected result when a prepared-host provider is missing
+required env vars or host-owned optional dependencies; it is a skip reason, not a hidden install or
+credential-provisioning attempt.
 
 WorldForge reports local provider state and adapter errors. It does not own upstream provider SLAs,
 deployment load balancers, alert channels, retry orchestration outside one provider call, or

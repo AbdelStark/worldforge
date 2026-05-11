@@ -263,6 +263,10 @@ generated documentation surfaces.
   `register_predictor`, `register_reasoner`, `register_embedder`, `register_transferer`, or
   structural `register(...)`. Use a full `BaseProvider` subclass when the adapter needs catalog
   auto-registration, custom configuration/health behavior, or multiple provider-owned surfaces.
+- Provider lifecycle hooks (`preflight`, `warmup`, `teardown`) are optional provider-owned
+  diagnostics. Return `ProviderLifecycleResult` with JSON-native sanitized evidence, keep missing
+  host config/dependencies as typed `skipped` results, and never install dependencies, provision
+  credentials, start daemons, or download large assets from a lifecycle hook.
 - `leworldmodel` exposes `score`, not `predict`, `generate`, or `reason`; do not fake those
   capabilities around a cost model.
 - `gr00t` exposes `policy`, not `predict`, `score`, or `generate`; do not call an embodied policy

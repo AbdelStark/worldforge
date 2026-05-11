@@ -18,6 +18,8 @@ from worldforge.models import (
     ProviderEvent,
     ProviderHealth,
     ProviderInfo,
+    ProviderLifecycleResult,
+    ProviderLifecycleStatus,
     ProviderProfile,
     ProviderRequestPolicy,
     ReasoningResult,
@@ -85,6 +87,164 @@ def validate_transfer_request(
     if options is not None and not isinstance(options, GenerationOptions):
         raise WorldForgeError("transfer() options must be a GenerationOptions instance.")
     return clip, resolved_width, resolved_height, resolved_fps, prompt.strip(), options
+
+
+def _provider_lifecycle_result(
+    *,
+    provider: str,
+    hook: str,
+    status: str,
+    started: float | None = None,
+    ready: bool | None = None,
+    details: str = "",
+    skip_reason: str = "",
+    evidence: JSONDict | None = None,
+) -> ProviderLifecycleResult:
+    if ready is None:
+        ready = status in {"no-op", "ready"}
+    latency_ms = 0.0 if started is None else max(0.1, (perf_counter() - started) * 1000)
+    return ProviderLifecycleResult(
+        provider=provider,
+        hook=hook,
+        status=status,
+        ready=ready,
+        latency_ms=latency_ms,
+        details=details,
+        skip_reason=skip_reason,
+        evidence=dict(evidence or {}),
+    )
+
+
+def _invoke_lifecycle_hook(
+    *,
+    provider: str,
+    hook: str,
+    callback: Callable[[], ProviderLifecycleResult],
+) -> ProviderLifecycleResult:
+    try:
+        result = callback()
+    except Exception as exc:
+        status = "teardown-failed" if hook == "teardown" else "failed"
+        return _provider_lifecycle_result(
+            provider=provider,
+            hook=hook,
+            status=status,
+            ready=False,
+            details=f"{hook} hook failed: {exc}",
+        )
+    if not isinstance(result, ProviderLifecycleResult):
+        status = "teardown-failed" if hook == "teardown" else "failed"
+        return _provider_lifecycle_result(
+            provider=provider,
+            hook=hook,
+            status=status,
+            ready=False,
+            details=(
+                f"{hook} hook returned {type(result).__name__}; expected ProviderLifecycleResult."
+            ),
+        )
+    if result.provider != provider or result.hook != hook:
+        status = "teardown-failed" if hook == "teardown" else "failed"
+        return _provider_lifecycle_result(
+            provider=provider,
+            hook=hook,
+            status=status,
+            ready=False,
+            details=(
+                f"{hook} hook returned result for provider '{result.provider}' "
+                f"and hook '{result.hook}'."
+            ),
+        )
+    if hook == "teardown" and result.status == "failed":
+        return _provider_lifecycle_result(
+            provider=provider,
+            hook=hook,
+            status="teardown-failed",
+            ready=False,
+            details=result.details,
+            skip_reason=result.skip_reason,
+            evidence=result.evidence,
+        )
+    return result
+
+
+def _aggregate_lifecycle_status(
+    provider: str,
+    *,
+    preflight: ProviderLifecycleResult,
+    warmup: ProviderLifecycleResult | None = None,
+    teardown: ProviderLifecycleResult | None = None,
+) -> ProviderLifecycleStatus:
+    results = [result for result in (preflight, warmup, teardown) if result is not None]
+    if any(result.status == "teardown-failed" for result in results):
+        status = "teardown-failed"
+    elif any(result.status == "failed" for result in results):
+        status = "failed"
+    elif any(result.status == "skipped" for result in results):
+        status = "skipped"
+    elif any(result.status == "ready" for result in results):
+        status = "ready"
+    else:
+        status = "no-op"
+    issue_result = next(
+        (result for result in results if result.status in {"teardown-failed", "failed", "skipped"}),
+        None,
+    )
+    detail_result = issue_result or next(
+        (result for result in results if result.details or result.status == status),
+        preflight,
+    )
+    evidence = {result.hook: dict(result.evidence) for result in results if result.evidence}
+    skip_reason = (
+        issue_result.skip_reason if issue_result and issue_result.status == "skipped" else ""
+    )
+    return ProviderLifecycleStatus(
+        provider=provider,
+        status=status,
+        ready=status in {"no-op", "ready"},
+        preflight=preflight,
+        warmup=warmup,
+        teardown=teardown,
+        details=detail_result.details,
+        skip_reason=skip_reason,
+        evidence=evidence,
+    )
+
+
+def build_provider_lifecycle_status(
+    *,
+    provider: str,
+    preflight: Callable[[], ProviderLifecycleResult],
+    warmup: Callable[[], ProviderLifecycleResult] | None = None,
+    teardown: Callable[[], ProviderLifecycleResult] | None = None,
+) -> ProviderLifecycleStatus:
+    """Run optional lifecycle hooks and return a typed diagnostics status."""
+
+    preflight_result = _invoke_lifecycle_hook(
+        provider=provider,
+        hook="preflight",
+        callback=preflight,
+    )
+    warmup_result = None
+    if warmup is not None and preflight_result.ready:
+        warmup_result = _invoke_lifecycle_hook(
+            provider=provider,
+            hook="warmup",
+            callback=warmup,
+        )
+    teardown_result = None
+    if teardown is not None:
+        teardown_result = _invoke_lifecycle_hook(
+            provider=provider,
+            hook="teardown",
+            callback=teardown,
+        )
+    return _aggregate_lifecycle_status(
+        provider,
+        preflight=preflight_result,
+        warmup=warmup_result,
+        teardown=teardown_result,
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -334,6 +494,105 @@ class BaseProvider:
             healthy=healthy,
             latency_ms=max(0.1, (perf_counter() - started) * 1000),
             details=details,
+        )
+
+    def _missing_lifecycle_configuration(self) -> str:
+        try:
+            summary = self.config_summary()
+        except Exception:
+            if self.required_env_vars:
+                return "missing " + ", ".join(self.required_env_vars)
+            if self.env_var:
+                return f"missing {self.env_var}"
+            return "provider is not configured"
+        missing = []
+        for field in summary.fields:
+            if field.required and not field.present:
+                names = (field.name, *field.aliases)
+                missing.append(" or ".join(names))
+        if missing:
+            return "missing " + ", ".join(missing)
+        return "provider is not configured"
+
+    def preflight(self) -> ProviderLifecycleResult:
+        """Return provider-owned preflight readiness evidence.
+
+        The default hook is intentionally non-mutating: it checks only whether required provider
+        configuration is present. Concrete adapters can override it for host-specific dependency,
+        checkpoint, server, or request-shape checks without changing their capability methods.
+        """
+
+        started = perf_counter()
+        if not self.configured():
+            reason = self._missing_lifecycle_configuration()
+            return _provider_lifecycle_result(
+                provider=self.name,
+                hook="preflight",
+                status="skipped",
+                started=started,
+                ready=False,
+                details=reason,
+                skip_reason=reason,
+                evidence={"configured": False},
+            )
+        return _provider_lifecycle_result(
+            provider=self.name,
+            hook="preflight",
+            status="no-op",
+            started=started,
+            details="no provider preflight hook declared",
+            evidence={"configured": True},
+        )
+
+    def warmup(self) -> ProviderLifecycleResult:
+        """Optionally prepare host-owned provider runtime state before first use."""
+
+        started = perf_counter()
+        if not self.configured():
+            reason = self._missing_lifecycle_configuration()
+            return _provider_lifecycle_result(
+                provider=self.name,
+                hook="warmup",
+                status="skipped",
+                started=started,
+                ready=False,
+                details=reason,
+                skip_reason=reason,
+                evidence={"configured": False},
+            )
+        return _provider_lifecycle_result(
+            provider=self.name,
+            hook="warmup",
+            status="no-op",
+            started=started,
+            details="no provider warmup hook declared",
+        )
+
+    def teardown(self) -> ProviderLifecycleResult:
+        """Optionally release host-owned provider runtime state."""
+
+        started = perf_counter()
+        return _provider_lifecycle_result(
+            provider=self.name,
+            hook="teardown",
+            status="no-op",
+            started=started,
+            details="no provider teardown hook declared",
+        )
+
+    def lifecycle_status(
+        self,
+        *,
+        run_warmup: bool = False,
+        run_teardown: bool = False,
+    ) -> ProviderLifecycleStatus:
+        """Run requested lifecycle hooks and return aggregate provider readiness."""
+
+        return build_provider_lifecycle_status(
+            provider=self.name,
+            preflight=self.preflight,
+            warmup=self.warmup if run_warmup else None,
+            teardown=self.teardown if run_teardown else None,
         )
 
     # Default capability stubs. Subclasses override the methods matching the capability flags

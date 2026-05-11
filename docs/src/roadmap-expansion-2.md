@@ -801,10 +801,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Providers can implement lifecycle hooks without changing existing capability methods.
-- [ ] Diagnostics report lifecycle readiness and skip reasons.
-- [ ] Hooks are safe for missing optional dependencies.
-- [ ] Tests cover no-op, ready, skipped, failed, and teardown-failed states.
+- [x] Providers can implement lifecycle hooks without changing existing capability methods.
+- [x] Diagnostics report lifecycle readiness and skip reasons.
+- [x] Hooks are safe for missing optional dependencies.
+- [x] Tests cover no-op, ready, skipped, failed, and teardown-failed states.
 
 Validation:
 
