@@ -1099,6 +1099,117 @@ def test_public_api_stability_docs_cover_issue_180_contract() -> None:
     assert "public API stability and deprecation policy" in changelog
 
 
+def test_artifact_schema_docs_cover_issue_227_contract() -> None:
+    artifact_schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    docs_map = (ROOT / "docs/src/docs-map.md").read_text(encoding="utf-8")
+    contributing = (ROOT / "docs/src/contributing.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    init_exports = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
+
+    assert "[Artifact Schemas](./artifact-schemas.md)" in summary
+    assert "Artifact Schemas: artifact-schemas.md" in mkdocs
+    assert "[Artifact Schemas](./artifact-schemas.md)" in docs_map
+    assert "[Artifact Schemas](./artifact-schemas.md)" in contributing
+    assert "docs/src/artifact-schemas.md" in changelog
+
+    required_rows = (
+        ("World state JSON", "SCHEMA_VERSION", "src/worldforge/framework.py"),
+        ("Run manifests", "RUN_MANIFEST_SCHEMA_VERSION", "src/worldforge/smoke/run_manifest.py"),
+        ("Run workspaces", "RUN_WORKSPACE_SCHEMA_VERSION", "src/worldforge/harness/workspace.py"),
+        ("Run index reports", "RUN_INDEX_SCHEMA_VERSION", "src/worldforge/harness/run_index.py"),
+        (
+            "Evidence bundles and issue bundles",
+            "EVIDENCE_BUNDLE_SCHEMA_VERSION",
+            "src/worldforge/evidence_bundle.py",
+        ),
+        (
+            "Release evidence JSON",
+            "scripts/generate_release_evidence.py",
+            "tests/test_release_evidence.py",
+        ),
+        (
+            "Benchmark inputs and budgets",
+            "src/worldforge/benchmark.py",
+            "tests/test_benchmark.py",
+        ),
+        (
+            "Benchmark calibration reports",
+            "BENCHMARK_CALIBRATION_SCHEMA_VERSION",
+            "src/worldforge/benchmark_calibration.py",
+        ),
+        (
+            "Evaluation reports and provenance",
+            "PROVENANCE_SCHEMA_VERSION",
+            "src/worldforge/provenance.py",
+        ),
+        (
+            "Evaluation failure galleries",
+            "EVALUATION_FAILURE_GALLERY_SCHEMA_VERSION",
+            "src/worldforge/evaluation/suites.py",
+        ),
+        (
+            "Capability fixture corpus",
+            "FIXTURE_SCHEMA_VERSION",
+            "src/worldforge/testing/capability_fixtures.py",
+        ),
+        (
+            "Provider runtime manifests",
+            "MANIFEST_SCHEMA_VERSION",
+            "src/worldforge/providers/runtime_manifest.py",
+        ),
+        (
+            "Capability negotiation reports",
+            "CAPABILITY_NEGOTIATION_SCHEMA_VERSION",
+            "src/worldforge/capability_negotiation.py",
+        ),
+        (
+            "Scenario files and scenario results",
+            "SCENARIO_SCHEMA_VERSION",
+            "src/worldforge/scenarios.py",
+        ),
+        (
+            "World diff and patch artifacts",
+            "WORLD_DIFF_SCHEMA_VERSION",
+            "src/worldforge/world_diff.py",
+        ),
+        (
+            "Static HTML report metadata",
+            "HTML_REPORT_SCHEMA_VERSION",
+            "src/worldforge/html_report.py",
+        ),
+        ("Scene artifacts", "SCENE_ARTIFACT_SCHEMA_VERSION", "src/worldforge/scene_artifacts.py"),
+        (
+            "Live smoke evidence registry",
+            "LIVE_SMOKE_EVIDENCE_SCHEMA_VERSION",
+            "src/worldforge/live_smoke_evidence.py",
+        ),
+    )
+    for row_name, schema_signal, owner_signal in required_rows:
+        assert row_name in artifact_schemas
+        assert schema_signal in artifact_schemas
+        assert owner_signal in artifact_schemas
+
+    exported_schema_symbols = [
+        line.split('"')[1]
+        for line in init_exports.splitlines()
+        if line.strip().startswith('"') and "_SCHEMA_VERSION" in line
+    ]
+    assert exported_schema_symbols
+    for symbol in exported_schema_symbols:
+        assert symbol in artifact_schemas
+
+    for migration_signal in (
+        "Additive optional field",
+        "Breaking rename, removal, or type change",
+        "Renderer-only layout change",
+        "Security or redaction fix",
+        "Do not silently coerce invalid persisted state",
+    ):
+        assert migration_signal in artifact_schemas
+
+
 def test_redaction_corpus_docs_cover_issue_181_contract() -> None:
     security = (ROOT / "docs/src/security.md").read_text(encoding="utf-8")
     corpus = (ROOT / "tests/fixtures/redaction/provider_event_corpus.json").read_text(

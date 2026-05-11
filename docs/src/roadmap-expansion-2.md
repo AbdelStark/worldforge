@@ -51,10 +51,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Docs list every public artifact schema, owner, version field, and validation surface.
-- [ ] Contributors can tell when a schema change needs migration notes, changelog text, and tests.
-- [ ] At least one automated guard catches missing schema ownership for public artifacts.
-- [ ] Existing artifacts remain JSON-native and safe-artifact boundaries stay explicit.
+- [x] Docs list every public artifact schema, owner, version field, and validation surface.
+- [x] Contributors can tell when a schema change needs migration notes, changelog text, and tests.
+- [x] At least one automated guard catches missing schema ownership for public artifacts.
+- [x] Existing artifacts remain JSON-native and safe-artifact boundaries stay explicit.
 
 Validation:
 

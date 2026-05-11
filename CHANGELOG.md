@@ -9,6 +9,10 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
+  semi-public JSON artifact families. The page records each schema's owner, version field,
+  validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards
+  schema-version exports and required artifact families against missing ownership notes.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import

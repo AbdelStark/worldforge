@@ -37,7 +37,9 @@ uv run python scripts/generate_release_evidence.py --run-gates \
 
 The release evidence JSON records artifact paths and SHA-256 digests for linked artifacts. Evidence
 bundles, run manifests, benchmark reports, and live-smoke manifests should be linked from release
-notes instead of copied by hand.
+notes instead of copied by hand. Use [Artifact Schemas](./artifact-schemas.md) to identify the
+owning module, version field, migration rule, and validation surface before changing a public
+artifact contract.
 
 Unsafe artifacts stay out of public bundles: `.env` files, credentials, signed URL query strings,
 checkpoint archives, downloaded datasets, robot-controller logs, local cache directories, and

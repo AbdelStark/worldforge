@@ -40,7 +40,8 @@ installed package. See [Artifact Integrity](./artifact-integrity.md) for the rel
 hashing and evidence-linking contract.
 
 Before changing public imports, CLI flags, provider capabilities, or artifact schemas, classify the
-surface through [Public API Stability](./api-stability.md). Stable and provisional surfaces need a
+surface through [Public API Stability](./api-stability.md) and the
+[Artifact Schemas](./artifact-schemas.md) ownership map. Stable and provisional surfaces need a
 deprecation or migration plan unless the change fixes a security exposure, false capability claim,
 or persisted-state incoherence.
 
@@ -120,6 +121,7 @@ Before publishing a branch:
 - update provider docs and generated catalog tables for provider behavior changes.
 - update [Python API](./api/python.md) for public API or exception changes.
 - update [Architecture](./architecture.md) for new flows or ownership boundaries.
+- update [Artifact Schemas](./artifact-schemas.md) for new or changed public artifact families.
 - update [Operations](./operations.md) and [Playbooks](./playbooks.md) for new operator work.
 - update `CHANGELOG.md` for user-visible changes.
 - update `mkdocs.yml` when the docs navigation changes.

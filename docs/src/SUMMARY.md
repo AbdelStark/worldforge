@@ -42,6 +42,7 @@
   - [Benchmarking](./benchmarking.md)
   - [Live Smoke Evidence Registry](./live-smoke-evidence.md)
   - [Claim-To-Evidence Map](./claim-evidence-map.md)
+  - [Artifact Schemas](./artifact-schemas.md)
   - [Artifact Integrity](./artifact-integrity.md)
 - Operations And Quality
   - [User And Operator Playbooks](./playbooks.md)
