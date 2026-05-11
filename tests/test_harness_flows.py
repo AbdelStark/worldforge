@@ -73,6 +73,7 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
         "lerobot",
         "cosmos-policy",
         "gr00t-replay",
+        "robotics-compare",
         "diagnostics",
         "workbench",
     ]
@@ -83,8 +84,11 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
     assert payload[1]["focus"] == "policy plus score planning"
     assert payload[2]["command"] == "uv run --extra harness worldforge-harness --flow cosmos-policy"
     assert payload[3]["command"] == "uv run --extra harness worldforge-harness --flow gr00t-replay"
-    assert payload[4]["command"] == "uv run worldforge harness --flow diagnostics"
-    assert payload[5]["command"] == "uv run worldforge provider workbench mock"
+    assert payload[4]["command"] == (
+        "uv run --extra harness worldforge-harness --flow robotics-compare"
+    )
+    assert payload[5]["command"] == "uv run worldforge harness --flow diagnostics"
+    assert payload[6]["command"] == "uv run worldforge provider workbench mock"
 
 
 def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
@@ -228,6 +232,61 @@ def test_harness_groot_replay_flow_can_emit_transcript(tmp_path, capsys) -> None
     assert summary["translated_action_count"] == 40
     assert "flow: gr00t-replay" in output
     assert "translated_actions: 40" in output
+
+
+def test_harness_runs_robotics_compare_flow(tmp_path) -> None:
+    run = run_flow("robotics-compare", state_dir=tmp_path)
+
+    assert run.flow.id == "robotics-compare"
+    assert len(run.steps) == 6
+    assert len(run.metrics) == 6
+    assert run.summary["comparison_count"] == 3
+    assert run.summary["gpu_required"] is False
+    rows = {row["flow_id"]: row for row in run.summary["rows"]}
+    assert rows["lerobot"]["candidate_count"] == 3
+    assert rows["lerobot"]["selected_candidate_index"] == 1
+    assert rows["lerobot"]["translated_action_count"] == 2
+    assert rows["cosmos-policy"]["raw_shape"] == "50 x 14"
+    assert rows["cosmos-policy"]["translated_action_count"] == 50
+    assert rows["cosmos-policy"]["value_prediction"] == 0.190714
+    assert rows["gr00t-replay"]["raw_tensor_count"] == 3
+    assert rows["gr00t-replay"]["translated_action_count"] == 40
+    assert run.summary["total_translated_actions"] == 92
+    assert [event["phase"] for event in run.provider_events] == [
+        "success",
+        "success",
+        "success",
+    ]
+    transcript = "\n".join(run.transcript)
+    assert "flow: robotics-compare" in transcript
+    assert "comparison_artifact: artifacts/robotics-policy-comparison.json" in transcript
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["artifact_paths"]["robotics_comparison"] == (
+        "artifacts/robotics-policy-comparison.json"
+    )
+    assert manifest["artifact_paths"]["cosmos_policy_replay"] == (
+        "artifacts/cosmos-policy-replay.json"
+    )
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    comparison = json.loads(
+        (run.workspace_path / "artifacts/robotics-policy-comparison.json").read_text()
+    )
+    assert comparison["source_validation"]["gr00t-replay"] == (
+        "validated live on RTX A6000; committed artifact is sanitized"
+    )
+    assert "observation" not in json.dumps(comparison)
+
+
+def test_harness_robotics_compare_flow_can_emit_transcript(tmp_path, capsys) -> None:
+    from worldforge.harness import flows
+
+    summary = flows._run_robotics_compare_demo(state_dir=tmp_path, emit=True)
+
+    output = capsys.readouterr().out
+    assert summary["comparison_count"] == 3
+    assert "flow: robotics-compare" in output
+    assert "total_translated_actions: 92" in output
 
 
 def test_harness_loads_groot_replay_artifact(tmp_path) -> None:

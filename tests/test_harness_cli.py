@@ -21,6 +21,7 @@ def test_worldforge_harness_lists_flows_without_textual(monkeypatch, capsys) -> 
     assert "lerobot" in output
     assert "cosmos-policy" in output
     assert "gr00t-replay" in output
+    assert "robotics-compare" in output
     assert "diagnostics" in output
     assert "workbench" in output
 
@@ -40,6 +41,7 @@ def test_worldforge_harness_lists_json_without_textual(monkeypatch, capsys) -> N
         "lerobot",
         "cosmos-policy",
         "gr00t-replay",
+        "robotics-compare",
         "diagnostics",
         "workbench",
     ]

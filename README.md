@@ -108,6 +108,7 @@ uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow lerobot
 uv run --extra harness worldforge-harness --flow cosmos-policy
 uv run --extra harness worldforge-harness --flow gr00t-replay
+uv run --extra harness worldforge-harness --flow robotics-compare
 uv run --extra harness worldforge-harness --flow diagnostics
 ```
 
