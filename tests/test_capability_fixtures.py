@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import re
+import sys
 from base64 import b64decode
 from dataclasses import replace
 from pathlib import Path
@@ -27,6 +30,7 @@ from worldforge.testing import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+DEMO_SHOWCASES = ROOT / "scripts" / "demo_showcases.py"
 VALID_SHA256 = "sha256:" + "a" * 64
 
 
@@ -339,3 +343,30 @@ def test_fixture_snapshot_manifest_rejects_missing_and_unsafe_paths(tmp_path: Pa
     assert "fixture path is missing" in report.to_markdown()
     assert "parent-directory" in report.issues[1].message
     assert "backslashes" in report.issues[2].message
+
+
+def test_fixture_drift_review_demo_covers_review_statuses(tmp_path: Path) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "worldforge_fixture_drift_review_demo_test",
+        DEMO_SHOWCASES,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    results = module.run_workflows("fixture-drift-review", workspace_dir=tmp_path, overwrite=True)
+    summary_path = Path(results[0]["artifact_paths"]["summary_json"])
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    report = summary["report"]
+
+    assert report["baseline_passed"] is True
+    assert report["review_passed"] is False
+    assert report["intended_update_passed"] is True
+    assert {"missing", "changed", "unsafe"} <= set(report["review_statuses"])
+    assert set(report["managed_fixture_kinds"]) == {
+        "benchmark-fixture",
+        "provider-payload-fixture",
+        "scenario-fixture",
+    }

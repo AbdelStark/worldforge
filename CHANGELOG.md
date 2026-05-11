@@ -22,6 +22,10 @@ releases may still include breaking changes when the public API needs to tighten
   candidates, preserves raw policy actions, scores candidate plans, records the selected action and
   workflow trace, and captures invalid candidate bounds plus missing-translator failures without
   requiring a robot, simulator, or checkpoint.
+- Added a checkout-safe fixture drift review walkthrough. The demo builds a temp fixture snapshot
+  manifest, shows missing fixture, digest drift, schema-version drift, unsafe path, and
+  intended-update review outputs, and preserves the approved update path without touching tracked
+  fixtures.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

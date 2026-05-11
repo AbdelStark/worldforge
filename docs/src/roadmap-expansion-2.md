@@ -540,10 +540,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Walkthrough distinguishes missing fixture, digest mismatch, schema change, and unsafe path.
-- [ ] Approved update path is explicit and reviewable.
-- [ ] Docs link from testing and provider authoring pages.
-- [ ] Tests cover the demo without changing tracked fixtures.
+- [x] Walkthrough distinguishes missing fixture, digest mismatch, schema change, and unsafe path.
+- [x] Approved update path is explicit and reviewable.
+- [x] Docs link from testing and provider authoring pages.
+- [x] Tests cover the demo without changing tracked fixtures.
 
 Validation:
 

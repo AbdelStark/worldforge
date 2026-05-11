@@ -11,7 +11,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib.metadata import EntryPoint
 from pathlib import Path
 from typing import Any
@@ -44,6 +44,12 @@ from worldforge.persistence_preflight import preflight_local_state  # noqa: E402
 from worldforge.providers import BaseProvider, ProviderProfileSpec  # noqa: E402
 from worldforge.providers.base import ProviderError  # noqa: E402
 from worldforge.providers.catalog import PROVIDER_CATALOG  # noqa: E402
+from worldforge.testing import (  # noqa: E402
+    FixtureSnapshotEntry,
+    FixtureSnapshotManifest,
+    build_fixture_snapshot_manifest,
+    validate_fixture_snapshot_manifest,
+)
 
 DEFAULT_WORKSPACE = Path(".worldforge/demo-showcases")
 
@@ -1142,6 +1148,171 @@ def _policy_score_candidate_lab(workflow_dir: Path) -> JSONDict:
     }
 
 
+def _fixture_drift_review(workflow_dir: Path) -> JSONDict:
+    lab_root = workflow_dir / "fixture-drift-lab"
+    provider_fixture = lab_root / "tests/fixtures/providers/demo_provider_payload.json"
+    benchmark_fixture = lab_root / "examples/demo-benchmark-inputs.json"
+    scenario_fixture = lab_root / "examples/scenarios/demo-scenario.json"
+    for path, payload in (
+        (
+            provider_fixture,
+            {"schema_version": 1, "provider": "mock", "status": "baseline"},
+        ),
+        (
+            benchmark_fixture,
+            {"schema_version": 1, "inputs": [{"provider": "mock", "operation": "predict"}]},
+        ),
+        (
+            scenario_fixture,
+            {
+                "schema_version": 1,
+                "id": "demo-scenario",
+                "description": "Fixture drift walkthrough scenario.",
+            },
+        ),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    baseline = build_fixture_snapshot_manifest(
+        (provider_fixture, benchmark_fixture, scenario_fixture),
+        root=lab_root,
+    )
+    baseline_report = validate_fixture_snapshot_manifest(baseline, root=lab_root)
+    baseline_manifest_path = lab_root / "fixture-snapshots-baseline.json"
+    baseline_manifest_path.write_text(
+        json.dumps(baseline.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    missing_fixture = lab_root / "tests/fixtures/providers/missing_payload.json"
+    provider_path = provider_fixture.relative_to(lab_root).as_posix()
+    benchmark_path = benchmark_fixture.relative_to(lab_root).as_posix()
+    scenario_path = scenario_fixture.relative_to(lab_root).as_posix()
+    missing_entry = replace(
+        next(entry for entry in baseline.entries if entry.path == provider_path),
+        path=missing_fixture.relative_to(lab_root).as_posix(),
+    )
+    changed_payload = {"schema_version": 1, "inputs": [{"provider": "mock", "operation": "embed"}]}
+    benchmark_fixture.write_text(
+        json.dumps(changed_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    scenario_fixture.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "id": "demo-scenario",
+                "description": "Fixture drift walkthrough schema change.",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    unsafe_entry = FixtureSnapshotEntry(
+        path="../private/provider-secret.json",
+        sha256="sha256:" + "0" * 64,
+        size_bytes=1,
+        fixture_kind="provider-payload-fixture",
+        fixture_schema_version=1,
+    )
+    review_manifest = FixtureSnapshotManifest(
+        entries=(
+            missing_entry,
+            *baseline.entries[1:],
+            unsafe_entry,
+        )
+    )
+    review_report = validate_fixture_snapshot_manifest(review_manifest, root=lab_root)
+    review_manifest_path = lab_root / "fixture-snapshots-review.json"
+    review_json_path = workflow_dir / "fixture-drift-review.json"
+    review_markdown_path = workflow_dir / "fixture-drift-review.md"
+    review_manifest_path.write_text(
+        json.dumps(review_manifest.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    review_json_path.write_text(
+        json.dumps(review_report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    review_markdown_path.write_text(review_report.to_markdown() + "\n", encoding="utf-8")
+
+    intended_manifest = FixtureSnapshotManifest(
+        entries=tuple(
+            replace(entry, review_status="intended-update")
+            if entry.path in {benchmark_path, scenario_path}
+            else entry
+            for entry in baseline.entries
+        )
+    )
+    intended_report = validate_fixture_snapshot_manifest(
+        intended_manifest,
+        root=lab_root,
+        allow_intended_updates=True,
+    )
+    refreshed = build_fixture_snapshot_manifest(
+        (provider_fixture, benchmark_fixture, scenario_fixture),
+        root=lab_root,
+    )
+    refreshed_manifest_path = lab_root / "fixture-snapshots-refreshed.json"
+    intended_json_path = workflow_dir / "fixture-drift-intended-update.json"
+    refreshed_manifest_path.write_text(
+        json.dumps(refreshed.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    intended_json_path.write_text(
+        json.dumps(intended_report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    report = {
+        "schema_version": 1,
+        "safe_to_attach": True,
+        "baseline_passed": baseline_report.passed,
+        "review_passed": review_report.passed,
+        "intended_update_passed": intended_report.passed,
+        "review_summary": review_report.summary,
+        "review_statuses": [issue.status for issue in review_report.issues],
+        "managed_fixture_kinds": sorted({entry.fixture_kind for entry in baseline.entries}),
+        "approved_update_path": [
+            "Mark the reviewed manifest entry as review_status=intended-update.",
+            "Run the snapshot manager with --allow-intended-updates for human review.",
+            "After approving fixture and manifest diffs, refresh the manifest with --write.",
+        ],
+        "claim_boundary": (
+            "Checkout-safe fixture drift walkthrough only; all mutations occur under the "
+            "selected demo workspace."
+        ),
+    }
+    summary_path = workflow_dir / "fixture-drift-summary.json"
+    summary_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "status": "passed",
+        "provider": "fixture-snapshot-manager",
+        "safe_to_attach": True,
+        "summary": (
+            "Created a controlled fixture drift review covering missing, changed, schema-change, "
+            "unsafe-path, and intended-update paths under a temp workspace."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "summary": str(summary_path),
+            "baseline_manifest": str(baseline_manifest_path),
+            "review_manifest": str(review_manifest_path),
+            "review_json": str(review_json_path),
+            "review_markdown": str(review_markdown_path),
+            "intended_update_json": str(intended_json_path),
+            "refreshed_manifest": str(refreshed_manifest_path),
+        },
+        "first_triage_step": (
+            "Open `fixture-drift-review.md`, inspect every changed fixture diff, then approve "
+            "intentional updates before rewriting the manifest."
+        ),
+        "claim_boundary": report["claim_boundary"],
+    }
+
+
 def _copy_artifact_paths(run_workspace: Any, artifact_paths: object) -> dict[str, str]:
     if not isinstance(artifact_paths, dict):
         return {}
@@ -1222,6 +1393,12 @@ WORKFLOWS = (
         "Policy+score candidate lab",
         239,
         _policy_score_candidate_lab,
+    ),
+    DemoWorkflow(
+        "fixture-drift-review",
+        "Fixture drift review walkthrough",
+        240,
+        _fixture_drift_review,
     ),
 )
 

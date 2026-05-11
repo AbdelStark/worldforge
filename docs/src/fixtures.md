@@ -148,6 +148,17 @@ Refresh the manifest explicitly after the fixture change is accepted:
 uv run python scripts/manage_fixture_snapshots.py --write
 ```
 
+For a checkout-safe walkthrough of review output, run:
+
+```bash
+uv run python scripts/demo_showcases.py run fixture-drift-review --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+The workflow creates a temp fixture tree with provider payload, benchmark, and scenario fixtures,
+then preserves reports for missing fixture, digest drift, schema-version drift, unsafe path, and
+`intended-update` review cases. It also writes a refreshed temp manifest to show the approved
+update path. It never mutates the committed `tests/fixtures/fixture-snapshots.json`.
+
 Do not use the snapshot manager to fetch remote provider payloads, refresh datasets, or store large
 media artifacts. Add or update fixtures only when they lock a public contract, reproduce a bug, or
 provide a tiny documented scenario/benchmark input that stays safe to review in git.

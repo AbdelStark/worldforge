@@ -647,6 +647,17 @@ uv run python scripts/demo_showcases.py run external-provider-package --workspac
 The workflow generates a temp external provider package, exercises `worldforge.providers`
 entry-point discovery and skip reasons, and preserves a safe report without publishing anything.
 
+When a provider fixture changes, use the fixture drift walkthrough before updating committed
+snapshots:
+
+```bash
+uv run python scripts/demo_showcases.py run fixture-drift-review --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+It shows missing fixture, digest drift, schema-version drift, unsafe path, and
+`intended-update` review states under a temp workspace so authors can practice the approved update
+path without mutating tracked fixtures.
+
 Remote providers:
 
 - [ ] No tests require live credentials.

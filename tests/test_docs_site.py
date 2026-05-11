@@ -2691,6 +2691,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         ("external-provider-package", 237),
         ("custom-evaluation-suite", 238),
         ("policy-score-candidate-lab", 239),
+        ("fixture-drift-review", 240),
     )
     for workflow, issue in workflows:
         assert workflow in script
@@ -2705,6 +2706,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "entry-point discovery",
         "failure-gallery",
         "raw action preservation",
+        "intended-update",
         "physical-fidelity",
     ):
         assert boundary in showcase_docs or boundary in cookbook
@@ -2738,6 +2740,19 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "- [x] Output artifacts are safe to attach.",
     ):
         assert checkbox in roadmap
+    for checkbox in (
+        (
+            "- [x] Walkthrough distinguishes missing fixture, digest mismatch, schema change, and "
+            "unsafe path."
+        ),
+        "- [x] Approved update path is explicit and reviewable.",
+        "- [x] Docs link from testing and provider authoring pages.",
+        "- [x] Tests cover the demo without changing tracked fixtures.",
+    ):
+        assert checkbox in roadmap
+    fixtures_doc = (ROOT / "docs/src/fixtures.md").read_text(encoding="utf-8")
+    assert "fixture-drift-review" in fixtures_doc
+    assert "fixture-drift-review" in provider_authoring
 
     for provider_doc in (
         "docs/src/api/python.md",

@@ -45,6 +45,7 @@ The default workspace is `.worldforge/demo-showcases/`.
 | `external-provider-package` | #237 | `uv run python scripts/demo_showcases.py run external-provider-package` | temp external provider package generated and entry-point discovery report preserved | `external-provider-package/external-provider-discovery.json` | inspect the discovery report, then run the generated package tests before publishing |
 | `custom-evaluation-suite` | #238 | `uv run python scripts/demo_showcases.py run custom-evaluation-suite` | custom suite runs with provenance, one controlled failure, and report artifacts | `custom-evaluation-suite/custom-eval-artifacts/` | open `markdown`, then inspect `failure_gallery.md` for the controlled failed case |
 | `policy-score-candidate-lab` | #239 | `uv run python scripts/demo_showcases.py run policy-score-candidate-lab` | deterministic action candidates ranked by a score provider with raw policy actions preserved | `policy-score-candidate-lab/policy-score-candidate-lab.json` | verify the selected row matches `score_result.best_index` |
+| `fixture-drift-review` | #240 | `uv run python scripts/demo_showcases.py run fixture-drift-review` | temp fixture manifest review with missing, changed, schema-change, unsafe, and intended-update cases | `fixture-drift-review/fixture-drift-review.md` | inspect every fixture diff before approving an intended manifest update |
 
 ## Runtime Boundaries
 
@@ -66,6 +67,9 @@ quality or physical execution. Optional runtimes remain host-owned:
 - The policy+score candidate lab uses local deterministic providers to show candidate generation,
   scoring, raw action preservation, translator boundaries, and safe artifact shape. It is not a
   robot controller, simulator, checkpoint run, or physical-performance claim.
+- The fixture drift review workflow mutates only the selected demo workspace. It demonstrates
+  review states and the approved update path; it does not refresh remote fixtures or rewrite the
+  committed snapshot manifest.
 - Benchmark failures in the batch workflow are controlled budget failures so the issue and release
   evidence path can be tested without changing production thresholds.
 

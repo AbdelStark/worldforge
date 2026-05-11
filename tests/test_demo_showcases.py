@@ -43,6 +43,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         237,
         238,
         239,
+        240,
     ]
     assert [workflow["id"] for workflow in workflows] == [
         "first-run",
@@ -58,6 +59,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "external-provider-package",
         "custom-evaluation-suite",
         "policy-score-candidate-lab",
+        "fixture-drift-review",
     ]
 
 
@@ -65,7 +67,7 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     module = _load_demo_showcases()
     results = module.run_workflows("all", workspace_dir=tmp_path, overwrite=True)
 
-    assert len(results) == 13
+    assert len(results) == 14
     assert all(result["safe_to_attach"] is True for result in results)
     assert all(result["status"] in {"passed", "skipped"} for result in results)
 
@@ -162,6 +164,17 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     assert "lower bound" in lab_report["expected_failures"]["invalid_candidate_bounds"]
     assert "action_translator" in lab_report["expected_failures"]["missing_translator"]
     assert Path(str(candidate_lab["artifact_paths"]["lab_markdown"])).is_file()
+
+    fixture_drift = summaries["fixture-drift-review"]
+    drift_report = fixture_drift["report"]
+    assert drift_report["baseline_passed"] is True
+    assert drift_report["review_passed"] is False
+    assert drift_report["intended_update_passed"] is True
+    assert {"missing", "changed", "unsafe"} <= set(drift_report["review_statuses"])
+    assert "provider-payload-fixture" in drift_report["managed_fixture_kinds"]
+    assert "benchmark-fixture" in drift_report["managed_fixture_kinds"]
+    assert "scenario-fixture" in drift_report["managed_fixture_kinds"]
+    assert Path(str(fixture_drift["artifact_paths"]["review_markdown"])).is_file()
 
 
 def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:
