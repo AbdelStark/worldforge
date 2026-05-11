@@ -2639,7 +2639,7 @@ def test_documentation_information_architecture_cover_issue_188_contract() -> No
     assert "public docs information architecture" in changelog
 
 
-def test_demo_showcase_docs_cover_issues_189_to_198_contract() -> None:
+def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     cli = (ROOT / "docs/src/cli.md").read_text(encoding="utf-8")
     examples = (ROOT / "docs/src/examples.md").read_text(encoding="utf-8")
@@ -2685,6 +2685,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_contract() -> None:
         ("rerun-gallery", 196),
         ("failure-lab", 197),
         ("use-case-cookbook", 198),
+        ("external-provider-package", 237),
     )
     for workflow, issue in workflows:
         assert workflow in script
@@ -2696,9 +2697,26 @@ def test_demo_showcase_docs_cover_issues_189_to_198_contract() -> None:
         "robot hardware",
         "Rerun",
         "scaffold is intentionally fail-closed",
+        "entry-point discovery",
         "physical-fidelity",
     ):
         assert boundary in showcase_docs or boundary in cookbook
+
+    external_docs = (ROOT / "docs/src/external-providers.md").read_text(encoding="utf-8")
+    provider_authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    assert "external-provider-discovery.json" in external_docs
+    assert "external-provider-package" in provider_authoring
+    for checkbox in (
+        "- [x] Demo proves external package discovery through documented entry points.",
+        "- [x] Missing optional dependencies show explicit skip reasons.",
+        (
+            "- [x] Generated or example package files do not mutate tracked source during normal "
+            "demo runs."
+        ),
+        "- [x] Docs link the demo from external provider and provider authoring pages.",
+    ):
+        assert checkbox in roadmap
 
 
 def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:

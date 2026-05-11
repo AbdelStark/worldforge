@@ -638,6 +638,15 @@ Live capability calls against non-local providers are skipped unless the host ex
 fixtures where possible. Passing CLI evidence is adapter-contract evidence only. It is not automatic
 promotion evidence and does not claim physical fidelity, media quality, or robot safety.
 
+For a package-shape walkthrough, run:
+
+```bash
+uv run python scripts/demo_showcases.py run external-provider-package --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+The workflow generates a temp external provider package, exercises `worldforge.providers`
+entry-point discovery and skip reasons, and preserves a safe report without publishing anything.
+
 Remote providers:
 
 - [ ] No tests require live credentials.

@@ -88,6 +88,21 @@ for skip in report.skipped:
     print(f"skipped {skip.name}: {skip.reason}")
 ```
 
+## Checkout-safe package demo
+
+Run the demo workflow when you want a complete package-shape example without publishing or
+installing anything globally:
+
+```bash
+uv run python scripts/demo_showcases.py run external-provider-package --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+It writes a temp package under the demo workspace with a `pyproject.toml`, provider factory, and
+package-local test. The preserved `external-provider-discovery.json` shows successful discovery,
+explicit disabled-discovery behavior, duplicate in-repo provider-name handling, and a missing
+optional dependency skip reason. The output is safe to attach, but it is package-shape evidence
+only; it is not PyPI publishing, a live provider call, or promotion evidence.
+
 ## Disabling discovery
 
 Two switches turn discovery off:

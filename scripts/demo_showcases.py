@@ -10,7 +10,9 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
+from importlib.metadata import EntryPoint
 from pathlib import Path
 from typing import Any
 
@@ -19,13 +21,22 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from worldforge import Action, BBox, Position, SceneObject, WorldForge  # noqa: E402
+from worldforge import (  # noqa: E402
+    ENTRY_POINT_GROUP,
+    Action,
+    BBox,
+    Position,
+    SceneObject,
+    WorldForge,
+    discover_entry_point_providers,
+)
 from worldforge.demos import lerobot_e2e  # noqa: E402
 from worldforge.evidence_bundle import generate_issue_bundle  # noqa: E402
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest  # noqa: E402
 from worldforge.models import JSONDict, ProviderEvent, dump_json  # noqa: E402
 from worldforge.operator_drills import run_operator_drill  # noqa: E402
 from worldforge.persistence_preflight import preflight_local_state  # noqa: E402
+from worldforge.providers.catalog import PROVIDER_CATALOG  # noqa: E402
 
 DEFAULT_WORKSPACE = Path(".worldforge/demo-showcases")
 
@@ -683,6 +694,203 @@ def _cookbook(workflow_dir: Path) -> JSONDict:
     }
 
 
+def _external_provider_package(workflow_dir: Path) -> JSONDict:
+    package_root = workflow_dir / "external-provider-package"
+    source_root = package_root / "src"
+    package_dir = source_root / "worldforge_demo_provider"
+    tests_dir = package_root / "tests"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    (package_dir / "__init__.py").write_text('"""Checkout-safe WorldForge demo provider."""\n')
+    pyproject_path = package_root / "pyproject.toml"
+    pyproject_path.write_text(
+        "\n".join(
+            [
+                "[project]",
+                'name = "worldforge-demo-provider"',
+                'version = "0.0.0"',
+                'description = "Checkout-safe WorldForge external provider demo"',
+                'requires-python = ">=3.13,<3.14"',
+                'dependencies = ["worldforge"]',
+                "",
+                '[project.entry-points."worldforge.providers"]',
+                'demo-external = "worldforge_demo_provider.provider:create_provider"',
+                'needs-optional = "worldforge_demo_provider.needs_optional:create_provider"',
+                'mock = "worldforge_demo_provider.provider:create_provider"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    provider_path = package_dir / "provider.py"
+    provider_path.write_text(
+        "\n".join(
+            [
+                "from __future__ import annotations",
+                "",
+                "from worldforge import Action, ProviderCapabilities",
+                "from worldforge.providers import BaseProvider, PredictionPayload, "
+                "ProviderProfileSpec",
+                "",
+                "",
+                "class DemoExternalProvider(BaseProvider):",
+                "    def __init__(self, *, event_handler=None) -> None:",
+                "        super().__init__(",
+                '            name="demo-external",',
+                "            capabilities=ProviderCapabilities(predict=True),",
+                "            profile=ProviderProfileSpec(",
+                '                description="Checkout-safe external provider package demo.",',
+                '                implementation_status="demo",',
+                "                is_local=True,",
+                "                deterministic=True,",
+                "            ),",
+                "            event_handler=event_handler,",
+                "        )",
+                "",
+                "    def predict(",
+                "        self, world_state: dict, action: Action, steps: int",
+                "    ) -> PredictionPayload:",
+                "        next_state = dict(world_state)",
+                '        next_state["provider"] = self.name',
+                '        next_state["step"] = int(next_state.get("step", 0)) + steps',
+                "        return PredictionPayload(",
+                "            world_state=next_state,",
+                "            confidence=0.91,",
+                "            physics_score=0.89,",
+                "            latency_ms=0.5,",
+                "        )",
+                "",
+                "",
+                "def create_provider(*, event_handler=None) -> DemoExternalProvider:",
+                "    return DemoExternalProvider(event_handler=event_handler)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    missing_path = package_dir / "needs_optional.py"
+    missing_path.write_text(
+        "\n".join(
+            [
+                "import worldforge_demo_missing_runtime",
+                "",
+                "",
+                "def create_provider(*, event_handler=None):",
+                "    return worldforge_demo_missing_runtime.create_provider(",
+                "        event_handler=event_handler",
+                "    )",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    generated_test = tests_dir / "test_demo_external_provider.py"
+    generated_test.write_text(
+        "\n".join(
+            [
+                "from worldforge_demo_provider.provider import create_provider",
+                "",
+                "",
+                "def test_provider_factory_name_matches_entry_point():",
+                '    assert create_provider().name == "demo-external"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    for path in (provider_path, missing_path, generated_test):
+        py_compile.compile(str(path), doraise=True)
+
+    entry_points = (
+        EntryPoint(
+            name="demo-external",
+            value="worldforge_demo_provider.provider:create_provider",
+            group=ENTRY_POINT_GROUP,
+        ),
+        EntryPoint(
+            name="needs-optional",
+            value="worldforge_demo_provider.needs_optional:create_provider",
+            group=ENTRY_POINT_GROUP,
+        ),
+        EntryPoint(
+            name="mock",
+            value="worldforge_demo_provider.provider:create_provider",
+            group=ENTRY_POINT_GROUP,
+        ),
+    )
+
+    def entry_points_provider(group: str) -> tuple[EntryPoint, ...]:
+        return entry_points if group == ENTRY_POINT_GROUP else ()
+
+    sys.path.insert(0, str(source_root))
+    try:
+        discovery = discover_entry_point_providers(
+            enabled=True,
+            catalog=PROVIDER_CATALOG,
+            entry_points_provider=entry_points_provider,
+        )
+        disabled = discover_entry_point_providers(
+            enabled=False,
+            catalog=PROVIDER_CATALOG,
+            entry_points_provider=entry_points_provider,
+        )
+        provider = discovery.entries[0].create()
+    finally:
+        with suppress(ValueError):
+            sys.path.remove(str(source_root))
+        for module_name in tuple(sys.modules):
+            if module_name.startswith("worldforge_demo_provider"):
+                sys.modules.pop(module_name, None)
+
+    report = {
+        "schema_version": 1,
+        "entry_point_group": ENTRY_POINT_GROUP,
+        "package_root": str(package_root),
+        "generated_files": sorted(
+            str(path.relative_to(package_root))
+            for path in package_root.rglob("*")
+            if path.is_file()
+        ),
+        "discovery_enabled": discovery.to_dict(),
+        "discovery_disabled": disabled.to_dict(),
+        "provider": {
+            "name": provider.name,
+            "capabilities": provider.capabilities.to_dict(),
+            "configured": provider.configured(),
+            "description": provider.description,
+        },
+        "skip_reasons": {skip.name: skip.reason for skip in discovery.skipped},
+        "safe_to_attach": True,
+    }
+    report_path = workflow_dir / "external-provider-discovery.json"
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    return {
+        "status": "passed",
+        "provider": "demo-external",
+        "safe_to_attach": True,
+        "summary": (
+            "Generated a temp external provider package and proved entry-point discovery, "
+            "disabled discovery, duplicate-name skips, and missing optional dependency skips."
+        ),
+        "report": report,
+        "artifact_paths": {
+            "discovery_report": str(report_path),
+            "pyproject": str(pyproject_path),
+            "provider": str(provider_path),
+            "generated_test": str(generated_test),
+        },
+        "first_triage_step": (
+            "Inspect `external-provider-discovery.json`, then run the generated provider package "
+            "tests in the temp package before publishing."
+        ),
+        "claim_boundary": (
+            "Checkout-safe package-shape demo only; no PyPI publishing, credentialed provider, "
+            "or remote call."
+        ),
+    }
+
+
 def _copy_artifact_paths(run_workspace: Any, artifact_paths: object) -> dict[str, str]:
     if not isinstance(artifact_paths, dict):
         return {}
@@ -746,6 +954,12 @@ WORKFLOWS = (
     DemoWorkflow("rerun-gallery", "Rerun visual gallery showcase", 196, _rerun_gallery),
     DemoWorkflow("failure-lab", "Failure recovery lab", 197, _failure_lab),
     DemoWorkflow("use-case-cookbook", "Use case cookbook", 198, _cookbook),
+    DemoWorkflow(
+        "external-provider-package",
+        "External provider package demo",
+        237,
+        _external_provider_package,
+    ),
 )
 
 

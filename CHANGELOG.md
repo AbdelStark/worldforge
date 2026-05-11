@@ -9,6 +9,11 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a checkout-safe external provider package demo workflow. `scripts/demo_showcases.py run
+  external-provider-package` generates a temp provider package, proves `worldforge.providers`
+  entry-point discovery, disabled discovery, duplicate-name handling, and missing optional
+  dependency skip reporting, and preserves a safe discovery report without publishing or mutating
+  tracked source.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

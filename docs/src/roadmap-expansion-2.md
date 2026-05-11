@@ -427,10 +427,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Demo proves external package discovery through documented entry points.
-- [ ] Missing optional dependencies show explicit skip reasons.
-- [ ] Generated or example package files do not mutate tracked source during normal demo runs.
-- [ ] Docs link the demo from external provider and provider authoring pages.
+- [x] Demo proves external package discovery through documented entry points.
+- [x] Missing optional dependencies show explicit skip reasons.
+- [x] Generated or example package files do not mutate tracked source during normal demo runs.
+- [x] Docs link the demo from external provider and provider authoring pages.
 
 Validation:
 

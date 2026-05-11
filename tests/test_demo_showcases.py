@@ -38,7 +38,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
     payload = json.loads(completed.stdout)
     workflows = payload["workflows"]
 
-    assert [workflow["issue"] for workflow in workflows] == list(range(189, 199))
+    assert [workflow["issue"] for workflow in workflows] == [*list(range(189, 199)), 237]
     assert [workflow["id"] for workflow in workflows] == [
         "first-run",
         "diagnostics-issue-bundle",
@@ -50,6 +50,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "rerun-gallery",
         "failure-lab",
         "use-case-cookbook",
+        "external-provider-package",
     ]
 
 
@@ -57,7 +58,7 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     module = _load_demo_showcases()
     results = module.run_workflows("all", workspace_dir=tmp_path, overwrite=True)
 
-    assert len(results) == 10
+    assert len(results) == 11
     assert all(result["safe_to_attach"] is True for result in results)
     assert all(result["status"] in {"passed", "skipped"} for result in results)
 
@@ -124,6 +125,17 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     cookbook = summaries["use-case-cookbook"]
     assert cookbook["recipe_count"] >= 7
     assert Path(str(cookbook["artifact_paths"]["cookbook"])).name == "use-case-cookbook.md"
+
+    external_package = summaries["external-provider-package"]
+    external_report = external_package["report"]
+    assert external_report["entry_point_group"] == "worldforge.providers"
+    assert external_report["discovery_enabled"]["discovered"][0]["name"] == "demo-external"
+    assert external_report["discovery_disabled"]["enabled"] is False
+    assert external_report["provider"]["capabilities"]["predict"] is True
+    assert "missing dependency" in external_report["skip_reasons"]["needs-optional"]
+    assert "duplicate name" in external_report["skip_reasons"]["mock"]
+    assert "pyproject.toml" in external_report["generated_files"]
+    assert Path(str(external_package["artifact_paths"]["discovery_report"])).is_file()
 
 
 def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:

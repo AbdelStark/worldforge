@@ -62,7 +62,7 @@ evaluation harnesses, and testable prototypes.
   exposed through `uv run --extra rerun worldforge-demo-rerun`.
 - `scripts/demo_showcases.py`: checkout-safe demo evidence runner for the first-run, diagnostics,
   robotics replay, remote dry-run, adapter authoring, batch eval, service host, Rerun gallery,
-  failure lab, and cookbook workflows.
+  failure lab, cookbook, and external provider package workflows.
 - `scripts/generate_dependency_audit_evidence.py`: checkout-safe dependency-audit evidence wrapper
   around the documented `uv export` plus `pip-audit` flow; writes JSON and Markdown summaries
   without preserving the temporary requirements file.
