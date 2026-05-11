@@ -210,6 +210,8 @@ rm -f "$tmp_req"
 - `mkdocs.yml`: GitHub Pages navigation, theme, and strict docs-build configuration.
 - `CONTRIBUTING.md` and `docs/src/contributing.md`: contributor setup, validation gates,
   repository map, provider rules, and documentation routing.
+- `docs/src/task-starters.md`: contributor starter packs for provider, docs-only, demo,
+  artifact/report, evaluation/benchmark, and CLI/operator work.
 
 ## Agentic Context And Coordination
 

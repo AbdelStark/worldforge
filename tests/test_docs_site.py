@@ -1043,6 +1043,85 @@ def test_roadmap_expansion_2_documents_three_streams_and_thirty_issues() -> None
         assert expansion.count(section) >= 30
 
 
+def test_contributor_task_starters_cover_issue_233_contract() -> None:
+    starters = (ROOT / "docs/src/task-starters.md").read_text(encoding="utf-8")
+    docs_contributing = (ROOT / "docs/src/contributing.md").read_text(encoding="utf-8")
+    root_contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    docs_map = (ROOT / "docs/src/docs-map.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    expansion = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    issue_templates = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / ".github/ISSUE_TEMPLATE").glob("*.yml")
+    )
+
+    starter_titles = (
+        "Provider Adapter Or Runtime Promotion",
+        "Docs-Only Or Public Surface",
+        "Demo Or Showcase Workflow",
+        "Artifact, Report, Or Evidence",
+        "Evaluation Or Benchmark",
+        "CLI Or Operator Workflow",
+    )
+    required_sections = (
+        "Likely Files To Inspect",
+        "Forbidden Shortcuts",
+        "Validation Commands",
+        "Evidence Artifacts",
+        "Docs And Changelog Expectations",
+        "Review Checklist",
+    )
+    for title in starter_titles:
+        assert f"## {title}" in starters
+    for section in required_sections:
+        assert starters.count(f"### {section}") == len(starter_titles)
+
+    for repo_path in (
+        "src/worldforge/providers/",
+        "docs/src/",
+        "scripts/demo_showcases.py",
+        "src/worldforge/evidence_bundle.py",
+        "src/worldforge/evaluation/",
+        "src/worldforge/cli.py",
+    ):
+        assert repo_path in starters
+
+    for command in (
+        "uv run python scripts/generate_provider_docs.py --check",
+        "uv run python scripts/check_docs_snippets.py",
+        "uv run python scripts/demo_showcases.py list",
+        "uv run pytest tests/test_evidence_bundle.py tests/test_html_report.py",
+        "uv run worldforge benchmark --provider mock --operation generate",
+        "uv run pytest tests/test_cli_help_snapshots.py tests/test_cli_world_commands.py",
+    ):
+        assert command in starters
+
+    for signal in (
+        "docs/changelog expectations",
+        "CHANGELOG.md",
+        "Do not advertise",
+        "safe to attach",
+        "first triage step",
+    ):
+        assert signal in starters
+
+    assert "[Contributor Task Starters](./task-starters.md)" in docs_contributing
+    assert "[Contributor Task Starters](./docs/src/task-starters.md)" in root_contributing
+    assert "[Contributor Task Starters](./task-starters.md)" in summary
+    assert "Contributor Task Starters: task-starters.md" in mkdocs
+    assert "[Contributor Task Starters](./task-starters.md)" in docs_map
+    assert "contributor task starter packs" in changelog
+    assert "https://abdelstark.github.io/worldforge/task-starters/" in issue_templates
+    for criterion in (
+        "At least six starter packs exist",
+        "Starter packs include validation commands",
+        "Issue templates or contributing docs point contributors",
+        "Tests guard the presence of required sections",
+    ):
+        assert f"- [x] {criterion}" in expansion
+
+
 def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
@@ -1313,6 +1392,7 @@ def test_docs_command_drift_checker_docs_cover_issue_183_contract() -> None:
         "docs/src/examples.md",
         "docs/src/operations.md",
         "docs/src/playbooks.md",
+        "docs/src/task-starters.md",
         "AGENTS.md",
         "missing_entry_points",
         "stale_commands",

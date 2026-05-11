@@ -9,6 +9,12 @@ body:
         Use this template for evaluation, benchmark, report, budget, artifact, provenance, or public
         claim evidence work. Release-candidate or public-claim issues need preserved run evidence,
         an evidence bundle, or release evidence before closure.
+
+        Start with the evaluation/benchmark starter pack:
+        https://abdelstark.github.io/worldforge/task-starters/#evaluation-or-benchmark
+        Use the artifact/report starter when schemas, reports, evidence bundles, or release
+        evidence are the main surface:
+        https://abdelstark.github.io/worldforge/task-starters/#artifact-report-or-evidence
   - type: textarea
     id: command
     attributes:

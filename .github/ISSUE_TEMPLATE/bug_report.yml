@@ -8,6 +8,11 @@ body:
       value: |
         Do not file vulnerabilities, credentials, signed URLs, private endpoints, or host-local
         artifacts here. Use the private Security tab for security-sensitive reports.
+
+        Before scoping a fix, pick the matching contributor task starter:
+        https://abdelstark.github.io/worldforge/task-starters/
+        CLI/operator, provider, artifact, evaluation, docs, and demo fixes each have different
+        validation and evidence requirements.
   - type: dropdown
     id: triage_stream
     attributes:

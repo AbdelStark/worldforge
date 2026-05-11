@@ -275,10 +275,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] At least six starter packs exist and match current repository structure.
-- [ ] Starter packs include validation commands and docs/changelog expectations.
-- [ ] Issue templates or contributing docs point contributors to the right starter.
-- [ ] Tests guard the presence of required sections.
+- [x] At least six starter packs exist and match current repository structure.
+- [x] Starter packs include validation commands and docs/changelog expectations.
+- [x] Issue templates or contributing docs point contributors to the right starter.
+- [x] Tests guard the presence of required sections.
 
 Validation:
 

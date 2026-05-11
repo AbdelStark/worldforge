@@ -37,6 +37,10 @@ releases may still include breaking changes when the public API needs to tighten
   capability names, provider budget failures, and secret/path redaction. CLI errors now include a
   command owner context plus a first triage step while redacting signed URLs, secret assignments,
   and host-local paths.
+- Added contributor task starter packs for provider, docs-only, demo, artifact/report,
+  evaluation/benchmark, and CLI/operator work, with issue-template links and docs tests guarding
+  required sections, validation commands, evidence artifacts, docs/changelog expectations, and
+  review checklists.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import

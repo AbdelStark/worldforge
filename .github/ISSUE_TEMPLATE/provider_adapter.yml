@@ -10,6 +10,11 @@ body:
         contracts need a provider selection record before implementation. Promotion work should
         cite the provider authoring guide promotion gate, runtime manifest, fixtures, docs, and
         live-smoke evidence or explicit blockers.
+
+        Start with the provider starter pack:
+        https://abdelstark.github.io/worldforge/task-starters/#provider-adapter-or-runtime-promotion
+        It lists likely files, forbidden shortcuts, validation commands, evidence artifacts,
+        docs/changelog expectations, and review checks for provider work.
   - type: input
     id: provider
     attributes:

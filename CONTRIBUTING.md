@@ -51,6 +51,12 @@ verifies the generated provider catalog and builds the MkDocs Material site in s
 
 The exact release gate is documented in [docs/src/playbooks.md](./docs/src/playbooks.md).
 
+Before editing an issue, pick the closest
+[Contributor Task Starters](./docs/src/task-starters.md) entry. The starter packs map provider,
+docs-only, demo, artifact/report, evaluation/benchmark, and CLI work to likely files, forbidden
+shortcuts, validation commands, evidence artifacts, docs/changelog expectations, and review
+checklists.
+
 ## Repository Layout
 
 - `src/worldforge/models.py`: public domain models, validation helpers, request policies, and

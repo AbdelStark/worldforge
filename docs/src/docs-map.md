@@ -13,6 +13,7 @@ while routing active work to the pages that own executable contracts.
 | Evaluator or research user | [Evaluation](./evaluation.md) | [Benchmarking](./benchmarking.md), [Claim-To-Evidence Map](./claim-evidence-map.md), [Artifact Schemas](./artifact-schemas.md), [Live Smoke Evidence Registry](./live-smoke-evidence.md) | claims point to preserved reports and clear claim boundaries |
 | Demo or showcase user | [Examples And CLI Commands](./examples.md) | [Demo Showcase Workflows](./demo-showcases.md), [Use Case Cookbook](./use-case-cookbook.md), [Robotics Replay Showcase](./robotics-showcase.md), [TheWorldHarness](./theworldharness.md), [Rerun Integration](./rerun.md) | checkout-safe demos or prepared-host showcase commands produce artifacts |
 | Release maintainer | [Engineering Quality](./quality.md) | [Artifact Integrity](./artifact-integrity.md), [Artifact Schemas](./artifact-schemas.md), [Operations](./operations.md), [Changelog](./changelog.md) | local gates, package checks, audit, evidence JSON, schema ownership, and release notes line up |
+| Contributor | [Contributing](./contributing.md) | [Contributor Task Starters](./task-starters.md), [Documentation Map](./docs-map.md), [Engineering Quality](./quality.md) | the issue scope, likely files, validation commands, evidence artifacts, docs updates, and review checklist are explicit |
 
 ## Roadmap History
 

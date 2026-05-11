@@ -114,6 +114,11 @@ Key directories:
 Provider work belongs in `src/worldforge/providers/`. Keep adapter capabilities honest and add
 tests for every new supported path.
 
+Before editing, pick the matching [Contributor Task Starters](./task-starters.md) entry. The
+starter packs list likely files, forbidden shortcuts, validation commands, evidence artifacts,
+docs/changelog expectations, and review checklist items for provider, docs-only, demo, artifact,
+evaluation, and CLI work.
+
 For adapter packages and in-repo providers, use the reusable contract helper:
 
 ```python
