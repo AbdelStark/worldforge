@@ -18,6 +18,7 @@ without requiring signing credentials or optional model runtimes.
 | Documented command drift | `uv run python scripts/check_docs_commands.py` | README, CLI docs, examples, operations, playbooks, and AGENTS commands resolve | fix the stale command or document the missing public entry point |
 | Wrapper portability | `uv run python scripts/check_wrapper_portability.py` | wrappers have expected shebangs, executable bits, Python 3.13 uv invocations, and docs | fix the named wrapper or documented command |
 | Core checkout performance | `uv run python scripts/check_core_performance.py` | report has `passed: true` for checkout-safe core paths | inspect the failing row and fix the regression before changing budgets |
+| Release readiness drill | `uv run python scripts/release_readiness_drill.py` | clean-pass and controlled-failure release-evidence fixtures are written under `.worldforge/release-readiness-drill/` | inspect the first failed gate and rerun its triage command |
 | Release evidence | `uv run python scripts/generate_release_evidence.py --run-gates` | Markdown and JSON summaries link gate status, artifacts, hashes, and live-smoke manifests | inspect the failed gate row and its first triage step |
 | Quality dashboard | `uv run python scripts/generate_quality_dashboard.py` | local JSON and Markdown summarize release evidence, dependency audit, core performance, skipped host-owned checks, not-run checks, and first failed gate | inspect the raw failure details section, then rerun the underlying gate artifact |
 | Release notes draft | `uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json` | maintainer-editable Markdown links changelog entries, closed issues, validation evidence, caveats, and host-owned optional runtime evidence | regenerate release evidence or fix `CHANGELOG.md`, then rerun the draft command |
@@ -53,6 +54,18 @@ single local review page because it distinguishes `failed`, `warning`, `skipped`
 checks and preserves raw output tails. It does not replace release evidence: release evidence is
 still the release-claim artifact for artifact hashes, linked run manifests, and explicit
 limitations.
+
+The release readiness drill is a rehearsal artifact, not approval to publish:
+
+```bash
+uv run python scripts/release_readiness_drill.py \
+  --workspace-dir .worldforge/release-readiness-drill
+```
+
+It writes clean-pass and controlled-failure release-evidence fixtures, records host-owned optional
+runtime skips, and names the first failed gate plus its triage command. It never creates a tag,
+publishes a package, creates a GitHub release, signs artifacts, or replaces the real release
+evidence generated from current gate outputs.
 
 Draft release notes after evidence exists:
 

@@ -146,6 +146,17 @@ For release hardening, use the dependency-audit evidence workflow in
 [Operations](./operations.md). It preserves JSON and Markdown summaries without keeping the
 temporary requirements file.
 
+To rehearse release readiness without publishing, run:
+
+```bash
+uv run python scripts/release_readiness_drill.py
+```
+
+The drill writes clean-pass and controlled-failure release-evidence fixtures, names the first
+failed gate and triage command, and keeps optional-runtime evidence as explicit host-owned skips.
+It is a quality rehearsal only; actual release approval still depends on current gate outputs,
+dependency-audit evidence, package validation, and maintainer review.
+
 For a local quality overview, generate the dashboard after release evidence, dependency-audit
 evidence, and any core-performance report exist:
 

@@ -18,11 +18,19 @@ generate_release_evidence = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules["generate_release_evidence"] = generate_release_evidence
 SPEC.loader.exec_module(generate_release_evidence)
+DRILL_SCRIPT = ROOT / "scripts" / "release_readiness_drill.py"
+DRILL_SPEC = importlib.util.spec_from_file_location("release_readiness_drill", DRILL_SCRIPT)
+assert DRILL_SPEC is not None
+release_readiness_drill = importlib.util.module_from_spec(DRILL_SPEC)
+assert DRILL_SPEC.loader is not None
+sys.modules["release_readiness_drill"] = release_readiness_drill
+DRILL_SPEC.loader.exec_module(release_readiness_drill)
 ManifestEvidence = generate_release_evidence.ManifestEvidence
 ReleaseGate = generate_release_evidence.ReleaseGate
 main = generate_release_evidence.main
 render_release_evidence = generate_release_evidence.render_release_evidence
 release_gate_results = generate_release_evidence.release_gate_results
+run_release_readiness_drill = release_readiness_drill.run_release_readiness_drill
 
 
 def test_release_evidence_renders_without_credentials(
@@ -270,3 +278,46 @@ def test_release_evidence_main_discovers_dependency_audit_artifact(
         artifact["path"].endswith("dependency-audit.json")
         for artifact in payload["release_artifacts"]
     )
+
+
+def test_release_readiness_drill_writes_pass_failure_and_optional_skips(tmp_path: Path) -> None:
+    result = run_release_readiness_drill(tmp_path)
+
+    assert result["status"] == "passed"
+    assert result["publishing_actions"] == {
+        "creates_git_tag": False,
+        "publishes_package": False,
+        "creates_github_release": False,
+        "signs_artifacts": False,
+    }
+    artifacts = {artifact["mode"]: artifact for artifact in result["artifacts"]}
+    assert set(artifacts) == {"clean-pass", "controlled-failure"}
+    assert artifacts["clean-pass"]["status"] == "passed"
+    assert artifacts["clean-pass"]["validation_summary"]["passed"] == 2
+    assert artifacts["clean-pass"]["validation_summary"]["skipped"] >= 1
+    assert artifacts["clean-pass"]["host_owned_optional_skips"]
+    assert artifacts["controlled-failure"]["status"] == "failed"
+    assert artifacts["controlled-failure"]["first_failed_gate"] == {
+        "name": "Package contract",
+        "command": "bash scripts/test_package.sh",
+        "triage_step": (
+            "Inspect `scripts/check_distribution.py`, fix the package include contract, "
+            "then rerun `bash scripts/test_package.sh`."
+        ),
+        "exit_code": 2,
+    }
+    for artifact in artifacts.values():
+        assert (ROOT / artifact["json_path"]).is_file()
+        assert (ROOT / artifact["markdown_path"]).is_file()
+
+
+def test_release_readiness_drill_cli_renders_json_summary(tmp_path: Path, capsys) -> None:
+    exit_code = release_readiness_drill.main(
+        ["--workspace-dir", str(tmp_path), "--mode", "controlled-failure", "--format", "json"]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["artifacts"][0]["mode"] == "controlled-failure"
+    assert payload["artifacts"][0]["first_failed_gate"]["name"] == "Package contract"
+    assert payload["claim_boundary"].startswith("Drill evidence rehearses")

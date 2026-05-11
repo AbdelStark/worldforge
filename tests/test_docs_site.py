@@ -2061,6 +2061,65 @@ def test_release_notes_draft_docs_cover_issue_234_contract() -> None:
         assert f"- [x] {criterion}" in expansion
 
 
+def test_release_readiness_drill_docs_cover_issue_244_contract() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    integrity = (ROOT / "docs/src/artifact-integrity.md").read_text(encoding="utf-8")
+    quality = (ROOT / "docs/src/quality.md").read_text(encoding="utf-8")
+    changelog_doc = (ROOT / "docs/src/changelog.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    expansion = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    distribution = (ROOT / "scripts/check_distribution.py").read_text(encoding="utf-8")
+    drill_script = (ROOT / "scripts/release_readiness_drill.py").read_text(encoding="utf-8")
+    release_tests = (ROOT / "tests/test_release_evidence.py").read_text(encoding="utf-8")
+
+    for doc in (operations, integrity, quality, changelog_doc, agents):
+        assert "uv run python scripts/release_readiness_drill.py" in doc
+
+    for signal in (
+        ".worldforge/release-readiness-drill",
+        "clean-pass",
+        "controlled-failure",
+        "first failed gate",
+        "host-owned optional-runtime skips",
+        "never publishes",
+        "actual release approval",
+    ):
+        assert (
+            signal in operations
+            or signal in integrity
+            or signal in quality
+            or signal in changelog_doc
+            or signal in agents
+        )
+
+    for implementation_signal in (
+        "run_release_readiness_drill",
+        "first_failed_gate",
+        "render_drill_summary_markdown",
+        "publishing_actions",
+        "controlled-failure",
+        "ReleaseGateResult",
+    ):
+        assert implementation_signal in drill_script
+
+    for test_signal in (
+        "test_release_readiness_drill_writes_pass_failure_and_optional_skips",
+        "test_release_readiness_drill_cli_renders_json_summary",
+    ):
+        assert test_signal in release_tests
+
+    assert "scripts/release_readiness_drill.py" in distribution
+    assert "release readiness drill" in changelog
+    for criterion in (
+        "Drill produces release evidence artifacts without publishing anything.",
+        "Controlled failure explains first failed gate and first triage command.",
+        "Docs distinguish drill evidence from actual release approval.",
+        "Tests cover pass, failure, and skipped optional-runtime evidence.",
+    ):
+        assert f"- [x] {criterion}" in expansion
+
+
 def test_dependency_audit_evidence_docs_cover_issue_235_contract() -> None:
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")

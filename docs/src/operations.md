@@ -742,6 +742,20 @@ triage step. Optional live provider evidence is `host-owned` unless a prepared-h
 `run_manifest.json` is linked. Attach the Markdown report, JSON summary, and linked artifacts when a
 release note or provider promotion claims live-provider coverage.
 
+Before a release review, rehearse the evidence path with the checkout-safe drill:
+
+```bash
+uv run python scripts/release_readiness_drill.py \
+  --workspace-dir .worldforge/release-readiness-drill
+```
+
+The drill writes `.worldforge/release-readiness-drill/release-readiness-drill.json` and Markdown
+plus clean-pass and controlled-failure release-evidence fixtures. It explains the first failed
+gate and first triage command, records host-owned optional-runtime skips, and never publishes,
+tags, signs, creates a GitHub release, or approves a real release. Use it to verify operator
+workflow understanding; use `scripts/generate_release_evidence.py --run-gates` for current release
+approval evidence.
+
 Generate the local quality dashboard when you need one at-a-glance page for the branch:
 
 ```bash

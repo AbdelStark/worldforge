@@ -689,10 +689,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Drill produces release evidence artifacts without publishing anything.
-- [ ] Controlled failure explains first failed gate and first triage command.
-- [ ] Docs distinguish drill evidence from actual release approval.
-- [ ] Tests cover pass, failure, and skipped optional-runtime evidence.
+- [x] Drill produces release evidence artifacts without publishing anything.
+- [x] Controlled failure explains first failed gate and first triage command.
+- [x] Docs distinguish drill evidence from actual release approval.
+- [x] Tests cover pass, failure, and skipped optional-runtime evidence.
 
 Validation:
 

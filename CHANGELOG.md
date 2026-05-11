@@ -36,6 +36,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added a scenario gallery under `examples/scenarios/` covering successful world setup,
   intentionally failed expectations, invalid action triage, evaluation-oriented setup, and
   report/export output through the existing `worldforge scenario` CLI.
+- Added a checkout-safe release readiness drill script that renders clean-pass and controlled
+  failure release-evidence artifacts, reports host-owned optional-runtime skips, and records the
+  first failed gate without publishing, tagging, signing, or creating a release.
 - Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
   `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
   safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for

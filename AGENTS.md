@@ -65,6 +65,9 @@ evaluation harnesses, and testable prototypes.
   failure lab, cookbook, external provider package, custom evaluation suite, and policy+score
   candidate lab, fixture drift review, capability negotiation preflight, and embodied policy
   replay comparison workflows.
+- `scripts/release_readiness_drill.py`: checkout-safe release readiness drill that renders
+  clean-pass and controlled-failure release-evidence artifacts without publishing, tagging,
+  signing, or running host-owned optional runtimes.
 - `scripts/generate_dependency_audit_evidence.py`: checkout-safe dependency-audit evidence wrapper
   around the documented `uv export` plus `pip-audit` flow; writes JSON and Markdown summaries
   without preserving the temporary requirements file.
@@ -179,6 +182,7 @@ uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
 uv run --extra rerun worldforge-demo-rerun
 uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases
+uv run python scripts/release_readiness_drill.py --workspace-dir .worldforge/release-readiness-drill
 scripts/robotics-showcase
 uvx --from rerun-sdk rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 scripts/lewm-lerobot-real --help
