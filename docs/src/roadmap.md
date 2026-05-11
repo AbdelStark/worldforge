@@ -41,6 +41,11 @@ For the expanded next roadmap batch, use the
 grade quality/DevX/docs, demos and end-to-end showcases, and new features. Nano World Model work is
 excluded because that issue is already assigned.
 
+For the second expansion batch, use
+[Roadmap Expansion 2](./roadmap-expansion-2.md). It adds 30 follow-on issues that deepen artifact
+schema governance, docs/test quality gates, external-provider demos, capability preflight demos,
+scenario reuse, regression reporting, runtime asset manifests, and composed workflow traces.
+
 For the active provider evidence cohort, use the
 [Provider Cohort Selection Record](./provider-cohort-selection.md). It selects the next provider
 work items, records explicit deferrals, and keeps public provider capability claims unchanged until

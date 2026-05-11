@@ -796,6 +796,40 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for the forked world summary.",
     )
 
+    world_diff = world_subparsers.add_parser(
+        "diff",
+        help="Diff two persisted or exported world JSON snapshots.",
+    )
+    world_diff.add_argument(
+        "source",
+        help="Source world id (relative to --state-dir) or path to a world JSON file.",
+    )
+    world_diff.add_argument(
+        "target",
+        help="Target world id (relative to --state-dir) or path to a world JSON file.",
+    )
+    world_diff.add_argument(
+        "--state-dir",
+        default=".worldforge/worlds",
+        help="World state directory used when source/target are world ids.",
+    )
+    world_diff.add_argument(
+        "--source-path",
+        action="store_true",
+        help="Treat source as an explicit JSON file path rather than a world id.",
+    )
+    world_diff.add_argument(
+        "--target-path",
+        action="store_true",
+        help="Treat target as an explicit JSON file path rather than a world id.",
+    )
+    world_diff.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the world diff.",
+    )
+
     world_preflight = world_subparsers.add_parser(
         "preflight",
         help="Check local world JSON state and run workspaces without mutating them.",
@@ -859,7 +893,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     runs_compare.add_argument(
         "--format",
-        choices=("json", "markdown", "csv"),
+        choices=("json", "markdown", "csv", "html"),
         default="markdown",
         help="Output format for the comparison summary.",
     )
@@ -891,7 +925,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     runs_bundle.add_argument(
         "--format",
-        choices=("json", "markdown"),
+        choices=("json", "markdown", "html"),
         default="markdown",
         help="Output format for the issue bundle summary.",
     )
@@ -1025,6 +1059,49 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Filter providers by capability name.",
     )
 
+    scenario = subparsers.add_parser(
+        "scenario",
+        help="Validate or run a JSON-native checkout-safe scenario file.",
+    )
+    scenario_subparsers = scenario.add_subparsers(
+        dest="scenario_command",
+        required=True,
+        metavar="command",
+    )
+    scenario_validate = scenario_subparsers.add_parser(
+        "validate",
+        help="Load and validate a scenario JSON file without running it.",
+    )
+    scenario_validate.add_argument("path", type=Path, help="Scenario JSON file path.")
+    scenario_validate.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the validation report.",
+    )
+
+    scenario_run = scenario_subparsers.add_parser(
+        "run",
+        help="Validate and run a scenario file end-to-end with a checkout-safe provider.",
+    )
+    scenario_run.add_argument("path", type=Path, help="Scenario JSON file path.")
+    scenario_run.add_argument(
+        "--state-dir",
+        default=".worldforge/worlds",
+        help="World state directory (the scenario world is created here).",
+    )
+    scenario_run.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the scenario run result.",
+    )
+    scenario_run.add_argument(
+        "--output",
+        type=Path,
+        help="Optional path to write the rendered result instead of stdout.",
+    )
+
     negotiate = subparsers.add_parser(
         "negotiate",
         help="Report whether providers can satisfy a capability workflow before it runs.",
@@ -1105,7 +1182,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     evaluate.add_argument(
         "--format",
-        choices=("markdown", "json", "csv"),
+        choices=("markdown", "json", "csv", "html"),
         default="markdown",
         help="Evaluation report format.",
     )
@@ -1141,7 +1218,7 @@ def _build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--concurrency", type=int, default=1, help="Concurrent workers.")
     benchmark.add_argument(
         "--format",
-        choices=("markdown", "json", "csv"),
+        choices=("markdown", "json", "csv", "html"),
         default="markdown",
         help="Benchmark report format.",
     )
@@ -1355,6 +1432,11 @@ def _cmd_runs(args: argparse.Namespace) -> int:
                     "first_triage_step": result.manifest["first_triage_step"],
                 }
             )
+        elif args.format == "html":
+            issue_html_path = result.output_dir / "issue.html"
+            if not issue_html_path.is_file():
+                raise WorldForgeError("Issue bundle did not produce issue.html.")
+            print(issue_html_path.read_text(encoding="utf-8"))
         else:
             if result.issue_template_path is None:
                 raise WorldForgeError("Issue bundle did not produce issue.md.")
@@ -1752,6 +1834,32 @@ def _cmd_world_preflight(args: argparse.Namespace) -> int:
     return 1 if report["status"] == "failed" else 0
 
 
+def _cmd_world_diff(args: argparse.Namespace, forge: WorldForge) -> int:
+    from worldforge.world_diff import diff_worlds, diff_worlds_from_paths
+
+    if args.source_path or args.target_path:
+        if not (args.source_path and args.target_path):
+            raise WorldForgeError(
+                "world diff requires --source-path and --target-path together "
+                "when comparing exported JSON files."
+            )
+        diff = diff_worlds_from_paths(args.source, args.target)
+    else:
+        source_world = forge.load_world(args.source)
+        target_world = forge.load_world(args.target)
+        diff = diff_worlds(
+            source_world.to_dict(),
+            target_world.to_dict(),
+            source_label=args.source,
+            target_label=args.target,
+        )
+    if args.format == "markdown":
+        print(diff.to_markdown(), end="")
+    else:
+        print(diff.to_json(), end="")
+    return 0
+
+
 def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
     world_dispatch = {
         "list": _cmd_world_list,
@@ -1767,11 +1875,45 @@ def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
         "export": _cmd_world_export,
         "import": _cmd_world_import,
         "fork": _cmd_world_fork,
+        "diff": _cmd_world_diff,
     }
     handler = world_dispatch.get(args.world_command)
     if handler is None:
         return None
     return handler(args, forge)
+
+
+def _cmd_scenario(args: argparse.Namespace) -> int:
+    from worldforge.scenarios import load_scenario, run_scenario
+
+    scenario = load_scenario(args.path)
+    if args.scenario_command == "validate":
+        if args.format == "markdown":
+            print(
+                f"# Scenario `{scenario.id}`\n\n"
+                f"- name: {scenario.name}\n"
+                f"- provider: {scenario.provider}\n"
+                f"- world: {scenario.world_name}\n"
+                f"- objects: {len(scenario.objects)}\n"
+                f"- actions: {len(scenario.actions)}\n"
+                f"- expected_artifacts: {len(scenario.expected_artifacts)}\n"
+            )
+        else:
+            print(scenario.to_json(), end="")
+        return 0
+
+    forge = WorldForge(state_dir=args.state_dir)
+    result = run_scenario(forge, scenario)
+    rendered = result.to_markdown() if args.format == "markdown" else result.to_json()
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            rendered if rendered.endswith("\n") else rendered + "\n",
+            encoding="utf-8",
+        )
+        return 0 if result.all_expectations_passed() else 1
+    print(rendered, end="")
+    return 0 if result.all_expectations_passed() else 1
 
 
 def _cmd_doctor(args: argparse.Namespace, forge: WorldForge) -> int:
@@ -1897,6 +2039,8 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
         print(artifacts["json"])
     elif args.format == "csv":
         print(artifacts["csv"])
+    elif args.format == "html":
+        print(artifacts["html"])
     else:
         print(artifacts["markdown"])
     return 0
@@ -2234,6 +2378,8 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
             )
     elif args.format == "csv":
         print(gate_report.to_csv() if gate_report is not None else report.to_csv())
+    elif args.format == "html":
+        print(report.to_html())
     else:
         if gate_report is None:
             print(report.to_markdown())
@@ -2289,6 +2435,12 @@ def main() -> int:
         try:
             return _cmd_drills(args)
         except (WorldForgeError, ValueError) as exc:
+            parser.exit(2, f"{exc}\n")
+
+    if args.command == "scenario":
+        try:
+            return _cmd_scenario(args)
+        except (ProviderError, WorldForgeError, ValueError) as exc:
             parser.exit(2, f"{exc}\n")
 
     if args.command == "world" and args.world_command == "preflight":

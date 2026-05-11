@@ -22,6 +22,7 @@ substitute for active issue state or executable docs.
 | Page | Role |
 | --- | --- |
 | [Roadmap](./roadmap.md) | current top-level public direction and links to historical tracks |
+| [Roadmap Expansion 2](./roadmap-expansion-2.md) | second 30-issue expansion record for artifact governance, external-provider demos, scenario reuse, and composed workflow traces |
 | [Roadmap Expansion](./roadmap-expansion.md) | 30-issue expansion record created for the current production, demo, and feature streams |
 | [Roadmap Continuation](./roadmap-continuation.md) | earlier continuation plan and completed coordination notes |
 | [Provider And Platform Roadmap](./provider-platform-roadmap.md) | prior provider-platform tracker and evidence history |

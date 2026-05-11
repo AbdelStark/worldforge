@@ -41,6 +41,12 @@ def _write_cosmos_replay_payload(tmp_path: Path, name: str, payload: object) -> 
     return path
 
 
+def _write_groot_replay_payload(tmp_path: Path, name: str, payload: object) -> Path:
+    path = tmp_path / name
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
 def _cosmos_replay_request_payload(tmp_path: Path) -> tuple[dict, dict]:
     from worldforge.harness import flows
 
@@ -64,6 +70,7 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
         "leworldmodel",
         "lerobot",
         "cosmos-policy",
+        "gr00t-replay",
         "diagnostics",
         "workbench",
     ]
@@ -73,8 +80,9 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
     assert payload[0]["command"] == "uv run worldforge-demo-leworldmodel"
     assert payload[1]["focus"] == "policy plus score planning"
     assert payload[2]["command"] == "uv run --extra harness worldforge-harness --flow cosmos-policy"
-    assert payload[3]["command"] == "uv run worldforge harness --flow diagnostics"
-    assert payload[4]["command"] == "uv run worldforge provider workbench mock"
+    assert payload[3]["command"] == "uv run --extra harness worldforge-harness --flow gr00t-replay"
+    assert payload[4]["command"] == "uv run worldforge harness --flow diagnostics"
+    assert payload[5]["command"] == "uv run worldforge provider workbench mock"
 
 
 def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
@@ -169,6 +177,264 @@ def test_harness_cosmos_policy_flow_ignores_live_cosmos_env(tmp_path, monkeypatc
 
     assert run.summary["raw_action_shape"] == [50, 14]
     assert run.summary["translated_action_count"] == 50
+
+
+def test_harness_runs_groot_replay_flow(tmp_path) -> None:
+    run = run_flow("gr00t-replay", state_dir=tmp_path)
+
+    assert run.flow.id == "gr00t-replay"
+    assert len(run.steps) == 6
+    assert len(run.metrics) == 6
+    assert run.summary["model"] == "nvidia/GR00T-N1.7-3B"
+    assert run.summary["raw_action_shapes"] == {
+        "eef_9d": [1, 40, 9],
+        "gripper_position": [1, 40, 1],
+        "joint_position": [1, 40, 7],
+    }
+    assert run.summary["translated_action_count"] == 40
+    assert run.summary["action_horizon"] == 40
+    assert run.summary["embodiment_tag"] == "OXE_DROID_RELATIVE_EEF_RELATIVE_JOINT"
+    assert run.summary["selected_action_preview"][0]["type"] == "move_to"
+    assert [event["phase"] for event in run.provider_events] == ["success"]
+    transcript = "\n".join(run.transcript)
+    assert "raw_action_shapes:" in transcript
+    assert "saved_replay_artifact: artifacts/gr00t-replay.json" in transcript
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    replay = json.loads((run.workspace_path / "artifacts/gr00t-replay.json").read_text())
+    assert replay["manifest"]["flow_id"] == "gr00t-replay"
+    assert replay["manifest"]["source_validation"] == (
+        "validated live on RTX A6000; committed artifact is sanitized"
+    )
+    assert replay["manifest"]["raw_action_shapes"] == run.summary["raw_action_shapes"]
+    assert len(replay["policy_output"]["raw_actions"]["eef_9d"][0]) == 40
+    assert len(replay["translated_actions"]) == 40
+    assert replay["provider_events"][0]["phase"] == "success"
+    assert "observation" not in replay["request"]
+    assert replay["request"]["observation_summary"]["video"]["redacted"] is True
+    assert replay["request"]["observation_summary"]["state"]["redacted"] is True
+    assert replay["request"]["observation_summary"]["language"]["redacted"] is True
+
+
+def test_harness_groot_replay_flow_can_emit_transcript(tmp_path, capsys) -> None:
+    from worldforge.harness import flows
+
+    summary = flows._run_gr00t_replay_demo(state_dir=tmp_path, emit=True)
+
+    output = capsys.readouterr().out
+    assert summary["translated_action_count"] == 40
+    assert "flow: gr00t-replay" in output
+    assert "translated_actions: 40" in output
+
+
+def test_harness_loads_groot_replay_artifact(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    path = tmp_path / "gr00t-replay.json"
+    payload = flows._groot_saved_replay_payload()
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = flows._load_groot_replay_artifact(path)
+
+    assert loaded["manifest"]["model"] == "nvidia/GR00T-N1.7-3B"
+    assert loaded["request"]["task_description"] == "fold cloth"
+    assert loaded["request"]["observation_summary"]["video"]["redacted"] is True
+    assert "observation" not in loaded["request"]
+    assert len(loaded["policy_output"]["raw_actions"]["eef_9d"][0]) == 40
+
+
+def test_harness_rejects_groot_replay_schema_drift(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    invalid_schema = _copy_json_payload(payload)
+    invalid_schema["schema_version"] = 99
+
+    with pytest.raises(WorldStateError, match="schema_version"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "bad-schema.json", invalid_schema)
+        )
+
+
+def test_harness_rejects_unredacted_groot_replay_observation(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    unredacted = _copy_json_payload(payload)
+    unredacted["request"]["observation_summary"]["video"]["redacted"] = False
+
+    with pytest.raises(WorldStateError, match="must be redacted"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "unredacted-video.json", unredacted)
+        )
+
+
+def test_harness_rejects_raw_groot_replay_observation(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    raw_observation = _copy_json_payload(payload)
+    raw_observation["request"]["observation"] = {"video": {"exterior_image": [[[[[0, 0, 0]]]]]}}
+
+    with pytest.raises(WorldStateError, match="unsupported fields"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "raw-observation.json", raw_observation)
+        )
+
+
+def test_harness_rejects_groot_replay_observation_summary_extra_keys(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    extra_summary_key = _copy_json_payload(payload)
+    extra_summary_key["request"]["observation_summary"]["video"]["raw_tensor"] = {
+        "some_raw": [[[[[0]]]]],
+    }
+
+    with pytest.raises(WorldStateError, match="unsupported fields"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "extra-summary-key.json", extra_summary_key)
+        )
+
+
+def test_harness_rejects_extra_groot_replay_artifact_fields(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    extra_field = _copy_json_payload(payload)
+    extra_field["raw_observation"] = {"token": "secret"}
+
+    with pytest.raises(WorldStateError, match="unsupported top-level fields"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "extra-field.json", extra_field)
+        )
+
+
+def test_harness_rejects_secret_groot_replay_provider_info(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    secret_info = _copy_json_payload(payload)
+    secret_info["policy_output"]["provider_info"]["api_key"] = "secret"
+
+    with pytest.raises(WorldStateError, match="provider_info contains unsupported fields"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "secret-info.json", secret_info)
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutator", "match"),
+    [
+        (
+            lambda payload: payload["manifest"].__setitem__("secret", "value"),
+            "manifest contains unsupported fields",
+        ),
+        (
+            lambda payload: payload["policy_output"].__setitem__("secret", "value"),
+            "policy_output contains unsupported fields",
+        ),
+        (
+            lambda payload: payload["response"].__setitem__("secret", "value"),
+            "response contains unsupported fields",
+        ),
+        (
+            lambda payload: payload["response"].__setitem__("translated_action_count", 1),
+            "translated_action_count must be zero",
+        ),
+        (
+            lambda payload: payload.__setitem__(
+                "translated_actions",
+                [{"type": "move_to"}],
+            ),
+            "translated_actions must be empty",
+        ),
+        (
+            lambda payload: payload["policy_output"]["provider_info"].__setitem__(
+                "runtime",
+                "",
+            ),
+            "runtime must be a non-empty string",
+        ),
+        (
+            lambda payload: payload["policy_output"]["provider_info"].__setitem__(
+                "latency_ms",
+                math.nan,
+            ),
+            "latency_ms must be a finite number",
+        ),
+    ],
+)
+def test_harness_rejects_groot_replay_retained_field_drift(
+    tmp_path,
+    mutator,
+    match: str,
+) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    drifted = _copy_json_payload(payload)
+    mutator(drifted)
+
+    with pytest.raises(WorldStateError, match=match):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "retained-field-drift.json", drifted)
+        )
+
+
+def test_harness_rejects_groot_replay_bad_raw_tensor_shape(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    bad_shape = _copy_json_payload(payload)
+    bad_shape["policy_output"]["raw_actions"]["eef_9d"][0][0] = [0.0] * 8
+
+    with pytest.raises(WorldStateError, match="shape"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "bad-shape.json", bad_shape)
+        )
+
+
+def test_harness_rejects_groot_replay_non_finite_raw_value(tmp_path) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._groot_saved_replay_payload()
+    non_finite = _copy_json_payload(payload)
+    non_finite["policy_output"]["raw_actions"]["joint_position"][0][0][0] = math.nan
+
+    with pytest.raises(WorldStateError, match="finite numeric"):
+        flows._load_groot_replay_artifact(
+            _write_groot_replay_payload(tmp_path, "non-finite.json", non_finite)
+        )
+
+
+def test_harness_groot_replay_failure_preserves_replay_artifact(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from worldforge.harness import flows
+
+    def broken_rows(_raw_actions):
+        raise WorldStateError("GR00T replay tensor decode failed")
+
+    monkeypatch.setattr(flows, "_groot_eef_rows", broken_rows)
+
+    run = run_flow("gr00t-replay", state_dir=tmp_path)
+
+    assert run.validation_errors == (
+        "GR00T action translation failed: GR00T replay tensor decode failed",
+    )
+    assert run.summary["policy_select_calls"] == 1
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    replay_path = run.workspace_path / "artifacts" / "gr00t-replay.json"
+    replay = json.loads(replay_path.read_text())
+    assert replay["manifest"]["status"] == "failed"
+    assert replay["response"]["translated_action_count"] == 0
+    assert replay["translated_actions"] == []
+    assert "failure" in [event["phase"] for event in replay["provider_events"]]
 
 
 def test_harness_loads_cosmos_policy_replay_artifact(tmp_path) -> None:

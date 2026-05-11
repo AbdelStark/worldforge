@@ -31,6 +31,7 @@
 - Authoring And API
   - [Provider Authoring Guide](./provider-authoring-guide.md)
   - [External Provider Packages](./external-providers.md)
+  - [Scenario Definition Format](./scenarios.md)
   - [Provider Routing And Fallback](./provider-routing.md)
   - [Python API](./api/python.md)
   - [Public API Stability](./api-stability.md)
@@ -45,6 +46,8 @@
 - Operations And Quality
   - [User And Operator Playbooks](./playbooks.md)
   - [Run Artifact Index](./run-index.md)
+  - [Static HTML Reports](./html-reports.md)
+  - [World State Diff And Patch](./world-diff.md)
   - [Engineering Quality](./quality.md)
   - [Operations](./operations.md)
   - [Security](./security.md)
@@ -52,6 +55,7 @@
   - [Contributing](./contributing.md)
 - Planning Records
   - [Roadmap](./roadmap.md)
+  - [Roadmap Expansion 2](./roadmap-expansion-2.md)
   - [Roadmap Expansion](./roadmap-expansion.md)
   - [Roadmap Continuation](./roadmap-continuation.md)
   - [Provider And Platform Roadmap](./provider-platform-roadmap.md)

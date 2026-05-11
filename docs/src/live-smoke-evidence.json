@@ -76,7 +76,7 @@
     {
       "provider": "gr00t",
       "capability": "policy",
-      "command": "uv run python scripts/smoke_gr00t_policy.py --run-manifest .worldforge/runs/gr00t-live/run_manifest.json",
+      "command": "GROOT_POLICY_HOST=127.0.0.1 GROOT_POLICY_PORT=5555 uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py --health-only --run-manifest .worldforge/runs/gr00t-health/run_manifest.json",
       "runtime_manifest": "gr00t:schema-1",
       "date": "2026-05-05",
       "version": "0.5.0",

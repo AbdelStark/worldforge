@@ -173,7 +173,8 @@ options:
     ("eval", "--help"): """\
 usage: worldforge eval [-h]
                        [--suite {generation,physics,planning,reasoning,transfer}]
-                       [--provider PROVIDERS] [--format {markdown,json,csv}]
+                       [--provider PROVIDERS]
+                       [--format {markdown,json,csv,html}]
                        [--state-dir STATE_DIR] [--run-workspace RUN_WORKSPACE]
 
 options:
@@ -181,7 +182,7 @@ options:
   --suite {generation,physics,planning,reasoning,transfer}
                         Built-in evaluation suite.
   --provider PROVIDERS  Provider name to evaluate. Can be repeated.
-  --format {markdown,json,csv}
+  --format {markdown,json,csv,html}
                         Evaluation report format.
   --state-dir STATE_DIR
                         World state directory.
@@ -194,7 +195,7 @@ usage: worldforge benchmark [-h] [--provider PROVIDERS]
                             [--operation {predict,reason,generate,transfer,embed,score,policy}]
                             [--iterations ITERATIONS]
                             [--concurrency CONCURRENCY]
-                            [--format {markdown,json,csv}]
+                            [--format {markdown,json,csv,html}]
                             [--input-file INPUT_FILE]
                             [--budget-file BUDGET_FILE]
                             [--state-dir STATE_DIR]
@@ -210,7 +211,7 @@ options:
                         Iterations per operation.
   --concurrency CONCURRENCY
                         Concurrent workers.
-  --format {markdown,json,csv}
+  --format {markdown,json,csv,html}
                         Benchmark report format.
   --input-file INPUT_FILE
                         Optional JSON file with deterministic benchmark

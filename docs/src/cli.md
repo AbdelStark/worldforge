@@ -71,6 +71,9 @@ uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name imported-lab
 uv run worldforge world fork <world-id> --name forked-lab
 uv run worldforge world delete <world-id>
+uv run worldforge world diff <source-id> <target-id>
+uv run worldforge scenario validate examples/scenarios/cube-on-table.json
+uv run worldforge scenario run examples/scenarios/spawn-and-move.json --state-dir .worldforge/worlds
 ```
 
 World IDs are local JSON file stems. Values with path separators or traversal-shaped input are
@@ -128,6 +131,7 @@ uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow leworldmodel
 uv run --extra harness worldforge-harness --flow lerobot
 uv run --extra harness worldforge-harness --flow cosmos-policy
+uv run --extra harness worldforge-harness --flow gr00t-replay
 uv run --extra harness worldforge-harness --flow diagnostics
 uv run --extra harness worldforge-harness --flow workbench
 uv run --extra harness worldforge-harness --flow runs
@@ -145,8 +149,10 @@ recovery actions without printing secret values.
 Expected success signal: the selected flow reaches a completed run workspace and the inspector
 shows its saved artifact paths. For `cosmos-policy`, the replay should report
 `raw_action_shape: [50, 14]`, `translated_actions: 50`, and
-`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. First triage step: open the saved
-run workspace and inspect `logs/provider-events.jsonl` plus `artifacts/cosmos-policy-replay.json`;
+`saved_replay_artifact: artifacts/cosmos-policy-replay.json`. For `gr00t-replay`, expect
+`translated_actions: 40` and `saved_replay_artifact: artifacts/gr00t-replay.json`. First triage
+step: open the saved run workspace and inspect `logs/provider-events.jsonl` plus the flow-specific
+artifact, either `artifacts/cosmos-policy-replay.json` or `artifacts/gr00t-replay.json`;
 for live-provider readiness checks, run `uv run worldforge harness --connectors --format json`.
 
 ## Packaged Demos

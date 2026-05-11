@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import io
 from collections.abc import Callable, Sequence
 from time import perf_counter
 from typing import Any
@@ -14,6 +15,7 @@ from worldforge.models import (
     ProviderCapabilities,
     ProviderEvent,
     ProviderHealth,
+    _redact_observable_text,
 )
 
 from ._config import (
@@ -39,11 +41,168 @@ GROOT_POLICY_STRICT_ENV_VAR = "GROOT_POLICY_STRICT"
 GROOT_EMBODIMENT_TAG_ENV_VAR = "GROOT_EMBODIMENT_TAG"
 DEFAULT_GROOT_POLICY_PORT = 5555
 DEFAULT_GROOT_POLICY_TIMEOUT_MS = 15_000
+DEFAULT_GROOT_POLICY_MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+DEFAULT_GROOT_POLICY_MAX_ARRAY_BYTES = 64 * 1024 * 1024
+_BYTES_TYPES = (bytes, bytearray, memoryview)
+_FALLBACK_CLIENT_IMPORTS = {
+    "msgpack": "msgpack",
+    "numpy": "numpy",
+    "pyzmq": "zmq",
+}
 
 ActionTranslator = Callable[
     [object, JSONDict, JSONDict],
     Sequence[Action] | Sequence[Sequence[Action]],
 ]
+
+
+def _positive_int(value: int, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer.")
+    return value
+
+
+class _GrootZmqPolicyClient:
+    """Small GR00T PolicyClient-compatible fallback for Python 3.13 clients.
+
+    NVIDIA's full `gr00t` package is currently pinned to Python 3.10, while WorldForge is
+    packaged for Python 3.13. This fallback implements the documented ZMQ/msgpack client protocol
+    so a WorldForge process can call a host-owned GR00T server without installing the full runtime.
+    """
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        timeout_ms: int,
+        api_token: str | None = None,
+        strict: bool = False,
+        max_response_bytes: int = DEFAULT_GROOT_POLICY_MAX_RESPONSE_BYTES,
+        max_array_bytes: int = DEFAULT_GROOT_POLICY_MAX_ARRAY_BYTES,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.timeout_ms = timeout_ms
+        self.api_token = api_token
+        self.strict = strict
+        self.max_response_bytes = _positive_int(
+            max_response_bytes,
+            name="max_response_bytes",
+        )
+        self.max_array_bytes = _positive_int(
+            max_array_bytes,
+            name="max_array_bytes",
+        )
+        self._msgpack = importlib.import_module("msgpack")
+        self._np = importlib.import_module("numpy")
+        self._zmq = importlib.import_module("zmq")
+        self._context = self._zmq.Context()
+        self._socket = None
+        self._init_socket()
+
+    def _init_socket(self) -> None:
+        self._socket = self._context.socket(self._zmq.REQ)
+        self._socket.setsockopt(self._zmq.RCVTIMEO, self.timeout_ms)
+        self._socket.setsockopt(self._zmq.SNDTIMEO, self.timeout_ms)
+        if hasattr(self._zmq, "MAXMSGSIZE"):
+            self._socket.setsockopt(self._zmq.MAXMSGSIZE, self.max_response_bytes)
+        self._socket.connect(f"tcp://{self.host}:{self.port}")
+
+    def _close_socket(self) -> None:
+        if self._socket is None:
+            return
+        try:
+            self._socket.close(linger=0)
+        except TypeError:
+            self._socket.close()
+        finally:
+            self._socket = None
+
+    def _encode_custom(self, obj: object) -> object:
+        if isinstance(obj, self._np.ndarray):
+            output = io.BytesIO()
+            self._np.save(output, obj, allow_pickle=False)
+            return {"__ndarray_class__": True, "as_npy": output.getvalue()}
+        return obj
+
+    def _decode_custom(self, obj: object) -> object:
+        if not isinstance(obj, dict):
+            return obj
+        if "__ndarray_class__" in obj:
+            as_npy = obj.get("as_npy")
+            if not isinstance(as_npy, _BYTES_TYPES):
+                raise RuntimeError("GR00T PolicyServer returned an invalid ndarray payload.")
+            if len(as_npy) > self.max_array_bytes:
+                raise RuntimeError(
+                    f"GR00T PolicyServer ndarray payload exceeds {self.max_array_bytes} bytes."
+                )
+            return self._np.load(io.BytesIO(as_npy), allow_pickle=False)
+        if "__ModalityConfig_class__" in obj:
+            return obj["as_json"]
+        return obj
+
+    def _to_bytes(self, payload: object) -> bytes:
+        return self._msgpack.packb(payload, default=self._encode_custom)
+
+    def _from_bytes(self, payload: bytes) -> object:
+        if isinstance(payload, _BYTES_TYPES) and len(payload) > self.max_response_bytes:
+            raise RuntimeError(
+                f"GR00T PolicyServer response exceeds {self.max_response_bytes} bytes."
+            )
+        return self._msgpack.unpackb(
+            payload,
+            object_hook=self._decode_custom,
+            raw=False,
+        )
+
+    def call_endpoint(
+        self,
+        endpoint: str,
+        data: dict[str, object] | None = None,
+        *,
+        requires_input: bool = True,
+    ) -> object:
+        request: dict[str, object] = {"endpoint": endpoint}
+        if requires_input:
+            request["data"] = dict(data or {})
+        if self.api_token is not None:
+            request["api_token"] = self.api_token
+        self._socket.send(self._to_bytes(request))
+        response = self._from_bytes(self._socket.recv())
+        if isinstance(response, dict) and "error" in response:
+            detail = _redact_observable_text(str(response["error"])).strip()
+            raise RuntimeError(f"Server error: {detail}")
+        return response
+
+    def ping(self) -> bool:
+        try:
+            self.call_endpoint("ping", requires_input=False)
+            return True
+        except Exception:
+            self._close_socket()
+            self._init_socket()
+            return False
+
+    def get_action(
+        self,
+        observation: object,
+        options: dict[str, object] | None = None,
+    ) -> object:
+        payload: dict[str, object] = {"observation": observation}
+        if options is not None:
+            payload["options"] = options
+        response = self.call_endpoint("get_action", payload)
+        return tuple(response) if isinstance(response, list) else response
+
+    def reset(self, options: dict[str, object] | None = None) -> object:
+        payload: dict[str, object] = {}
+        if options is not None:
+            payload["options"] = options
+        return self.call_endpoint("reset", payload)
+
+    def get_modality_config(self) -> object:
+        return self.call_endpoint("get_modality_config", requires_input=False)
 
 
 class GrootPolicyClientProvider(BaseProvider):
@@ -276,7 +435,7 @@ class GrootPolicyClientProvider(BaseProvider):
         try:
             policy_module = importlib.import_module("gr00t.policy.server_client")
         except ImportError:
-            return missing_optional_dependency_detail("gr00t", "gr00t.policy.server_client")
+            return self._fallback_dependency_error()
         except Exception as exc:
             message = str(exc).strip()
             suffix = f": {message}" if message else ""
@@ -286,6 +445,28 @@ class GrootPolicyClientProvider(BaseProvider):
             )
         if not hasattr(policy_module, "PolicyClient"):
             return "gr00t.policy.server_client.PolicyClient is unavailable"
+        return None
+
+    def _fallback_dependency_error(self) -> str | None:
+        missing: list[str] = []
+        for package, module_name in _FALLBACK_CLIENT_IMPORTS.items():
+            try:
+                importlib.import_module(module_name)
+            except ImportError:
+                missing.append(package)
+            except Exception as exc:
+                message = str(exc).strip()
+                suffix = f": {message}" if message else ""
+                return (
+                    "GR00T fallback ZMQ client optional dependency import failed "
+                    f"({module_name}: {type(exc).__name__}{suffix})"
+                )
+        if missing:
+            packages = ", ".join(missing)
+            return (
+                missing_optional_dependency_detail("gr00t", "gr00t.policy.server_client")
+                + f"; alternatively install fallback client packages: {packages}"
+            )
         return None
 
     def _load_client(self) -> Any:
@@ -298,6 +479,16 @@ class GrootPolicyClientProvider(BaseProvider):
         try:
             policy_module = importlib.import_module("gr00t.policy.server_client")
             client_type = policy_module.PolicyClient
+        except ImportError as exc:
+            dependency_error = self._fallback_dependency_error()
+            if dependency_error is not None:
+                raise ProviderError(dependency_error) from exc
+            client_type = _GrootZmqPolicyClient
+        except Exception as exc:
+            detail = _redact_observable_text(str(exc)).strip()
+            suffix = f": {detail}" if detail else ""
+            raise ProviderError(f"Failed to import GR00T PolicyClient{suffix}") from exc
+        try:
             self._policy_client = client_type(
                 host=self.host,
                 port=self.port,
@@ -306,10 +497,15 @@ class GrootPolicyClientProvider(BaseProvider):
                 strict=self.strict,
             )
         except Exception as exc:
-            raise ProviderError(f"Failed to create GR00T PolicyClient: {exc}") from exc
+            detail = _redact_observable_text(str(exc)).strip()
+            suffix = f": {detail}" if detail else ""
+            raise ProviderError(f"Failed to create GR00T PolicyClient{suffix}") from exc
         return self._policy_client
 
-    def _validate_info(self, info: JSONDict) -> tuple[JSONDict, JSONDict | None]:
+    def _validate_info(
+        self,
+        info: JSONDict,
+    ) -> tuple[JSONDict, JSONDict | None, int | None, str | None]:
         if not isinstance(info, dict):
             raise ProviderError("GR00T policy info must be a JSON object.")
         observation = info.get("observation")
@@ -322,7 +518,28 @@ class GrootPolicyClientProvider(BaseProvider):
         options = info.get("options")
         if options is not None and not isinstance(options, dict):
             raise ProviderError("GR00T policy info.options must be a JSON object when provided.")
-        return dict(observation), dict(options) if isinstance(options, dict) else None
+        action_horizon_value = info.get("action_horizon")
+        try:
+            action_horizon = (
+                optional_positive_int(action_horizon_value, name="GR00T action_horizon")
+                if action_horizon_value is not None
+                else None
+            )
+        except Exception as exc:
+            raise ProviderError(str(exc)) from exc
+        embodiment_tag = info.get("embodiment_tag")
+        if embodiment_tag is not None:
+            if not isinstance(embodiment_tag, str) or not embodiment_tag.strip():
+                raise ProviderError(
+                    "GR00T policy info.embodiment_tag must be a non-empty string when provided."
+                )
+            embodiment_tag = embodiment_tag.strip()
+        return (
+            dict(observation),
+            dict(options) if isinstance(options, dict) else None,
+            action_horizon,
+            embodiment_tag,
+        )
 
     def _translate_actions(
         self,
@@ -345,7 +562,12 @@ class GrootPolicyClientProvider(BaseProvider):
     def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
         started = perf_counter()
         try:
-            observation, options = self._validate_info(info)
+            (
+                observation,
+                options,
+                requested_action_horizon,
+                requested_embodiment_tag,
+            ) = self._validate_info(info)
             client = self._load_client()
             get_action = getattr(client, "get_action", None)
             if not callable(get_action):
@@ -385,13 +607,16 @@ class GrootPolicyClientProvider(BaseProvider):
                 info=info,
                 provider_info=normalized_provider_info,
             )
-            action_horizon_value = info.get("action_horizon")
-            action_horizon = (
-                optional_positive_int(action_horizon_value, name="GR00T action_horizon")
-                if action_horizon_value is not None
-                else len(candidate_plans[0])
-            )
-            embodiment_tag = str(info.get("embodiment_tag") or self.embodiment_tag or "").strip()
+            translated_action_horizon = len(candidate_plans[0])
+            if (
+                requested_action_horizon is not None
+                and requested_action_horizon != translated_action_horizon
+            ):
+                raise ProviderError(
+                    "GR00T policy info.action_horizon must match the translated action count."
+                )
+            action_horizon = requested_action_horizon or translated_action_horizon
+            embodiment_tag = requested_embodiment_tag or self.embodiment_tag
             result = ActionPolicyResult(
                 provider=self.name,
                 actions=list(candidate_plans[0]),

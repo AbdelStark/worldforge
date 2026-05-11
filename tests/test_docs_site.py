@@ -380,6 +380,87 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
     assert "host must provide" in showcase
 
 
+def test_cosmos_policy_remote_gpu_runbook_documents_operator_path() -> None:
+    provider_doc = (ROOT / "docs/src/providers/cosmos-policy.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+
+    for required in (
+        "## Remote GPU Runbook",
+        "48 GB or larger GPU memory class",
+        "WorldForge never starts Cosmos-Policy",
+        "ssh -N -L 8777:127.0.0.1:8777",
+        "COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777",
+        "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1",
+        "COSMOS_POLICY_ALLOWED_HOSTS",
+        "uv run worldforge provider health cosmos-policy",
+        "uv run worldforge-smoke-cosmos-policy",
+        "--health-only",
+        "--policy-info-json /path/to/policy_info.json",
+        "--allow-translator-code",
+        "status=skipped",
+        "status=passed",
+        "50 x 14",
+        "json_numpy",
+        "Hibernate or terminate the GPU host",
+    ):
+        assert required in provider_doc
+
+    for required in (
+        "Cosmos-Policy remote GPU runbook",
+        "prefer an SSH",
+        "port `8777`",
+        "sanitized manifests/replay artifacts",
+        "hibernate or terminate the GPU host",
+    ):
+        assert required in operations
+
+    for required in (
+        "Cosmos-Policy remote GPU checklist",
+        "48 GB or larger GPU memory class",
+        "WorldForge should only see the `/act` endpoint",
+        "COSMOS_POLICY_ALLOWED_HOSTS",
+        "status=passed",
+        "50 x 14",
+        "Hibernate or terminate the GPU host",
+    ):
+        assert required in playbooks
+
+
+def test_gr00t_live_smoke_docs_cover_remote_policy_contract() -> None:
+    provider_doc = (ROOT / "docs/src/providers/gr00t.md").read_text(encoding="utf-8")
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    evidence = (ROOT / "docs/src/live-smoke-evidence.json").read_text(encoding="utf-8")
+    manifest = (ROOT / "src/worldforge/providers/runtime_manifests/gr00t.json").read_text(
+        encoding="utf-8"
+    )
+
+    for signal in (
+        "## Live Smoke Evidence",
+        "--health-only",
+        "--allow-translator-code",
+        "--allow-observation-code",
+        "--run-manifest .worldforge/runs/gr00t-health/run_manifest.json",
+        "--run-manifest .worldforge/runs/gr00t-live/run_manifest.json",
+        "status=skipped",
+        "status=passed",
+        "ssh -N -L 5555:127.0.0.1:5555",
+        "uv run worldforge provider health gr00t",
+        "Hibernate or terminate",
+    ):
+        assert signal in provider_doc or signal in operations or signal in playbooks
+
+    for doc in (operations, playbooks):
+        assert "GROOT_POLICY_HOST=127.0.0.1" in doc
+        assert "scripts/smoke_gr00t_policy.py" in doc
+        assert "status=skipped" in doc
+        assert "status=passed" in doc
+
+    assert "--health-only" in evidence
+    assert "scripts/smoke_gr00t_policy.py --health-only" in manifest
+
+
 def test_provider_cohort_selection_record_covers_issue_130_contract() -> None:
     record = (ROOT / "docs/src/provider-cohort-selection.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs/src/roadmap.md").read_text(encoding="utf-8")
@@ -917,6 +998,51 @@ def test_roadmap_expansion_documents_three_streams_and_thirty_issues() -> None:
         assert expansion.count(section) >= 30
 
 
+def test_roadmap_expansion_2_documents_three_streams_and_thirty_issues() -> None:
+    expansion = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap.md").read_text(encoding="utf-8")
+    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert "Roadmap Expansion 2" in roadmap
+    assert "[Roadmap Expansion 2](./roadmap-expansion-2.md)" in summary
+    assert "Roadmap Expansion 2: roadmap-expansion-2.md" in mkdocs
+    assert "second 30-issue roadmap expansion" in changelog
+    assert "roadmap: expansion-2" in expansion
+
+    streams = (
+        "Production Grade, Quality, DevX, And Docs",
+        "Demos, End-to-End Showcases, And Use Cases",
+        "New Features",
+    )
+    for stream in streams:
+        assert stream in expansion
+
+    assert expansion.count("### WF-PQDX2-") == 10
+    assert expansion.count("### WF-DEMO2-") == 10
+    assert expansion.count("### WF-FEAT2-") == 10
+    assert "GitHub issue: pending" not in expansion
+    assert expansion.count("https://github.com/AbdelStark/worldforge/issues/") >= 30
+
+    for label in (
+        "stream: production-quality",
+        "stream: demos-showcases",
+        "stream: new-features",
+    ):
+        assert label in expansion
+
+    required_sections = (
+        "Problem:",
+        "Scope:",
+        "Out of scope:",
+        "Acceptance criteria:",
+        "Validation:",
+    )
+    for section in required_sections:
+        assert expansion.count(section) >= 30
+
+
 def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
@@ -1258,6 +1384,7 @@ def test_documentation_information_architecture_cover_issue_188_contract() -> No
         assert route in docs_map
 
     for roadmap_page in (
+        "Roadmap Expansion 2",
         "Roadmap Expansion",
         "Roadmap Continuation",
         "Provider And Platform Roadmap",

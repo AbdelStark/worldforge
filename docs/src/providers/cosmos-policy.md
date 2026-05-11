@@ -189,7 +189,92 @@ plan = world.plan(
 WorldForge serializes translated policy candidates into `Action.to_dict()` payloads before calling
 the score provider unless `score_action_candidates=...` supplies model-native score candidates.
 
-## Live Smoke Evidence
+## Remote GPU Runbook
+
+Use this path when Cosmos-Policy is running on a rented or lab GPU and WorldForge is running from
+a local checkout or separate operator host. The boundary stays explicit: the NVIDIA host owns the
+server, checkpoint, CUDA runtime, Hugging Face or NVIDIA access, and robot-specific preprocessing.
+WorldForge owns the request, response, action-shape validation, action translation boundary,
+provider events, and smoke manifest.
+
+### 1. Prepare the GPU host
+
+Recommended host shape:
+
+- 48 GB or larger GPU memory class for the current ALOHA Predict2 path. Use the upstream
+  Cosmos-Policy requirements when they are stricter.
+- Linux host with working NVIDIA drivers plus the CUDA/Docker runtime required by the upstream
+  Cosmos-Policy checkout.
+- Access to the required checkpoint files and any gated model approvals. Keep tokens on the GPU
+  host or secret manager, not in WorldForge docs, commits, run manifests, or provider events.
+- A Cosmos-Policy server listening on `/act`, usually on TCP port `8777`.
+- No robot hardware requirement for the smoke path. The smoke sends prepared ALOHA observations
+  and translates the returned action chunk into WorldForge actions.
+
+Success signal: the upstream server process is alive, the GPU is visible on the host, and the
+server is listening on the configured `/act` port.
+
+First triage: inspect the upstream server logs, confirm the model finished loading, and confirm
+the host GPU with the platform's normal NVIDIA tooling before changing WorldForge code.
+
+### 2. Expose the endpoint narrowly
+
+Prefer an SSH tunnel from the operator machine to the GPU host:
+
+```bash
+ssh -N -L 8777:127.0.0.1:8777 <user>@<gpu-host>
+```
+
+Then point WorldForge at localhost and explicitly allow the trusted local endpoint:
+
+```bash
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
+  uv run worldforge provider health cosmos-policy
+```
+
+If a public or private network URL is required instead, restrict inbound TCP `8777` to the
+operator IP or VPN CIDR and set `COSMOS_POLICY_ALLOWED_HOSTS` to the exact host name or IP.
+Do not expose the policy server world-open.
+
+### 3. Configure WorldForge
+
+| Setting | Required | Use |
+| --- | --- | --- |
+| `COSMOS_POLICY_BASE_URL` | yes | Base URL for the host-owned `/act` server. |
+| `COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1` | only for tunnels/lab localhost | Allows trusted localhost, private, or lab-network URLs. |
+| `COSMOS_POLICY_ALLOWED_HOSTS` | recommended for network URLs | Restricts the configured endpoint to known hosts. |
+| `COSMOS_POLICY_API_TOKEN` | optional | Bearer token for a reverse proxy or protected server. |
+| `COSMOS_POLICY_TIMEOUT_SECONDS` | optional | Request timeout for slow first inference. Defaults to `600`. |
+
+`COSMOS_POLICY_BASE_URL` is enough for endpoint readiness checks. A provider instance still needs
+a trusted host `action_translator` before it can return executable policy actions.
+
+### 4. Run the health-only smoke
+
+Prepared hosts can pass `--health-only` to validate WorldForge configuration without sending a
+policy request. Cosmos-Policy does not expose a non-mutating health endpoint in the server shape
+this adapter targets, so health checks confirm configuration only; live inference evidence comes
+from `select_actions(...)` or the full smoke command below.
+
+```bash
+COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
+  uv run worldforge-smoke-cosmos-policy \
+    --health-only \
+    --run-manifest .worldforge/runs/cosmos-policy-health/run_manifest.json
+```
+
+Expected success signal: `run_manifest.json` records `capability=policy` with `status=skipped`.
+
+First triage: run `uv run worldforge provider health cosmos-policy` to confirm configuration,
+then check tunnel/firewall reachability before sending a full `/act` request.
+
+### 5. Run the full `/act` smoke
+
+The full smoke requires ALOHA policy information to be prepared and a trusted action translator to
+be provided. The translator is host code, so the command requires `--allow-translator-code` as an
+explicit opt-in.
 
 Connect to a running Cosmos-Policy ALOHA server:
 
@@ -203,36 +288,34 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
     --run-manifest .worldforge/runs/cosmos-policy-live/run_manifest.json
 ```
 
-`--translator` imports and executes local Python code. The smoke command requires
-`--allow-translator-code` so operators explicitly opt into running trusted translator code.
+Expected success signal: `run_manifest.json` records `capability=policy` with `status=passed`,
+the summary includes a non-empty action shape such as `50 x 14`, and provider events stay
+sanitized.
 
-Prepared hosts can also pass `--health-only` to validate WorldForge configuration without sending
-a policy request. Cosmos-Policy does not expose a non-mutating health endpoint in the server shape
-this adapter targets, so health checks confirm configuration only; live inference evidence comes
-from `select_actions(...)` or the smoke command above.
-
-```bash
-COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
-COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
-  uv run worldforge-smoke-cosmos-policy \
-    --health-only \
-    --run-manifest .worldforge/runs/cosmos-policy-health/run_manifest.json
-```
-
-Expected success signal:
-
-- `--health-only`: run manifest records `capability=policy` with `status=skipped`.
-- Full smoke (`--policy-info-json` + `--translator`): run manifest records `capability=policy`
-  with `status=passed`.
-
-First triage step:
-
-- Run `uv run worldforge provider health cosmos-policy` to verify configuration, then run the
-  full smoke command to confirm `/act` reachability.
+First triage: if configuration is healthy but the full smoke fails, inspect the GPU server logs,
+the `policy_info.json` ALOHA observation shape, the translator import path, and the raw action
+shape. The live RTX A6000 validation found that real Cosmos responses can use `json_numpy`-style
+action rows rather than plain JSON rows; WorldForge decodes and validates that shape before
+translation.
 
 The smoke can write a sanitized `run_manifest.json` with value-free environment presence, runtime
 manifest id, input fixture digest, event count, and result digest. The manifest does not store
 tokens, raw image tensors, checkpoint bytes, or robot controller state.
+
+### 6. Shut down or preserve evidence
+
+Copy only sanitized evidence such as `run_manifest.json`, provider event counts, result digests,
+and small checkout-safe replay artifacts. Do not commit GPU logs with tokens, raw images, raw
+future tensors, checkpoint files, Docker layers, or downloaded datasets.
+
+Hibernate or terminate the GPU host when the smoke is done. Cloud billing usually continues while
+the VM is running, and hibernated machines can still incur disk or public IP charges.
+
+## Live Smoke Evidence
+
+Use the runbook above to produce live evidence. A committed replay artifact should be sanitized
+and deterministic; it should not be described as a committed live GPU artifact unless the raw
+runtime output is intentionally preserved outside the repository.
 
 ## Failure Modes
 

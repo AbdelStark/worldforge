@@ -2,14 +2,14 @@
   "schema_version": 1,
   "provider": "gr00t",
   "capabilities": ["policy"],
-  "optional_dependencies": ["gr00t.policy.server_client"],
+  "optional_dependencies": ["gr00t.policy.server_client", "msgpack", "numpy", "pyzmq"],
   "required_env_vars": ["GROOT_POLICY_HOST"],
   "optional_env_vars": ["GROOT_POLICY_PORT", "GROOT_POLICY_TIMEOUT_MS", "GROOT_POLICY_API_TOKEN", "GROOT_POLICY_STRICT", "GROOT_EMBODIMENT_TAG"],
   "default_model": "host-selected GR00T policy server",
   "device_support": ["remote-policy-server", "gpu-host-owned"],
   "host_owned_artifacts": ["GR00T policy server", "embodiment assets", "action translator"],
-  "minimum_smoke_command": "WORLD_FORGE_RUN_LIVE=1 GROOT_POLICY_HOST=127.0.0.1 uv run pytest tests/test_gr00t_provider.py -m live --provider-profile gr00t",
-  "expected_success_signal": "health() can create PolicyClient and ping the policy server",
-  "setup_hint": "install the host-owned Isaac GR00T client/server runtime before live policy checks",
+  "minimum_smoke_command": "GROOT_POLICY_HOST=127.0.0.1 GROOT_POLICY_PORT=5555 uv run --with msgpack --with pyzmq --with numpy python scripts/smoke_gr00t_policy.py --health-only --run-manifest .worldforge/runs/gr00t-health/run_manifest.json",
+  "expected_success_signal": "run_manifest.json records capability=policy with status=skipped for health-only or status=passed for a full translated policy request",
+  "setup_hint": "install the host-owned Isaac GR00T client/server runtime before live policy checks; use --allow-translator-code only for trusted translator code",
   "docs_path": "docs/src/providers/gr00t.md"
 }

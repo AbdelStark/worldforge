@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "cube-on-table",
+  "name": "Cube on a table",
+  "description": "Spawn a single cube and advance the world by two predict steps with the mock provider.",
+  "provider": "mock",
+  "world": {
+    "name": "cube-table-world",
+    "objects": [
+      {
+        "name": "cube",
+        "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+          "max": {"x": 0.05, "y": 0.55, "z": 0.05}
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "kind": "predict",
+      "parameters": {"x": 0.5, "y": 0.5, "z": 0.0, "steps": 2}
+    }
+  ],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 1},
+    {"label": "step_count", "kind": "step", "value": 2}
+  ],
+  "metadata": {}
+}

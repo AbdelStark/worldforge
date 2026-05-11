@@ -9,6 +9,55 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
+  production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
+  focuses on artifact schema governance, executable docs snippets, optional dependency import
+  boundaries, provider configuration indexing, external-provider demos, capability preflight
+  demos, scenario matrices, runtime asset manifests, report renderer extension points, and composed
+  workflow traces.
+- Added static HTML report export for evaluation reports, benchmark reports,
+  preserved-run comparisons, and issue-ready bundles. `worldforge eval`,
+  `worldforge benchmark`, `worldforge runs compare`, and `worldforge runs
+  bundle` accept `--format html`; `worldforge runs bundle` always also writes
+  `summary.html` and `issue.html` to the bundle directory. The HTML output is
+  self-contained — inline CSS only, no JavaScript, no external assets, no
+  anchor tags. All user-supplied text is escaped via `html.escape`. New public
+  surface: `worldforge.html_report.render_evaluation_html`,
+  `render_benchmark_html`, `render_comparison_html`,
+  `render_evidence_bundle_html`, `render_issue_bundle_html`,
+  `HTML_REPORT_SCHEMA_VERSION`. Documentation lives at
+  `docs/src/html-reports.md`, including when to prefer HTML versus
+  JSON/Markdown.
+- Added JSON-native world state diff and patch artifacts. `worldforge world
+  diff <source> <target>` walks two persisted worlds (default) or two exported
+  JSON files (with `--source-path --target-path`) and emits a
+  schema-versioned diff covering top-level fields (`name`, `provider`,
+  `description`, `step`, `metadata`), scene-object additions/removals/updates
+  with before/after payloads, and a history summary. The companion
+  `WorldPatch.from_diff(diff)` and `apply_patch(state, patch)` helpers apply
+  changes to a base snapshot, validating each operation through `SceneObject`,
+  `Position`, and `BBox` so traversal-shaped IDs, incoherent bounding boxes,
+  malformed pose payloads, or removing missing objects raise `WorldStateError`
+  instead of silently corrupting state. New public surface:
+  `worldforge.world_diff.diff_worlds`, `diff_worlds_from_paths`,
+  `apply_patch`, `WorldDiff`, `WorldPatch`, `ObjectChange`,
+  `WorldFieldChange`, `WORLD_DIFF_SCHEMA_VERSION`. Documentation lives at
+  `docs/src/world-diff.md`.
+- Added a JSON-native scenario definition format and a runner. The new
+  `worldforge.scenarios` module ships `Scenario`, `ScenarioObjectSpec`,
+  `ScenarioAction`, `ScenarioExpectedArtifact`, and `ScenarioResult`. A
+  scenario captures a checkout-safe recipe — provider, initial scene
+  objects, an ordered sequence of typed actions (`move_to`, `spawn_object`,
+  `predict`), and expected artifacts (`object_count`, `step`,
+  `object_position`) — that runs end-to-end through `World.predict` without
+  arbitrary Python execution. `worldforge scenario validate <path>` and
+  `worldforge scenario run <path>` validate and execute scenario files;
+  the run exits non-zero when any expectation fails. New public surface:
+  `load_scenario`, `parse_scenario`, `run_scenario`, `Scenario`,
+  `ScenarioAction`, `ScenarioObjectSpec`, `ScenarioExpectedArtifact`,
+  `ScenarioExpectationCheck`, `ScenarioResult`, `SCENARIO_SCHEMA_VERSION`,
+  `SCENARIO_ACTION_KINDS`. Sample scenarios live under
+  `examples/scenarios/`. Documentation lives at `docs/src/scenarios.md`.
 - Added a local run artifact index. `worldforge runs index --workspace-dir <dir>`
   walks `<dir>/runs/` read-only and emits a sanitized summary of every preserved
   run workspace, with optional filters for provider (substring), capability,
