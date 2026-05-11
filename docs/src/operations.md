@@ -78,7 +78,9 @@ credential rotation.
 ## Configuration
 
 Configuration comes from constructor arguments and environment variables documented in
-`.env.example`.
+`.env.example`. The generated [Provider Configuration Index](./provider-configuration-index.md)
+is the canonical cross-provider table for required inputs, optional inputs, host-owned packages,
+prepared-host assets, default request timeouts, first diagnostic commands, and smoke commands.
 
 - `COSMOS_BASE_URL` enables the Cosmos adapter.
 - `NVIDIA_API_KEY` is optional bearer auth for Cosmos.

@@ -203,6 +203,9 @@ rm -f "$tmp_req"
   exception families.
 - `docs/src/providers/`: generated provider catalog plus provider-specific config, contracts,
   limits, failure modes, and validation notes.
+- `docs/src/provider-configuration-index.md`: generated provider configuration contract index for
+  env vars, optional packages, credential gates, prepared-host assets, timeouts, diagnostics, and
+  smoke commands.
 - `docs/src/assets/`: images used by the MkDocs Material site and README showcase.
 - `mkdocs.yml`: GitHub Pages navigation, theme, and strict docs-build configuration.
 - `CONTRIBUTING.md` and `docs/src/contributing.md`: contributor setup, validation gates,

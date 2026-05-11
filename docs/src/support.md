@@ -21,6 +21,10 @@ uv run worldforge doctor
 uv run worldforge provider info <provider>
 ```
 
+Check the [Provider Configuration Index](./provider-configuration-index.md) before filing provider
+setup issues; it lists the required env vars, optional inputs, host-owned runtime packages,
+prepared-host assets, default timeouts, and first diagnostic command for every catalog provider.
+
 It is safe to attach provider profiles, doctor output, provider health, runtime manifests,
 `config_summary().to_dict()` output, smoke `run_manifest.json` files, benchmark reports, and
 preserved JSON inputs after checking that host-specific object names are acceptable to share. Do

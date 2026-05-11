@@ -6,6 +6,8 @@ should expect.
 
 Provider discovery and auto-registration policy live in `src/worldforge/providers/catalog.py`.
 Keep this page and the provider pages aligned with that catalog.
+For the operator-facing environment, optional package, timeout, prepared-host asset, and first
+diagnostic contract, use the [Provider Configuration Index](../provider-configuration-index.md).
 
 ## Provider Catalog
 

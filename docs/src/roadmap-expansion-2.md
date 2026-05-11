@@ -201,10 +201,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Each catalog provider has a configuration row with required and optional inputs.
-- [ ] The index flags provider docs or `.env.example` drift.
-- [ ] Scaffold providers remain clearly marked as scaffold behavior.
-- [ ] Docs link the index from provider authoring, operations, and support pages.
+- [x] Each catalog provider has a configuration row with required and optional inputs.
+- [x] The index flags provider docs or `.env.example` drift.
+- [x] Scaffold providers remain clearly marked as scaffold behavior.
+- [x] Docs link the index from provider authoring, operations, and support pages.
 
 Validation:
 

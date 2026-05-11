@@ -19,6 +19,7 @@
 - Decisions
   - [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md)
 - [Providers](./providers/README.md)
+  - [Provider Configuration Index](./provider-configuration-index.md)
   - [Cosmos](./providers/cosmos.md)
   - [Cosmos-Policy](./providers/cosmos-policy.md)
   - [Genie](./providers/genie.md)

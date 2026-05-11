@@ -11,6 +11,7 @@ Related docs:
 - [World Model Taxonomy](./world-model-taxonomy.md)
 - [Architecture](./architecture.md)
 - [Providers](./providers/README.md)
+- [Provider Configuration Index](./provider-configuration-index.md)
 - [Python API](./api/python.md)
 
 ## Scaffold Generator
@@ -63,7 +64,8 @@ uv run python scripts/generate_provider_docs.py --check
 
 The report lists the conformance helper required for every advertised capability, planned
 capabilities for scaffold/candidate adapters, runtime manifest status, docs/catalog drift status,
-redaction checks, safe artifact references, and validation commands. It validates
+provider configuration index drift, redaction checks, safe artifact references, and validation
+commands. It validates
 `tests/fixtures/providers/<provider>_*.json` playback files when they exist, including module-safe
 prefixes such as `jepa_wms_*.json` for direct-construction candidates. It also names missing
 promotion evidence by future status (`experimental`, `beta`, `stable`) so a scaffold gap is visible

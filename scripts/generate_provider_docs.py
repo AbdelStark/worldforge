@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 PROVIDER_INDEX = ROOT / "docs" / "src" / "providers" / "README.md"
+PROVIDER_CONFIG_INDEX = ROOT / "docs" / "src" / "provider-configuration-index.md"
 README = ROOT / "README.md"
 README_DOCS_LINK_PREFIX = "https://abdelstark.github.io/worldforge/providers/"
 
@@ -49,7 +50,10 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from worldforge.providers.catalog import render_provider_catalog_markdown
+    from worldforge.providers.catalog import (
+        render_provider_catalog_markdown,
+        render_provider_configuration_index_markdown,
+    )
 
     args = _parser().parse_args(argv)
     blocks = (
@@ -66,6 +70,12 @@ def main(argv: list[str] | None = None) -> int:
             render=lambda: render_provider_catalog_markdown(
                 docs_link_prefix=README_DOCS_LINK_PREFIX
             ),
+        ),
+        GeneratedBlock(
+            path=PROVIDER_CONFIG_INDEX,
+            start_marker="<!-- provider-config-index:start -->",
+            end_marker="<!-- provider-config-index:end -->",
+            render=render_provider_configuration_index_markdown,
         ),
     )
 
