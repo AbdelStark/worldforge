@@ -26,8 +26,10 @@ public-API calls.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -38,6 +40,7 @@ from worldforge.models import (
     Position,
     SceneObject,
     WorldForgeError,
+    require_json_dict,
 )
 
 if TYPE_CHECKING:
@@ -46,6 +49,8 @@ if TYPE_CHECKING:
 SCENARIO_SCHEMA_VERSION = 1
 
 SCENARIO_ACTION_KINDS: tuple[str, ...] = ("move_to", "spawn_object", "predict")
+SCENARIO_MATRIX_MAX_CASES = 64
+_MATRIX_PLACEHOLDER_PATTERN = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +272,136 @@ class ScenarioResult:
         return "\n".join(lines) + "\n"
 
 
+@dataclass(frozen=True, slots=True)
+class ScenarioMatrixCase:
+    """One expanded parameter case for a scenario matrix."""
+
+    case_id: str
+    parameters: JSONDict
+    scenario: Scenario
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "case_id": self.case_id,
+            "parameters": dict(self.parameters),
+            "scenario": self.scenario.to_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ScenarioMatrix:
+    """Expanded scenario matrix with one or more concrete cases."""
+
+    schema_version: int
+    scenario_id: str
+    cases: tuple[ScenarioMatrixCase, ...]
+    is_matrix: bool = False
+    metadata: JSONDict = field(default_factory=dict)
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "schema_version": self.schema_version,
+            "scenario_id": self.scenario_id,
+            "is_matrix": self.is_matrix,
+            "case_count": len(self.cases),
+            "cases": [case.to_dict() for case in self.cases],
+            "metadata": dict(self.metadata),
+        }
+
+    def to_json(self, *, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, sort_keys=True) + "\n"
+
+
+@dataclass(frozen=True, slots=True)
+class ScenarioMatrixCaseResult:
+    """Outcome for one scenario matrix case."""
+
+    case_id: str
+    parameters: JSONDict
+    result: ScenarioResult
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "case_id": self.case_id,
+            "parameters": dict(self.parameters),
+            "result": self.result.to_dict(),
+            "passed": self.result.all_expectations_passed(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ScenarioMatrixResult:
+    """Aggregate output from running a scenario matrix."""
+
+    schema_version: int
+    scenario_id: str
+    case_results: tuple[ScenarioMatrixCaseResult, ...]
+
+    @property
+    def case_count(self) -> int:
+        return len(self.case_results)
+
+    @property
+    def passed_case_count(self) -> int:
+        return sum(1 for case in self.case_results if case.result.all_expectations_passed())
+
+    @property
+    def failed_case_count(self) -> int:
+        return self.case_count - self.passed_case_count
+
+    def all_cases_passed(self) -> bool:
+        return self.failed_case_count == 0
+
+    def to_dict(self) -> JSONDict:
+        failed_cases = [
+            case.to_dict()
+            for case in self.case_results
+            if not case.result.all_expectations_passed()
+        ]
+        return {
+            "schema_version": self.schema_version,
+            "scenario_id": self.scenario_id,
+            "case_count": self.case_count,
+            "passed_case_count": self.passed_case_count,
+            "failed_case_count": self.failed_case_count,
+            "all_cases_passed": self.all_cases_passed(),
+            "cases": [case.to_dict() for case in self.case_results],
+            "failed_cases": failed_cases,
+        }
+
+    def to_json(self, *, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, sort_keys=True) + "\n"
+
+    def to_markdown(self) -> str:
+        lines = [
+            "# WorldForge Scenario Matrix Result",
+            "",
+            f"- scenario_id: `{self.scenario_id}`",
+            f"- case_count: {self.case_count}",
+            f"- passed_case_count: {self.passed_case_count}",
+            f"- failed_case_count: {self.failed_case_count}",
+            f"- all_cases_passed: {self.all_cases_passed()}",
+            "",
+            "| Case | Passed | World | Parameters |",
+            "| --- | --- | --- | --- |",
+        ]
+        lines.extend(
+            "| "
+            f"`{case.case_id}` | {case.result.all_expectations_passed()} | "
+            f"`{case.result.world_id}` | `{json.dumps(case.parameters, sort_keys=True)}` |"
+            for case in self.case_results
+        )
+        failed = [case for case in self.case_results if not case.result.all_expectations_passed()]
+        if failed:
+            lines.extend(["", "## Failed Cases", ""])
+            for case in failed:
+                failed_checks = [
+                    check.to_dict() for check in case.result.expectation_checks if not check.passed
+                ]
+                lines.append(f"- `{case.case_id}`: `{json.dumps(failed_checks, sort_keys=True)}`")
+        return "\n".join(lines) + "\n"
+
+
 def load_scenario(path: Path | str) -> Scenario:
     """Load a scenario from a JSON file with strict validation."""
 
@@ -278,6 +413,23 @@ def load_scenario(path: Path | str) -> Scenario:
     return _scenario_from_json_text(text, source=str(target))
 
 
+def load_scenario_matrix(path: Path | str) -> ScenarioMatrix:
+    """Load and expand a scenario file that may declare a parameter matrix."""
+
+    target = Path(path).expanduser()
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise WorldForgeError(f"Failed to read scenario file {target}: {exc}") from exc
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise WorldForgeError(f"Scenario file {target} contains invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise WorldForgeError(f"Scenario file {target} must be a JSON object.")
+    return parse_scenario_matrix(payload, source=str(target))
+
+
 def parse_scenario(payload: JSONDict | str) -> Scenario:
     """Parse a scenario from a dict or JSON string."""
 
@@ -286,6 +438,34 @@ def parse_scenario(payload: JSONDict | str) -> Scenario:
     if not isinstance(payload, Mapping):
         raise WorldForgeError("Scenario payload must be a JSON object.")
     return _scenario_from_dict(dict(payload), source="<dict>")
+
+
+def parse_scenario_matrix(payload: JSONDict | str, *, source: str = "<dict>") -> ScenarioMatrix:
+    """Parse and expand a scenario matrix from a dict or JSON string."""
+
+    if isinstance(payload, str):
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise WorldForgeError(f"Scenario file <string> contains invalid JSON: {exc}") from exc
+        if not isinstance(decoded, dict):
+            raise WorldForgeError("Scenario file <string> must be a JSON object.")
+        return parse_scenario_matrix(decoded, source="<string>")
+    if not isinstance(payload, Mapping):
+        raise WorldForgeError("Scenario payload must be a JSON object.")
+    raw_payload = dict(payload)
+    matrix_payload = raw_payload.get("matrix")
+    if matrix_payload is None:
+        scenario = _scenario_from_dict(raw_payload, source=source)
+        return ScenarioMatrix(
+            schema_version=SCENARIO_SCHEMA_VERSION,
+            scenario_id=scenario.id,
+            cases=(ScenarioMatrixCase(case_id=scenario.id, parameters={}, scenario=scenario),),
+            is_matrix=False,
+        )
+    if not isinstance(matrix_payload, Mapping):
+        raise WorldForgeError(f"Scenario {source} matrix must be a JSON object.")
+    return _matrix_from_payload(raw_payload, matrix_payload=dict(matrix_payload), source=source)
 
 
 def run_scenario(
@@ -322,6 +502,26 @@ def run_scenario(
         final_step=world.step,
         object_count=world.object_count,
         expectation_checks=expectations,
+    )
+
+
+def run_scenario_matrix(forge: WorldForge, matrix: ScenarioMatrix) -> ScenarioMatrixResult:
+    """Run every concrete case in an expanded scenario matrix."""
+
+    if not isinstance(matrix, ScenarioMatrix):
+        raise WorldForgeError("run_scenario_matrix matrix must be a ScenarioMatrix instance.")
+    results = tuple(
+        ScenarioMatrixCaseResult(
+            case_id=case.case_id,
+            parameters=case.parameters,
+            result=run_scenario(forge, case.scenario),
+        )
+        for case in matrix.cases
+    )
+    return ScenarioMatrixResult(
+        schema_version=SCENARIO_SCHEMA_VERSION,
+        scenario_id=matrix.scenario_id,
+        case_results=results,
     )
 
 
@@ -421,6 +621,206 @@ def _scenario_from_json_text(text: str, *, source: str) -> Scenario:
     if not isinstance(payload, dict):
         raise WorldForgeError(f"Scenario file {source} must be a JSON object.")
     return _scenario_from_dict(payload, source=source)
+
+
+def _matrix_from_payload(
+    payload: JSONDict,
+    *,
+    matrix_payload: JSONDict,
+    source: str,
+) -> ScenarioMatrix:
+    base_payload = {key: value for key, value in payload.items() if key != "matrix"}
+    schema_version = base_payload.get("schema_version", SCENARIO_SCHEMA_VERSION)
+    if schema_version != SCENARIO_SCHEMA_VERSION:
+        raise WorldForgeError(
+            f"Scenario {source} schema_version {schema_version} is not supported "
+            f"(expected {SCENARIO_SCHEMA_VERSION})."
+        )
+    base_scenario_id = _require_text(base_payload.get("id"), name="scenario id", source=source)
+    if base_scenario_id in {".", ".."} or "/" in base_scenario_id or "\\" in base_scenario_id:
+        raise WorldForgeError(
+            f"Scenario {source} id '{base_scenario_id}' is traversal-shaped and rejected."
+        )
+
+    parameters = matrix_payload.get("parameters")
+    if not isinstance(parameters, Mapping) or not parameters:
+        raise WorldForgeError(
+            f"Scenario {source} matrix.parameters must be a non-empty JSON object."
+        )
+    max_cases = _matrix_max_cases(matrix_payload.get("max_cases", 16), source=source)
+    names = _matrix_parameter_names(parameters, source=source)
+    value_lists = [
+        _matrix_parameter_values(parameters[name], name=name, source=source) for name in names
+    ]
+    case_count = 1
+    for values in value_lists:
+        case_count *= len(values)
+    if case_count > max_cases:
+        raise WorldForgeError(
+            f"Scenario {source} matrix expands to {case_count} cases, exceeding max_cases "
+            f"{max_cases}."
+        )
+    cases: list[ScenarioMatrixCase] = []
+    for index, values in enumerate(product(*value_lists), start=1):
+        case_parameters = require_json_dict(
+            dict(zip(names, values, strict=True)),
+            name=f"Scenario {source} matrix case parameters",
+        )
+        case_id = f"{base_scenario_id}-case-{index}"
+        substituted = _substitute_matrix_payload(
+            base_payload,
+            parameters=case_parameters,
+            path=(),
+            source=source,
+        )
+        if not isinstance(substituted, dict):
+            raise WorldForgeError(f"Scenario {source} matrix expansion must produce an object.")
+        substituted["id"] = case_id
+        world_payload = substituted.get("world")
+        if isinstance(world_payload, dict) and isinstance(world_payload.get("name"), str):
+            world_payload["name"] = f"{world_payload['name']}-case-{index}"
+        metadata_payload = substituted.get("metadata") or {}
+        if not isinstance(metadata_payload, Mapping):
+            raise WorldForgeError(f"Scenario {source} 'metadata' must be a JSON object.")
+        metadata = dict(metadata_payload)
+        metadata["matrix_case"] = {
+            "source_id": base_scenario_id,
+            "case_id": case_id,
+            "parameters": dict(case_parameters),
+        }
+        substituted["metadata"] = metadata
+        scenario = _scenario_from_dict(substituted, source=f"{source}#{case_id}")
+        cases.append(
+            ScenarioMatrixCase(
+                case_id=case_id,
+                parameters=case_parameters,
+                scenario=scenario,
+            )
+        )
+    return ScenarioMatrix(
+        schema_version=SCENARIO_SCHEMA_VERSION,
+        scenario_id=base_scenario_id,
+        cases=tuple(cases),
+        is_matrix=True,
+        metadata={"max_cases": max_cases, "parameter_names": list(names)},
+    )
+
+
+def _matrix_max_cases(value: object, *, source: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WorldForgeError(f"Scenario {source} matrix.max_cases must be an integer.")
+    if value < 1 or value > SCENARIO_MATRIX_MAX_CASES:
+        raise WorldForgeError(
+            f"Scenario {source} matrix.max_cases must be between 1 and {SCENARIO_MATRIX_MAX_CASES}."
+        )
+    return value
+
+
+def _matrix_parameter_names(parameters: Mapping, *, source: str) -> tuple[str, ...]:
+    names = []
+    for name in parameters:
+        if not isinstance(name, str) or not name.strip():
+            raise WorldForgeError(f"Scenario {source} matrix parameter names must be strings.")
+        if _MATRIX_PLACEHOLDER_PATTERN.fullmatch(f"${{{name}}}") is None:
+            raise WorldForgeError(
+                f"Scenario {source} matrix parameter '{name}' must be a placeholder identifier."
+            )
+        names.append(name)
+    return tuple(sorted(names))
+
+
+def _matrix_parameter_values(value: object, *, name: str, source: str) -> tuple[object, ...]:
+    if not isinstance(value, list) or not value:
+        raise WorldForgeError(
+            f"Scenario {source} matrix.parameters.{name} must be a non-empty JSON array."
+        )
+    normalized = []
+    for index, item in enumerate(value):
+        try:
+            checked = require_json_dict(
+                {"value": item},
+                name=f"Scenario {source} matrix.parameters.{name}[{index}]",
+            )["value"]
+        except WorldForgeError as exc:
+            raise WorldForgeError(
+                f"Scenario {source} matrix.parameters.{name}[{index}] must be JSON-native."
+            ) from exc
+        normalized.append(checked)
+    return tuple(normalized)
+
+
+def _substitute_matrix_payload(
+    value: object,
+    *,
+    parameters: JSONDict,
+    path: tuple[str, ...],
+    source: str,
+) -> object:
+    if isinstance(value, str):
+        match = _MATRIX_PLACEHOLDER_PATTERN.fullmatch(value)
+        if match:
+            name = match.group(1)
+            if name not in parameters:
+                raise WorldForgeError(
+                    f"Scenario {source} matrix placeholder '{name}' has no parameter value."
+                )
+            if not _matrix_substitution_allowed(path):
+                raise WorldForgeError(
+                    f"Scenario {source} matrix placeholder '{name}' is not allowed at "
+                    f"{_format_matrix_path(path)}."
+                )
+            return parameters[name]
+        if "${" in value:
+            raise WorldForgeError(
+                f"Scenario {source} matrix placeholders must occupy the entire JSON value."
+            )
+        return value
+    if isinstance(value, list):
+        return [
+            _substitute_matrix_payload(
+                item,
+                parameters=parameters,
+                path=(*path, "*"),
+                source=source,
+            )
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return {
+            key: _substitute_matrix_payload(
+                item,
+                parameters=parameters,
+                path=(*path, str(key)),
+                source=source,
+            )
+            for key, item in value.items()
+        }
+    return value
+
+
+def _matrix_substitution_allowed(path: tuple[str, ...]) -> bool:
+    if path == ("provider",):
+        return True
+    if len(path) == 4 and path[:3] == ("world", "objects", "*") and path[3] == "position":
+        return True
+    if (
+        len(path) == 5
+        and path[:3] == ("world", "objects", "*")
+        and path[3] == "position"
+        and path[4] in {"x", "y", "z"}
+    ):
+        return True
+    if (
+        len(path) == 4
+        and path[:3] == ("actions", "*", "parameters")
+        and path[3] in {"object_id", "provider", "x", "y", "z"}
+    ):
+        return True
+    return len(path) >= 3 and path[:3] == ("expected_artifacts", "*", "value")
+
+
+def _format_matrix_path(path: tuple[str, ...]) -> str:
+    return ".".join(path) or "<root>"
 
 
 def _scenario_from_dict(payload: JSONDict, *, source: str) -> Scenario:

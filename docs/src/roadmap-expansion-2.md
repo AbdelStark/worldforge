@@ -872,10 +872,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Matrix scenarios validate before execution and reject unbounded or non-JSON-native values.
-- [ ] CLI runs every case in a temp or configured workspace.
-- [ ] Aggregate output reports pass/fail counts and failed case details.
-- [ ] Tests cover valid matrix, invalid substitution, failed expectation, and docs examples.
+- [x] Matrix scenarios validate before execution and reject unbounded or non-JSON-native values.
+- [x] CLI runs every case in a temp or configured workspace.
+- [x] Aggregate output reports pass/fail counts and failed case details.
+- [x] Tests cover valid matrix, invalid substitution, failed expectation, and docs examples.
 
 Validation:
 

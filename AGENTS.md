@@ -301,6 +301,9 @@ generated documentation surfaces.
 - After changing capability fixtures, provider payload fixtures, benchmark inputs, scenario files,
   or scene artifact fixtures, run the fixture snapshot check; use `--write` only after the fixture
   diff is intended and reviewed.
+- Scenario parameter matrices must stay bounded and JSON-native. Use whole-value placeholders only;
+  keep supported substitutions limited to provider names, object positions, action targets, and
+  expected artifact values.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.
 - Keep operator docs concrete: every new runtime, provider, persistence, or release workflow
   should state the command to run, the expected success signal, and the first triage step.

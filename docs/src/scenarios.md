@@ -99,6 +99,82 @@ Failed expectations do not raise; they appear as `passed: false` rows
 in the result so the caller (CI gate, human reviewer, scripted check)
 can decide whether to fail the run.
 
+## Scenario Parameter Matrices
+
+Add a top-level `matrix` object when one scenario should run over a
+small bounded sweep. `matrix.parameters` values are JSON-native arrays,
+the Cartesian product must fit under `max_cases`, and placeholders must
+occupy an entire JSON value such as `"${target_x}"`; they are
+whole-value placeholders. Partial
+interpolation like `"cube-${target_x}"` is rejected, and there is no
+expression language.
+
+<!-- worldforge-snippet: parse -->
+```json
+{
+  "schema_version": 1,
+  "id": "target-sweep",
+  "name": "Target sweep",
+  "description": "Run the same checkout-safe scenario against two target positions.",
+  "provider": "${provider_name}",
+  "world": {
+    "name": "target-sweep-world",
+    "objects": [
+      {
+        "name": "cube",
+        "position": {"x": "${object_x}", "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+          "max": {"x":  0.05, "y": 0.55, "z":  0.05}
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "kind": "predict",
+      "parameters": {
+        "provider": "${provider_name}",
+        "x": "${target_x}",
+        "y": 0.5,
+        "z": 0.0,
+        "steps": 2
+      }
+    }
+  ],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 1},
+    {"label": "step_count", "kind": "step", "value": "${expected_step}"}
+  ],
+  "matrix": {
+    "max_cases": 4,
+    "parameters": {
+      "expected_step": [2],
+      "object_x": [0.0],
+      "provider_name": ["mock"],
+      "target_x": [0.25, 0.5]
+    }
+  },
+  "metadata": {}
+}
+```
+
+Supported placeholder locations are intentionally narrow:
+
+| Location | Use |
+| --- | --- |
+| `provider` | Select the scenario provider name |
+| `actions[*].parameters.provider` | Override a step provider name |
+| `world.objects[*].position` and `.position.x/y/z` | Sweep object positions |
+| `actions[*].parameters.x/y/z` | Sweep action targets |
+| `expected_artifacts[*].value` and descendants | Sweep expected artifact values |
+
+`worldforge scenario validate <path>` expands and validates every case
+before execution. `worldforge scenario run <path>` creates one concrete
+scenario per case in the configured `--state-dir`, then returns aggregate
+`case_count`, `passed_case_count`, `failed_case_count`, and
+`failed_cases` fields. The command exits non-zero when any case fails.
+
 ## CLI
 
 ```bash

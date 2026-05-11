@@ -1898,26 +1898,43 @@ def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
 
 
 def _cmd_scenario(args: argparse.Namespace) -> int:
-    from worldforge.scenarios import load_scenario, run_scenario
+    from worldforge.scenarios import load_scenario_matrix, run_scenario, run_scenario_matrix
 
-    scenario = load_scenario(args.path)
+    matrix = load_scenario_matrix(args.path)
+    scenario = matrix.cases[0].scenario
     if args.scenario_command == "validate":
         if args.format == "markdown":
-            print(
-                f"# Scenario `{scenario.id}`\n\n"
-                f"- name: {scenario.name}\n"
-                f"- provider: {scenario.provider}\n"
-                f"- world: {scenario.world_name}\n"
-                f"- objects: {len(scenario.objects)}\n"
-                f"- actions: {len(scenario.actions)}\n"
-                f"- expected_artifacts: {len(scenario.expected_artifacts)}\n"
-            )
+            if matrix.is_matrix:
+                parameter_names = ", ".join(
+                    str(name) for name in matrix.metadata["parameter_names"]
+                )
+                case_ids = ", ".join(f"`{case.case_id}`" for case in matrix.cases)
+                print(
+                    f"# Scenario Matrix `{matrix.scenario_id}`\n\n"
+                    f"- case_count: {len(matrix.cases)}\n"
+                    f"- max_cases: {matrix.metadata['max_cases']}\n"
+                    f"- parameters: {parameter_names}\n"
+                    f"- cases: {case_ids}\n"
+                )
+            else:
+                print(
+                    f"# Scenario `{scenario.id}`\n\n"
+                    f"- name: {scenario.name}\n"
+                    f"- provider: {scenario.provider}\n"
+                    f"- world: {scenario.world_name}\n"
+                    f"- objects: {len(scenario.objects)}\n"
+                    f"- actions: {len(scenario.actions)}\n"
+                    f"- expected_artifacts: {len(scenario.expected_artifacts)}\n"
+                )
         else:
-            print(scenario.to_json(), end="")
+            print(matrix.to_json() if matrix.is_matrix else scenario.to_json(), end="")
         return 0
 
     forge = WorldForge(state_dir=args.state_dir)
-    result = run_scenario(forge, scenario)
+    result = (
+        run_scenario_matrix(forge, matrix) if matrix.is_matrix else run_scenario(forge, scenario)
+    )
+    passed = result.all_cases_passed() if matrix.is_matrix else result.all_expectations_passed()
     rendered = result.to_markdown() if args.format == "markdown" else result.to_json()
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -1925,9 +1942,9 @@ def _cmd_scenario(args: argparse.Namespace) -> int:
             rendered if rendered.endswith("\n") else rendered + "\n",
             encoding="utf-8",
         )
-        return 0 if result.all_expectations_passed() else 1
+        return 0 if passed else 1
     print(rendered, end="")
-    return 0 if result.all_expectations_passed() else 1
+    return 0 if passed else 1
 
 
 def _cmd_doctor(args: argparse.Namespace, forge: WorldForge) -> int:

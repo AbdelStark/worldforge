@@ -17,8 +17,11 @@ from worldforge.scenarios import (
     ScenarioAction,
     ScenarioExpectedArtifact,
     load_scenario,
+    load_scenario_matrix,
     parse_scenario,
+    parse_scenario_matrix,
     run_scenario,
+    run_scenario_matrix,
 )
 from worldforge.testing import stable_json_dumps, stable_snapshot
 
@@ -55,6 +58,29 @@ def _scenario_file(tmp_path: Path, payload: dict) -> Path:
     return target
 
 
+def _clone_payload(payload: dict) -> dict:
+    return json.loads(json.dumps(payload))
+
+
+def _valid_matrix_payload() -> dict:
+    payload = _clone_payload(_VALID_PAYLOAD)
+    payload["provider"] = "${provider_name}"
+    payload["world"]["objects"][0]["position"]["x"] = "${object_x}"
+    payload["actions"][0]["parameters"]["provider"] = "${provider_name}"
+    payload["actions"][0]["parameters"]["x"] = "${target_x}"
+    payload["expected_artifacts"][1]["value"] = "${expected_step}"
+    payload["matrix"] = {
+        "max_cases": 4,
+        "parameters": {
+            "expected_step": [2],
+            "object_x": [0.0],
+            "provider_name": ["mock"],
+            "target_x": [0.25, 0.5],
+        },
+    }
+    return payload
+
+
 def test_parse_valid_scenario_round_trips() -> None:
     scenario = parse_scenario(_VALID_PAYLOAD)
 
@@ -75,6 +101,14 @@ def test_load_scenario_from_file_round_trips(tmp_path: Path) -> None:
     target = _scenario_file(tmp_path, _VALID_PAYLOAD)
     scenario = load_scenario(target)
     assert scenario.id == "first-scenario"
+
+
+def test_load_scenario_matrix_without_matrix_returns_single_case(tmp_path: Path) -> None:
+    target = _scenario_file(tmp_path, _VALID_PAYLOAD)
+    matrix = load_scenario_matrix(target)
+    assert matrix.is_matrix is False
+    assert len(matrix.cases) == 1
+    assert matrix.cases[0].case_id == "first-scenario"
 
 
 def test_load_scenario_missing_file_raises(tmp_path: Path) -> None:
@@ -190,6 +224,86 @@ def test_run_scenario_creates_world_and_records_object_count(tmp_path: Path) -> 
     assert result.object_count == 1
     assert result.final_step >= 1
     assert result.all_expectations_passed() is True
+
+
+def test_parse_scenario_matrix_expands_valid_parameter_matrix(tmp_path: Path) -> None:
+    matrix = parse_scenario_matrix(_valid_matrix_payload())
+
+    assert matrix.is_matrix is True
+    assert matrix.scenario_id == "first-scenario"
+    assert len(matrix.cases) == 2
+    assert matrix.metadata["parameter_names"] == [
+        "expected_step",
+        "object_x",
+        "provider_name",
+        "target_x",
+    ]
+    assert matrix.cases[0].case_id == "first-scenario-case-1"
+    assert matrix.cases[0].scenario.provider == "mock"
+    assert matrix.cases[0].scenario.world_name == "scenario-world-case-1"
+    assert matrix.cases[0].scenario.objects[0].position.x == 0.0
+    assert matrix.cases[0].scenario.actions[0].parameters["x"] == 0.25
+    assert matrix.cases[1].scenario.actions[0].parameters["x"] == 0.5
+    assert matrix.cases[0].scenario.expected_artifacts[1].value == 2
+    assert matrix.cases[0].scenario.metadata["matrix_case"]["source_id"] == "first-scenario"
+
+    result = run_scenario_matrix(WorldForge(state_dir=tmp_path), matrix)
+    assert result.case_count == 2
+    assert result.passed_case_count == 2
+    assert result.failed_case_count == 0
+    assert result.all_cases_passed() is True
+
+
+def test_parse_scenario_matrix_rejects_invalid_substitution_location() -> None:
+    payload = _valid_matrix_payload()
+    payload["world"]["objects"][0]["name"] = "${object_name}"
+    payload["matrix"]["parameters"]["object_name"] = ["cube"]
+
+    with pytest.raises(WorldForgeError, match="not allowed"):
+        parse_scenario_matrix(payload)
+
+
+def test_parse_scenario_matrix_rejects_partial_placeholder() -> None:
+    payload = _valid_matrix_payload()
+    payload["provider"] = "mock-${provider_name}"
+
+    with pytest.raises(WorldForgeError, match="entire JSON value"):
+        parse_scenario_matrix(payload)
+
+
+def test_parse_scenario_matrix_rejects_unbounded_cases() -> None:
+    payload = _valid_matrix_payload()
+    payload["matrix"]["max_cases"] = 1
+
+    with pytest.raises(WorldForgeError, match="exceeding max_cases"):
+        parse_scenario_matrix(payload)
+
+
+def test_parse_scenario_matrix_rejects_non_json_native_values() -> None:
+    payload = _valid_matrix_payload()
+    payload["matrix"]["parameters"]["target_x"] = [(0.25, 0.5)]
+
+    with pytest.raises(WorldForgeError, match="JSON-native"):
+        parse_scenario_matrix(payload)
+
+
+def test_run_scenario_matrix_reports_failed_expectation(tmp_path: Path) -> None:
+    payload = _valid_matrix_payload()
+    payload["expected_artifacts"][0]["value"] = "${expected_object_count}"
+    payload["matrix"]["parameters"]["expected_object_count"] = [1, 99]
+    payload["matrix"]["max_cases"] = 8
+
+    result = run_scenario_matrix(
+        WorldForge(state_dir=tmp_path),
+        parse_scenario_matrix(payload),
+    )
+
+    assert result.case_count == 4
+    assert result.passed_case_count == 2
+    assert result.failed_case_count == 2
+    rendered = result.to_dict()
+    assert len(rendered["failed_cases"]) == 2
+    assert rendered["failed_cases"][0]["passed"] is False
 
 
 def test_run_scenario_result_supports_exact_stable_snapshot(tmp_path: Path) -> None:
@@ -351,6 +465,32 @@ def test_scenario_run_cli(tmp_path: Path, monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["scenario_id"] == "first-scenario"
     assert payload["all_expectations_passed"] is True
+
+
+def test_scenario_matrix_cli_runs_all_cases(tmp_path: Path, monkeypatch, capsys) -> None:
+    target = _scenario_file(tmp_path, _valid_matrix_payload())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "scenario",
+            "run",
+            str(target),
+            "--state-dir",
+            str(tmp_path / "worlds"),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert worldforge_main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["scenario_id"] == "first-scenario"
+    assert payload["case_count"] == 2
+    assert payload["passed_case_count"] == 2
+    assert payload["failed_case_count"] == 0
+    assert payload["cases"][0]["case_id"] == "first-scenario-case-1"
 
 
 def test_scenario_run_cli_writes_output_file(tmp_path: Path, monkeypatch, capsys) -> None:

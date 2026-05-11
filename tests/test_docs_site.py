@@ -1116,6 +1116,67 @@ def test_regression_comparison_docs_cover_issue_248_contract() -> None:
         assert test_signal in tests
 
 
+def test_scenario_matrix_docs_cover_issue_249_contract() -> None:
+    scenarios = (ROOT / "docs/src/scenarios.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    implementation = (ROOT / "src/worldforge/scenarios.py").read_text(encoding="utf-8")
+    cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    exports = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
+    snippet_gate = (ROOT / "scripts/check_docs_snippets.py").read_text(encoding="utf-8")
+    tests = (ROOT / "tests/test_scenarios.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "Scenario Parameter Matrices",
+        "`matrix.parameters`",
+        "whole-value placeholders",
+        "`worldforge scenario validate <path>` expands and validates every case",
+        "`failed_cases` fields",
+        "No arbitrary Python execution",
+    ):
+        assert signal in scenarios
+    assert "scenario parameter matrices" in changelog
+    for checkbox in (
+        "- [x] Matrix scenarios validate before execution and reject unbounded or "
+        "non-JSON-native values.",
+        "- [x] CLI runs every case in a temp or configured workspace.",
+        "- [x] Aggregate output reports pass/fail counts and failed case details.",
+        "- [x] Tests cover valid matrix, invalid substitution, failed expectation, and docs "
+        "examples.",
+    ):
+        assert checkbox in roadmap
+
+    for implementation_signal in (
+        "SCENARIO_MATRIX_MAX_CASES",
+        "class ScenarioMatrix",
+        "class ScenarioMatrixResult",
+        "parse_scenario_matrix",
+        "run_scenario_matrix",
+        "_matrix_substitution_allowed",
+        "_MATRIX_PLACEHOLDER_PATTERN",
+    ):
+        assert implementation_signal in implementation
+    for export_signal in (
+        "SCENARIO_MATRIX_MAX_CASES",
+        "ScenarioMatrix",
+        "ScenarioMatrixResult",
+        "parse_scenario_matrix",
+        "run_scenario_matrix",
+    ):
+        assert export_signal in exports
+    assert "load_scenario_matrix" in cli
+    assert "run_scenario_matrix" in cli
+    assert "parse_scenario_matrix(payload)" in snippet_gate
+    for test_signal in (
+        "test_parse_scenario_matrix_expands_valid_parameter_matrix",
+        "test_parse_scenario_matrix_rejects_invalid_substitution_location",
+        "test_parse_scenario_matrix_rejects_unbounded_cases",
+        "test_run_scenario_matrix_reports_failed_expectation",
+        "test_scenario_matrix_cli_runs_all_cases",
+    ):
+        assert test_signal in tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")

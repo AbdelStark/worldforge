@@ -17,6 +17,11 @@ releases may still include breaking changes when the public API needs to tighten
   preserved benchmark, evaluation, and demo-showcase runs. Regression reports include metric
   deltas, budget status changes, new and removed failures, safe artifact drift, provenance
   differences, and unsafe artifact exclusion counts in JSON, Markdown, CSV, and HTML.
+- Added scenario parameter matrices for bounded checkout-safe sweeps. Scenario files can now
+  declare JSON-native `matrix.parameters`, use whole-value placeholders for provider names, object
+  positions, action targets, and expected artifact values, validate every expanded case before
+  execution, and return aggregate pass/fail counts plus failed-case details from
+  `worldforge scenario run`.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards
