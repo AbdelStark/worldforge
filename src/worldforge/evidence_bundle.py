@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
-from worldforge.harness.workspace import runs_dir
+from worldforge.harness.workspace import runs_dir, validate_run_id
 from worldforge.html_report import render_evidence_bundle_html, render_issue_bundle_html
 from worldforge.models import JSONDict, WorldForgeError, dump_json
 from worldforge.report_renderers import (
@@ -422,10 +422,17 @@ class _BundleContext:
 def _select_run_paths(workspace_dir: Path, run_ids: tuple[str, ...]) -> list[Path]:
     root = runs_dir(workspace_dir)
     if run_ids:
-        return [root / run_id for run_id in sorted(run_ids)]
+        return [root / _validated_run_id(run_id) for run_id in sorted(run_ids)]
     if not root.exists():
         return []
     return sorted(path.parent for path in root.glob("*/run_manifest.json"))
+
+
+def _validated_run_id(run_id: str) -> str:
+    try:
+        return validate_run_id(run_id)
+    except ValueError as exc:
+        raise WorldForgeError(f"Evidence bundle run_id is invalid: {exc}") from exc
 
 
 def _load_run_manifest(run_path: Path) -> JSONDict:
@@ -448,16 +455,28 @@ def _copy_run_workspace(
     run_id: str,
     copied_refs: set[Path],
 ) -> None:
+    run_root = run_path.resolve()
     for source in sorted(path for path in run_path.rglob("*") if path.is_file()):
         resolved = source.resolve()
+        relative = source.relative_to(run_path)
+        destination = Path("runs") / run_id / relative
+        if not _is_relative_to(resolved, run_root):
+            _record_excluded(
+                context,
+                destination=destination,
+                source=str(source),
+                reason="run artifact resolves outside the run workspace",
+                kind="run-artifact",
+                local_only=True,
+            )
+            continue
         if resolved in copied_refs:
             continue
         copied_refs.add(resolved)
-        relative = source.relative_to(run_path)
         _copy_safe_file(
             context,
             source=source,
-            destination=Path("runs") / run_id / relative,
+            destination=destination,
             kind="run-artifact",
         )
 
@@ -582,6 +601,16 @@ def _record_manifest_artifact_references(
                 destination=Path("runs") / run_id / f"artifacts/{label}",
                 source=raw_path,
                 reason="artifact path escapes the run workspace",
+                kind="artifact-reference",
+                local_only=True,
+            )
+            continue
+        if not resolved.is_file():
+            _record_excluded(
+                context,
+                destination=Path("runs") / run_id / f"artifacts/{label}",
+                source=raw_path,
+                reason="artifact reference does not exist",
                 kind="artifact-reference",
                 local_only=True,
             )
@@ -754,7 +783,7 @@ def _contains_unsafe_url(value: object) -> bool:
         return False
     return bool(
         re.search(
-            r"https?://[^\\s\"']+[?&](token|signature|sig|key|api_key)=",
+            r"https?://[^\s\"']+[?&](token|signature|sig|key|api_key)=",
             value,
             re.I,
         )
