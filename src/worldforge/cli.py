@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import re
+import sys
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
@@ -35,6 +36,7 @@ from worldforge.benchmark_presets import (
     preset_budget_payload,
     preset_inputs_payload,
 )
+from worldforge.config_profiles import ConfigProfile, load_config_profile
 from worldforge.evaluation import EvaluationSuite
 from worldforge.models import CAPABILITY_NAMES, _redact_observable_text
 from worldforge.operator_drills import DRILL_IDS, DRILL_WORKSPACE_DEFAULT
@@ -73,6 +75,10 @@ CLI_EPILOG = """Common commands:
 _HOST_LOCAL_PATH_PATTERN = re.compile(
     r"(?P<path>(?:/Users|/private|/var/folders|/tmp)/[^\s,;:)'\"]+)"
 )
+_PROFILE_FORMAT_CHOICES: dict[tuple[str, ...], set[str]] = {
+    ("eval",): {"markdown", "json", "csv", "html"},
+    ("benchmark",): {"markdown", "json", "csv", "html"},
+}
 
 EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
     {
@@ -453,6 +459,14 @@ def _add_generation_arguments(parser: argparse.ArgumentParser, *, include_fps: b
         action="append",
         default=[],
         help="Reference image path, URL, or data URI. Can be repeated.",
+    )
+
+
+def _add_profile_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        help="Non-secret JSON/TOML configuration profile for CLI defaults.",
     )
 
 
@@ -1231,6 +1245,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Provider name to evaluate. Can be repeated.",
     )
+    _add_profile_argument(evaluate)
     evaluate.add_argument(
         "--format",
         choices=("markdown", "json", "csv", "html"),
@@ -1265,6 +1280,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Provider name to benchmark. Can be repeated.",
     )
+    _add_profile_argument(benchmark)
     benchmark.add_argument(
         "--operation",
         dest="operations",
@@ -2135,6 +2151,72 @@ def _cmd_predict(args: argparse.Namespace, forge: WorldForge) -> int:
     return 0
 
 
+def _explicit_cli_options(argv: list[str]) -> set[str]:
+    options: set[str] = set()
+    for item in argv:
+        if item == "--":
+            break
+        if item.startswith("--"):
+            options.add(item.split("=", maxsplit=1)[0])
+    return options
+
+
+def _profile_command_key(args: argparse.Namespace) -> tuple[str, ...]:
+    command = str(getattr(args, "command", ""))
+    if command == "runs":
+        return (command, str(getattr(args, "runs_command", "")))
+    if command == "world":
+        return (command, str(getattr(args, "world_command", "")))
+    return (command,)
+
+
+def _apply_cli_profile(args: argparse.Namespace, argv: list[str]) -> None:
+    profile_path = getattr(args, "profile", None)
+    if profile_path is None:
+        args.config_profile = None
+        return
+    profile = load_config_profile(profile_path)
+    explicit = _explicit_cli_options(argv)
+    if hasattr(args, "providers") and "--provider" not in explicit and profile.providers:
+        args.providers = list(profile.providers)
+    if (
+        getattr(args, "command", None) == "benchmark"
+        and hasattr(args, "operations")
+        and "--operation" not in explicit
+        and profile.operations
+    ):
+        args.operations = list(profile.operations)
+    if hasattr(args, "format") and "--format" not in explicit and profile.output_format:
+        allowed_formats = _PROFILE_FORMAT_CHOICES.get(_profile_command_key(args), set())
+        if profile.output_format not in allowed_formats:
+            raise WorldForgeError(
+                f"Configuration profile output_format '{profile.output_format}' is not "
+                f"supported by `{_cli_command_path(args)}`."
+            )
+        args.format = profile.output_format
+    if hasattr(args, "run_workspace") and "--run-workspace" not in explicit:
+        workspace = profile.run_workspace or profile.workspace_dir
+        if workspace is not None:
+            args.run_workspace = Path(workspace)
+    if hasattr(args, "state_dir") and "--state-dir" not in explicit and profile.state_dir:
+        args.state_dir = profile.state_dir
+    args.config_profile = profile
+
+
+def _config_profile_provenance(args: argparse.Namespace) -> dict[str, object] | None:
+    profile = getattr(args, "config_profile", None)
+    if isinstance(profile, ConfigProfile):
+        return profile.to_provenance()
+    return None
+
+
+def _profile_command_args(args: argparse.Namespace) -> list[str]:
+    profile = getattr(args, "config_profile", None)
+    if not isinstance(profile, ConfigProfile):
+        return []
+    return ["--profile", profile.source.removeprefix("profile:")]
+
+
 def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
     suite = EvaluationSuite.from_builtin(args.suite)
     providers = args.providers or ["mock"]
@@ -2143,7 +2225,9 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
         forge=forge,
         dataset_manifests=args.dataset_manifests,
     )
-    eval_command = _command_string(["eval", "--suite", args.suite, *_provider_args(providers)])
+    eval_command = _command_string(
+        ["eval", "--suite", args.suite, *_provider_args(providers), *_profile_command_args(args)]
+    )
     for manifest_path in args.dataset_manifests or ():
         eval_command += f" --dataset-manifest {manifest_path}"
     if report.provenance is not None:
@@ -2161,6 +2245,7 @@ def _cmd_eval(args: argparse.Namespace, forge: WorldForge) -> int:
             artifacts=artifacts,
             report=report,
             command=eval_command,
+            config_profile=_config_profile_provenance(args),
         )
     if args.format == "json":
         print(artifacts["json"])
@@ -2333,7 +2418,9 @@ def _run_preset_benchmark(
 
     report.run_metadata["preset"] = preset.to_dict()
 
-    benchmark_command = _command_string(["benchmark", "--preset", preset.name])
+    benchmark_command = _command_string(
+        ["benchmark", "--preset", preset.name, *_profile_command_args(args)]
+    )
     if report.provenance is not None:
         envelope_overrides: dict[str, object] = {
             "command": tuple(benchmark_command.split()),
@@ -2354,6 +2441,7 @@ def _run_preset_benchmark(
             report=report,
             command=benchmark_command,
             budget_passed=None if gate_report is None else gate_report.passed,
+            config_profile=_config_profile_provenance(args),
         )
 
     if args.format == "json":
@@ -2462,6 +2550,7 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
             "benchmark",
             *_provider_args(providers),
             *_operation_args(args.operations or []),
+            *_profile_command_args(args),
             "--iterations",
             str(args.iterations),
             "--concurrency",
@@ -2487,6 +2576,7 @@ def _cmd_benchmark(args: argparse.Namespace, forge: WorldForge) -> int:
             report=report,
             command=benchmark_command,
             budget_passed=None if gate_report is None else gate_report.passed,
+            config_profile=_config_profile_provenance(args),
         )
 
     if args.format == "json":
@@ -2536,6 +2626,10 @@ _FORGE_COMMANDS: dict[str, _ForgeHandler] = {
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
+    try:
+        _apply_cli_profile(args, sys.argv[1:])
+    except (WorldForgeError, ValueError) as exc:
+        parser.exit(2, _format_public_cli_error(args, exc) + "\n")
 
     if args.command == "examples":
         return _cmd_examples(args)

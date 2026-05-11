@@ -312,6 +312,9 @@ generated documentation surfaces.
 - Runtime asset manifests are evidence records, not cache ownership. Keep full host-local `path`
   and `cache_root` fields local-only; run manifests should include safe `runtime_assets`
   references without checkpoint bytes, local cache roots, tokens, or generated assets.
+- Non-secret configuration profiles are shareable defaults, not a secret manager. Keep profile
+  paths relative, reject secret-looking keys and signed URLs, and store only safe `config_profile`
+  provenance in run manifests.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.
 - Keep operator docs concrete: every new runtime, provider, persistence, or release workflow
   should state the command to run, the expected success signal, and the first triage step.

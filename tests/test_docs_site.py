@@ -1399,6 +1399,59 @@ def test_runtime_asset_manifest_docs_cover_issue_252_contract() -> None:
     assert "test_robotics_runtime_asset_references_omit_host_paths" in robotics_tests
 
 
+def test_config_profile_docs_cover_issue_253_contract() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    implementation = (ROOT / "src/worldforge/config_profiles.py").read_text(encoding="utf-8")
+    cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    workspace = (ROOT / "src/worldforge/harness/workspace.py").read_text(encoding="utf-8")
+    provider_tests = (ROOT / "tests/test_provider_config.py").read_text(encoding="utf-8")
+    workspace_tests = (ROOT / "tests/test_harness_workspace.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "## Non-Secret Configuration Profiles",
+        "Configuration profiles are optional JSON or TOML files",
+        '"schema_version": 1',
+        '"providers": ["mock"]',
+        '"run_workspace": ".worldforge/profiled-runs"',
+        "uv run worldforge benchmark --profile",
+        "uv run worldforge eval --profile",
+        "must not contain credentials",
+        "`config_profile` provenance",
+    ):
+        assert signal in operations
+    assert "Non-secret configuration profiles" in schemas
+    assert "CONFIG_PROFILE_SCHEMA_VERSION" in schemas
+    assert "non-secret JSON/TOML configuration profiles" in changelog
+    assert "Non-secret configuration profiles are shareable defaults" in agents
+    for checkbox in (
+        "- [x] Profiles reject secret-looking keys and unsafe paths where applicable.",
+        "- [x] CLI commands can opt into a profile without changing existing defaults.",
+        "- [x] Profile provenance appears in run manifests.",
+        "- [x] Docs explain what belongs in profiles and what does not.",
+    ):
+        assert checkbox in roadmap
+    for implementation_signal in (
+        "CONFIG_PROFILE_SCHEMA_VERSION",
+        "class ConfigProfile",
+        "load_config_profile",
+        "parse_config_profile",
+        "validate_config_profile_provenance",
+        "runtime_cache_roots",
+    ):
+        assert implementation_signal in implementation
+    assert "_apply_cli_profile" in cli
+    assert "--profile" in cli
+    assert "validate_config_profile_provenance" in workspace
+    assert '"config_profile"' in workspace
+    assert "test_config_profile_loads_non_secret_defaults_and_provenance" in provider_tests
+    assert "test_config_profile_rejects_secret_keys_and_unsafe_paths" in provider_tests
+    assert "test_benchmark_cli_profile_applies_defaults_and_preserves_provenance" in workspace_tests
+
+
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
@@ -2041,6 +2094,11 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
             "Runtime asset manifests and references",
             "RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION",
             "src/worldforge/providers/runtime_manifest.py",
+        ),
+        (
+            "Non-secret configuration profiles",
+            "CONFIG_PROFILE_SCHEMA_VERSION",
+            "src/worldforge/config_profiles.py",
         ),
         (
             "Provider contract evidence",

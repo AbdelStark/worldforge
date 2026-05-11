@@ -1016,10 +1016,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Profiles reject secret-looking keys and unsafe paths where applicable.
-- [ ] CLI commands can opt into a profile without changing existing defaults.
-- [ ] Profile provenance appears in run manifests.
-- [ ] Docs explain what belongs in profiles and what does not.
+- [x] Profiles reject secret-looking keys and unsafe paths where applicable.
+- [x] CLI commands can opt into a profile without changing existing defaults.
+- [x] Profile provenance appears in run manifests.
+- [x] Docs explain what belongs in profiles and what does not.
 
 Validation:
 

@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
+from worldforge.config_profiles import (
+    CONFIG_PROFILE_SCHEMA_VERSION,
+    load_config_profile,
+    parse_config_profile,
+)
+from worldforge.models import WorldForgeError
 from worldforge.providers import (
     CosmosPolicyProvider,
     CosmosProvider,
@@ -147,3 +155,62 @@ def test_runtime_manifest_config_summaries_cover_declared_env_without_values() -
             *manifest.optional_env_vars,
         ]
     _assert_no_secret_values(runway_summary)
+
+
+def test_config_profile_loads_non_secret_defaults_and_provenance(tmp_path) -> None:
+    profile_path = tmp_path / "local-profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "schema_version": CONFIG_PROFILE_SCHEMA_VERSION,
+                "name": "local-mock",
+                "providers": ["mock"],
+                "operations": ["predict"],
+                "workspace_dir": ".worldforge/profiled",
+                "run_workspace": ".worldforge/profiled-runs",
+                "state_dir": ".worldforge/worlds",
+                "output_format": "json",
+                "timeout_preset": "checkout-safe",
+                "retry_preset": "none",
+                "runtime_cache_roots": {"leworldmodel": ".worldforge/cache/leworldmodel"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profile = load_config_profile(profile_path)
+    provenance = profile.to_provenance()
+
+    assert profile.name == "local-mock"
+    assert profile.providers == ("mock",)
+    assert profile.operations == ("predict",)
+    assert profile.workspace_dir == ".worldforge/profiled"
+    assert provenance["schema_version"] == CONFIG_PROFILE_SCHEMA_VERSION
+    assert provenance["source"] == "profile:local-profile.json"
+    assert provenance["sha256"].startswith("sha256:")
+    assert provenance["runtime_cache_roots"] == {"leworldmodel": ".worldforge/cache/leworldmodel"}
+    _assert_no_secret_values(provenance)
+
+
+def test_config_profile_rejects_secret_keys_and_unsafe_paths() -> None:
+    valid_base = {
+        "schema_version": CONFIG_PROFILE_SCHEMA_VERSION,
+        "name": "safe",
+        "provider": "mock",
+    }
+
+    with pytest.raises(WorldForgeError, match="secret-looking key"):
+        parse_config_profile({**valid_base, "api_token": "not-shared"})
+    with pytest.raises(WorldForgeError, match="safe relative path"):
+        parse_config_profile({**valid_base, "workspace_dir": "/Users/abdel/.worldforge"})
+    with pytest.raises(WorldForgeError, match=r"must not contain '\.\.'"):
+        parse_config_profile({**valid_base, "run_workspace": "../outside"})
+    with pytest.raises(WorldForgeError, match="signed URLs"):
+        parse_config_profile(
+            {
+                **valid_base,
+                "runtime_cache_roots": {
+                    "leworldmodel": ".worldforge/cache?download=1",
+                },
+            }
+        )

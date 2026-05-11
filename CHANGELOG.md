@@ -34,6 +34,9 @@ releases may still include breaking changes when the public API needs to tighten
 - Added runtime asset manifests for prepared-host optional runtimes. LeWorldModel and
   LeRobot/LeWorldModel smoke outputs now include safe `runtime_assets` references in run manifests,
   while full local-only paths, cache roots, and checkpoint bytes stay out of attachable evidence.
+- Added non-secret JSON/TOML configuration profiles for repeatable eval and benchmark CLI defaults.
+  Profiles reject secret-looking keys and unsafe paths, and preserved run manifests now include
+  safe `config_profile` provenance with the profile digest instead of profile contents.
 - Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
   semi-public JSON artifact families. The page records each schema's owner, version field,
   validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards

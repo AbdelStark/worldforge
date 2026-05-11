@@ -202,7 +202,7 @@ options:
     ("eval", "--help"): """\
 usage: worldforge eval [-h]
                        [--suite {generation,physics,planning,reasoning,transfer}]
-                       [--provider PROVIDERS]
+                       [--provider PROVIDERS] [--profile PROFILE]
                        [--format {markdown,json,csv,html}]
                        [--state-dir STATE_DIR] [--run-workspace RUN_WORKSPACE]
                        [--dataset-manifest DATASET_MANIFESTS]
@@ -212,6 +212,8 @@ options:
   --suite {generation,physics,planning,reasoning,transfer}
                         Built-in evaluation suite.
   --provider PROVIDERS  Provider name to evaluate. Can be repeated.
+  --profile PROFILE     Non-secret JSON/TOML configuration profile for CLI
+                        defaults.
   --format {markdown,json,csv,html}
                         Evaluation report format.
   --state-dir STATE_DIR
@@ -224,7 +226,7 @@ options:
                         provenance. Can be repeated.
 """,
     ("benchmark", "--help"): """\
-usage: worldforge benchmark [-h] [--provider PROVIDERS]
+usage: worldforge benchmark [-h] [--provider PROVIDERS] [--profile PROFILE]
                             [--operation {predict,reason,generate,transfer,embed,score,policy}]
                             [--iterations ITERATIONS]
                             [--concurrency CONCURRENCY]
@@ -238,6 +240,8 @@ usage: worldforge benchmark [-h] [--provider PROVIDERS]
 options:
   -h, --help            show this help message and exit
   --provider PROVIDERS  Provider name to benchmark. Can be repeated.
+  --profile PROFILE     Non-secret JSON/TOML configuration profile for CLI
+                        defaults.
   --operation {predict,reason,generate,transfer,embed,score,policy}
                         Operation to benchmark. Can be repeated.
   --iterations ITERATIONS

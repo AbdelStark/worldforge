@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import worldforge
+from worldforge.config_profiles import validate_config_profile_provenance
 from worldforge.models import (
     JSONDict,
     WorldForgeError,
@@ -48,6 +49,7 @@ class LiveSmokeRunManifest:
     result_digest: str | None = None
     runtime_manifest_id: str | None = None
     runtime_assets: tuple[JSONDict, ...] = field(default_factory=tuple)
+    config_profile: JSONDict | None = None
     package_version: str = field(default_factory=lambda: worldforge.__version__)
     created_at: str = field(
         default_factory=lambda: datetime.now(UTC).replace(microsecond=0).isoformat()
@@ -78,6 +80,7 @@ class LiveSmokeRunManifest:
             "status": self.status,
             "runtime_manifest_id": self.runtime_manifest_id,
             "runtime_assets": [dict(item) for item in self.runtime_assets],
+            "config_profile": dict(self.config_profile) if self.config_profile else None,
             "env_summary": [dict(item) for item in self.env_summary],
             "input_summary": _json_native(dict(self.input_summary)),
             "input_digest": self.input_digest,
@@ -105,6 +108,7 @@ def build_run_manifest(
     result: Mapping[str, Any] | None = None,
     result_digest: str | None = None,
     runtime_assets: Sequence[RuntimeAssetManifest | Mapping[str, Any]] | None = None,
+    config_profile: Mapping[str, Any] | None = None,
     environ: Mapping[str, str] | None = None,
     created_at: str | None = None,
 ) -> LiveSmokeRunManifest:
@@ -141,6 +145,11 @@ def build_run_manifest(
         "status": status,
         "runtime_manifest_id": runtime_manifest_id,
         "runtime_assets": tuple(_runtime_asset_summary(runtime_assets or ())),
+        "config_profile": (
+            validate_config_profile_provenance(config_profile)
+            if config_profile is not None
+            else None
+        ),
         "env_summary": tuple(env_summary(env_vars, environ=environ)),
         "input_summary": input_summary or {},
         "input_digest": resolved_input_digest,
@@ -245,6 +254,8 @@ def validate_run_manifest(payload: Mapping[str, Any]) -> JSONDict:
         )
         for index, asset in enumerate(manifest["runtime_assets"])
     ]
+    if manifest.get("config_profile") is not None:
+        manifest["config_profile"] = validate_config_profile_provenance(manifest["config_profile"])
     manifest.setdefault("input_summary", {})
     if not isinstance(manifest.get("input_summary"), dict):
         raise WorldForgeError("Run manifest input_summary must be an object.")

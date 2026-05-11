@@ -157,6 +157,42 @@ provider health command and the smoke with `--run-manifest` to preserve fresh ev
 path appears in a JSON artifact, treat it as a bug: run manifests should contain `runtime_assets`
 references, not local cache paths.
 
+## Non-Secret Configuration Profiles
+
+Configuration profiles are optional JSON or TOML files for repeatable non-secret CLI defaults. They
+are intended for provider choices, operation lists, output format, state directories, run-workspace
+directories, timeout/retry preset names, and safe relative optional-runtime cache roots.
+
+```json
+{
+  "schema_version": 1,
+  "name": "local-mock",
+  "providers": ["mock"],
+  "operations": ["predict"],
+  "run_workspace": ".worldforge/profiled-runs",
+  "state_dir": ".worldforge/worlds",
+  "output_format": "json",
+  "timeout_preset": "checkout-safe",
+  "retry_preset": "none",
+  "runtime_cache_roots": {
+    "leworldmodel": ".worldforge/cache/leworldmodel"
+  }
+}
+```
+
+Use a profile only as an explicit CLI opt-in:
+
+```bash
+uv run worldforge benchmark --profile profiles/local-mock.json --iterations 1
+uv run worldforge eval --profile profiles/local-mock.toml --suite planning
+```
+
+Profiles must not contain credentials, bearer tokens, API keys, signed URLs, `.env` paths, absolute
+host-local paths, or `..` traversal. Keep secrets in environment variables or a host-owned secret
+store. Preserved eval and benchmark run manifests include a `config_profile` provenance block with
+the profile name, safe relative source label, SHA-256 digest, and validated non-secret defaults; the
+profile file itself is not copied into run evidence.
+
 ## Persistence
 
 World state is persisted as local JSON under `.worldforge/worlds` by default or under the

@@ -67,6 +67,61 @@ def test_eval_cli_preserves_run_workspace(tmp_path, monkeypatch, capsys) -> None
     assert (run_path / "reports" / "report.csv").exists()
 
 
+def test_benchmark_cli_profile_applies_defaults_and_preserves_provenance(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "name": "profiled-benchmark",
+                "providers": ["mock"],
+                "operations": ["predict"],
+                "run_workspace": ".worldforge/profiled-runs",
+                "state_dir": ".worldforge/worlds",
+                "output_format": "json",
+                "timeout_preset": "checkout-safe",
+                "retry_preset": "none",
+                "runtime_cache_roots": {"leworldmodel": ".worldforge/cache/leworldmodel"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "benchmark",
+            "--profile",
+            str(profile_path),
+            "--iterations",
+            "1",
+        ],
+    )
+
+    assert main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"][0]["provider"] == "mock"
+    runs = list_run_workspaces(Path(".worldforge/profiled-runs"))
+
+    assert len(runs) == 1
+    manifest = json.loads((Path(str(runs[0]["path"])) / "run_manifest.json").read_text())
+    assert manifest["provider"] == "mock"
+    assert manifest["operation"] == "predict"
+    assert manifest["config_profile"]["name"] == "profiled-benchmark"
+    assert manifest["config_profile"]["providers"] == ["mock"]
+    assert manifest["config_profile"]["operations"] == ["predict"]
+    assert manifest["config_profile"]["run_workspace"] == ".worldforge/profiled-runs"
+    assert manifest["config_profile"]["state_dir"] == ".worldforge/worlds"
+    assert manifest["config_profile"]["sha256"].startswith("sha256:")
+    assert "api_token" not in json.dumps(manifest)
+
+
 def test_benchmark_cli_preserves_failed_budget_workspace(tmp_path, monkeypatch, capsys) -> None:
     budget_file = tmp_path / "budget.json"
     budget_file.write_text(

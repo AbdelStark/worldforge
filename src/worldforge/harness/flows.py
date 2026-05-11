@@ -1460,6 +1460,7 @@ def preserve_eval_run_workspace(
     artifacts: dict[str, str],
     report: EvaluationReport,
     command: str,
+    config_profile: JSONDict | None = None,
 ) -> RunWorkspace:
     """Preserve an evaluation report in the shared run workspace layout."""
 
@@ -1494,6 +1495,7 @@ def preserve_eval_run_workspace(
         input_summary=input_summary,
         result_summary=result_summary,
         artifact_paths=paths,
+        config_profile=config_profile,
     )
     return workspace
 
@@ -1507,6 +1509,7 @@ def preserve_benchmark_run_workspace(
     report: BenchmarkReport,
     command: str,
     budget_passed: bool | None = None,
+    config_profile: JSONDict | None = None,
 ) -> RunWorkspace:
     """Preserve a benchmark report in the shared run workspace layout."""
 
@@ -1538,6 +1541,7 @@ def preserve_benchmark_run_workspace(
         input_summary=input_summary,
         result_summary=result_summary,
         artifact_paths=paths,
+        config_profile=config_profile,
         event_count=sum(
             int(event.get("request_count", 0))
             for result in report.results
