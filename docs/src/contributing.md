@@ -36,13 +36,15 @@ into public issues.
 
 `uv run python scripts/generate_provider_docs.py --check`,
 `uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_docs_snippets.py`,
+`uv run python scripts/manage_fixture_snapshots.py --format markdown`,
 `uv run python scripts/check_wrapper_portability.py`,
 `uv run python scripts/check_optional_import_boundaries.py`, and `uv run mkdocs build --strict`
 verify generated provider docs, documented command drift, selected executable docs snippets,
-wrapper portability, optional-runtime import boundaries, and the MkDocs Material site in strict
-mode. `bash scripts/test_package.sh` checks the wheel/sdist contents before installing the built
-wheel and running tests against the installed package. See [Artifact Integrity](./artifact-integrity.md)
-for the release artifact hashing, quality dashboard, and evidence-linking contract.
+fixture snapshot drift, wrapper portability, optional-runtime import boundaries, and the MkDocs
+Material site in strict mode. `bash scripts/test_package.sh` checks the wheel/sdist contents before
+installing the built wheel and running tests against the installed package. See
+[Artifact Integrity](./artifact-integrity.md) for the release artifact hashing, quality dashboard,
+and evidence-linking contract.
 
 ### Docs snippet markers
 
@@ -104,6 +106,8 @@ Key directories:
 - `src/worldforge/providers/`: provider interfaces, catalog, adapters, and scaffolds.
 - `src/worldforge/testing/`: reusable provider contract helpers, fixture loaders, runtime markers,
   and deterministic artifact test controls.
+- `tests/fixtures/fixture-snapshots.json`: manifest of tracked JSON fixtures; update it with
+  `uv run python scripts/manage_fixture_snapshots.py --write` after intentional fixture changes.
 - `src/worldforge/evaluation/`: deterministic evaluation suites.
 - `src/worldforge/benchmark.py`: provider benchmark harness.
 - `src/worldforge/observability.py`: provider event sinks.

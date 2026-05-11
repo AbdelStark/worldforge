@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 from base64 import b64decode
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -13,11 +15,19 @@ from worldforge.testing import (
     CAPABILITY_FIXTURE_NAMES,
     FIXTURE_SCHEMA_VERSION,
     CapabilityFixture,
+    FixtureSnapshotEntry,
+    FixtureSnapshotManifest,
+    build_fixture_snapshot_manifest,
     iter_all_fixtures,
     iter_capability_fixtures,
     list_fixture_names,
     load_capability_fixture,
+    load_fixture_snapshot_manifest,
+    validate_fixture_snapshot_manifest,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
+VALID_SHA256 = "sha256:" + "a" * 64
 
 
 def test_corpus_covers_every_capability() -> None:
@@ -245,3 +255,87 @@ def test_policy_invalid_fixtures_are_distinct_boundary_cases() -> None:
     bad_horizon = load_capability_fixture("policy", "invalid_action_horizon_negative")
     assert "observation" not in missing.payload["info"]
     assert bad_horizon.payload["info"]["action_horizon"] == -1
+
+
+def test_fixture_snapshot_manifest_loads_and_validates_committed_manifest() -> None:
+    manifest = load_fixture_snapshot_manifest(
+        ROOT / "tests" / "fixtures" / "fixture-snapshots.json"
+    )
+    report = validate_fixture_snapshot_manifest(manifest, root=ROOT)
+
+    assert report.passed, report.to_markdown()
+    fixture_kinds = {entry.fixture_kind for entry in manifest.entries}
+    assert {
+        "capability-fixture",
+        "provider-payload-fixture",
+        "benchmark-fixture",
+        "scenario-fixture",
+        "scene-artifact-fixture",
+    }.issubset(fixture_kinds)
+    assert any(
+        entry.path == "src/worldforge/testing/fixtures/predict/valid_baseline.json"
+        for entry in manifest.entries
+    )
+    assert any(entry.path == "examples/benchmark-inputs.json" for entry in manifest.entries)
+
+
+def test_fixture_snapshot_manifest_reports_digest_drift_and_intended_updates(
+    tmp_path: Path,
+) -> None:
+    fixture = tmp_path / "src/worldforge/testing/fixtures/predict/sample.json"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text('{"schema_version": 1, "payload": {"value": 1}}\n', encoding="utf-8")
+    manifest = build_fixture_snapshot_manifest((fixture,), root=tmp_path)
+
+    fixture.write_text('{"schema_version": 1, "payload": {"value": 2}}\n', encoding="utf-8")
+    drift_report = validate_fixture_snapshot_manifest(manifest, root=tmp_path)
+    assert drift_report.passed is False
+    assert [issue.status for issue in drift_report.issues] == ["changed"]
+    assert "without an intended-update marker" in drift_report.to_markdown()
+
+    intended_entry = replace(manifest.entries[0], review_status="intended-update")
+    intended_manifest = FixtureSnapshotManifest(entries=(intended_entry,))
+    intended_report = validate_fixture_snapshot_manifest(intended_manifest, root=tmp_path)
+    assert intended_report.passed is False
+    assert [issue.status for issue in intended_report.issues] == ["intended-update"]
+    assert "marked for review" in intended_report.to_markdown()
+
+    allowed_report = validate_fixture_snapshot_manifest(
+        intended_manifest,
+        root=tmp_path,
+        allow_intended_updates=True,
+    )
+    assert allowed_report.passed is True
+
+
+def test_fixture_snapshot_manifest_rejects_missing_and_unsafe_paths(tmp_path: Path) -> None:
+    manifest = FixtureSnapshotManifest(
+        entries=(
+            FixtureSnapshotEntry(
+                path="tests/fixtures/providers/missing.json",
+                sha256=VALID_SHA256,
+                size_bytes=1,
+                fixture_kind="provider-payload-fixture",
+            ),
+            FixtureSnapshotEntry(
+                path="../escape.json",
+                sha256=VALID_SHA256,
+                size_bytes=1,
+                fixture_kind="provider-payload-fixture",
+            ),
+            FixtureSnapshotEntry(
+                path="tests\\fixtures\\providers\\sample.json",
+                sha256=VALID_SHA256,
+                size_bytes=1,
+                fixture_kind="provider-payload-fixture",
+            ),
+        )
+    )
+
+    report = validate_fixture_snapshot_manifest(manifest, root=tmp_path)
+
+    assert report.passed is False
+    assert [issue.status for issue in report.issues] == ["missing", "unsafe", "unsafe"]
+    assert "fixture path is missing" in report.to_markdown()
+    assert "parent-directory" in report.issues[1].message
+    assert "backslashes" in report.issues[2].message

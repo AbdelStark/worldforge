@@ -1,0 +1,461 @@
+{
+  "entries": [
+    {
+      "fixture_kind": "benchmark-fixture",
+      "fixture_schema_version": null,
+      "path": "examples/benchmark-budget.json",
+      "review_status": "tracked",
+      "sha256": "sha256:be8156a7c1056a75367cccf59641fde775eb3ce8fb3eeee0e140c03be094127b",
+      "size_bytes": 256
+    },
+    {
+      "fixture_kind": "benchmark-fixture",
+      "fixture_schema_version": null,
+      "path": "examples/benchmark-inputs.json",
+      "review_status": "tracked",
+      "sha256": "sha256:1c230c64c76d402761462c660b8ce94b8cc2cf7bc96f697b186e6c7c1d3fa94e",
+      "size_bytes": 2179
+    },
+    {
+      "fixture_kind": "benchmark-fixture",
+      "fixture_schema_version": null,
+      "path": "examples/runway-generate-benchmark-inputs.json",
+      "review_status": "tracked",
+      "sha256": "sha256:7abad6235cea76b64d77ff2cdd1d9f33e122e15e321728d02ea42cc812c43391",
+      "size_bytes": 377
+    },
+    {
+      "fixture_kind": "benchmark-fixture",
+      "fixture_schema_version": null,
+      "path": "examples/runway-transfer-benchmark-inputs.json",
+      "review_status": "tracked",
+      "sha256": "sha256:5a2edb587c4145f9eb6d06fe6eee1e9db9cd85d62110f8666c9a3d541000c131",
+      "size_bytes": 764
+    },
+    {
+      "fixture_kind": "scenario-fixture",
+      "fixture_schema_version": 1,
+      "path": "examples/scenarios/cube-on-table.json",
+      "review_status": "tracked",
+      "sha256": "sha256:72b95ee161e971da5eb37a54b426dda56863819d81cd6e4b32f1111f8336c086",
+      "size_bytes": 799
+    },
+    {
+      "fixture_kind": "scenario-fixture",
+      "fixture_schema_version": 1,
+      "path": "examples/scenarios/spawn-and-move.json",
+      "review_status": "tracked",
+      "sha256": "sha256:4d202eb3b59ee2d73977044529c3e172043ccdd76cac10fd8a0e1da915112f46",
+      "size_bytes": 1129
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/embed/invalid_text_empty.json",
+      "review_status": "tracked",
+      "sha256": "sha256:03bc094febdcc428af5487366fb5b53f7ca517f391ec046bda4ca4c8397bd226",
+      "size_bytes": 463
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/embed/invalid_text_whitespace.json",
+      "review_status": "tracked",
+      "sha256": "sha256:2a9a20036f1180b619db0cbd75d8d2dd68b6ff5d7159ff71b32b364a1869c48b",
+      "size_bytes": 466
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/embed/valid_baseline.json",
+      "review_status": "tracked",
+      "sha256": "sha256:4f57f5aad976af7eaa480ededd1c4b2d48f0471e82a9b59f2d7e7af66bb236d0",
+      "size_bytes": 339
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/generate/invalid_duration_zero.json",
+      "review_status": "tracked",
+      "sha256": "sha256:94903aca6bc4d871fd654420a405fc6f690c9389db304f3efa6eec8eab68fbb8",
+      "size_bytes": 386
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/generate/invalid_prompt_empty.json",
+      "review_status": "tracked",
+      "sha256": "sha256:c7f90028ce03352fbb13331397bb5e14edb85f9588793a825accdc945a07e0c5",
+      "size_bytes": 336
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/generate/valid_baseline.json",
+      "review_status": "tracked",
+      "sha256": "sha256:6072e8332cf6cfbc96269c8f005ea817cd0d14c37c96df836a83c7a753b542a6",
+      "size_bytes": 378
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/policy/invalid_action_horizon_negative.json",
+      "review_status": "tracked",
+      "sha256": "sha256:959905d5a42c7325f4fb1ce89f8c93bd55b950f320442f5b43a50f57886e1381",
+      "size_bytes": 570
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/policy/invalid_observation_missing.json",
+      "review_status": "tracked",
+      "sha256": "sha256:00a4fde91651033949db0ea27d1683dad1bd85150f3ab221e8c81099029fc55e",
+      "size_bytes": 448
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/policy/valid_baseline.json",
+      "review_status": "tracked",
+      "sha256": "sha256:71eea3a8ed476d5f7ac750b181210524ff6eb06de24ad19b9d7b5f18fd1b7bd8",
+      "size_bytes": 647
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/predict/invalid_action_steps_zero.json",
+      "review_status": "tracked",
+      "sha256": "sha256:88db026f30165f9c5322cd851c79df56624a205ee256103c26bc766be239bdaf",
+      "size_bytes": 719
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/predict/invalid_world_state_missing_schema.json",
+      "review_status": "tracked",
+      "sha256": "sha256:65f4ba06612d86c574d8f7141f0c41a4dd2467c0700348bc5f0ddfb89efd818a",
+      "size_bytes": 700
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/predict/valid_baseline.json",
+      "review_status": "tracked",
+      "sha256": "sha256:390ed714b938aa780fffc8a3f293db54e103a8a4f261a026e8cd5c550a30c962",
+      "size_bytes": 1308
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/reason/invalid_query_empty.json",
+      "review_status": "tracked",
+      "sha256": "sha256:fac719c106439c0ee79d5cb1b156d2ea39d6d0dde0698a059a2c0a4c09a1ed42",
+      "size_bytes": 539
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/reason/invalid_world_state_corrupt.json",
+      "review_status": "tracked",
+      "sha256": "sha256:c61d600c4b3a77227d7690fcdf63c9ca6935911cfb22653acefe1721c5e80e60",
+      "size_bytes": 603
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/reason/valid_baseline.json",
+      "review_status": "tracked",
+      "sha256": "sha256:d3168f38c5d7122249b6a5c42e8ff1fb493bee5f396e5b1ec010c0a5f700d19a",
+      "size_bytes": 1648
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/score/invalid_action_candidates_empty.json",
+      "review_status": "tracked",
+      "sha256": "sha256:3b4959a64d54262a283811569fcd6074ac96f37e437d3f858244c640ff42dbd8",
+      "size_bytes": 465
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/score/invalid_info_empty.json",
+      "review_status": "tracked",
+      "sha256": "sha256:61699f5fb5a621562edf5398489c0b74377a833ea1e1d4aa075caa4b36f6c4eb",
+      "size_bytes": 429
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/score/valid_baseline.json",
+      "review_status": "tracked",
+      "sha256": "sha256:7de66de64787a9421954b5cb03bd58535133d690aaaea511d643607368be980c",
+      "size_bytes": 647
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/transfer/invalid_clip_negative_duration.json",
+      "review_status": "tracked",
+      "sha256": "sha256:1692204889cba1fe86132be99ce2a01f10092b04a17114a59f44d60fef9cbf4e",
+      "size_bytes": 611
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/transfer/invalid_clip_resolution_zero.json",
+      "review_status": "tracked",
+      "sha256": "sha256:7cea8c3812dc8fb171b3f8ab41f8aca17c1ab245d992b256be1cd246d69aa927",
+      "size_bytes": 616
+    },
+    {
+      "fixture_kind": "capability-fixture",
+      "fixture_schema_version": 1,
+      "path": "src/worldforge/testing/fixtures/transfer/valid_baseline.json",
+      "review_status": "tracked",
+      "sha256": "sha256:7976a4f49f7b1a87ba2f32b74b3e61f8b3003f09a6b24f3c4b19bcb827b9b69b",
+      "size_bytes": 607
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/cosmos_generate_bad_seed.json",
+      "review_status": "tracked",
+      "sha256": "sha256:05196342ceda94d6fb2716b2cba78d74be808eae24b3d3fd6b40c18db1b75631",
+      "size_bytes": 53
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/cosmos_generate_failed_task.json",
+      "review_status": "tracked",
+      "sha256": "sha256:070dac1de4c3e7a374f8033c9454c73d9573b896cad218a4b5794884d2e8f764",
+      "size_bytes": 82
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/cosmos_generate_missing_video.json",
+      "review_status": "tracked",
+      "sha256": "sha256:b84cc6a920e64a4a2ce528d0bc9ee20b36f51e3098c6779ab9121a225c8ef1c5",
+      "size_bytes": 16
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/cosmos_generate_success.json",
+      "review_status": "tracked",
+      "sha256": "sha256:0ff1752008f21867f4076800e6079ef77074d22de1e04b811820a6e70679f603",
+      "size_bytes": 117
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/cosmos_generate_unsupported_artifact.json",
+      "review_status": "tracked",
+      "sha256": "sha256:a37dac99aa695fca6a8e40f94a7256d130b0d06f72cdfbe0cec5a9e7dc71ae16",
+      "size_bytes": 164
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/cosmos_health_malformed.json",
+      "review_status": "tracked",
+      "sha256": "sha256:1c5ba079896272f398d82c16ec8f42401fbfb6ebc069a23b8ede12a4ee2cd2a8",
+      "size_bytes": 23
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/cosmos_health_ready.json",
+      "review_status": "tracked",
+      "sha256": "sha256:9994e13386b29bde4071dd062d8c4ab8dbb6b4b877f968b4a34fb2c7b0ead65e",
+      "size_bytes": 24
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/jepa_wms_bad_action_candidates.json",
+      "review_status": "tracked",
+      "sha256": "sha256:411b60e99beda2c9c6b80d03c971667ae6ee273d46258c9a49ecc2930ff7c822",
+      "size_bytes": 294
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/jepa_wms_bad_scores.json",
+      "review_status": "tracked",
+      "sha256": "sha256:cbb2c43b2f0b4112e0a0104640487c4e46985c486563e641e4f0f799cb5b4276",
+      "size_bytes": 506
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/jepa_wms_error.json",
+      "review_status": "tracked",
+      "sha256": "sha256:340ed0047d1c78c56961b975998e7c248a9598d5e090e40e41dd8641e4a516f6",
+      "size_bytes": 542
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/jepa_wms_missing_goal.json",
+      "review_status": "tracked",
+      "sha256": "sha256:66e543b4ebd9dbccf6256993b4809b58658ddb786a95b950e572423cd3c52410",
+      "size_bytes": 306
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/jepa_wms_success.json",
+      "review_status": "tracked",
+      "sha256": "sha256:b91aa1683b384e6ce3a0aa3055f4b3110c9a7ec2fbcbe9cfd0e95fd5fbba99f1",
+      "size_bytes": 1439
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/leworldmodel_bad_action_candidates.json",
+      "review_status": "tracked",
+      "sha256": "sha256:168ca5d276fcc1979167a66351f129034f7c35588aadf497a9c2f79b46660b78",
+      "size_bytes": 178
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/leworldmodel_bad_scores.json",
+      "review_status": "tracked",
+      "sha256": "sha256:1543281a92b10c197fdc783ce50ff2f7aef06ed9b75386c9817bf8fbe29a71c8",
+      "size_bytes": 38
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/leworldmodel_missing_goal.json",
+      "review_status": "tracked",
+      "sha256": "sha256:e999509a6ff5fa970de673074a6adba76acef3d47a4b5c63564209c05289688f",
+      "size_bytes": 159
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/leworldmodel_score_request.json",
+      "review_status": "tracked",
+      "sha256": "sha256:4383fa71017e73cf15ed837af1661393d9d89fd5c19f6036d665b1d456dbc6b6",
+      "size_bytes": 250
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/runway_create_missing_id.json",
+      "review_status": "tracked",
+      "sha256": "sha256:eae424a60cc76e3d95a0082412fdf878aa15af42dbe414cf65064832b7b0c17c",
+      "size_bytes": 42
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/runway_create_success.json",
+      "review_status": "tracked",
+      "sha256": "sha256:1559d2931f5695452c273828294d61f4fba5ea17a2025d9d39475812a9f8934c",
+      "size_bytes": 28
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/runway_org_malformed.json",
+      "review_status": "tracked",
+      "sha256": "sha256:eae424a60cc76e3d95a0082412fdf878aa15af42dbe414cf65064832b7b0c17c",
+      "size_bytes": 42
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/runway_org_success.json",
+      "review_status": "tracked",
+      "sha256": "sha256:34e355f4ef0cf6e5914429916e93875d771fdcfb0145797cd6346648a42ea3b2",
+      "size_bytes": 56
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/runway_task_empty_output.json",
+      "review_status": "tracked",
+      "sha256": "sha256:ac4472b2b09ba7aa8e8c02150e962ba55e242bedcbe4eb12b6390cb9d9892cce",
+      "size_bytes": 69
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/runway_task_failed.json",
+      "review_status": "tracked",
+      "sha256": "sha256:c78e68c771693f9292a45c25bdab7a6519ad1da588467fbb4621fcae608bab69",
+      "size_bytes": 112
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/runway_task_partial_output.json",
+      "review_status": "tracked",
+      "sha256": "sha256:fcb34df0c8c25ecbd7b68eeb9db5648b84f2208285b231a0b770e2d2fdb9f363",
+      "size_bytes": 130
+    },
+    {
+      "fixture_kind": "provider-payload-fixture",
+      "fixture_schema_version": null,
+      "path": "tests/fixtures/providers/runway_task_success.json",
+      "review_status": "tracked",
+      "sha256": "sha256:8fd9d7a2319585767d0158b914bbdfe641f87d4f8f519019dad01889897c3ee0",
+      "size_bytes": 122
+    },
+    {
+      "fixture_kind": "scene-artifact-fixture",
+      "fixture_schema_version": "1",
+      "path": "tests/fixtures/scene_artifacts/invalid_malformed_transform.json",
+      "review_status": "tracked",
+      "sha256": "sha256:722bfec23ccef67aedd7cffb7fbb6179dc211448105c3a32f52223fd63e80cec",
+      "size_bytes": 563
+    },
+    {
+      "fixture_kind": "scene-artifact-fixture",
+      "fixture_schema_version": "1",
+      "path": "tests/fixtures/scene_artifacts/invalid_non_finite_transform.json",
+      "review_status": "tracked",
+      "sha256": "sha256:8910da600b21d09d4114378b5e7c8110cc503e5f4811c95cfbf490141a2a9230",
+      "size_bytes": 567
+    },
+    {
+      "fixture_kind": "scene-artifact-fixture",
+      "fixture_schema_version": "1",
+      "path": "tests/fixtures/scene_artifacts/invalid_oversized_metadata.json",
+      "review_status": "tracked",
+      "sha256": "sha256:cf345cf99ecafc8b854ce6b42e3ec23f6f8003070472f7d1f99be6332d6fd46d",
+      "size_bytes": 3083
+    },
+    {
+      "fixture_kind": "scene-artifact-fixture",
+      "fixture_schema_version": "1",
+      "path": "tests/fixtures/scene_artifacts/invalid_unit.json",
+      "review_status": "tracked",
+      "sha256": "sha256:c53be7a865cf60f6cb6a9abe58c83a75b82e0a4f3374d8dd5ebe1af45c7f1fa7",
+      "size_bytes": 377
+    },
+    {
+      "fixture_kind": "scene-artifact-fixture",
+      "fixture_schema_version": "1",
+      "path": "tests/fixtures/scene_artifacts/invalid_unsafe_asset_reference.json",
+      "review_status": "tracked",
+      "sha256": "sha256:5d565d36df1332a4b0e02e506f2421e00cf96ba39ef831ca133aadb46d5889f2",
+      "size_bytes": 585
+    },
+    {
+      "fixture_kind": "scene-artifact-fixture",
+      "fixture_schema_version": "1",
+      "path": "tests/fixtures/scene_artifacts/valid_minimal_scene.json",
+      "review_status": "tracked",
+      "sha256": "sha256:a8ba86d1c55d494ef921a700bc599a67da788e34a454ae2656fa121fe8c7fff2",
+      "size_bytes": 1596
+    }
+  ],
+  "schema_version": 1
+}

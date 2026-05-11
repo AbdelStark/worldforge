@@ -66,3 +66,17 @@ arguments used by `payload`, so fixtures can be passed straight through with `**
 - Marketing or end-to-end demos (use `examples/` instead).
 - Provider-specific success or error responses (use `tests/fixtures/providers/`).
 - Large benchmark inputs (use `examples/benchmark-inputs.json` and friends).
+
+## Snapshot review
+
+Capability fixtures are also tracked by `tests/fixtures/fixture-snapshots.json` together with
+provider payload fixtures, benchmark inputs, scenario files, and scene artifact fixtures. After
+changing any tracked JSON fixture, run:
+
+```bash
+uv run python scripts/manage_fixture_snapshots.py --format markdown
+```
+
+Use `"review_status": "intended-update"` only while a reviewer is inspecting an intentional fixture
+change, then refresh the manifest with `uv run python scripts/manage_fixture_snapshots.py --write`
+before merging. The manager never fetches remote provider data or stores large datasets.

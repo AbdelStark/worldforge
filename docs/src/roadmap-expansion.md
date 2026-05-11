@@ -902,10 +902,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Fixture manifest validation fails on missing, changed, or unsafe fixture references.
-- [ ] Review output distinguishes intended updates from drift.
-- [ ] Docs explain when to update fixtures.
-- [ ] Tests cover manifest load, digest mismatch, and unsafe path cases.
+- [x] Fixture manifest validation fails on missing, changed, or unsafe fixture references.
+- [x] Review output distinguishes intended updates from drift.
+- [x] Docs explain when to update fixtures.
+- [x] Tests cover manifest load, digest mismatch, and unsafe path cases.
 
 Validation:
 

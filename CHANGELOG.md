@@ -63,6 +63,11 @@ releases may still include breaking changes when the public API needs to tighten
   `cartesian_offset_candidates(...)`, `object_near_candidates(...)`,
   `swap_action_candidates(...)`, `bounded_move_grid_candidates(...)`,
   `normalize_action_candidates(...)`, and `action_candidates_to_score_payload(...)`.
+- Added fixture snapshot governance for source-controlled JSON fixtures. The new
+  `worldforge.testing.fixture_snapshots` helpers and `scripts/manage_fixture_snapshots.py` validate
+  `tests/fixtures/fixture-snapshots.json` against capability fixtures, provider payload fixtures,
+  benchmark inputs, scenario files, and scene artifact fixtures, with review output that separates
+  accidental drift from entries marked `intended-update`.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import

@@ -51,8 +51,8 @@ evaluation harnesses, and testable prototypes.
   snapshots, plans, benchmark reports, robotics showcase visual layers, and JSON artifacts. Rerun
   is not a provider capability and stays behind the `rerun` extra or host-owned optional runtimes
   that already provide `rerun-sdk`.
-- `src/worldforge/testing/`: reusable adapter contract helpers, fixture loaders, runtime markers,
-  and deterministic controls for artifact/report tests.
+- `src/worldforge/testing/`: reusable adapter contract helpers, fixture loaders, fixture snapshot
+  manifest helpers, runtime markers, and deterministic controls for artifact/report tests.
 - `src/worldforge/demos/`: packaged demo entry points exposed through `uv run` console scripts.
 - `src/worldforge/demos/lerobot_e2e.py`: packaged LeRobot policy-plus-score planning demo exposed
   through `uv run worldforge-demo-lerobot`.
@@ -139,6 +139,7 @@ uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
 uv run python scripts/check_docs_snippets.py
+uv run python scripts/manage_fixture_snapshots.py --format markdown
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
@@ -292,6 +293,9 @@ generated documentation surfaces.
   recovery path exists, and redact signed URLs, secret-like assignments, and host-local paths.
 - Put remote provider payload fixtures under `tests/fixtures/providers/` and assert both parser
   errors and public provider errors.
+- After changing capability fixtures, provider payload fixtures, benchmark inputs, scenario files,
+  or scene artifact fixtures, run the fixture snapshot check; use `--write` only after the fixture
+  diff is intended and reviewed.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.
 - Keep operator docs concrete: every new runtime, provider, persistence, or release workflow
   should state the command to run, the expected success signal, and the first triage step.
@@ -418,12 +422,14 @@ generated documentation surfaces.
 - `uv run python scripts/generate_provider_docs.py --check`,
   `uv run python scripts/check_docs_commands.py`,
   `uv run python scripts/check_docs_snippets.py`,
+  `uv run python scripts/manage_fixture_snapshots.py --format markdown`,
   `uv run python scripts/check_wrapper_portability.py`,
   `uv run python scripts/check_optional_import_boundaries.py`,
   `uv run python scripts/check_core_performance.py`, and `uv run mkdocs build --strict` check
-  generated provider docs, documented command drift, executable docs snippets, wrapper portability,
-  optional-runtime import boundaries, checkout-safe core performance budgets, and the MkDocs
-  Material site. A warning in the published docs build is a release blocker.
+  generated provider docs, documented command drift, executable docs snippets, fixture snapshot
+  drift, wrapper portability, optional-runtime import boundaries, checkout-safe core performance
+  budgets, and the MkDocs Material site. A warning in the published docs build is a release
+  blocker.
 - `uv run python scripts/generate_dependency_audit_evidence.py` preserves dependency-audit JSON and
   Markdown evidence for release review without keeping the temporary requirements file.
 - `uv run python scripts/generate_quality_dashboard.py` reads existing quality artifacts and writes

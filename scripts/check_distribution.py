@@ -55,6 +55,7 @@ SDIST_REQUIRED_SUFFIXES = (
     "scripts/generate_dependency_audit_evidence.py",
     "scripts/generate_quality_dashboard.py",
     "scripts/generate_release_notes.py",
+    "scripts/manage_fixture_snapshots.py",
     "scripts/check_wrapper_portability.py",
     "scripts/contributor_doctor.py",
     "scripts/check_distribution.py",

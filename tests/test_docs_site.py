@@ -919,6 +919,74 @@ def test_action_candidate_helper_docs_cover_issue_204_contract() -> None:
         assert f"- [x] {criterion}" in expansion
 
 
+def test_fixture_snapshot_manager_docs_cover_issue_205_contract() -> None:
+    fixtures_doc = (ROOT / "docs/src/fixtures.md").read_text(encoding="utf-8")
+    artifact_schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    docs_contributing = (ROOT / "docs/src/contributing.md").read_text(encoding="utf-8")
+    root_contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    expansion = (ROOT / "docs/src/roadmap-expansion.md").read_text(encoding="utf-8")
+    manager = (ROOT / "src/worldforge/testing/fixture_snapshots.py").read_text(encoding="utf-8")
+    testing_init = (ROOT / "src/worldforge/testing/__init__.py").read_text(encoding="utf-8")
+    script = (ROOT / "scripts/manage_fixture_snapshots.py").read_text(encoding="utf-8")
+    manifest = (ROOT / "tests/fixtures/fixture-snapshots.json").read_text(encoding="utf-8")
+    tests = (ROOT / "tests/test_capability_fixtures.py").read_text(encoding="utf-8")
+
+    for signal in (
+        "tests/fixtures/fixture-snapshots.json",
+        "uv run python scripts/manage_fixture_snapshots.py --format markdown",
+        "uv run python scripts/manage_fixture_snapshots.py --write",
+        "`intended-update`",
+        "Do not use the snapshot manager to fetch remote provider payloads",
+    ):
+        assert signal in fixtures_doc
+
+    for doc in (docs_contributing, root_contributing, agents):
+        assert "scripts/manage_fixture_snapshots.py" in doc
+
+    for implementation_signal in (
+        "FIXTURE_SNAPSHOT_MANIFEST_SCHEMA_VERSION",
+        "FixtureSnapshotManifest",
+        "validate_fixture_snapshot_manifest",
+        "allow_intended_updates",
+        "parent-directory",
+        "backslashes",
+        "sha256:<64 hex chars>",
+    ):
+        assert implementation_signal in manager
+
+    for export_signal in (
+        "FixtureSnapshotEntry",
+        "load_fixture_snapshot_manifest",
+        "validate_fixture_snapshot_manifest",
+    ):
+        assert export_signal in testing_init
+
+    assert "--allow-intended-updates" in script
+    assert "src/worldforge/testing/fixtures/predict/valid_baseline.json" in manifest
+    assert "tests/fixtures/providers/cosmos_generate_success.json" in manifest
+    assert "examples/benchmark-inputs.json" in manifest
+    assert "examples/scenarios/cube-on-table.json" in manifest
+    assert "tests/fixtures/scene_artifacts/valid_minimal_scene.json" in manifest
+    assert "Fixture snapshot manifests" in artifact_schemas
+    assert "fixture snapshot governance" in changelog
+    for test_signal in (
+        "test_fixture_snapshot_manifest_loads_and_validates_committed_manifest",
+        "test_fixture_snapshot_manifest_reports_digest_drift_and_intended_updates",
+        "test_fixture_snapshot_manifest_rejects_missing_and_unsafe_paths",
+    ):
+        assert test_signal in tests
+
+    for criterion in (
+        "Fixture manifest validation fails",
+        "Review output distinguishes intended updates",
+        "Docs explain when to update fixtures",
+        "Tests cover manifest load",
+    ):
+        assert f"- [x] {criterion}" in expansion
+
+
 def test_cross_provider_comparison_docs_cover_issue_150_contract() -> None:
     benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
     harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
@@ -1570,6 +1638,11 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
             "Capability fixture corpus",
             "FIXTURE_SCHEMA_VERSION",
             "src/worldforge/testing/capability_fixtures.py",
+        ),
+        (
+            "Fixture snapshot manifests",
+            "FIXTURE_SNAPSHOT_MANIFEST_SCHEMA_VERSION",
+            "src/worldforge/testing/fixture_snapshots.py",
         ),
         (
             "Provider runtime manifests",
