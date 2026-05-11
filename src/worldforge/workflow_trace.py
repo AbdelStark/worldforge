@@ -259,12 +259,17 @@ class WorkflowTrace:
             status: sum(1 for step in self.steps if step.status == status)
             for status in WORKFLOW_TRACE_STEP_STATUSES
         }
+        safe_to_attach = all(
+            artifact.safe_to_attach
+            for step in self.steps
+            for artifact in (*step.input_artifacts, *step.output_artifacts)
+        )
         return {
             "schema_version": self.schema_version,
             "workflow_id": self.workflow_id,
             "name": self.name,
             "status": self.status,
-            "safe_to_attach": True,
+            "safe_to_attach": safe_to_attach,
             "step_count": len(self.steps),
             "status_counts": status_counts,
             "metadata": dict(self.metadata),

@@ -167,3 +167,29 @@ def test_workflow_trace_validates_skipped_failed_and_nested_steps() -> None:
     assert payload["status"] == "failed"
     assert payload["status_counts"]["skipped"] == 1
     assert payload["steps"][3]["parent_id"] == "provider"
+
+
+def test_workflow_trace_marks_local_only_artifacts_not_safe_to_attach() -> None:
+    trace = WorkflowTrace(
+        workflow_id="local-artifact-trace",
+        name="Local artifact trace",
+        steps=[
+            WorkflowTraceStep(
+                step_id="checkpoint",
+                operation="prepared-host checkpoint",
+                status="success",
+                output_artifacts=(
+                    WorkflowArtifactRef(
+                        label="checkpoint",
+                        path="/Users/example/.cache/model.ckpt",
+                        safe_to_attach=False,
+                    ),
+                ),
+            )
+        ],
+    )
+
+    payload = trace.to_dict()
+
+    assert payload["safe_to_attach"] is False
+    assert payload["steps"][0]["output_artifacts"][0]["safe_to_attach"] is False
