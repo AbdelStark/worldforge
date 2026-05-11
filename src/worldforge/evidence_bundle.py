@@ -593,16 +593,21 @@ def _resolve_report_reference(value: object) -> Path | None:
     raw = Path(value)
     if raw.is_absolute():
         resolved = raw.resolve()
-        if _is_relative_to(resolved, _ROOT.resolve()):
-            return resolved
+        for root in _known_roots():
+            if _is_relative_to(resolved, root):
+                return resolved
         return None
     candidates = [
         _ROOT / raw,
         _ROOT / "src" / "worldforge" / raw,
         _ROOT / "src" / "worldforge" / raw.parent / raw.name,
+        Path.cwd() / raw,
+        Path.cwd() / "src" / "worldforge" / raw,
+        Path.cwd() / "src" / "worldforge" / raw.parent / raw.name,
     ]
     if value.startswith("benchmark_presets/_data/"):
         candidates.insert(0, _ROOT / "src" / "worldforge" / value)
+        candidates.insert(1, Path.cwd() / "src" / "worldforge" / value)
     for candidate in candidates:
         if candidate.exists() and candidate.is_file():
             return candidate
@@ -939,17 +944,22 @@ def _sha256_file(path: Path) -> str:
 
 def _repo_relative(path: Path) -> Path:
     resolved = path.resolve()
-    try:
-        return resolved.relative_to(_ROOT.resolve())
-    except ValueError:
-        return Path(path.name)
+    for root in _known_roots():
+        try:
+            return resolved.relative_to(root)
+        except ValueError:
+            continue
+    return Path(path.name)
 
 
 def _display_path(path: Path) -> str:
-    try:
-        return path.resolve().relative_to(_ROOT.resolve()).as_posix()
-    except ValueError:
-        return f"<host-local:{path.name}>"
+    resolved = path.resolve()
+    for root in _known_roots():
+        try:
+            return resolved.relative_to(root).as_posix()
+        except ValueError:
+            continue
+    return f"<host-local:{path.name}>"
 
 
 def _safe_source_display(source: str) -> str:
@@ -964,6 +974,14 @@ def _is_relative_to(path: Path, root: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _known_roots() -> tuple[Path, ...]:
+    package_root = _ROOT.resolve()
+    cwd = Path.cwd().resolve()
+    if cwd == package_root:
+        return (package_root,)
+    return (package_root, cwd)
 
 
 __all__ = [

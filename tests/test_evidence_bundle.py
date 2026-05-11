@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+import worldforge.evidence_bundle as evidence_bundle
 from worldforge.cli import main
 from worldforge.evidence_bundle import (
     evidence_bundle_artifact,
@@ -114,6 +115,28 @@ def test_evidence_bundle_collects_mock_eval_and_benchmark_runs(
     assert rendered.media_type == "text/html"
     assert rendered.safe_to_attach is True
     assert rendered.content.startswith("<!DOCTYPE html>")
+
+
+def test_evidence_bundle_resolves_checkout_references_from_installed_package_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    checkout_root = tmp_path / "checkout"
+    package_root = tmp_path / "installed-package"
+    fixture = checkout_root / "examples" / "dataset-manifests" / "mock.json"
+    fixture.parent.mkdir(parents=True)
+    package_root.mkdir()
+    fixture.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(evidence_bundle, "_ROOT", package_root)
+    monkeypatch.chdir(checkout_root)
+
+    assert evidence_bundle._known_roots() == (package_root.resolve(), checkout_root.resolve())
+    assert evidence_bundle._resolve_report_reference(fixture.as_posix()) == fixture
+    assert (
+        evidence_bundle._resolve_report_reference("examples/dataset-manifests/mock.json") == fixture
+    )
+    assert evidence_bundle._repo_relative(fixture) == Path("examples/dataset-manifests/mock.json")
+    assert evidence_bundle._display_path(fixture) == "examples/dataset-manifests/mock.json"
 
 
 def test_evidence_bundle_marks_unsafe_and_local_only_artifacts(tmp_path: Path) -> None:
