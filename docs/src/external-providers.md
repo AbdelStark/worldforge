@@ -22,6 +22,7 @@ The entry-point **name** (``my-policy``) is the provider name WorldForge will su
 
 The referenced callable takes one optional keyword argument and returns a `BaseProvider`:
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from worldforge.providers import BaseProvider, ProviderProfileSpec
 from worldforge import ProviderCapabilities
@@ -58,6 +59,7 @@ typed reason:
 
 The full report lives on ``WorldForge.entry_point_discovery()``:
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import WorldForge
 

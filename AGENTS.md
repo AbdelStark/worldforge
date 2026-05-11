@@ -81,6 +81,8 @@ evaluation harnesses, and testable prototypes.
 - `examples/lerobot_e2e_demo.py`: checkout-safe end-to-end LeRobot policy-plus-score planning
   compatibility wrapper with an injected deterministic policy.
 - `scripts/generate_provider_docs.py`: provider catalog documentation generator and drift check.
+- `scripts/check_docs_snippets.py`: checkout-safe snippet gate for selected Python and JSON docs
+  blocks, with explicit host-owned, credentialed, and illustrative skip markers.
 - `scripts/check_optional_import_boundaries.py`: checkout-safe static and import-time audit that
   keeps Textual, Rerun, torch, stable-worldmodel, LeRobot, GR00T, and Cosmos-Policy imports behind
   their allowed optional-runtime modules.
@@ -126,6 +128,7 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
@@ -394,12 +397,13 @@ generated documentation surfaces.
   in `README.md`. Do not drop `scripts` from either target.
 - `uv run python scripts/generate_provider_docs.py --check`,
   `uv run python scripts/check_docs_commands.py`,
+  `uv run python scripts/check_docs_snippets.py`,
   `uv run python scripts/check_wrapper_portability.py`,
   `uv run python scripts/check_optional_import_boundaries.py`,
   `uv run python scripts/check_core_performance.py`, and `uv run mkdocs build --strict` check
-  generated provider docs, documented command drift, wrapper portability, optional-runtime import
-  boundaries, checkout-safe core performance budgets, and the MkDocs Material site. A warning in
-  the published docs build is a release blocker.
+  generated provider docs, documented command drift, executable docs snippets, wrapper portability,
+  optional-runtime import boundaries, checkout-safe core performance budgets, and the MkDocs
+  Material site. A warning in the published docs build is a release blocker.
 - `worldforge benchmark --budget-file <path>` evaluates direct provider benchmark results against
   JSON thresholds and exits non-zero on violations. Keep benchmark budgets tied to preserved run
   artifacts when using them for release or paper claims.

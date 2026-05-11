@@ -9,6 +9,7 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
@@ -33,13 +34,42 @@ assuming LeWorldModel, LeRobot, GR00T, or Rerun are present. Its Markdown output
 into public issues.
 
 `uv run python scripts/generate_provider_docs.py --check`,
-`uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_wrapper_portability.py`,
+`uv run python scripts/check_docs_commands.py`, `uv run python scripts/check_docs_snippets.py`,
+`uv run python scripts/check_wrapper_portability.py`,
 `uv run python scripts/check_optional_import_boundaries.py`, and `uv run mkdocs build --strict`
-verify generated provider docs, documented command drift, wrapper portability, optional-runtime
-import boundaries, and the MkDocs Material site in strict mode. `bash scripts/test_package.sh`
-checks the wheel/sdist contents before installing the built wheel and running tests against the
-installed package. See [Artifact Integrity](./artifact-integrity.md) for the release artifact
-hashing and evidence-linking contract.
+verify generated provider docs, documented command drift, selected executable docs snippets,
+wrapper portability, optional-runtime import boundaries, and the MkDocs Material site in strict
+mode. `bash scripts/test_package.sh` checks the wheel/sdist contents before installing the built
+wheel and running tests against the installed package. See [Artifact Integrity](./artifact-integrity.md)
+for the release artifact hashing and evidence-linking contract.
+
+### Docs snippet markers
+
+Use snippet markers directly before fenced code blocks when a Python or JSON example is stable
+enough to gate:
+
+````markdown
+<!-- worldforge-snippet: execute -->
+```python
+from worldforge import WorldForge
+forge = WorldForge()
+print(forge.providers())
+```
+````
+
+Use `<!-- worldforge-snippet: parse -->` for JSON blocks. The gate parses generic JSON and applies
+schema checks for selected scenario and benchmark examples. Use explicit skip markers instead of
+leaving fragile examples unmarked:
+
+- `<!-- worldforge-snippet: skip-host-owned -->` for optional runtimes, checkpoints, GPU hosts, or
+  prepared robotics environments.
+- `<!-- worldforge-snippet: skip-credentialed -->` for paid providers, private endpoints, or
+  examples requiring secrets.
+- `<!-- worldforge-snippet: skip-illustrative -->` for fragments with placeholders such as
+  `...`, undefined host objects, or intentionally incomplete code.
+
+Run `uv run python scripts/check_docs_snippets.py` before changing Python or JSON examples in the
+Python API, scenarios, provider routing, external provider, benchmarking, artifact, or report docs.
 
 Before changing public imports, CLI flags, provider capabilities, or artifact schemas, classify the
 surface through [Public API Stability](./api-stability.md) and the

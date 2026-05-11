@@ -8,6 +8,7 @@ need planning-path latency.
 
 ## Python
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from worldforge import ProviderBenchmarkHarness
 
@@ -28,6 +29,7 @@ records the same report JSON plus per-result metric scalars into a `.rrd` inspec
 Score and policy providers use the same benchmark runner with provider-native inputs supplied by
 the host:
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from worldforge import BenchmarkInputs, ProviderBenchmarkHarness
 
@@ -106,6 +108,7 @@ file can contain input fields directly, or an `inputs` object plus metadata. The
 `generate`, `transfer`, and `embed` operations; score and policy entries require providers that
 advertise those capabilities.
 
+<!-- worldforge-snippet: parse -->
 ```json
 {
   "metadata": {
@@ -181,6 +184,7 @@ Use a budget file when a benchmark run is part of a release gate, regression che
 claim. Budget selectors can pin a provider and operation, or omit either field to apply the
 threshold to every matching result:
 
+<!-- worldforge-snippet: parse -->
 ```json
 {
   "budgets": [

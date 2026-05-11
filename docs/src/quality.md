@@ -100,6 +100,7 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
@@ -111,17 +112,20 @@ uv build --out-dir dist --clear --no-build-logs
 ```
 
 The local gate runs the lock check, Ruff, generated-provider-doc drift check, documented-command
-drift check, wrapper portability check, optional import boundary audit, checkout-safe core
-performance budgets, strict MkDocs build, full pytest, harness coverage gate, wheel/sdist package
-contract, and distribution build. The wrapper portability check verifies shebangs, executable bits,
-documented `uv run` commands, and Python 3.13 expectations without installing optional runtimes.
-The optional import boundary audit verifies that base package imports, CLI startup, `worldforge.rerun`,
-and non-TUI harness modules do not import Textual, Rerun, torch, stable-worldmodel, LeRobot, GR00T,
-or Cosmos-Policy packages. Allowed direct imports stay limited to `worldforge.harness.tui` for
-Textual and prepared-host smoke modules for torch/stable-worldmodel; provider adapters must use
-lazy imports or injected runtimes. The core performance budget gate writes JSON with measured local
-paths and a claim boundary; it detects regressions in checkout paths and is not a cross-machine
-benchmark or optional-runtime performance claim. Before a release tag, also run:
+drift check, docs snippet gate, wrapper portability check, optional import boundary audit,
+checkout-safe core performance budgets, strict MkDocs build, full pytest, harness coverage gate,
+wheel/sdist package contract, and distribution build. The docs snippet gate executes only selected
+Python snippets and parses only selected JSON snippets; host-owned, credentialed, and illustrative
+examples need explicit skip markers. The wrapper portability check verifies shebangs, executable
+bits, documented `uv run` commands, and Python 3.13 expectations without installing optional
+runtimes. The optional import boundary audit verifies that base package imports, CLI startup,
+`worldforge.rerun`, and non-TUI harness modules do not import Textual, Rerun, torch,
+stable-worldmodel, LeRobot, GR00T, or Cosmos-Policy packages. Allowed direct imports stay limited
+to `worldforge.harness.tui` for Textual and prepared-host smoke modules for torch/stable-worldmodel;
+provider adapters must use lazy imports or injected runtimes. The core performance budget gate
+writes JSON with measured local paths and a claim boundary; it detects regressions in checkout paths
+and is not a cross-machine benchmark or optional-runtime performance claim. Before a release tag,
+also run:
 
 ```bash
 tmp_req="$(mktemp requirements-audit.XXXXXX)"

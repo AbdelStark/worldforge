@@ -29,6 +29,7 @@ provider; fixtures are scoped to a single adapter.
 
 ## Schema (version 1)
 
+<!-- worldforge-snippet: parse -->
 ```json
 {
   "schema_version": 1,
@@ -115,6 +116,7 @@ result to a file instead of stdout.
 
 ## Python surface
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from pathlib import Path
 from worldforge import WorldForge, load_scenario, run_scenario

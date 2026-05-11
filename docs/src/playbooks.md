@@ -18,6 +18,7 @@ uv run worldforge doctor
 uv run worldforge examples
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run mkdocs build --strict
@@ -858,6 +859,7 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
@@ -899,6 +901,17 @@ uv run python scripts/check_wrapper_portability.py
 Success signal: every wrapper row passes, including `scripts/robotics-showcase`, LeWorldModel
 wrappers, GR00T and LeRobot smoke helpers, and `scripts/test_package.sh`. First triage step: repair
 the exact script named in the failure before editing docs around it.
+
+Run the docs snippet gate whenever Python or JSON examples change:
+
+```bash
+uv run python scripts/check_docs_snippets.py
+```
+
+Success signal: marked Python snippets execute in a temp workspace, marked JSON snippets parse and
+schema-check where supported, and host-owned, credentialed, or illustrative examples use explicit
+skip markers. First triage step: fix the file, heading, and line named in the report or apply the
+correct skip marker.
 
 Run the optional import boundary audit whenever base imports, CLI startup, non-TUI harness modules,
 or optional provider modules change:

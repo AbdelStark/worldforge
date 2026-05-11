@@ -587,6 +587,7 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
@@ -650,6 +651,11 @@ startup, `worldforge.rerun`, and non-TUI harness modules do not load Textual, Re
 stable-worldmodel, LeRobot, GR00T, or Cosmos-Policy packages, and static source checks only find
 optional imports inside their allowed provider, smoke, Rerun, or `harness.tui` modules. First
 triage step: move the named import behind the allowed lazy boundary in the report.
+
+`uv run python scripts/check_docs_snippets.py` executes selected Python snippets and parses selected
+JSON snippets from the public docs. Success signal: the report passes with no snippet failures, and
+any host-owned, credentialed, or illustrative snippets are explicitly skipped. First triage step:
+fix the file, heading, and line named in the failure before changing surrounding docs.
 
 When release or issue triage needs the underlying evaluation and benchmark artifacts, generate a
 separate evidence bundle first:

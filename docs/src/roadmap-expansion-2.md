@@ -89,10 +89,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Selected Python snippets execute in a temp workspace.
-- [ ] Selected JSON snippets parse and satisfy the expected schema where a schema exists.
-- [ ] Skip markers distinguish host-owned, credentialed, and illustrative snippets.
-- [ ] Docs explain how contributors add new snippets to the gate.
+- [x] Selected Python snippets execute in a temp workspace.
+- [x] Selected JSON snippets parse and satisfy the expected schema where a schema exists.
+- [x] Skip markers distinguish host-owned, credentialed, and illustrative snippets.
+- [x] Docs explain how contributors add new snippets to the gate.
 
 Validation:
 

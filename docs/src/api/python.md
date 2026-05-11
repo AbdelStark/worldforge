@@ -5,6 +5,7 @@ For compatibility tiers, deprecation expectations, and artifact-schema migration
 
 ## Entry points
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import (
     Action,
@@ -30,6 +31,7 @@ Top-level framework object responsible for:
 
 Common inspection helpers:
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import WorldForge
 
@@ -52,6 +54,7 @@ Provider adapters can still subclass `BaseProvider`, but small integrations can 
 single capability object. The object declares a non-empty `name`, optional `ProviderProfileSpec`,
 and the method for exactly the capability it implements.
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import ActionScoreResult, WorldForge
 from worldforge.providers import ProviderProfileSpec
@@ -104,6 +107,7 @@ of being treated as successful no-ops.
 
 ## Observability
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 import logging
 from pathlib import Path
@@ -146,6 +150,7 @@ bounded labels for provider, operation, phase, status class, and capability.
 
 Rerun is available as an optional observability and artifact layer:
 
+<!-- worldforge-snippet: skip-host-owned -->
 ```python
 session = RerunSession(RerunRecordingConfig(save_path=".worldforge/rerun/run.rrd"))
 rerun_events = RerunEventSink(session=session)
@@ -169,6 +174,7 @@ Future spatial or 3D scene providers must validate their JSON artifact descripto
 or preserving evidence. The helper is dependency-free and does not fetch assets, render previews,
 or run simulators:
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from worldforge import validate_scene_artifact
 
@@ -185,6 +191,7 @@ Providers that expose the `score` capability can rank candidate action sequences
 prediction, generation, or reasoning support. LeWorldModel uses this path because its upstream
 runtime is a JEPA cost model.
 
+<!-- worldforge-snippet: skip-host-owned -->
 ```python
 from worldforge import WorldForge
 

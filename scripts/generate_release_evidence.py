@@ -101,6 +101,11 @@ CHECKOUT_SAFE_GATES = (
         "Fix stale command references or document the missing public entry point, then rerun.",
     ),
     ReleaseGate(
+        "Docs snippets",
+        "uv run python scripts/check_docs_snippets.py",
+        "Fix the named docs snippet or mark it with the correct skip reason.",
+    ),
+    ReleaseGate(
         "Wrapper portability",
         "uv run python scripts/check_wrapper_portability.py",
         "Fix the named wrapper shebang, executable bit, documented command, or Python 3.13 uv "

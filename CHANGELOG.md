@@ -17,6 +17,11 @@ releases may still include breaking changes when the public API needs to tighten
   optional runtime imports and verifies base package, CLI, Rerun, provider, and non-TUI harness
   imports do not load Textual, Rerun, torch, stable-worldmodel, LeRobot, GR00T, or Cosmos-Policy
   runtime packages.
+- Added `scripts/check_docs_snippets.py`, a marker-based docs snippet gate for selected Python and
+  JSON examples across the Python API, scenarios, provider routing, external provider,
+  benchmarking, artifact, and report docs. The gate executes Python snippets in a temp workspace,
+  parses JSON snippets, applies scenario and benchmark schema checks, and requires explicit
+  host-owned, credentialed, or illustrative skip markers.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import
