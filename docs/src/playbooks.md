@@ -966,6 +966,19 @@ and artifact summaries. Gate rows are explicit `passed`, `failed`, or `skipped` 
 first triage step. Use `--known-limitation` for release-scoped caveats that should travel with the
 bundle.
 
+Generate a local quality dashboard after the evidence artifacts exist:
+
+```bash
+uv run python scripts/generate_quality_dashboard.py
+```
+
+Success signal: `.worldforge/quality-dashboard/quality-dashboard.json` and
+`.worldforge/quality-dashboard/quality-dashboard.md` exist, the table distinguishes `failed`,
+`warning`, `skipped`, and `not-run` rows, and the first failed gate points back to the underlying
+raw output. The dashboard reads existing gate outputs rather than running them. It is an
+at-a-glance local review index; release evidence remains the release artifact for hashes, linked
+run manifests, optional runtime claim boundaries, and known limitations.
+
 Then create a maintainer-editable release notes draft from the changelog, evidence JSON, and
 optional closed-issue metadata:
 

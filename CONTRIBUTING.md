@@ -33,6 +33,12 @@ uv lock --check
 uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
+uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
+uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
+uv run python scripts/check_core_performance.py
+uv run python scripts/generate_quality_dashboard.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -48,6 +54,9 @@ checks the distribution contents, installs the wheel into an isolated virtual en
 the root test suite against the installed package.
 `uv run python scripts/generate_provider_docs.py --check` plus `uv run mkdocs build --strict`
 verifies the generated provider catalog and builds the MkDocs Material site in strict mode.
+`uv run python scripts/generate_quality_dashboard.py` reads existing release evidence,
+dependency-audit evidence, and core-performance output to write a local JSON/Markdown dashboard; it
+does not execute gates or replace release evidence.
 
 The exact release gate is documented in [docs/src/playbooks.md](./docs/src/playbooks.md).
 

@@ -216,8 +216,8 @@ expected skipped or passed status.
 
 ## Artifact, Report, Or Evidence
 
-Use for run manifests, evidence bundles, issue bundles, release evidence, static HTML reports,
-run indexes, provenance, artifact integrity, or schema-versioned output.
+Use for run manifests, evidence bundles, issue bundles, release evidence, quality dashboards,
+static HTML reports, run indexes, provenance, artifact integrity, or schema-versioned output.
 
 ### Likely Files To Inspect
 
@@ -229,6 +229,7 @@ run indexes, provenance, artifact integrity, or schema-versioned output.
 - `src/worldforge/harness/report_compare.py`
 - `src/worldforge/smoke/run_manifest.py`
 - `scripts/generate_dependency_audit_evidence.py`
+- `scripts/generate_quality_dashboard.py`
 - `scripts/generate_release_evidence.py`
 - `scripts/generate_release_notes.py`
 - `docs/src/artifact-schemas.md`
@@ -256,6 +257,7 @@ run indexes, provenance, artifact integrity, or schema-versioned output.
 ```bash
 uv run pytest tests/test_evidence_bundle.py tests/test_html_report.py tests/test_release_evidence.py
 uv run pytest tests/test_harness_workspace.py tests/test_run_index.py tests/test_redaction_corpus.py
+uv run pytest tests/test_quality_dashboard.py
 uv run mkdocs build --strict
 ```
 
@@ -264,7 +266,8 @@ uv run mkdocs build --strict
 - Stable JSON, Markdown, or HTML fixture output with deterministic clocks, IDs, and path roots
   where exact snapshots are appropriate.
 - Redaction-corpus coverage for every new log-facing or issue-facing field.
-- Release evidence JSON or bundle output when the change affects release readiness.
+- Release evidence JSON, quality dashboard output, or bundle output when the change affects release
+  readiness.
 
 ### Docs And Changelog Expectations
 

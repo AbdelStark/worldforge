@@ -64,6 +64,9 @@ evaluation harnesses, and testable prototypes.
 - `scripts/generate_dependency_audit_evidence.py`: checkout-safe dependency-audit evidence wrapper
   around the documented `uv export` plus `pip-audit` flow; writes JSON and Markdown summaries
   without preserving the temporary requirements file.
+- `scripts/generate_quality_dashboard.py`: local quality dashboard generator that reads release
+  evidence, dependency-audit evidence, and core-performance output and emits JSON/Markdown status
+  summaries without running gates.
 - `scripts/generate_release_notes.py`: maintainer-editable release notes draft generator that
   assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
   validation summaries, caveats, and host-owned optional runtime evidence without publishing.
@@ -140,6 +143,7 @@ uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run python scripts/generate_dependency_audit_evidence.py
+uv run python scripts/generate_quality_dashboard.py
 uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json
 uv run mkdocs build --strict
 uv run pytest
@@ -422,6 +426,9 @@ generated documentation surfaces.
   Material site. A warning in the published docs build is a release blocker.
 - `uv run python scripts/generate_dependency_audit_evidence.py` preserves dependency-audit JSON and
   Markdown evidence for release review without keeping the temporary requirements file.
+- `uv run python scripts/generate_quality_dashboard.py` reads existing quality artifacts and writes
+  `.worldforge/quality-dashboard/quality-dashboard.json` plus Markdown with first failed gate,
+  raw failure details, skipped host-owned checks, warnings, and not-run rows.
 - `worldforge benchmark --budget-file <path>` evaluates direct provider benchmark results against
   JSON thresholds and exits non-zero on violations. Keep benchmark budgets tied to preserved run
   artifacts when using them for release or paper claims.

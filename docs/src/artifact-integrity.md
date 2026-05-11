@@ -19,6 +19,7 @@ without requiring signing credentials or optional model runtimes.
 | Wrapper portability | `uv run python scripts/check_wrapper_portability.py` | wrappers have expected shebangs, executable bits, Python 3.13 uv invocations, and docs | fix the named wrapper or documented command |
 | Core checkout performance | `uv run python scripts/check_core_performance.py` | report has `passed: true` for checkout-safe core paths | inspect the failing row and fix the regression before changing budgets |
 | Release evidence | `uv run python scripts/generate_release_evidence.py --run-gates` | Markdown and JSON summaries link gate status, artifacts, hashes, and live-smoke manifests | inspect the failed gate row and its first triage step |
+| Quality dashboard | `uv run python scripts/generate_quality_dashboard.py` | local JSON and Markdown summarize release evidence, dependency audit, core performance, skipped host-owned checks, not-run checks, and first failed gate | inspect the raw failure details section, then rerun the underlying gate artifact |
 | Release notes draft | `uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json` | maintainer-editable Markdown links changelog entries, closed issues, validation evidence, caveats, and host-owned optional runtime evidence | regenerate release evidence or fix `CHANGELOG.md`, then rerun the draft command |
 | Release provenance | `.github/workflows/release.yml` build provenance attestation | tagged release builds upload distributions and request GitHub artifact provenance | inspect the release workflow run and attached GitHub attestation |
 | Package publish identity | `.github/workflows/release.yml` PyPI environment with OIDC permissions | `uv publish dist/*` runs from the protected `pypi` environment | verify the release environment and PyPI trusted publishing configuration before tagging |
@@ -36,6 +37,7 @@ uv run python scripts/generate_release_evidence.py --run-gates \
   --artifact .worldforge/dependency-audit/dependency-audit.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl \
   --artifact dist/worldforge_ai-<version>.tar.gz
+uv run python scripts/generate_quality_dashboard.py
 ```
 
 The dependency-audit wrapper uses `uv export --frozen --all-groups --no-emit-project --no-hashes`
@@ -45,6 +47,12 @@ linked artifacts. Evidence bundles, dependency-audit evidence, run manifests, be
 and live-smoke manifests should be linked from release notes instead of copied by hand. Use
 [Artifact Schemas](./artifact-schemas.md) to identify the owning module, version field, migration
 rule, and validation surface before changing a public artifact contract.
+
+The quality dashboard reads existing JSON outputs instead of running gates. It is useful for a
+single local review page because it distinguishes `failed`, `warning`, `skipped`, and `not-run`
+checks and preserves raw output tails. It does not replace release evidence: release evidence is
+still the release-claim artifact for artifact hashes, linked run manifests, and explicit
+limitations.
 
 Draft release notes after evidence exists:
 

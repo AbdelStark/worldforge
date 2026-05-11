@@ -13,6 +13,7 @@ uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
+uv run python scripts/generate_quality_dashboard.py
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -41,7 +42,7 @@ verify generated provider docs, documented command drift, selected executable do
 wrapper portability, optional-runtime import boundaries, and the MkDocs Material site in strict
 mode. `bash scripts/test_package.sh` checks the wheel/sdist contents before installing the built
 wheel and running tests against the installed package. See [Artifact Integrity](./artifact-integrity.md)
-for the release artifact hashing and evidence-linking contract.
+for the release artifact hashing, quality dashboard, and evidence-linking contract.
 
 ### Docs snippet markers
 

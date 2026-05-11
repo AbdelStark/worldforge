@@ -53,6 +53,7 @@ SDIST_REQUIRED_SUFFIXES = (
     "docs/src/use-case-cookbook.md",
     "scripts/demo_showcases.py",
     "scripts/generate_dependency_audit_evidence.py",
+    "scripts/generate_quality_dashboard.py",
     "scripts/generate_release_notes.py",
     "scripts/check_wrapper_portability.py",
     "scripts/contributor_doctor.py",

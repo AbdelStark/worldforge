@@ -146,6 +146,20 @@ For release hardening, use the dependency-audit evidence workflow in
 [Operations](./operations.md). It preserves JSON and Markdown summaries without keeping the
 temporary requirements file.
 
+For a local quality overview, generate the dashboard after release evidence, dependency-audit
+evidence, and any core-performance report exist:
+
+```bash
+uv run python scripts/generate_quality_dashboard.py
+```
+
+The dashboard writes `.worldforge/quality-dashboard/quality-dashboard.json` and
+`.worldforge/quality-dashboard/quality-dashboard.md`. It reads existing outputs and normalizes the
+status vocabulary to `passed`, `failed`, `warning`, `skipped`, and `not-run`; it does not execute
+gates or replace the raw artifacts. Use release evidence for release claims and artifact hashes,
+and use the dashboard for branch-level triage across docs, tests, coverage, package checks,
+dependency audit, core performance, and host-owned optional skips.
+
 ## Optional Live Robotics CI
 
 The normal CI workflow stays checkout-safe and deterministic. Real LeRobot plus LeWorldModel

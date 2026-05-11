@@ -383,10 +383,10 @@ Out of scope:
 
 Acceptance criteria:
 
-- [ ] Dashboard aggregates existing gate outputs without hiding raw failure details.
-- [ ] Output distinguishes failures, warnings, skips, and not-run checks.
-- [ ] Docs explain how the dashboard differs from release evidence.
-- [ ] Tests cover mixed pass/fail/skip aggregation.
+- [x] Dashboard aggregates existing gate outputs without hiding raw failure details.
+- [x] Output distinguishes failures, warnings, skips, and not-run checks.
+- [x] Docs explain how the dashboard differs from release evidence.
+- [x] Tests cover mixed pass/fail/skip aggregation.
 
 Validation:
 

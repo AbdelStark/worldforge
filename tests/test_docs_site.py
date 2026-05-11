@@ -1274,6 +1274,90 @@ def test_dependency_audit_evidence_docs_cover_issue_235_contract() -> None:
         assert f"- [x] {criterion}" in expansion
 
 
+def test_quality_dashboard_docs_cover_issue_236_contract() -> None:
+    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
+    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    integrity = (ROOT / "docs/src/artifact-integrity.md").read_text(encoding="utf-8")
+    quality = (ROOT / "docs/src/quality.md").read_text(encoding="utf-8")
+    contributing = (ROOT / "docs/src/contributing.md").read_text(encoding="utf-8")
+    root_contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
+    task_starters = (ROOT / "docs/src/task-starters.md").read_text(encoding="utf-8")
+    docs_map = (ROOT / "docs/src/docs-map.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    expansion = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
+    distribution = (ROOT / "scripts/check_distribution.py").read_text(encoding="utf-8")
+    dashboard_script = (ROOT / "scripts/generate_quality_dashboard.py").read_text(encoding="utf-8")
+    dashboard_tests = (ROOT / "tests/test_quality_dashboard.py").read_text(encoding="utf-8")
+
+    for doc in (
+        operations,
+        playbooks,
+        integrity,
+        quality,
+        contributing,
+        root_contributing,
+        agents,
+    ):
+        assert "uv run python scripts/generate_quality_dashboard.py" in doc
+
+    for signal in (
+        ".worldforge/quality-dashboard/quality-dashboard.json",
+        ".worldforge/quality-dashboard/quality-dashboard.md",
+        "does not execute gates",
+        "Release evidence remains",
+        "`failed`",
+        "`warning`",
+        "`skipped`",
+        "`not-run`",
+        "first failed gate",
+        "host-owned",
+    ):
+        assert (
+            signal in operations
+            or signal in playbooks
+            or signal in integrity
+            or signal in quality
+            or signal in agents
+        )
+
+    for implementation_signal in (
+        "QUALITY_DASHBOARD_SCHEMA_VERSION",
+        "build_quality_dashboard",
+        "render_quality_dashboard_markdown",
+        "first_failed_gate",
+        "raw_details",
+        "not-run",
+        "host_owned",
+        "DEFAULT_RELEASE_EVIDENCE",
+        "DEFAULT_DEPENDENCY_AUDIT",
+        "DEFAULT_CORE_PERFORMANCE",
+    ):
+        assert implementation_signal in dashboard_script
+
+    for test_signal in (
+        "test_quality_dashboard_aggregates_mixed_gate_statuses",
+        "test_quality_dashboard_marks_missing_sources_not_run",
+        "test_quality_dashboard_main_writes_json_and_markdown",
+    ):
+        assert test_signal in dashboard_tests
+
+    assert "Quality dashboard artifact" in schemas
+    assert "tests/test_quality_dashboard.py" in schemas
+    assert "scripts/generate_quality_dashboard.py" in distribution
+    assert "quality dashboards" in task_starters
+    assert "quality dashboard" in docs_map
+    assert "quality dashboard generator" in changelog
+    for criterion in (
+        "Dashboard aggregates existing gate outputs",
+        "Output distinguishes failures",
+        "Docs explain how the dashboard differs",
+        "Tests cover mixed pass/fail/skip aggregation",
+    ):
+        assert f"- [x] {criterion}" in expansion
+
+
 def test_public_api_stability_docs_cover_issue_180_contract() -> None:
     policy = (ROOT / "docs/src/api-stability.md").read_text(encoding="utf-8")
     python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
@@ -1339,6 +1423,11 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
             "Dependency audit evidence",
             "DEPENDENCY_AUDIT_EVIDENCE_SCHEMA_VERSION",
             "tests/test_dependency_audit_evidence.py",
+        ),
+        (
+            "Quality dashboard artifact",
+            "QUALITY_DASHBOARD_SCHEMA_VERSION",
+            "tests/test_quality_dashboard.py",
         ),
         (
             "Benchmark inputs and budgets",

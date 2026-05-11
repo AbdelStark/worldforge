@@ -50,6 +50,10 @@ releases may still include breaking changes when the public API needs to tighten
   requirements file and writes JSON/Markdown summaries with tool versions, dependency-set digest,
   vulnerability summaries, explicit ignore rationales, sanitized command output, and first triage
   steps.
+- Added `scripts/generate_quality_dashboard.py`, a local quality dashboard generator that reads
+  release evidence, dependency-audit evidence, and core-performance output, then writes JSON and
+  Markdown summaries with normalized pass/fail/warning/skip/not-run statuses, command lines,
+  timestamps, raw failure details, skipped host-owned checks, and the first failed gate.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import
