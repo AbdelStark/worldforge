@@ -27,4 +27,3 @@ def test_capability_protocols_mini_example_outputs_plan_json() -> None:
     assert plan["metadata"]["policy_provider"] == "local-policy"
     assert plan["metadata"]["score_provider"] == "local-cost"
     assert plan["metadata"]["candidate_count"] == 2
-
