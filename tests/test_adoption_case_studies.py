@@ -19,9 +19,7 @@ REQUIRED_TEMPLATE_SECTIONS = (
 
 def _case_study_files() -> list[Path]:
     return sorted(
-        path
-        for path in CASE_STUDIES.glob("*.md")
-        if path.name not in {"README.md", "_template.md"}
+        path for path in CASE_STUDIES.glob("*.md") if path.name not in {"README.md", "_template.md"}
     )
 
 
@@ -63,4 +61,3 @@ def test_adoption_story_issue_template_captures_case_study_fields() -> None:
         assert field in issue_template
 
     assert "https://abdelstark.github.io/worldforge/adoption-case-studies/" in issue_template
-
