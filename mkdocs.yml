@@ -73,6 +73,8 @@ nav:
   - Authoring And API:
       - Provider Authoring Guide: provider-authoring-guide.md
       - External Provider Packages: external-providers.md
+      - Adoption Case Studies: adoption-case-studies/README.md
+      - Adoption Case Study Template: adoption-case-studies/_template.md
       - Scenario Definition Format: scenarios.md
       - Provider Routing And Fallback: provider-routing.md
       - Python API: api/python.md

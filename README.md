@@ -565,7 +565,9 @@ Issues, discussions, and pull requests are welcome. Please read
 [CONTRIBUTING.md](./CONTRIBUTING.md) and open an issue for non-trivial changes before sending a
 patch. For provider work, start with the
 [provider authoring guide](https://abdelstark.github.io/worldforge/provider-authoring-guide/) and
-the [playbooks](https://abdelstark.github.io/worldforge/playbooks/).
+the [playbooks](https://abdelstark.github.io/worldforge/playbooks/). External adopters can share
+integration stories through the
+[adoption case-study template](./docs/src/adoption-case-studies/README.md).
 
 ## License
 

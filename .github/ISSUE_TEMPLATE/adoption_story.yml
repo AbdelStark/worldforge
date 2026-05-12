@@ -1,0 +1,69 @@
+name: Adoption Story
+description: Share a public or anonymized WorldForge adoption story.
+title: "[Adoption Story]: "
+labels: ["documentation", "examples"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for public or anonymized adoption stories that can become entries in
+        https://abdelstark.github.io/worldforge/adoption-case-studies/
+        Do not include secrets, signed URLs, private prompts, proprietary datasets, checkpoint
+        bytes, host-local paths, or private robot/controller details.
+  - type: input
+    id: adopter
+    attributes:
+      label: Adopter name or project
+      description: Use an organization, project, team, or anonymized label that is safe to publish.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What host project, workflow, or environment uses WorldForge?
+    validations:
+      required: true
+  - type: textarea
+    id: worldforge_surface
+    attributes:
+      label: WorldForge surface used
+      description: Name the capabilities, providers, CLI commands, Python APIs, artifacts, or reports involved.
+    validations:
+      required: true
+  - type: textarea
+    id: custom_vs_out_of_box
+    attributes:
+      label: Custom versus out of the box
+      description: What did you build locally, and what came directly from WorldForge?
+    validations:
+      required: true
+  - type: textarea
+    id: worked
+    attributes:
+      label: What worked
+      description: What was useful, easy to validate, or easy to explain?
+    validations:
+      required: true
+  - type: textarea
+    id: awkward
+    attributes:
+      label: What was awkward
+      description: What was confusing, missing, brittle, or harder than expected?
+    validations:
+      required: true
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Public repositories, demos, papers, talks, screenshots, release notes, or related issues.
+    validations:
+      required: false
+  - type: checkboxes
+    id: safe_to_publish
+    attributes:
+      label: Safe-to-publish confirmation
+      options:
+        - label: This story does not include secrets, signed URLs, private prompts, proprietary datasets, checkpoint bytes, host-local paths, or private robot/controller details.
+          required: true
+
