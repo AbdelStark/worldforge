@@ -410,6 +410,9 @@ forge = WorldForge(auto_register_remote=False)
 forge.register_cost(ExampleCost())
 ```
 
+For a runnable policy-plus-score example using plain in-process protocol objects, see
+[Capability Protocols Quickstart](./capability-protocols-quickstart.md).
+
 ## Step 6: Boundary Validation Checklist
 
 Validate at the narrowest boundary. Do not let malformed upstream or caller data leak into public

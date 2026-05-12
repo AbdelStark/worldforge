@@ -41,6 +41,7 @@
   - [Public API Stability](./api-stability.md)
   - [Capability Fixture Corpus](./fixtures.md)
   - [Capability Negotiation](./capability-negotiation.md)
+  - [Capability Protocols Quickstart](./capability-protocols-quickstart.md)
 - Evidence And Evaluation
   - [Evaluation](./evaluation.md)
   - [Benchmarking](./benchmarking.md)
