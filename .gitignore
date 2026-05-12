@@ -44,3 +44,4 @@ site/
 .claude/worktrees/
 .tldr/
 .tldrignore
+.agents/harness/goals/
