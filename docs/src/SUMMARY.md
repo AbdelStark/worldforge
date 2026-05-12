@@ -59,6 +59,7 @@
   - [Contributor Task Starters](./task-starters.md)
 - Planning Records
   - [Roadmap](./roadmap.md)
+  - [Roadmap Expansion 3](./roadmap-expansion-3.md)
   - [Roadmap Expansion 2](./roadmap-expansion-2.md)
   - [Roadmap Expansion](./roadmap-expansion.md)
   - [Roadmap Continuation](./roadmap-continuation.md)

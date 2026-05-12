@@ -46,6 +46,14 @@ For the second expansion batch, use
 schema governance, docs/test quality gates, external-provider demos, capability preflight demos,
 scenario reuse, regression reporting, runtime asset manifests, and composed workflow traces.
 
+For the third expansion batch, use
+[Roadmap Expansion 3](./roadmap-expansion-3.md). It adds 30 more issues that push toward pre-1.0
+maturation: static typing and public-API guardrails, stable doctor and error-code contracts,
+anchor/CHANGELOG integrity, adoption-oriented showcases (notebooks, recorded tours, narrative
+walkthroughs, an adopt-your-robot demo), and feature deepening (cost accounting, named snapshots,
+run retention, capability-aware deltas, audit logs, scenario inheritance, a Prometheus exporter,
+trace redaction policy, a preview probe, and a pluggable persistence backend interface).
+
 For the active provider evidence cohort, use the
 [Provider Cohort Selection Record](./provider-cohort-selection.md). It selects the next provider
 work items, records explicit deferrals, and keeps public provider capability claims unchanged until
