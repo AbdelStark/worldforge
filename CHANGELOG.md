@@ -9,6 +9,8 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added an adoption case-study gallery, reusable case-study template, Adoption Story issue
+  template, and smoke tests for future submitted adoption stories.
 - Added a checkout-safe external provider package demo workflow. `scripts/demo_showcases.py run
   external-provider-package` generates a temp provider package, proves `worldforge.providers`
   entry-point discovery, disabled discovery, duplicate-name handling, and missing optional
