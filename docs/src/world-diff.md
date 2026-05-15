@@ -44,6 +44,7 @@ The CLI exits non-zero when only one of `--source-path` and
 
 ## Diff payload
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```json
 {
   "schema_version": 1,
@@ -68,6 +69,7 @@ re-reading the source files.
 
 ## Python surface
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from pathlib import Path
 from worldforge import (

@@ -6,3 +6,6 @@ contact_links:
   - name: Documentation
     url: https://abdelstark.github.io/worldforge/
     about: Check the published docs before filing a usage question.
+  - name: Contributor task starters
+    url: https://abdelstark.github.io/worldforge/task-starters/
+    about: Pick the starter pack for provider, docs, demo, artifact, evaluation, or CLI work.

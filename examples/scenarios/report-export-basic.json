@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "report-export-basic",
+  "name": "Report and export ready move",
+  "description": "Move one identified cube so JSON or Markdown scenario output can be exported and attached.",
+  "provider": "mock",
+  "world": {
+    "name": "report-export-basic-world",
+    "objects": [
+      {
+        "id": "report-cube",
+        "name": "cube",
+        "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+          "max": {"x": 0.05, "y": 0.55, "z": 0.05}
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "kind": "move_to",
+      "parameters": {
+        "object_id": "report-cube",
+        "x": 0.35,
+        "y": 0.5,
+        "z": 0.0,
+        "steps": 1
+      }
+    }
+  ],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 1},
+    {
+      "label": "report_cube_position",
+      "kind": "object_position",
+      "value": {
+        "object_id": "report-cube",
+        "position": {"x": 0.35, "y": 0.5, "z": 0.0},
+        "tolerance": 0.001
+      }
+    }
+  ],
+  "metadata": {
+    "gallery_intent": "report/export",
+    "first_triage_step": "If export output fails, compare the scenario result JSON before checking world export."
+  }
+}

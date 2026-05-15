@@ -22,6 +22,7 @@ Minimum startup preflight for a host process:
 ```bash
 uv run worldforge doctor --registered-only
 uv run worldforge provider health
+uv run worldforge provider info <provider> --format json
 ```
 
 The [Reference Host Deployment Recipes](./examples.md#reference-host-deployment-recipes) cover the
@@ -51,6 +52,7 @@ The stdlib reference host in `examples/hosts/service/app.py` uses this model:
 | process live | service handler returns `{"status": "live"}` | process and web stack are running | `GET /healthz` |
 | framework alive | `WorldForge(...)` can be constructed and `doctor()` can run | library import, local state path, and provider registry are usable | `GET /readyz` |
 | provider configured | provider appears in `forge.providers()` | required env vars or host injection registered the provider | `GET /readyz` |
+| provider lifecycle ready | `forge.provider_lifecycle_status(name).ready` is true | provider-owned preflight is `no-op` or `ready`; skipped and failed hooks stay visible in diagnostics | `GET /readyz` |
 | provider healthy | `forge.provider_health(name).healthy` is true | provider's cheap health check passed | `GET /readyz` |
 | workflow failing | provider is configured and health may pass, but a workflow returns a typed error | request input, upstream response, budget, or artifact handling failed | workflow response body |
 
@@ -58,7 +60,7 @@ The reference host returns one of these readiness statuses from `GET /readyz`:
 
 | `/readyz` status | Traffic decision | How to interpret it |
 | --- | --- | --- |
-| `ready` | accept | framework is alive, the selected provider is registered, and provider health passed. |
+| `ready` | accept | framework is alive, the selected provider is registered, lifecycle preflight is ready or no-op, and provider health passed. |
 | `provider_unconfigured` | drain | framework is alive, but the selected provider is not registered in this process. |
 | `provider_unhealthy` | drain | provider is registered, but its health check reports missing optional runtime, bad credentials, unreachable upstream, or another provider-owned failure detail. |
 
@@ -69,7 +71,12 @@ Map CLI diagnostics the same way during incidents:
 | `uv run worldforge doctor --registered-only` | registered provider count, health count, and local configuration issues. |
 | `uv run worldforge doctor --capability <capability>` | whether any known provider can satisfy the requested surface. |
 | `uv run worldforge provider health <name>` | provider-specific configured/healthy details. |
-| `uv run worldforge provider info <name>` | redacted config summary plus profile, capability, and health. |
+| `uv run worldforge provider info <name>` | redacted config summary plus profile, capability, lifecycle, and health. |
+
+Lifecycle diagnostics use typed hook statuses: `no-op`, `ready`, `skipped`, `failed`, and
+`teardown-failed`. `skipped` is the expected result when a prepared-host provider is missing
+required env vars or host-owned optional dependencies; it is a skip reason, not a hidden install or
+credential-provisioning attempt.
 
 WorldForge reports local provider state and adapter errors. It does not own upstream provider SLAs,
 deployment load balancers, alert channels, retry orchestration outside one provider call, or
@@ -78,7 +85,9 @@ credential rotation.
 ## Configuration
 
 Configuration comes from constructor arguments and environment variables documented in
-`.env.example`.
+`.env.example`. The generated [Provider Configuration Index](./provider-configuration-index.md)
+is the canonical cross-provider table for required inputs, optional inputs, host-owned packages,
+prepared-host assets, default request timeouts, first diagnostic commands, and smoke commands.
 
 - `COSMOS_BASE_URL` enables the Cosmos adapter.
 - `NVIDIA_API_KEY` is optional bearer auth for Cosmos.
@@ -123,6 +132,67 @@ uv run worldforge doctor --registered-only
 uv run worldforge provider health
 ```
 
+## Runtime Asset Manifests And Cache Policy
+
+Prepared-host optional runtimes often depend on checkpoint files, policy repos, object files,
+server-side model assets, and cache directories. WorldForge records those as runtime asset
+manifests and safe run-manifest references; it does not download, retain, or upload the assets.
+
+Runtime asset manifests use `RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION`. Full local manifests may record
+`path`, `cache_root`, `source`, `revision`, `checksum`, `size_bytes`, `local_only`, `exists`, and
+`rebuild_command`. Run manifests only include `runtime_assets` as safe-to-attach references. For
+`local_only: true` assets, references omit `path` and `cache_root` so host-local checkpoint and
+cache locations do not leave the machine.
+
+| Runtime family | Typical assets | Cache policy | Rebuild or triage command | Evidence boundary |
+| --- | --- | --- | --- | --- |
+| LeWorldModel | `*_object.ckpt`, Hugging Face `config.json` and `weights.pt`, `STABLEWM_HOME` cache | Pin `LEWORLDMODEL_REVISION`; keep builder downloads under `LEWORLDMODEL_ASSET_CACHE_DIR`; keep object checkpoints under `STABLEWM_HOME` or `LEWORLDMODEL_CACHE_DIR`. | `worldforge-build-leworldmodel-checkpoint --policy pusht/lewm --revision <pinned-sha>` | Run manifests cite the checkpoint manifest reference and rebuild command, never checkpoint bytes or host-local cache roots. |
+| LeRobot | policy repo id or local checkpoint directory, Hugging Face cache, embodiment translator | Keep `LEROBOT_CACHE_DIR` host-owned and aligned with the policy version used for the smoke. | `scripts/smoke_lerobot_policy.py --policy-path <repo-or-checkpoint> --device cpu` | Run manifests cite a policy-checkpoint reference; raw policy weights and local policy paths stay local-only. |
+| GR00T | remote policy server, model checkpoint, CUDA/TensorRT runtime, embodiment assets | Keep server-side caches on the GPU host; WorldForge should connect to the server rather than sync checkpoint directories. | `uv run python scripts/smoke_gr00t_policy.py --health-only --run-manifest <path>` | Evidence records server reachability and provider events, not checkpoint files, GPU logs, or robot-controller state. |
+| Cosmos-Policy | ALOHA `/act` server, Docker/CUDA runtime, model checkpoints, observation builder, translator | Keep Docker layers, checkpoints, and gated-model tokens on the prepared GPU host. | `uv run worldforge-smoke-cosmos-policy --health-only --run-manifest <path>` | Evidence records `/act` configuration and sanitized run status; checkpoints, raw observations, and tokens remain host-owned. |
+| Future provider candidates | candidate-specific checkpoints, fixtures, caches, and server assets | Add a runtime asset manifest before promoting live smoke evidence. | Document the rebuild or reacquisition command in the provider page. | Attach references and checksums when available; do not attach local-only paths or generated assets. |
+
+Cleanup is also host-owned. Use normal cache tools for the runtime in question, then rerun the
+provider health command and the smoke with `--run-manifest` to preserve fresh evidence. If a cache
+path appears in a JSON artifact, treat it as a bug: run manifests should contain `runtime_assets`
+references, not local cache paths.
+
+## Non-Secret Configuration Profiles
+
+Configuration profiles are optional JSON or TOML files for repeatable non-secret CLI defaults. They
+are intended for provider choices, operation lists, output format, state directories, run-workspace
+directories, timeout/retry preset names, and safe relative optional-runtime cache roots.
+
+```json
+{
+  "schema_version": 1,
+  "name": "local-mock",
+  "providers": ["mock"],
+  "operations": ["predict"],
+  "run_workspace": ".worldforge/profiled-runs",
+  "state_dir": ".worldforge/worlds",
+  "output_format": "json",
+  "timeout_preset": "checkout-safe",
+  "retry_preset": "none",
+  "runtime_cache_roots": {
+    "leworldmodel": ".worldforge/cache/leworldmodel"
+  }
+}
+```
+
+Use a profile only as an explicit CLI opt-in:
+
+```bash
+uv run worldforge benchmark --profile profiles/local-mock.json --iterations 1
+uv run worldforge eval --profile profiles/local-mock.toml --suite planning
+```
+
+Profiles must not contain credentials, bearer tokens, API keys, signed URLs, `.env` paths, absolute
+host-local paths, or `..` traversal. Keep secrets in environment variables or a host-owned secret
+store. Preserved eval and benchmark run manifests include a `config_profile` provenance block with
+the profile name, safe relative source label, SHA-256 digest, and validated non-secret defaults; the
+profile file itself is not copied into run evidence.
+
 ## Persistence
 
 World state is persisted as local JSON under `.worldforge/worlds` by default or under the
@@ -139,6 +209,8 @@ uv run worldforge world list
 uv run worldforge world objects <world-id>
 uv run worldforge world history <world-id>
 uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
+uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name lab-copy
 uv run worldforge world fork <world-id> --history-index 0 --name lab-start
@@ -178,6 +250,10 @@ Supported persistence invariants:
   reports missing state directories, unsafe requested IDs, corrupted worlds, invalid histories,
   incoherent object bounding boxes, stale run workspaces, unsafe run artifact paths, and retention
   pressure.
+- `world migration-preview` is read-only and accepts either a persisted world id or
+  `--source-path` for persisted/exported JSON. It reports schema version, required changes,
+  invalid fields, unsafe IDs, bounding-box corrections, and `can_apply_safely` without rewriting
+  the source file.
 - README and operations docs state that multi-writer persistence is host-owned.
 - Any future built-in persistence backend must be introduced as an explicit adapter with its own
   locking, migration, and recovery documentation.
@@ -201,6 +277,23 @@ Recovery commands in the report export diagnostics before moving invalid files i
 `.worldforge/quarantine/`. They do not run `rm` or silently delete user data. For retention pressure,
 the first command is `uv run worldforge runs cleanup --workspace-dir .worldforge --keep 20 --dry-run`;
 remove `--dry-run` only after the preserved evidence is no longer needed.
+
+Migration preview is the state-review command before applying a schema rewrite:
+
+```bash
+uv run worldforge world migration-preview <world-id> \
+  --state-dir .worldforge/worlds \
+  --format json > worldforge-migration-preview.json
+uv run worldforge world migration-preview world.json \
+  --source-path \
+  --format markdown > worldforge-migration-preview.md
+```
+
+Success signal: `safe_to_attach` and `read_only` are `true`. `status: passed` means no migration is
+required. `status: migration-needed` means the preview found schema defaults, legacy
+`position`-to-`pose.position` changes, or bounding-box corrections that can be reviewed before an
+explicit rewrite. `status: blocked` means invalid fields or unsafe IDs must be fixed outside the
+preview tool; WorldForge does not silently repair malformed local state.
 
 ## Run Workspaces
 
@@ -271,6 +364,15 @@ scheme, host, port, and path but drop userinfo, query strings, and fragments; me
 fields redact obvious bearer tokens, API keys, signatures, passwords, and signed URLs. Host
 applications should still avoid placing raw credentials in provider exception messages or custom
 metadata.
+
+Composed workflows can also emit `WorkflowTrace` artifacts. A trace is JSON-native,
+schema-versioned, and safe to attach by default; it records step IDs, operations,
+provider/capability slots, input/output artifact references, status, optional duration, sanitized
+error summaries, and parent-child relationships. Planning stores a trace under
+`Plan.metadata["workflow_trace"]`; evaluation reports export `workflow_trace.json` and
+`workflow_trace.md`; `RerunArtifactLogger.log_workflow_trace(...)` can add the same trace to an
+optional Rerun recording. Traces do not capture raw prompts, tensors, credentials, controller
+telemetry, or distributed tracing backend state.
 
 Host services can attach correlation IDs directly to a `ProviderEvent` when the provider adapter
 knows them, or through `JsonLoggerSink(extra_fields=...)` when the host owns them outside the
@@ -587,7 +689,9 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -601,14 +705,21 @@ The artifact integrity contract is documented in [Artifact Integrity](./artifact
 covers package hashes, current package/evidence checks, unsafe artifact exclusions, and future SBOM,
 provenance, and attestation work that is not claimed today.
 
-Then run the locked dependency audit:
+Then generate locked dependency-audit evidence:
 
 ```bash
-tmp_req="$(mktemp requirements-audit.XXXXXX)"
-uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" >/dev/null
-uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-spinner off
-rm -f "$tmp_req"
+uv run python scripts/generate_dependency_audit_evidence.py
 ```
+
+The wrapper runs the documented `uv export --frozen --all-groups --no-emit-project --no-hashes`
+plus `uvx --from pip-audit pip-audit ... --format json` flow using a temporary requirements file
+that is removed after the audit. It writes `.worldforge/dependency-audit/dependency-audit.json`
+and `.worldforge/dependency-audit/dependency-audit.md`, records tool versions, dependency-set
+digest, vulnerability summary, explicit `--ignore-advisory ADVISORY=RATIONALE` rows, command
+output tails, and a first triage step. Success signal: status is `passed`; findings,
+tool-unavailable, and failed states still leave safe-to-attach evidence. First triage step for
+findings: inspect the Markdown advisory row, upgrade or document the dependency decision, then
+rerun the audit.
 
 Generate the release-readiness evidence after local gates and optional smokes finish. The command
 writes both Markdown and JSON summaries by default; use `--run-gates` when the evidence run itself
@@ -619,6 +730,7 @@ uv run python scripts/generate_release_evidence.py \
   --run-gates \
   --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
+  --artifact .worldforge/dependency-audit/dependency-audit.json \
   --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
 ```
@@ -629,6 +741,56 @@ defaults to `.worldforge/release-evidence/release-evidence.json`. Gate rows are 
 triage step. Optional live provider evidence is `host-owned` unless a prepared-host
 `run_manifest.json` is linked. Attach the Markdown report, JSON summary, and linked artifacts when a
 release note or provider promotion claims live-provider coverage.
+
+Before a release review, rehearse the evidence path with the checkout-safe drill:
+
+```bash
+uv run python scripts/release_readiness_drill.py \
+  --workspace-dir .worldforge/release-readiness-drill
+```
+
+The drill writes `.worldforge/release-readiness-drill/release-readiness-drill.json` and Markdown
+plus clean-pass and controlled-failure release-evidence fixtures. It explains the first failed
+gate and first triage command, records host-owned optional-runtime skips, and never publishes,
+tags, signs, creates a GitHub release, or approves a real release. Use it to verify operator
+workflow understanding; use `scripts/generate_release_evidence.py --run-gates` for current release
+approval evidence.
+
+Generate the local quality dashboard when you need one at-a-glance page for the branch:
+
+```bash
+uv run python scripts/generate_quality_dashboard.py
+```
+
+The dashboard defaults to `.worldforge/quality-dashboard/quality-dashboard.json` and
+`.worldforge/quality-dashboard/quality-dashboard.md`. It reads existing release evidence,
+dependency-audit evidence, and core-performance JSON; it does not execute gates. Status rows use
+`passed`, `failed`, `warning`, `skipped`, and `not-run`, preserve raw failure output tails, list
+skipped host-owned provider checks, and name the first failed gate. Use it as a local quality
+index. Release evidence remains the artifact for release claims, artifact hashes, linked
+`run_manifest.json` files, and known limitations.
+
+After evidence exists, draft release notes for maintainer editing:
+
+```bash
+mkdir -p .worldforge/release-notes
+gh issue list --state closed --limit 200 \
+  --json number,title,url,labels,closedAt,state \
+  > .worldforge/release-notes/closed-issues.json
+uv run python scripts/generate_release_notes.py \
+  --release-evidence .worldforge/release-evidence/release-evidence.json \
+  --issues-json .worldforge/release-notes/closed-issues.json \
+  --known-caveat "No prepared-host live smoke was run for <provider>."
+```
+
+The release-notes command writes `.worldforge/release-notes/release-notes-draft.md`. It is a draft
+artifact only: maintainers must edit it before publishing, and the command never creates a tag,
+GitHub release, signature, or trusted-publishing artifact. Success signal: the draft contains
+added, changed, fixed, docs, validation, compatibility, caveat, and host-owned optional-runtime
+sections. First triage step when validation is missing: run
+`uv run python scripts/generate_release_evidence.py --run-gates` and regenerate the draft. Use
+`--require-validation-evidence` in release scripts when a missing or invalid evidence JSON should
+fail the command.
 
 `uv run python scripts/check_core_performance.py` writes a checkout-safe JSON report for world
 persistence, benchmark fixture loading, provider diagnostics, evidence-bundle creation, and report
@@ -642,6 +804,18 @@ smoke commands without installing host-owned runtimes. Success signal: the repor
 `scripts/robotics-showcase`, `scripts/lewm-real`, `scripts/lewm-lerobot-real`, GR00T and LeRobot
 smoke helpers, and `scripts/test_package.sh`. First triage step: fix the named script's shebang,
 executable bit, documented command, or Python 3.13 uv invocation.
+
+`uv run python scripts/check_optional_import_boundaries.py` checks optional-runtime import
+boundaries without installing host-owned runtimes. Success signal: base package imports, CLI
+startup, `worldforge.rerun`, and non-TUI harness modules do not load Textual, Rerun, torch,
+stable-worldmodel, LeRobot, GR00T, or Cosmos-Policy packages, and static source checks only find
+optional imports inside their allowed provider, smoke, Rerun, or `harness.tui` modules. First
+triage step: move the named import behind the allowed lazy boundary in the report.
+
+`uv run python scripts/check_docs_snippets.py` executes selected Python snippets and parses selected
+JSON snippets from the public docs. Success signal: the report passes with no snippet failures, and
+any host-owned, credentialed, or illustrative snippets are explicitly skipped. First triage step:
+fix the file, heading, and line named in the failure before changing surrounding docs.
 
 When release or issue triage needs the underlying evaluation and benchmark artifacts, generate a
 separate evidence bundle first:

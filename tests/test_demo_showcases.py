@@ -38,7 +38,17 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
     payload = json.loads(completed.stdout)
     workflows = payload["workflows"]
 
-    assert [workflow["issue"] for workflow in workflows] == list(range(189, 199))
+    assert [workflow["issue"] for workflow in workflows] == [
+        *list(range(189, 199)),
+        237,
+        238,
+        239,
+        240,
+        241,
+        242,
+        245,
+        246,
+    ]
     assert [workflow["id"] for workflow in workflows] == [
         "first-run",
         "diagnostics-issue-bundle",
@@ -50,6 +60,14 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "rerun-gallery",
         "failure-lab",
         "use-case-cookbook",
+        "external-provider-package",
+        "custom-evaluation-suite",
+        "policy-score-candidate-lab",
+        "fixture-drift-review",
+        "capability-negotiation-preflight",
+        "embodied-policy-replay-comparison",
+        "non-developer-evidence-review",
+        "provider-failure-gallery",
     ]
 
 
@@ -57,7 +75,7 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     module = _load_demo_showcases()
     results = module.run_workflows("all", workspace_dir=tmp_path, overwrite=True)
 
-    assert len(results) == 10
+    assert len(results) == 18
     assert all(result["safe_to_attach"] is True for result in results)
     assert all(result["status"] in {"passed", "skipped"} for result in results)
 
@@ -124,6 +142,108 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     cookbook = summaries["use-case-cookbook"]
     assert cookbook["recipe_count"] >= 7
     assert Path(str(cookbook["artifact_paths"]["cookbook"])).name == "use-case-cookbook.md"
+
+    external_package = summaries["external-provider-package"]
+    external_report = external_package["report"]
+    assert external_report["entry_point_group"] == "worldforge.providers"
+    assert external_report["discovery_enabled"]["discovered"][0]["name"] == "demo-external"
+    assert external_report["discovery_disabled"]["enabled"] is False
+    assert external_report["provider"]["capabilities"]["predict"] is True
+    assert "missing dependency" in external_report["skip_reasons"]["needs-optional"]
+    assert "duplicate name" in external_report["skip_reasons"]["mock"]
+    assert "pyproject.toml" in external_report["generated_files"]
+    assert Path(str(external_package["artifact_paths"]["discovery_report"])).is_file()
+
+    custom_eval = summaries["custom-evaluation-suite"]
+    walkthrough = custom_eval["walkthrough"]
+    assert walkthrough["provenance_present"] is True
+    assert walkthrough["result_count"] == 2
+    assert walkthrough["passed_count"] == 1
+    assert walkthrough["failed_count"] == 1
+    assert walkthrough["failure_gallery_cases"] == 1
+    assert {"json", "markdown", "html", "failure_gallery.md"} <= set(walkthrough["artifact_paths"])
+
+    candidate_lab = summaries["policy-score-candidate-lab"]
+    lab_report = candidate_lab["report"]
+    assert lab_report["planning_mode"] == "policy+score"
+    assert lab_report["candidate_count"] == 3
+    assert lab_report["selected_candidate_index"] == 1
+    assert lab_report["raw_policy_actions"]["raw_policy_action_preserved"] is True
+    assert "lower bound" in lab_report["expected_failures"]["invalid_candidate_bounds"]
+    assert "action_translator" in lab_report["expected_failures"]["missing_translator"]
+    assert Path(str(candidate_lab["artifact_paths"]["lab_markdown"])).is_file()
+
+    fixture_drift = summaries["fixture-drift-review"]
+    drift_report = fixture_drift["report"]
+    assert drift_report["baseline_passed"] is True
+    assert drift_report["review_passed"] is False
+    assert drift_report["intended_update_passed"] is True
+    assert {"missing", "changed", "unsafe"} <= set(drift_report["review_statuses"])
+    assert "provider-payload-fixture" in drift_report["managed_fixture_kinds"]
+    assert "benchmark-fixture" in drift_report["managed_fixture_kinds"]
+    assert "scenario-fixture" in drift_report["managed_fixture_kinds"]
+    assert Path(str(fixture_drift["artifact_paths"]["review_markdown"])).is_file()
+
+    negotiation = summaries["capability-negotiation-preflight"]
+    negotiation_report = negotiation["report"]
+    assert {"ready", "missing-config", "missing-dependency", "not-registered"} <= set(
+        negotiation_report["readiness_values"]
+    )
+    assert negotiation_report["unsupported_example"]["readiness"] == "unsupported"
+    assert "policy-plus-score" in negotiation_report["workflow_shapes"]
+    assert Path(str(negotiation["artifact_paths"]["preflight_markdown"])).is_file()
+
+    policy_replay = summaries["embodied-policy-replay-comparison"]
+    policy_replay_report = policy_replay["report"]
+    providers = {provider["provider"]: provider for provider in policy_replay_report["providers"]}
+    assert set(providers) == {"lerobot", "gr00t", "cosmos-policy"}
+    assert providers["lerobot"]["raw_action_shape"] == [3, 2, 3]
+    assert "eef_9d" in providers["gr00t"]["raw_tensor_shapes"]
+    assert providers["cosmos-policy"]["raw_action_shape"] == [50, 14]
+    assert all(
+        check["status"] == "blocked" for check in policy_replay_report["missing_translator_checks"]
+    )
+    assert "cross-provider action conversion" in policy_replay_report["claim_boundary"]
+    assert Path(str(policy_replay["artifact_paths"]["comparison_markdown"])).is_file()
+
+    evidence_review = summaries["non-developer-evidence-review"]
+    evidence_report = evidence_review["report"]
+    assert evidence_report["safe_to_attach"] is True
+    assert evidence_report["local_only_count"] >= 1
+    assert any(
+        artifact["share_policy"] == "local-only" for artifact in evidence_report["artifacts"]
+    )
+    review_html = Path(str(evidence_review["artifact_paths"]["review_html"]))
+    assert review_html.is_file()
+    html = review_html.read_text(encoding="utf-8")
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "<script" not in html
+
+    provider_failures = summaries["provider-failure-gallery"]
+    failure_report = provider_failures["report"]
+    assert failure_report["entry_count"] >= 8
+    assert failure_report["safe_to_attach"] is True
+    failure_entries = {entry["id"]: entry for entry in failure_report["entries"]}
+    assert {
+        "mock-invalid-prediction-state",
+        "cosmos-generation-unauthorized",
+        "cosmos-generation-timeout",
+        "runway-missing-task-id",
+        "runway-expired-artifact",
+        "runway-unsafe-artifact-url",
+        "optional-runtime-missing-dependency",
+        "genie-scaffold-fail-closed",
+    } <= set(failure_entries)
+    for entry in failure_entries.values():
+        assert entry["expected_event"]
+        assert entry["expected_error"]
+        assert entry["expected_artifact"]
+        assert entry["owner"]
+        assert entry["first_triage_command"].startswith("uv run") or entry[
+            "first_triage_command"
+        ].startswith("jq ")
+        assert entry["safe_artifact_behavior"]
+        assert entry["safe_to_attach"] is True
 
 
 def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:

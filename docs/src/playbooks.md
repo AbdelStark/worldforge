@@ -18,7 +18,9 @@ uv run worldforge doctor
 uv run worldforge examples
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run mkdocs build --strict
 uv run pytest tests/test_cli_help_snapshots.py tests/test_provider_catalog_docs.py
 ```
@@ -198,7 +200,7 @@ and first artifact.
 | --- | --- | --- | --- | --- | --- |
 | `WorldForgeError` | invalid public input, unknown capability, unsupported output format, non-finite number, unsafe artifact reference | caller or contributor | `uv run worldforge doctor --registered-only` | JSON diagnostics with framework and provider configuration state | fix the caller input or add a regression test for the rejected public boundary |
 | `WorldStateError` | corrupted local world JSON, traversal-shaped world id, invalid history entry, incoherent object bounding box | host operator for local state; contributor if the CLI wrote it | `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge --format json` | `worldforge-state-preflight.json` with `status`, `safe_to_attach`, `error_count`, and recovery commands | export diagnostics, then quarantine invalid files only after reviewing the report |
-| `ProviderError` | missing credentials, missing optional dependency, malformed upstream response, unsupported provider capability, expired artifact URL | host runtime owner first; adapter maintainer if parser or docs are wrong | `uv run worldforge provider info <provider>` | redacted config summary, provider profile, capability flags, health, and typed provider details | attach a sanitized run manifest or issue bundle; never paste raw credentials or signed URLs |
+| `ProviderError` | missing credentials, missing optional dependency, malformed upstream response, unsupported provider capability, expired artifact URL | host runtime owner first; adapter maintainer if parser or docs are wrong | `uv run worldforge provider info <provider>` | redacted config summary, provider profile, capability flags, lifecycle status, health, and typed provider details | attach a sanitized run manifest or issue bundle; never paste raw credentials or signed URLs |
 | `AssertionError` from `worldforge.testing` | provider conformance helper reports a contract failure | adapter contributor | `uv run pytest tests/test_provider_contracts.py -q` | explicit helper failure naming the missing capability behavior | fix the adapter or its fixtures; do not replace helper checks with bare `assert` |
 | non-zero benchmark budget exit | benchmark gate failed against a JSON budget | release or performance maintainer | `uv run worldforge benchmark --preset mock-smoke --run-workspace .worldforge --format json` | preserved run workspace with `run_manifest.json`, report JSON, and budget status | inspect the budget row and preserved inputs before changing thresholds |
 | MkDocs strict warning | bad link, nav drift, or generated docs mismatch | docs contributor | `uv run mkdocs build --strict` | strict build output naming the page or link | sync `mkdocs.yml`, `docs/src/SUMMARY.md`, and source page links |
@@ -218,7 +220,7 @@ traffic to a provider-backed workflow. Keep process liveness separate from provi
 | provider unconfigured | `/readyz` returns `provider_unconfigured` or `doctor` shows the provider absent from registered providers | missing env vars, missing host injection, or wrong provider name | `uv run worldforge doctor --registered-only` | selected provider is absent; `registered_provider_count` and issues explain the local process | host deployment or credential owner |
 | provider unhealthy | `/readyz` returns `provider_unhealthy` or `provider health` reports `healthy=false` | optional runtime missing, bad credentials, unreachable upstream, or failed provider health parsing | `uv run worldforge provider health <name>` | health details name the missing env var, dependency, endpoint, or sanitized upstream error | host runtime owner first; provider adapter maintainer if details are wrong or unsafe |
 | upstream degraded | provider health is intermittently false, provider events show retries, 5xx, 429, or budget exhaustion | remote provider outage, throttling, expired credentials, or host budget too tight | `jq 'select(.phase=="retry" or .phase=="budget_exceeded") | {provider, operation, status_code, target, message}' .worldforge/runs/<run-id>/provider-events.jsonl` | sanitized targets, retry counts, status class, and `budget_exceeded` events identify the failing operation | upstream provider support or host SRE; WorldForge does not own upstream SLA |
-| workflow failing | `/readyz` stays `ready`, but one request returns a typed error | malformed world state, unsupported capability, invalid input, parser failure, or expired artifact | `uv run worldforge provider info <name>` | profile, capability flags, redacted config summary, and health show whether the request matched the provider contract | application owner for bad input; adapter maintainer for parser/contract bugs |
+| workflow failing | `/readyz` stays `ready`, but one request returns a typed error | malformed world state, unsupported capability, invalid input, parser failure, or expired artifact | `uv run worldforge provider info <name>` | profile, capability flags, redacted config summary, lifecycle status, and health show whether the request matched the provider contract | application owner for bad input; adapter maintainer for parser/contract bugs |
 
 The stdlib service reference uses the same model: `/healthz` is process-only liveness, while
 `/readyz` returns `ready`, `provider_unconfigured`, or `provider_unhealthy` plus a `traffic`
@@ -297,6 +299,8 @@ uv run worldforge world objects <world-id>
 uv run worldforge world show <world-id>
 uv run worldforge world history <world-id>
 uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
+uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name lab-copy
 uv run worldforge world fork <world-id> --history-index 0 --name lab-start
@@ -335,11 +339,17 @@ Success signal:
 - `world preflight` reports corrupted world JSON, traversal-shaped requested IDs, invalid history
   entries, incoherent object bounding boxes, stale run workspaces, unsafe artifact paths, and
   retention pressure without mutating local files.
+- `world migration-preview` reports schema versions, required changes, invalid fields, unsafe IDs,
+  bounding-box corrections, and `can_apply_safely` for persisted worlds or exported JSON without
+  mutating local files.
 
 Recovery guidance:
 
 - run `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
   --format json > worldforge-state-preflight.json` before moving or deleting any local state.
+- run `uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+  --format json > worldforge-migration-preview.json` before applying a schema rewrite to local
+  JSON; use `--source-path` for exported world JSON.
 - if local JSON is corrupted, restore from the host application's backup of exported world JSON.
 - if the report names stale run workspaces or unsafe artifact paths, export a run bundle when a
   manifest is valid; otherwise quarantine the run directory after preserving the preflight report.
@@ -454,6 +464,9 @@ shape. Do not treat either as a physical-fidelity claim.
 ```bash
 uv run worldforge eval --suite planning --provider mock --format markdown
 uv run worldforge eval --suite generation --provider mock --format json
+uv run worldforge eval --suite planning --provider mock \
+  --dataset-manifest examples/dataset-manifests/mock-evaluation-fixtures.json \
+  --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format markdown
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
@@ -463,6 +476,8 @@ uv run worldforge benchmark --provider mock --operation generate --budget-file e
 Success signal:
 
 - suites skip or fail explicitly when a provider does not support the required capability.
+- evaluation dataset manifests are cited by compact provenance references; license, privacy,
+  safety, checksums, and host-owned acquisition steps are recorded without copying datasets.
 - benchmark reports identify provider, operation, pass/fail status, latency, retry counts, and
   exported artifact format for direct provider surfaces such as `score`, `policy`, `generate`,
   `transfer`, and `embed`.
@@ -857,7 +872,9 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -898,14 +915,43 @@ Success signal: every wrapper row passes, including `scripts/robotics-showcase`,
 wrappers, GR00T and LeRobot smoke helpers, and `scripts/test_package.sh`. First triage step: repair
 the exact script named in the failure before editing docs around it.
 
-Then run the locked dependency audit:
+Run the docs snippet gate whenever Python or JSON examples change:
 
 ```bash
-tmp_req="$(mktemp requirements-audit.XXXXXX)"
-uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" >/dev/null
-uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-spinner off
-rm -f "$tmp_req"
+uv run python scripts/check_docs_snippets.py
 ```
+
+Success signal: marked Python snippets execute in a temp workspace, marked JSON snippets parse and
+schema-check where supported, and host-owned, credentialed, or illustrative examples use explicit
+skip markers. First triage step: fix the file, heading, and line named in the report or apply the
+correct skip marker.
+
+Run the optional import boundary audit whenever base imports, CLI startup, non-TUI harness modules,
+or optional provider modules change:
+
+```bash
+uv run python scripts/check_optional_import_boundaries.py
+```
+
+Success signal: the static audit reports no direct optional-runtime imports outside allowed
+modules, and the import-time audit loads `worldforge`, `worldforge.cli`, provider modules, and
+non-TUI harness modules without importing Textual, Rerun, torch, stable-worldmodel, LeRobot,
+GR00T, or Cosmos-Policy packages. First triage step: move the named import behind the provider,
+smoke, `worldforge.rerun`, or `harness.tui` boundary identified by the report.
+
+Then generate locked dependency-audit evidence:
+
+```bash
+uv run python scripts/generate_dependency_audit_evidence.py
+```
+
+Success signal: `.worldforge/dependency-audit/dependency-audit.json` and
+`.worldforge/dependency-audit/dependency-audit.md` exist, the status is `passed`, and the
+requirements summary states that the temporary requirements file was not preserved. The wrapper
+uses `uv export --frozen --all-groups --no-emit-project --no-hashes` plus
+`uvx --from pip-audit pip-audit ... --format json`; use `--ignore-advisory ADVISORY=RATIONALE`
+only for explicit release-reviewed exceptions. First triage step for `findings`: inspect the
+Markdown advisory table, upgrade or document the dependency decision, then rerun.
 
 Finally generate the release-readiness evidence. This command writes
 `.worldforge/release-evidence/release-evidence.md` and
@@ -920,6 +966,7 @@ uv run python scripts/generate_release_evidence.py \
   --run-gates \
   --live-smoke-registry docs/src/live-smoke-evidence.json \
   --run-manifest .worldforge/runs/<run-id>/run_manifest.json \
+  --artifact .worldforge/dependency-audit/dependency-audit.json \
   --artifact .worldforge/evidence-bundles/release-candidate/evidence_manifest.json \
   --benchmark-artifact .worldforge/reports/benchmark-<timestamp>-<run-id>.json \
   --artifact dist/worldforge_ai-<version>-py3-none-any.whl
@@ -932,13 +979,50 @@ and artifact summaries. Gate rows are explicit `passed`, `failed`, or `skipped` 
 first triage step. Use `--known-limitation` for release-scoped caveats that should travel with the
 bundle.
 
+Generate a local quality dashboard after the evidence artifacts exist:
+
+```bash
+uv run python scripts/generate_quality_dashboard.py
+```
+
+Success signal: `.worldforge/quality-dashboard/quality-dashboard.json` and
+`.worldforge/quality-dashboard/quality-dashboard.md` exist, the table distinguishes `failed`,
+`warning`, `skipped`, and `not-run` rows, and the first failed gate points back to the underlying
+raw output. The dashboard reads existing gate outputs rather than running them. It is an
+at-a-glance local review index; release evidence remains the release artifact for hashes, linked
+run manifests, optional runtime claim boundaries, and known limitations.
+
+Then create a maintainer-editable release notes draft from the changelog, evidence JSON, and
+optional closed-issue metadata:
+
+```bash
+mkdir -p .worldforge/release-notes
+gh issue list --state closed --limit 200 \
+  --json number,title,url,labels,closedAt,state \
+  > .worldforge/release-notes/closed-issues.json
+uv run python scripts/generate_release_notes.py \
+  --release-evidence .worldforge/release-evidence/release-evidence.json \
+  --issues-json .worldforge/release-notes/closed-issues.json \
+  --known-caveat "No prepared-host live smoke was run for <provider>."
+```
+
+Success signal: `.worldforge/release-notes/release-notes-draft.md` includes `Added`, `Changed`,
+`Fixed`, `Docs`, `Validation`, `Compatibility Notes`, `Known Caveats`, and `Host-Owned Optional
+Runtime Evidence` sections. The draft is source material for release editing, not a publish step:
+it never creates a GitHub release or tag, signs artifacts, or edits trusted publishing. If the
+draft says validation evidence is missing, run
+`uv run python scripts/generate_release_evidence.py --run-gates` first. Use
+`--require-validation-evidence` when release automation should fail on missing evidence.
+
 Success signal:
 
 - validation passes from a clean checkout.
 - generated provider docs have no drift and the Pages site builds in strict mode.
 - release evidence links validation expectations, optional live-smoke manifests, benchmark
-  artifacts, generated evidence bundles, distribution artifacts, JSON summaries, first triage
-  steps, and known limitations.
+  artifacts, generated evidence bundles, dependency-audit evidence, distribution artifacts, JSON
+  summaries, first triage steps, and known limitations.
+- release notes draft links changelog entries, closed issues by label, validation evidence,
+  compatibility notes, caveats, and host-owned optional-runtime evidence for maintainer review.
 - README, docs, changelog, and `AGENTS.md` reflect public behavior.
 - no optional runtime dependency, checkpoint, credential, generated artifact, or `.env` file is
   committed accidentally.
@@ -946,6 +1030,9 @@ Success signal:
 ## 10. Triage Incidents And Regressions
 
 Use this as the first stop when a user reports a failure.
+For provider-specific parser, retry, credential, optional-runtime, scaffold, and unsafe-artifact
+examples, cross-check the [Provider Failure Mode Gallery](./provider-failure-gallery.md) before
+attaching evidence.
 
 | Reported failure | First command | Evidence to capture | Usual fix path |
 | --- | --- | --- | --- |

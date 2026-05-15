@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "id": "evaluation-readiness",
+  "name": "Evaluation-oriented tabletop setup",
+  "description": "Create a two-object world that can seed deterministic evaluation suites without running a provider step.",
+  "provider": "mock",
+  "world": {
+    "name": "evaluation-readiness-world",
+    "objects": [
+      {
+        "id": "eval-cube",
+        "name": "cube",
+        "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+          "max": {"x": 0.05, "y": 0.55, "z": 0.05}
+        },
+        "metadata": {"role": "object-under-test"}
+      },
+      {
+        "id": "eval-target",
+        "name": "target marker",
+        "position": {"x": 0.4, "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": 0.38, "y": 0.48, "z": -0.02},
+          "max": {"x": 0.42, "y": 0.52, "z": 0.02}
+        },
+        "metadata": {"role": "expected-goal"}
+      }
+    ]
+  },
+  "actions": [],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 2},
+    {"label": "initial_step", "kind": "step", "value": 0}
+  ],
+  "metadata": {
+    "gallery_intent": "evaluation-oriented setup",
+    "first_triage_step": "If this fails, inspect the initial world object payload before changing evaluation code."
+  }
+}

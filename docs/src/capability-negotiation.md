@@ -46,6 +46,17 @@ a CI guard before a release-evidence run. Output formats:
   it cannot serve the capability today, plus a "Recommended actions" footer.
 - **JSON**: stable machine-readable shape suitable for run-manifest attachment.
 
+For a checkout-safe preflight demo that preserves ready, missing-config, missing-dependency,
+unsupported, and not-registered examples, run:
+
+```bash
+uv run python scripts/demo_showcases.py run capability-negotiation-preflight --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+The workflow writes JSON and Markdown negotiation reports under the selected demo workspace and
+records the recommended first commands without installing dependencies, configuring credentials, or
+executing a fallback workflow.
+
 ## Python
 
 ```python

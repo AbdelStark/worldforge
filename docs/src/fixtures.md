@@ -116,10 +116,58 @@ regression and are sanitized of secrets, signed URLs, host paths, and proprietar
 Host-supplied payloads (`data_class: "host-supplied"`) ship a synthetic placeholder; the
 `description` field documents what the integrator should substitute.
 
+## Snapshot manifest
+
+WorldForge also tracks source-controlled JSON fixtures through
+`tests/fixtures/fixture-snapshots.json`. The manifest records each fixture path, fixture kind,
+schema version, byte size, and `sha256:<hex>` digest. It covers:
+
+- packaged capability fixtures under `src/worldforge/testing/fixtures/`;
+- provider payload fixtures under `tests/fixtures/providers/`;
+- benchmark fixtures under `examples/*benchmark*.json`;
+- scenario files under `examples/scenarios/`;
+- scene artifact fixtures under `tests/fixtures/scene_artifacts/`.
+
+Check the manifest after changing any of those files:
+
+```bash
+uv run python scripts/manage_fixture_snapshots.py --format markdown
+```
+
+Validation fails when a manifest entry points outside the managed roots, uses an absolute path,
+uses `..` or backslash path segments, references a missing file, or has a digest/size/schema
+mismatch. The review output marks normal drift as `changed`. If a fixture update is intentional,
+mark the entry as `"review_status": "intended-update"` (`intended-update`) before review so the
+report distinguishes approved fixture churn from accidental drift. The default check still exits
+non-zero for intended updates; use `--allow-intended-updates` only in a human review workflow where
+the manifest diff and fixture diff have both been inspected.
+
+Refresh the manifest explicitly after the fixture change is accepted:
+
+```bash
+uv run python scripts/manage_fixture_snapshots.py --write
+```
+
+For a checkout-safe walkthrough of review output, run:
+
+```bash
+uv run python scripts/demo_showcases.py run fixture-drift-review --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+The workflow creates a temp fixture tree with provider payload, benchmark, and scenario fixtures,
+then preserves reports for missing fixture, digest drift, schema-version drift, unsafe path, and
+`intended-update` review cases. It also writes a refreshed temp manifest to show the approved
+update path. It never mutates the committed `tests/fixtures/fixture-snapshots.json`.
+
+Do not use the snapshot manager to fetch remote provider payloads, refresh datasets, or store large
+media artifacts. Add or update fixtures only when they lock a public contract, reproduce a bug, or
+provide a tiny documented scenario/benchmark input that stays safe to review in git.
+
 ## Validation
 
 ```bash
 uv run pytest tests/test_capability_fixtures.py tests/test_provider_contracts.py
+uv run python scripts/manage_fixture_snapshots.py --format markdown
 bash scripts/test_package.sh
 uv run mkdocs build --strict
 ```

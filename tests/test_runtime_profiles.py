@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import importlib
+import json
 from importlib.metadata import entry_points
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 import worldforge.testing as testing_helpers
+from worldforge.models import WorldForgeError
+from worldforge.providers import RuntimeAssetManifest
+from worldforge.smoke.run_manifest import build_run_manifest, validate_run_manifest
 from worldforge.testing.runtime_profiles import (
     PROVIDER_RUNTIME_PROFILES_BY_NAME,
     ProviderRuntimeProfile,
@@ -46,6 +51,115 @@ def test_runtime_profiles_reload_and_required_env_contract(
     monkeypatch.setenv("DEMO_ENDPOINT", "https://example.test")
     assert profile.missing_reason() is None
     assert "RuntimeMarker" in reloaded.__all__
+
+
+def test_runtime_asset_manifest_separates_local_and_attachable_fields(tmp_path: Path) -> None:
+    asset = RuntimeAssetManifest(
+        asset_id="leworldmodel:checkpoint:pusht/lewm",
+        provider="leworldmodel",
+        asset_kind="checkpoint",
+        path=tmp_path / "pusht/lewm_object.ckpt",
+        cache_root=tmp_path,
+        source="huggingface:quentinll/lewm-pusht",
+        revision="a" * 40,
+        checksum=f"sha256:{'1' * 64}",
+        size_bytes=128,
+        local_only=True,
+        exists=False,
+        rebuild_command=(
+            "worldforge-build-leworldmodel-checkpoint --policy pusht/lewm --revision <pinned-sha>"
+        ),
+    )
+
+    full = asset.to_dict(include_local_fields=True)
+    assert full["path"] == str(tmp_path / "pusht/lewm_object.ckpt")
+    assert full["cache_root"] == str(tmp_path)
+    assert full["safe_to_attach"] is False
+
+    reference = asset.to_reference()
+    assert reference["safe_to_attach"] is True
+    assert reference["local_only"] is True
+    assert reference["exists"] is False
+    assert "path" not in reference
+    assert "cache_root" not in reference
+    json.dumps(reference)
+
+
+def test_runtime_asset_manifest_rejects_unsafe_attachable_or_secret_fields(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(WorldForgeError, match="local_only=True"):
+        RuntimeAssetManifest(
+            asset_id="bad",
+            provider="leworldmodel",
+            asset_kind="checkpoint",
+            path=tmp_path / "checkpoint.ckpt",
+            source="host cache",
+            local_only=False,
+        )
+
+    with pytest.raises(WorldForgeError, match="checksum"):
+        RuntimeAssetManifest(
+            asset_id="bad",
+            provider="leworldmodel",
+            asset_kind="checkpoint",
+            path=tmp_path / "checkpoint.ckpt",
+            source="host cache",
+            checksum="sha256:not-hex",
+        )
+
+    with pytest.raises(WorldForgeError, match="secret-like"):
+        RuntimeAssetManifest(
+            asset_id="bad",
+            provider="leworldmodel",
+            asset_kind="checkpoint",
+            path=tmp_path / "checkpoint.ckpt",
+            source="token=secret-value",
+        )
+
+
+def test_run_manifest_references_runtime_assets_without_local_paths(tmp_path: Path) -> None:
+    asset = RuntimeAssetManifest(
+        asset_id="leworldmodel:checkpoint:pusht/lewm",
+        provider="leworldmodel",
+        asset_kind="checkpoint",
+        path=tmp_path / "pusht/lewm_object.ckpt",
+        cache_root=tmp_path,
+        source="huggingface:quentinll/lewm-pusht",
+        local_only=True,
+        exists=False,
+        rebuild_command=(
+            "worldforge-build-leworldmodel-checkpoint --policy pusht/lewm --revision <pinned-sha>"
+        ),
+    )
+
+    manifest = build_run_manifest(
+        run_id="run-1",
+        provider_profile="leworldmodel",
+        capability="score",
+        status="skipped",
+        env_vars=("LEWORLDMODEL_POLICY",),
+        command_argv=("lewm-real",),
+        runtime_assets=(asset,),
+    ).to_dict()
+
+    assert manifest["runtime_assets"] == [asset.to_reference()]
+    assert "path" not in manifest["runtime_assets"][0]
+    assert "cache_root" not in manifest["runtime_assets"][0]
+    with pytest.raises(WorldForgeError, match="safe reference must omit path"):
+        validate_run_manifest(
+            {
+                **manifest,
+                "runtime_assets": [{**asset.to_reference(), "path": str(tmp_path)}],
+            }
+        )
+    with pytest.raises(WorldForgeError, match="safe_to_attach"):
+        validate_run_manifest(
+            {
+                **manifest,
+                "runtime_assets": [{**asset.to_reference(), "safe_to_attach": False}],
+            }
+        )
 
 
 def test_runtime_markers_require_explicit_opt_in() -> None:

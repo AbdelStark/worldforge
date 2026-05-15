@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from worldforge.models import ProviderEvent, ProviderProfile
+from worldforge.models import ProviderEvent, ProviderProfile, ProviderRequestPolicy
 
 from .base import BaseProvider
 
@@ -262,3 +262,162 @@ def provider_docs_index(
             }
         )
     return tuple(docs)
+
+
+def provider_configuration_index(
+    *, docs_path_prefix: str = "docs/src/providers/"
+) -> tuple[dict[str, object], ...]:
+    """Return provider configuration contracts derived from catalog metadata."""
+
+    from .runtime_manifest import load_runtime_manifests
+
+    manifests = {manifest.provider: manifest for manifest in load_runtime_manifests()}
+    rows: list[dict[str, object]] = []
+    for entry in PROVIDER_CATALOG:
+        provider = entry.create()
+        profile = provider.profile()
+        manifest = manifests.get(entry.name)
+        docs_path = (
+            f"{docs_path_prefix}{entry.docs_page}"
+            if entry.docs_page
+            else f"{docs_path_prefix}README.md"
+        )
+        optional_env_vars = tuple(manifest.optional_env_vars) if manifest is not None else ()
+        optional_dependencies = (
+            tuple(manifest.optional_dependencies) if manifest is not None else ()
+        )
+        host_owned_artifacts = tuple(manifest.host_owned_artifacts) if manifest is not None else ()
+        smoke_command = manifest.minimum_smoke_command if manifest is not None else ""
+        rows.append(
+            {
+                "provider": entry.name,
+                "docs_path": docs_path,
+                "implementation_status": profile.implementation_status,
+                "capabilities": _capability_surface(profile, markdown=False),
+                "required_env_vars": tuple(profile.required_env_vars),
+                "optional_env_vars": optional_env_vars,
+                "optional_dependencies": optional_dependencies,
+                "credential_gates": _credential_gates(profile, optional_env_vars),
+                "prepared_host_assets": host_owned_artifacts,
+                "default_timeouts": _request_policy_summary(profile.request_policy),
+                "evidence_level": _evidence_level(entry, profile, manifest is not None),
+                "diagnostic_command": f"uv run worldforge provider health {entry.name}",
+                "smoke_command": smoke_command,
+                "runtime_ownership": entry.runtime_ownership,
+            }
+        )
+    return tuple(rows)
+
+
+def render_provider_configuration_index_markdown() -> str:
+    """Render the provider configuration contract index for public docs."""
+
+    lines = [
+        "| Provider | Evidence level | Required inputs | Optional inputs | Optional packages | "
+        "Prepared-host assets | Default timeouts | First diagnostic |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in provider_configuration_index():
+        provider = str(row["provider"])
+        docs_path = str(row["docs_path"]).removeprefix("docs/src/")
+        lines.append(
+            "| "
+            f"[`{provider}`]({docs_path}) | "
+            f"{_code(str(row['evidence_level']))} | "
+            f"{_required_inputs(row['required_env_vars'])} | "
+            f"{_code_list(row['optional_env_vars'])} | "
+            f"{_text_list(row['optional_dependencies'])} | "
+            f"{_text_list(row['prepared_host_assets'])} | "
+            f"{row['default_timeouts']} | "
+            f"{_code(str(row['diagnostic_command']))} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Prepared-Host Smoke Commands",
+            "",
+            "| Provider | Smoke command | Credential gate | Runtime ownership |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for row in provider_configuration_index():
+        smoke_command = str(row["smoke_command"]) or "not smoke-testable from WorldForge"
+        lines.append(
+            "| "
+            f"{_code(str(row['provider']))} | "
+            f"{_code(smoke_command)} | "
+            f"{_code_list(row['credential_gates'])} | "
+            f"{row['runtime_ownership']} |"
+        )
+    return "\n".join(lines)
+
+
+def _credential_gates(
+    profile: ProviderProfile,
+    optional_env_vars: tuple[str, ...],
+) -> tuple[str, ...]:
+    gates = tuple(
+        env_var
+        for env_var in (*profile.required_env_vars, *optional_env_vars)
+        if _looks_secret_env(env_var)
+    )
+    if gates:
+        return gates
+    return ()
+
+
+def _evidence_level(
+    entry: ProviderCatalogEntry,
+    profile: ProviderProfile,
+    has_runtime_manifest: bool,
+) -> str:
+    if profile.implementation_status == "scaffold":
+        return "scaffold"
+    if entry.always_register and profile.deterministic:
+        return "fixture-tested"
+    if has_runtime_manifest:
+        return "prepared-host"
+    return "profile-only"
+
+
+def _request_policy_summary(policy: ProviderRequestPolicy | None) -> str:
+    if policy is None:
+        return "none"
+    parts = []
+    for name, operation in (
+        ("health", policy.health),
+        ("request", policy.request),
+        ("poll", policy.polling),
+        ("download", policy.download),
+    ):
+        parts.append(f"{name} {operation.timeout_seconds:g}s x{operation.retry.max_attempts}")
+    return "; ".join(parts)
+
+
+def _looks_secret_env(name: str) -> bool:
+    lowered = name.lower()
+    return any(marker in lowered for marker in ("api_key", "secret", "token", "password"))
+
+
+def _code(value: str) -> str:
+    escaped = value.replace("|", "\\|")
+    return f"`{escaped}`"
+
+
+def _code_list(values: object) -> str:
+    if not isinstance(values, tuple | list) or not values:
+        return "none"
+    return ", ".join(_code(str(value)) for value in values)
+
+
+def _required_inputs(values: object) -> str:
+    if not isinstance(values, tuple | list) or not values:
+        return "none"
+    return " or ".join(_code(str(value)) for value in values)
+
+
+def _text_list(values: object) -> str:
+    if not isinstance(values, tuple | list) or not values:
+        return "none"
+    return "<br>".join(str(value).replace("|", "\\|") for value in values)

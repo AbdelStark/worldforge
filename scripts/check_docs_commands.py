@@ -24,6 +24,7 @@ DEFAULT_DOCS = (
     "docs/src/examples.md",
     "docs/src/operations.md",
     "docs/src/playbooks.md",
+    "docs/src/task-starters.md",
     "AGENTS.md",
 )
 IGNORED_EXECUTABLES = {"uv", "uvx", "pytest", "bash", "curl", "jq", "python", "python3", "rm"}

@@ -222,6 +222,38 @@ def render_evaluation_html(report: EvaluationReport) -> str:
             )
         )
 
+    workflow_trace = payload.get("workflow_trace")
+    if isinstance(workflow_trace, dict):
+        body_parts.append("<h2>Workflow Trace</h2>")
+        body_parts.append(
+            _summary_list(
+                (
+                    ("Workflow", workflow_trace.get("name")),
+                    ("Status", workflow_trace.get("status")),
+                    ("Steps", workflow_trace.get("step_count")),
+                )
+            )
+        )
+        steps = workflow_trace.get("steps", [])
+        if isinstance(steps, list):
+            body_parts.append(
+                _table(
+                    ("Step", "Parent", "Operation", "Provider", "Capability", "Status"),
+                    (
+                        (
+                            step.get("step_id", "-"),
+                            step.get("parent_id", "-"),
+                            step.get("operation", "-"),
+                            step.get("provider", "-"),
+                            step.get("capability", "-"),
+                            step.get("status", "-"),
+                        )
+                        for step in steps
+                        if isinstance(step, dict)
+                    ),
+                )
+            )
+
     return _document(
         title=title,
         body="\n".join(body_parts),
@@ -287,19 +319,31 @@ def render_comparison_html(payload: JSONDict) -> str:
     if not isinstance(payload, dict):
         raise WorldForgeError("comparison payload must be a JSON object.")
     kind = str(payload.get("kind") or "comparison")
-    title = f"WorldForge Run Comparison: {kind}"
+    mode = str(payload.get("mode") or "comparison")
+    title = (
+        f"WorldForge Regression Comparison: {kind}"
+        if mode == "regression"
+        else f"WorldForge Run Comparison: {kind}"
+    )
     body_parts: list[str] = [f"<h1>{escape(title)}</h1>"]
     body_parts.append(
         _summary_list(
             (
                 ("Kind", payload.get("kind")),
+                ("Mode", mode),
                 ("Schema version", payload.get("schema_version")),
                 ("Baseline run id", payload.get("baseline_run_id")),
+                ("Candidate run id", payload.get("candidate_run_id")),
                 ("Run count", payload.get("run_count")),
                 ("Claim boundary", payload.get("claim_boundary")),
             )
         )
     )
+
+    regression_summary = payload.get("regression_summary")
+    if isinstance(regression_summary, dict):
+        body_parts.append("<h2>Regression Summary</h2>")
+        body_parts.append(_summary_list(sorted(regression_summary.items())))
 
     runs = payload.get("runs")
     if isinstance(runs, list) and runs:

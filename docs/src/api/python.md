@@ -5,6 +5,7 @@ For compatibility tiers, deprecation expectations, and artifact-schema migration
 
 ## Entry points
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import (
     Action,
@@ -30,6 +31,7 @@ Top-level framework object responsible for:
 
 Common inspection helpers:
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import WorldForge
 
@@ -52,6 +54,7 @@ Provider adapters can still subclass `BaseProvider`, but small integrations can 
 single capability object. The object declares a non-empty `name`, optional `ProviderProfileSpec`,
 and the method for exactly the capability it implements.
 
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import ActionScoreResult, WorldForge
 from worldforge.providers import ProviderProfileSpec
@@ -80,6 +83,14 @@ implementations appear in `providers()`, `provider_profile(...)`, `doctor(...)`,
 benchmark harness. Existing calls such as `forge.generate("prompt", "mock")` keep resolving
 through the legacy provider registry.
 
+For a runnable policy-plus-score example that registers plain in-process objects, see
+[Capability Protocols Quickstart](../capability-protocols-quickstart.md).
+
+Capability protocol implementations and `BaseProvider` subclasses may also expose provider-owned
+`preflight`, `warmup`, and `teardown` hooks that return `ProviderLifecycleResult`. Diagnostics
+surface the aggregate `ProviderLifecycleStatus` through `doctor()` and
+`provider_lifecycle_status(...)` without changing the capability method contract.
+
 ## Persistence
 
 ```python
@@ -104,11 +115,13 @@ of being treated as successful no-ops.
 
 ## Observability
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 import logging
 from pathlib import Path
 
 from worldforge import WorldForge
+from worldforge.workflow_trace import workflow_trace_from_provider_events
 from worldforge.observability import (
     JsonLoggerSink,
     ProviderMetricsExporterSink,
@@ -144,8 +157,14 @@ package does not import OpenTelemetry or configure collectors.
 `ProviderMetricsExporterSink` is also optional and accepts a host-owned metrics exporter with
 bounded labels for provider, operation, phase, status class, and capability.
 
+Composed operations can emit safe workflow trace artifacts. `Plan.metadata["workflow_trace"]`
+records planning steps, evaluation reports export `workflow_trace.json` and `workflow_trace.md`,
+and `workflow_trace_from_provider_events(...)` can compact emitted `ProviderEvent` records into a
+schema-versioned trace without storing raw prompts, tensors, credentials, or controller telemetry.
+
 Rerun is available as an optional observability and artifact layer:
 
+<!-- worldforge-snippet: skip-host-owned -->
 ```python
 session = RerunSession(RerunRecordingConfig(save_path=".worldforge/rerun/run.rrd"))
 rerun_events = RerunEventSink(session=session)
@@ -157,6 +176,7 @@ plan = world.plan("move the first object right")
 
 artifacts.log_world(world)
 artifacts.log_plan(plan)
+artifacts.log_workflow_trace(plan.metadata["workflow_trace"])
 session.close()
 ```
 
@@ -169,6 +189,7 @@ Future spatial or 3D scene providers must validate their JSON artifact descripto
 or preserving evidence. The helper is dependency-free and does not fetch assets, render previews,
 or run simulators:
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from worldforge import validate_scene_artifact
 
@@ -185,6 +206,7 @@ Providers that expose the `score` capability can rank candidate action sequences
 prediction, generation, or reasoning support. LeWorldModel uses this path because its upstream
 runtime is a JEPA cost model.
 
+<!-- worldforge-snippet: skip-host-owned -->
 ```python
 from worldforge import WorldForge
 
@@ -218,18 +240,23 @@ score provider. Pass `score_action_candidates` when the scorer expects a provide
 latent candidate payload:
 
 ```python
-from worldforge import Action
+from worldforge import action_candidates_to_score_payload, bounded_move_grid_candidates
 
+candidate_actions = bounded_move_grid_candidates(
+    x_bounds=(0.1, 0.7),
+    y_bounds=(0.5, 0.5),
+    z_bounds=(0.0, 0.0),
+    x_steps=3,
+    y_steps=1,
+    z_steps=1,
+)
 plan = world.plan(
     goal="choose the lowest-cost LeWorldModel action",
     provider="leworldmodel",
     planner="leworldmodel-mpc",
-    candidate_actions=[
-        [Action.move_to(0.1, 0.5, 0.0)],
-        [Action.move_to(0.4, 0.5, 0.0)],
-    ],
+    candidate_actions=candidate_actions,
     score_info=info,
-    score_action_candidates=action_candidates,
+    score_action_candidates=action_candidates_to_score_payload(candidate_actions),
     execution_provider="mock",
 )
 
@@ -240,6 +267,22 @@ Score-based plans do not ask the score provider to predict state. `Plan.predicte
 empty, score details are stored in `Plan.metadata`, and `execute_plan(...)` uses
 `execution_provider` when the scoring provider does not implement `predict()`. The planner requires
 one score per candidate action plan; mismatched score counts fail before a plan is returned.
+
+Candidate helpers are provider-agnostic and return validated `Action` sequences. Use
+`cartesian_offset_candidates(...)` for relative move candidates, `object_near_candidates(...)` for
+reference-relative placements, `swap_action_candidates(...)` for two-object swaps, and
+`bounded_move_grid_candidates(...)` for inclusive Cartesian grids. They do not preprocess images,
+do not infer provider-native tensors, and do not reinterpret robot action spaces; pass
+`score_action_candidates`
+explicitly when a score provider needs a task-specific tensor instead of serialized `Action`
+payloads.
+
+For a checkout-safe policy+score candidate lab that preserves raw policy actions, ranks generated
+candidates, and shows invalid-bounds plus missing-translator failures, run:
+
+```bash
+uv run python scripts/demo_showcases.py run policy-score-candidate-lab --workspace-dir .worldforge/demo-showcases --overwrite
+```
 
 ## Action Policy
 
@@ -347,6 +390,40 @@ print(gallery.to_json())
 Failed reports expose representative, sanitized gallery cases through `failure_gallery()` and
 through `report.artifacts()["failure_gallery.json"]` / `["failure_gallery.md"]`. The gallery is
 for deterministic contract triage; it does not rank providers or claim physical fidelity.
+
+Custom deterministic suites use the same public report path:
+
+```python
+from worldforge.evaluation import EvaluationContext, EvaluationScenario, EvaluationSuite
+
+
+def check_world(context: EvaluationContext):
+    return context.outcome(
+        score=1.0,
+        passed=context.world.object_count == 0,
+        metrics={"object_count": context.world.object_count},
+    )
+
+
+custom = EvaluationSuite.custom(
+    suite_id="custom-empty-world",
+    name="Custom Empty World Evaluation",
+    suite_version="custom-empty-world:1",
+    claim_boundary="Checkout-safe custom example; not a model-quality claim.",
+    scenarios=[
+        EvaluationScenario.from_callable(
+            name="empty-world-readable",
+            description="Checks that a new world can be inspected.",
+            evaluator=check_world,
+        )
+    ],
+)
+report = custom.run_report("mock", forge=forge)
+print(report.provenance.suite_version)
+```
+
+`EvaluationSuite.register(...)` and `EvaluationSuite.from_registered(...)` provide a process-local
+registry for host applications that want to name custom suites.
 
 ## Benchmarking
 

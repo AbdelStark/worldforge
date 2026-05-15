@@ -11,6 +11,7 @@ Related docs:
 - [World Model Taxonomy](./world-model-taxonomy.md)
 - [Architecture](./architecture.md)
 - [Providers](./providers/README.md)
+- [Provider Configuration Index](./provider-configuration-index.md)
 - [Python API](./api/python.md)
 
 ## Scaffold Generator
@@ -63,13 +64,59 @@ uv run python scripts/generate_provider_docs.py --check
 
 The report lists the conformance helper required for every advertised capability, planned
 capabilities for scaffold/candidate adapters, runtime manifest status, docs/catalog drift status,
-redaction checks, safe artifact references, and validation commands. It validates
+provider configuration index drift, redaction checks, safe artifact references, and validation
+commands. It validates
 `tests/fixtures/providers/<provider>_*.json` playback files when they exist, including module-safe
 prefixes such as `jepa_wms_*.json` for direct-construction candidates. It also names missing
 promotion evidence by future status (`experimental`, `beta`, `stable`) so a scaffold gap is visible
 without turning into an accidental capability claim. It invokes only deterministic local providers
 by default. Use `--live` only on a prepared host when credentials, optional dependencies, injected
 runtimes, and runtime-owned artifacts are intentionally available.
+
+## Lifecycle Hooks
+
+Prepared-host providers can expose optional lifecycle hooks without changing their capability
+methods:
+
+```python
+from worldforge import ProviderLifecycleResult
+
+
+def preflight(self) -> ProviderLifecycleResult:
+    return ProviderLifecycleResult(
+        provider=self.name,
+        hook="preflight",
+        status="ready",
+        ready=True,
+        latency_ms=0.1,
+        details="runtime reachable",
+        evidence={"runtime": "prepared-host"},
+    )
+```
+
+The supported hooks are `preflight`, `warmup`, and `teardown`. The supported statuses are `no-op`,
+`ready`, `skipped`, `failed`, and `teardown-failed`. Evidence must be JSON-native and sanitized:
+record versions, shape summaries, feature flags, or manifest identifiers, not raw observations,
+tokens, private endpoints, checkpoint paths, GPU logs, or downloaded model files.
+
+Default hooks are safe for existing providers. Configured providers report `no-op`; missing required
+configuration reports `skipped` with a skip reason. Capability protocol implementations may define
+the same hook methods next to their existing `score_actions`, `select_actions`, `reason`, or other
+capability method; registration still happens through the capability method, and diagnostics pick up
+the lifecycle hooks through the observable wrapper.
+
+Diagnostics serialize the aggregate `ProviderLifecycleStatus` in `worldforge doctor` and
+`worldforge provider info <provider>`:
+
+```bash
+uv run worldforge doctor --registered-only
+uv run worldforge provider info gr00t --format json
+```
+
+Use lifecycle hooks for host-owned dependency checks, checkpoint presence checks, cheap server
+reachability probes, model warmup, cache preparation, and releasing provider-owned clients. Do not
+use them to install dependencies, provision credentials, start long-running daemons, download large
+assets unexpectedly, or claim an optional runtime is available when the host has not supplied it.
 
 ## Adapter Decision Tree
 
@@ -363,6 +410,9 @@ forge = WorldForge(auto_register_remote=False)
 forge.register_cost(ExampleCost())
 ```
 
+For a runnable policy-plus-score example using plain in-process protocol objects, see
+[Capability Protocols Quickstart](./capability-protocols-quickstart.md).
+
 ## Step 6: Boundary Validation Checklist
 
 Validate at the narrowest boundary. Do not let malformed upstream or caller data leak into public
@@ -569,6 +619,47 @@ Reusable conformance helpers are available for narrow provider tests:
 Use the capability-specific helper when a fixture or injected runtime exercises one operation.
 Use `assert_provider_contract(...)` when the test can safely exercise every declared capability for
 the provider.
+
+### Contract CLI Evidence
+
+External adapter authors can run the same contract surface from the CLI and attach the output to an
+issue or PR:
+
+```bash
+uv run worldforge provider contract mock --format markdown
+uv run worldforge provider contract --factory my_pkg.adapters:make_my_policy_provider --format json
+```
+
+The command checks provider metadata first, selects capability checks from the provider profile, and
+prints JSON or Markdown evidence with passed checks, skipped host-owned checks, failures, next
+steps, and validation commands. Registered providers can be named directly. Adapters that are not
+installed through the `worldforge.providers` entry-point group can use `--factory module:factory`.
+
+Live capability calls against non-local providers are skipped unless the host explicitly passes
+`--live`. Score and policy providers can supply fixture payloads with `--score-info`,
+`--score-candidates`, and `--policy-info`; otherwise the command uses the checkout-safe contract
+fixtures where possible. Passing CLI evidence is adapter-contract evidence only. It is not automatic
+promotion evidence and does not claim physical fidelity, media quality, or robot safety.
+
+For a package-shape walkthrough, run:
+
+```bash
+uv run python scripts/demo_showcases.py run external-provider-package --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+The workflow generates a temp external provider package, exercises `worldforge.providers`
+entry-point discovery and skip reasons, and preserves a safe report without publishing anything.
+
+When a provider fixture changes, use the fixture drift walkthrough before updating committed
+snapshots:
+
+```bash
+uv run python scripts/demo_showcases.py run fixture-drift-review --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+It shows missing fixture, digest drift, schema-version drift, unsafe path, and
+`intended-update` review states under a temp workspace so authors can practice the approved update
+path without mutating tracked fixtures.
 
 Remote providers:
 

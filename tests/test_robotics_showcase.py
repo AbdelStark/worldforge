@@ -8,6 +8,7 @@ from typing import Any
 
 from worldforge.models import WorldStateError
 from worldforge.smoke import pusht_showcase_inputs, robotics_showcase
+from worldforge.smoke.runtime_assets import lerobot_policy_asset, leworldmodel_checkpoint_asset
 
 
 class FakeTensor:
@@ -233,6 +234,30 @@ def test_robotics_showcase_forwards_packaged_pusht_defaults(
     assert "--expected-action-dim" not in forwarded
     assert "--expected-horizon" not in forwarded
     assert "--json-output" not in forwarded
+
+
+def test_robotics_runtime_asset_references_omit_host_paths(tmp_path: Path) -> None:
+    assets = (
+        lerobot_policy_asset(
+            policy_path=str(tmp_path / "lerobot-policy"),
+            cache_root=tmp_path / "lerobot-cache",
+        ),
+        leworldmodel_checkpoint_asset(
+            policy="pusht/lewm",
+            checkpoint=tmp_path / "pusht/lewm_object.ckpt",
+            cache_root=tmp_path,
+            exists=False,
+        ),
+    )
+
+    references = [asset.to_reference() for asset in assets]
+
+    assert {reference["provider"] for reference in references} == {"lerobot", "leworldmodel"}
+    assert references[0]["asset_kind"] == "policy_checkpoint"
+    assert references[1]["asset_kind"] == "checkpoint"
+    assert all(reference["safe_to_attach"] for reference in references)
+    assert all("path" not in reference for reference in references)
+    assert all("cache_root" not in reference for reference in references)
 
 
 def test_packaged_pusht_bridge_builds_candidates_without_optional_import_at_module_load(

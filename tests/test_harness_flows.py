@@ -30,6 +30,8 @@ from worldforge.harness.run_history import (
 )
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def _copy_json_payload(value: object) -> object:
     return json.loads(json.dumps(value))

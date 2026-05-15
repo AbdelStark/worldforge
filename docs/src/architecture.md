@@ -136,8 +136,8 @@ boundaries.
 `models.py`
 
 - Public data contracts such as `Action`, `SceneObject`, `StructuredGoal`, `VideoClip`,
-  `ProviderProfile`, `ProviderHealth`, `ProviderEvent`, `ActionScoreResult`, and
-  `ActionPolicyResult`.
+  `ProviderProfile`, `ProviderHealth`, `ProviderLifecycleStatus`, `ProviderEvent`,
+  `ActionScoreResult`, and `ActionPolicyResult`.
 - Validation helpers and public framework errors: `WorldForgeError` and `WorldStateError`.
 
 `providers/base.py`
@@ -543,6 +543,7 @@ BaseProvider subclass
 Capability protocol implementation
 |-- declares name and optional ProviderProfileSpec
 |-- implements exactly the protocol method it exposes
+|-- may implement preflight/warmup/teardown lifecycle hooks
 |-- is wrapped for ProviderEvent, health, profile, and info surfaces
 `-- can be registered with register_cost/register_policy/... or register(...)
 ```

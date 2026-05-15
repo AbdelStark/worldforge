@@ -11,9 +11,15 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
-from worldforge.harness.workspace import runs_dir
+from worldforge.harness.workspace import runs_dir, validate_run_id
 from worldforge.html_report import render_evidence_bundle_html, render_issue_bundle_html
 from worldforge.models import JSONDict, WorldForgeError, dump_json
+from worldforge.report_renderers import (
+    ReportRenderer,
+    ReportRenderResult,
+    register_report_renderer,
+    render_report_artifact,
+)
 from worldforge.testing.capability_fixtures import CAPABILITY_FIXTURE_NAMES
 
 EVIDENCE_BUNDLE_SCHEMA_VERSION = 1
@@ -47,6 +53,7 @@ def generate_evidence_bundle(
     run_ids: tuple[str, ...] = (),
     overwrite: bool = False,
     include_fixture_digests: bool = True,
+    generated_at: str | None = None,
 ) -> BundleResult:
     """Generate a deterministic, safe-to-attach evidence bundle from preserved runs."""
 
@@ -104,7 +111,7 @@ def generate_evidence_bundle(
     fixture_digests = _fixture_digests() if include_fixture_digests else []
     manifest = {
         "schema_version": EVIDENCE_BUNDLE_SCHEMA_VERSION,
-        "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "generated_at": generated_at or datetime.now(UTC).replace(microsecond=0).isoformat(),
         "source_workspace": _display_path(workspace),
         "run_count": len(runs),
         "runs": sorted(runs, key=lambda item: str(item["run_id"])),
@@ -121,9 +128,13 @@ def generate_evidence_bundle(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    summary_path.write_text(render_evidence_bundle_summary(manifest), encoding="utf-8")
+    summary_path.write_text(
+        evidence_bundle_artifact(manifest, "markdown").content, encoding="utf-8"
+    )
     summary_html_path = output / "summary.html"
-    summary_html_path.write_text(render_evidence_bundle_html(manifest), encoding="utf-8")
+    summary_html_path.write_text(
+        evidence_bundle_artifact(manifest, "html").content, encoding="utf-8"
+    )
     return BundleResult(
         output_dir=output,
         manifest_path=manifest_path,
@@ -138,6 +149,7 @@ def generate_issue_bundle(
     run_id: str,
     output_dir: Path,
     overwrite: bool = False,
+    generated_at: str | None = None,
 ) -> BundleResult:
     """Generate a small issue-ready bundle for one preserved run."""
 
@@ -147,6 +159,7 @@ def generate_issue_bundle(
         run_ids=(run_id,),
         overwrite=overwrite,
         include_fixture_digests=False,
+        generated_at=generated_at,
     )
     manifest = {
         **result.manifest,
@@ -160,13 +173,17 @@ def generate_issue_bundle(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    result.summary_path.write_text(render_evidence_bundle_summary(manifest), encoding="utf-8")
-    issue_path.write_text(render_issue_bundle_template(manifest), encoding="utf-8")
+    result.summary_path.write_text(
+        evidence_bundle_artifact(manifest, "markdown").content,
+        encoding="utf-8",
+    )
+    issue_path.write_text(issue_bundle_artifact(manifest, "markdown").content, encoding="utf-8")
     (result.output_dir / "summary.html").write_text(
-        render_evidence_bundle_html(manifest), encoding="utf-8"
+        evidence_bundle_artifact(manifest, "html").content,
+        encoding="utf-8",
     )
     issue_html_path = result.output_dir / "issue.html"
-    issue_html_path.write_text(render_issue_bundle_html(manifest), encoding="utf-8")
+    issue_html_path.write_text(issue_bundle_artifact(manifest, "html").content, encoding="utf-8")
     return BundleResult(
         output_dir=result.output_dir,
         manifest_path=result.manifest_path,
@@ -315,6 +332,83 @@ def render_issue_bundle_template(manifest: JSONDict) -> str:
     return "\n".join(lines)
 
 
+def evidence_bundle_artifact(manifest: JSONDict, output_format: str) -> ReportRenderResult:
+    """Render an evidence bundle manifest through the registered renderer surface."""
+
+    try:
+        return render_report_artifact("evidence-bundle", output_format, manifest)
+    except WorldForgeError as exc:
+        if "No report renderer registered" in str(exc):
+            raise WorldForgeError(
+                "evidence bundle format must be a registered renderer; built-ins are "
+                "json, markdown, or html."
+            ) from exc
+        raise
+
+
+def issue_bundle_artifact(manifest: JSONDict, output_format: str) -> ReportRenderResult:
+    """Render an issue bundle manifest through the registered renderer surface."""
+
+    try:
+        return render_report_artifact("issue-bundle", output_format, manifest)
+    except WorldForgeError as exc:
+        if "No report renderer registered" in str(exc):
+            raise WorldForgeError(
+                "issue bundle format must be a registered renderer; built-ins are "
+                "json, markdown, or html."
+            ) from exc
+        raise
+
+
+def _json_renderer(payload: JSONDict) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True)
+
+
+def _evidence_bundle_html_renderer(payload: JSONDict) -> str:
+    return render_evidence_bundle_html(payload)
+
+
+def _issue_bundle_html_renderer(payload: JSONDict) -> str:
+    return render_issue_bundle_html(payload)
+
+
+def _register_builtin_report_renderers() -> None:
+    for artifact_family, markdown_renderer, html_renderer, description in (
+        (
+            "evidence-bundle",
+            render_evidence_bundle_summary,
+            _evidence_bundle_html_renderer,
+            "evidence bundle",
+        ),
+        (
+            "issue-bundle",
+            render_issue_bundle_template,
+            _issue_bundle_html_renderer,
+            "issue bundle",
+        ),
+    ):
+        for output_format, media_type, renderer in (
+            ("json", "application/json", _json_renderer),
+            ("markdown", "text/markdown", markdown_renderer),
+            ("html", "text/html", html_renderer),
+        ):
+            register_report_renderer(
+                ReportRenderer(
+                    artifact_family=artifact_family,
+                    output_format=output_format,
+                    media_type=media_type,
+                    supported_schemas=(f"{artifact_family}:{EVIDENCE_BUNDLE_SCHEMA_VERSION}",),
+                    safe_to_attach=True,
+                    render=renderer,
+                    description=f"Built-in {description} {output_format} renderer.",
+                ),
+                replace=True,
+            )
+
+
+_register_builtin_report_renderers()
+
+
 @dataclass(slots=True)
 class _BundleContext:
     output: Path
@@ -328,10 +422,17 @@ class _BundleContext:
 def _select_run_paths(workspace_dir: Path, run_ids: tuple[str, ...]) -> list[Path]:
     root = runs_dir(workspace_dir)
     if run_ids:
-        return [root / run_id for run_id in sorted(run_ids)]
+        return [root / _validated_run_id(run_id) for run_id in sorted(run_ids)]
     if not root.exists():
         return []
     return sorted(path.parent for path in root.glob("*/run_manifest.json"))
+
+
+def _validated_run_id(run_id: str) -> str:
+    try:
+        return validate_run_id(run_id)
+    except ValueError as exc:
+        raise WorldForgeError(f"Evidence bundle run_id is invalid: {exc}") from exc
 
 
 def _load_run_manifest(run_path: Path) -> JSONDict:
@@ -354,16 +455,28 @@ def _copy_run_workspace(
     run_id: str,
     copied_refs: set[Path],
 ) -> None:
+    run_root = run_path.resolve()
     for source in sorted(path for path in run_path.rglob("*") if path.is_file()):
         resolved = source.resolve()
+        relative = source.relative_to(run_path)
+        destination = Path("runs") / run_id / relative
+        if not _is_relative_to(resolved, run_root):
+            _record_excluded(
+                context,
+                destination=destination,
+                source=str(source),
+                reason="run artifact resolves outside the run workspace",
+                kind="run-artifact",
+                local_only=True,
+            )
+            continue
         if resolved in copied_refs:
             continue
         copied_refs.add(resolved)
-        relative = source.relative_to(run_path)
         _copy_safe_file(
             context,
             source=source,
-            destination=Path("runs") / run_id / relative,
+            destination=destination,
             kind="run-artifact",
         )
 
@@ -425,6 +538,28 @@ def _copy_report_references(
                 destination=destination_root / _repo_relative(referenced),
                 kind=key,
             )
+        provenance = payload.get("provenance", {})
+        if not isinstance(provenance, dict):
+            continue
+        dataset_manifests = provenance.get("dataset_manifests", [])
+        if not isinstance(dataset_manifests, list):
+            continue
+        for reference in dataset_manifests:
+            if not isinstance(reference, dict):
+                continue
+            referenced = _resolve_report_reference(reference.get("path"))
+            if referenced is None:
+                continue
+            resolved = referenced.resolve()
+            if resolved in copied_refs:
+                continue
+            copied_refs.add(resolved)
+            _copy_safe_file(
+                context,
+                source=referenced,
+                destination=Path("dataset-manifests") / _repo_relative(referenced),
+                kind="dataset-manifest",
+            )
 
 
 def _record_manifest_artifact_references(
@@ -469,6 +604,16 @@ def _record_manifest_artifact_references(
                 kind="artifact-reference",
                 local_only=True,
             )
+            continue
+        if not resolved.is_file():
+            _record_excluded(
+                context,
+                destination=Path("runs") / run_id / f"artifacts/{label}",
+                source=raw_path,
+                reason="artifact reference does not exist",
+                kind="artifact-reference",
+                local_only=True,
+            )
 
 
 def _resolve_report_reference(value: object) -> Path | None:
@@ -477,16 +622,21 @@ def _resolve_report_reference(value: object) -> Path | None:
     raw = Path(value)
     if raw.is_absolute():
         resolved = raw.resolve()
-        if _is_relative_to(resolved, _ROOT.resolve()):
-            return resolved
+        for root in _known_roots():
+            if _is_relative_to(resolved, root):
+                return resolved
         return None
     candidates = [
         _ROOT / raw,
         _ROOT / "src" / "worldforge" / raw,
         _ROOT / "src" / "worldforge" / raw.parent / raw.name,
+        Path.cwd() / raw,
+        Path.cwd() / "src" / "worldforge" / raw,
+        Path.cwd() / "src" / "worldforge" / raw.parent / raw.name,
     ]
     if value.startswith("benchmark_presets/_data/"):
         candidates.insert(0, _ROOT / "src" / "worldforge" / value)
+        candidates.insert(1, Path.cwd() / "src" / "worldforge" / value)
     for candidate in candidates:
         if candidate.exists() and candidate.is_file():
             return candidate
@@ -633,7 +783,7 @@ def _contains_unsafe_url(value: object) -> bool:
         return False
     return bool(
         re.search(
-            r"https?://[^\\s\"']+[?&](token|signature|sig|key|api_key)=",
+            r"https?://[^\s\"']+[?&](token|signature|sig|key|api_key)=",
             value,
             re.I,
         )
@@ -823,17 +973,22 @@ def _sha256_file(path: Path) -> str:
 
 def _repo_relative(path: Path) -> Path:
     resolved = path.resolve()
-    try:
-        return resolved.relative_to(_ROOT.resolve())
-    except ValueError:
-        return Path(path.name)
+    for root in _known_roots():
+        try:
+            return resolved.relative_to(root)
+        except ValueError:
+            continue
+    return Path(path.name)
 
 
 def _display_path(path: Path) -> str:
-    try:
-        return path.resolve().relative_to(_ROOT.resolve()).as_posix()
-    except ValueError:
-        return f"<host-local:{path.name}>"
+    resolved = path.resolve()
+    for root in _known_roots():
+        try:
+            return resolved.relative_to(root).as_posix()
+        except ValueError:
+            continue
+    return f"<host-local:{path.name}>"
 
 
 def _safe_source_display(source: str) -> str:
@@ -848,6 +1003,14 @@ def _is_relative_to(path: Path, root: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _known_roots() -> tuple[Path, ...]:
+    package_root = _ROOT.resolve()
+    cwd = Path.cwd().resolve()
+    if cwd == package_root:
+        return (package_root,)
+    return (package_root, cwd)
 
 
 __all__ = [

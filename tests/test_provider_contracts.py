@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import importlib.util
 import inspect
+import json
+import sys
+from pathlib import Path
 
 import pytest
 
 import worldforge.testing.providers as provider_testing
 from worldforge import Action, ActionPolicyResult, ActionScoreResult, ProviderCapabilities
+from worldforge.cli import main as worldforge_main
 from worldforge.models import ProviderEvent, ProviderHealth
 from worldforge.providers import (
     BaseProvider,
@@ -29,6 +34,26 @@ from worldforge.testing import (
     assert_transfer_conformance,
     load_capability_fixture,
 )
+
+_ROOT = Path(__file__).resolve().parents[1]
+_DEMO_SCRIPT = _ROOT / "scripts" / "demo_showcases.py"
+_DEMO_SPEC = importlib.util.spec_from_file_location(
+    "demo_showcases_for_provider_contract_tests",
+    _DEMO_SCRIPT,
+)
+assert _DEMO_SPEC is not None
+_demo_showcases = importlib.util.module_from_spec(_DEMO_SPEC)
+assert _DEMO_SPEC.loader is not None
+sys.modules[_DEMO_SPEC.name] = _demo_showcases
+_DEMO_SPEC.loader.exec_module(_demo_showcases)
+
+
+def _gallery_entry(entry_id: str) -> dict[str, object]:
+    entries = {
+        str(entry["id"]): entry
+        for entry in _demo_showcases.build_provider_failure_gallery_entries()
+    }
+    return entries[entry_id]
 
 
 def test_mock_provider_passes_contract_checks() -> None:
@@ -121,6 +146,56 @@ class FakePolicyProvider(BaseProvider):
             action_candidates=[[action]],
             metadata={"runtime": "test"},
         )
+
+
+class BrokenContractProvider(BaseProvider):
+    def __init__(self, *, event_handler=None) -> None:
+        super().__init__(
+            name="broken-contract",
+            capabilities=ProviderCapabilities(predict=True),
+            profile=ProviderProfileSpec(
+                description="Fixture provider that advertises a broken predict surface",
+                is_local=True,
+                deterministic=True,
+            ),
+            event_handler=event_handler,
+        )
+
+    def predict(self, world_state, action, steps) -> PredictionPayload:
+        return PredictionPayload(
+            state={"scene": {"objects": {}}},
+            confidence=0.5,
+            physics_score=0.5,
+            frames=[],
+            metadata={"provider": self.name},
+            latency_ms=0.1,
+        )
+
+
+def make_broken_contract_provider(event_handler=None) -> BrokenContractProvider:
+    return BrokenContractProvider(event_handler=event_handler)
+
+
+class RemoteConfiguredPredictProvider(BaseProvider):
+    def __init__(self, *, event_handler=None) -> None:
+        super().__init__(
+            name="remote-contract",
+            capabilities=ProviderCapabilities(predict=True),
+            profile=ProviderProfileSpec(
+                description="Configured remote fixture for host-owned skip evidence",
+                is_local=False,
+                deterministic=False,
+                requires_credentials=False,
+            ),
+            event_handler=event_handler,
+        )
+
+    def predict(self, world_state, action, steps) -> PredictionPayload:
+        raise AssertionError("remote predict should require --live before invocation")
+
+
+def make_remote_configured_predict_provider(event_handler=None) -> RemoteConfiguredPredictProvider:
+    return RemoteConfiguredPredictProvider(event_handler=event_handler)
 
 
 def test_capability_specific_score_and_policy_helpers() -> None:
@@ -227,3 +302,116 @@ def test_jepa_no_longer_exposes_scaffold_surrogate(monkeypatch) -> None:
 
     with pytest.raises(ProviderError, match="does not implement embed"):
         JepaProvider().embed(text="cube")
+
+
+def test_provider_failure_gallery_matches_contract_failures(monkeypatch) -> None:
+    invalid_entry = _gallery_entry("mock-invalid-prediction-state")
+    with pytest.raises(AssertionError) as invalid_error:
+        assert_provider_contract(BrokenContractProvider())
+    assert str(invalid_entry["expected_error"]) in str(invalid_error.value)
+
+    secret_entry = _gallery_entry("provider-event-secret-material")
+    with pytest.raises(AssertionError) as secret_error:
+        assert_provider_events_conform(
+            [
+                ProviderEvent(
+                    provider="runway",
+                    operation="download",
+                    phase="success",
+                    metadata={"safe": "raw-secret"},
+                )
+            ]
+        )
+    assert str(secret_entry["expected_error"]) in str(secret_error.value)
+
+    unsupported_entry = _gallery_entry("genie-scaffold-fail-closed")
+    monkeypatch.setenv("GENIE_API_KEY", "genie-test-key")
+    monkeypatch.delenv("WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES", raising=False)
+    genie_report = assert_provider_contract(GenieProvider())
+    assert genie_report.configured is True
+    assert genie_report.exercised_operations == []
+    assert "exercised_operations=[]" in str(unsupported_entry["expected_error"])
+
+    jepa_entry = _gallery_entry("optional-runtime-missing-dependency")
+    assert str(jepa_entry["owner"]) == "prepared host owner"
+    assert "do not add it to base dependencies" in str(jepa_entry["first_triage_step"])
+
+
+def test_provider_contract_cli_runs_mock_provider(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["worldforge", "provider", "contract", "mock", "--format", "json"],
+    )
+
+    assert worldforge_main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 1
+    assert payload["status"] == "passed"
+    assert payload["provider"] == "mock"
+    assert payload["registered"] is True
+    assert payload["safe_to_attach"] is True
+    assert payload["validation_commands"][0] == (
+        "uv run worldforge provider contract mock --format json"
+    )
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert checks["metadata"]["status"] == "passed"
+    for capability in ("predict", "reason", "embed", "generate", "transfer"):
+        assert checks[capability]["status"] == "passed"
+
+
+def test_provider_contract_cli_reports_direct_factory_failure(monkeypatch, capsys) -> None:
+    factory_path = f"{__name__}:make_broken_contract_provider"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "provider",
+            "contract",
+            "--factory",
+            factory_path,
+            "--format",
+            "json",
+        ],
+    )
+
+    assert worldforge_main() == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["provider"] == "broken-contract"
+    assert payload["registered"] is False
+    assert payload["factory_path"] == factory_path
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert checks["metadata"]["status"] == "passed"
+    assert checks["capability-contract"]["status"] == "failed"
+    assert "invalid world state" in checks["capability-contract"]["detail"]
+    assert f"--factory {factory_path}" in checks["capability-contract"]["next_step"]
+
+
+def test_provider_contract_cli_skips_configured_remote_without_live(monkeypatch, capsys) -> None:
+    factory_path = f"{__name__}:make_remote_configured_predict_provider"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "provider",
+            "contract",
+            "--factory",
+            factory_path,
+            "--format",
+            "json",
+        ],
+    )
+
+    assert worldforge_main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert payload["status"] == "passed"
+    assert payload["skipped_count"] == 1
+    assert checks["predict"]["status"] == "skipped"
+    assert "requires --live" in checks["predict"]["detail"]

@@ -47,11 +47,14 @@ evaluation harnesses, and testable prototypes.
 - `src/worldforge/benchmark.py`: capability-aware provider latency, retry, and throughput harness.
 - `src/worldforge/observability.py`: composable `ProviderEvent` sinks for JSON logging, in-memory
   recording, and metrics aggregation.
+- `src/worldforge/workflow_trace.py`: JSON-native composed workflow trace artifacts for planning,
+  evaluation, provider-event conversion, Markdown export, and optional Rerun logging.
 - `src/worldforge/rerun.py`: optional Rerun SDK bridge for sanitized provider events, world
-  snapshots, plans, benchmark reports, robotics showcase visual layers, and JSON artifacts. Rerun
-  is not a provider capability and stays behind the `rerun` extra or host-owned optional runtimes
-  that already provide `rerun-sdk`.
-- `src/worldforge/testing/`: reusable adapter contract helpers.
+  snapshots, plans, workflow traces, benchmark reports, robotics showcase visual layers, and JSON
+  artifacts. Rerun is not a provider capability and stays behind the `rerun` extra or host-owned
+  optional runtimes that already provide `rerun-sdk`.
+- `src/worldforge/testing/`: reusable adapter contract helpers, fixture loaders, fixture snapshot
+  manifest helpers, runtime markers, and deterministic controls for artifact/report tests.
 - `src/worldforge/demos/`: packaged demo entry points exposed through `uv run` console scripts.
 - `src/worldforge/demos/lerobot_e2e.py`: packaged LeRobot policy-plus-score planning demo exposed
   through `uv run worldforge-demo-lerobot`.
@@ -59,11 +62,26 @@ evaluation harnesses, and testable prototypes.
   exposed through `uv run --extra rerun worldforge-demo-rerun`.
 - `scripts/demo_showcases.py`: checkout-safe demo evidence runner for the first-run, diagnostics,
   robotics replay, remote dry-run, adapter authoring, batch eval, service host, Rerun gallery,
-  failure lab, and cookbook workflows.
+  failure lab, cookbook, external provider package, custom evaluation suite, and policy+score
+  candidate lab, fixture drift review, capability negotiation preflight, and embodied policy
+  replay comparison, non-developer evidence review, and provider failure gallery workflows.
+- `scripts/release_readiness_drill.py`: checkout-safe release readiness drill that renders
+  clean-pass and controlled-failure release-evidence artifacts without publishing, tagging,
+  signing, or running host-owned optional runtimes.
+- `scripts/generate_dependency_audit_evidence.py`: checkout-safe dependency-audit evidence wrapper
+  around the documented `uv export` plus `pip-audit` flow; writes JSON and Markdown summaries
+  without preserving the temporary requirements file.
+- `scripts/generate_quality_dashboard.py`: local quality dashboard generator that reads release
+  evidence, dependency-audit evidence, and core-performance output and emits JSON/Markdown status
+  summaries without running gates.
+- `scripts/generate_release_notes.py`: maintainer-editable release notes draft generator that
+  assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
+  validation summaries, caveats, and host-owned optional runtime evidence without publishing.
 - `src/worldforge/harness/`: optional TheWorldHarness TUI package. Keep flow metadata and runners
   independent from Textual; `tui.py` is the only Textual-dependent module. Current flows cover
   LeWorldModel score planning, LeRobot policy-plus-score planning, Cosmos-Policy ALOHA replay,
-  provider diagnostics plus benchmark comparison, and the adapter author workbench.
+  GR00T PolicyClient replay, provider diagnostics plus benchmark comparison, and the adapter author
+  workbench.
 - `src/worldforge/smoke/`: packaged optional-runtime smoke entry points exposed through `uv run`
   console scripts.
 - `src/worldforge/smoke/lerobot_leworldmodel.py`: optional host-owned real robotics showcase that
@@ -81,6 +99,11 @@ evaluation harnesses, and testable prototypes.
 - `examples/lerobot_e2e_demo.py`: checkout-safe end-to-end LeRobot policy-plus-score planning
   compatibility wrapper with an injected deterministic policy.
 - `scripts/generate_provider_docs.py`: provider catalog documentation generator and drift check.
+- `scripts/check_docs_snippets.py`: checkout-safe snippet gate for selected Python and JSON docs
+  blocks, with explicit host-owned, credentialed, and illustrative skip markers.
+- `scripts/check_optional_import_boundaries.py`: checkout-safe static and import-time audit that
+  keeps Textual, Rerun, torch, stable-worldmodel, LeRobot, GR00T, and Cosmos-Policy imports behind
+  their allowed optional-runtime modules.
 - `scripts/scaffold_provider.py`: safe scaffold generator for new provider adapter files,
   fixture placeholders, tests, runtime manifest stubs, docs stubs, and workbench checklists.
 - `scripts/smoke_leworldmodel.py`: compatibility wrapper for
@@ -123,8 +146,14 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
+uv run python scripts/manage_fixture_snapshots.py --format markdown
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
+uv run python scripts/generate_dependency_audit_evidence.py
+uv run python scripts/generate_quality_dashboard.py
+uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json
 uv run mkdocs build --strict
 uv run pytest
 uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
@@ -142,6 +171,9 @@ uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --
 uv run worldforge world list
 uv run worldforge world objects <world-id>
 uv run worldforge world history <world-id>
+uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
+uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
+uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world delete <world-id>
 uv run worldforge provider docs
@@ -150,6 +182,7 @@ uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
 uv run --extra rerun worldforge-demo-rerun
 uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases
+uv run python scripts/release_readiness_drill.py --workspace-dir .worldforge/release-readiness-drill
 scripts/robotics-showcase
 uvx --from rerun-sdk rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 scripts/lewm-lerobot-real --help
@@ -166,13 +199,10 @@ uv run python scripts/scaffold_provider.py "Acme WM" \
   --planned-capability score
 ```
 
-Local security audit:
+Local security audit evidence:
 
 ```bash
-tmp_req="$(mktemp requirements-audit.XXXXXX)"
-uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" >/dev/null
-uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-spinner off
-rm -f "$tmp_req"
+uv run python scripts/generate_dependency_audit_evidence.py
 ```
 
 ## Documentation Map
@@ -187,6 +217,9 @@ rm -f "$tmp_req"
   benchmarks, incident triage, and release gates.
 - `docs/src/demo-showcases.md` and `docs/src/use-case-cookbook.md`: checkout-safe showcase
   workflow matrix, artifact contract, first triage steps, and task-oriented demo recipes.
+- `docs/src/scenarios.md` and `examples/scenarios/`: JSON-native scenario format plus the
+  checkout-safe local-world gallery for setup, failure, invalid-action, evaluation, and export
+  examples.
 - `docs/src/operations.md`: configuration, operational modes, persistence, observability, failure
   modes, recovery, release checklist, and provider hardening criteria.
 - `docs/src/provider-authoring-guide.md`: provider taxonomy, capability, validation,
@@ -195,10 +228,15 @@ rm -f "$tmp_req"
   exception families.
 - `docs/src/providers/`: generated provider catalog plus provider-specific config, contracts,
   limits, failure modes, and validation notes.
+- `docs/src/provider-configuration-index.md`: generated provider configuration contract index for
+  env vars, optional packages, credential gates, prepared-host assets, timeouts, diagnostics, and
+  smoke commands.
 - `docs/src/assets/`: images used by the MkDocs Material site and README showcase.
 - `mkdocs.yml`: GitHub Pages navigation, theme, and strict docs-build configuration.
 - `CONTRIBUTING.md` and `docs/src/contributing.md`: contributor setup, validation gates,
   repository map, provider rules, and documentation routing.
+- `docs/src/task-starters.md`: contributor starter packs for provider, docs-only, demo,
+  artifact/report, evaluation/benchmark, and CLI/operator work.
 
 ## Agentic Context And Coordination
 
@@ -233,12 +271,19 @@ generated documentation surfaces.
   supported capability explicitly. Valid capability names are `predict`, `generate`, `reason`,
   `embed`, `plan`, `transfer`, `score`, and `policy`; reject unknown names instead of treating
   them as unsupported.
+- `worldforge provider contract` output is issue-facing evidence. Keep it safe to attach, include
+  validation commands and next steps, report skipped host-owned checks explicitly, and do not call
+  non-local provider capabilities unless the host opts in with `--live`.
 - Use capability protocol registration for narrow one-surface integrations. A protocol
   implementation declares `name`, optional `ProviderProfileSpec`, and the matching method; register
   it with `WorldForge.register_cost`, `register_policy`, `register_generator`,
   `register_predictor`, `register_reasoner`, `register_embedder`, `register_transferer`, or
   structural `register(...)`. Use a full `BaseProvider` subclass when the adapter needs catalog
   auto-registration, custom configuration/health behavior, or multiple provider-owned surfaces.
+- Provider lifecycle hooks (`preflight`, `warmup`, `teardown`) are optional provider-owned
+  diagnostics. Return `ProviderLifecycleResult` with JSON-native sanitized evidence, keep missing
+  host config/dependencies as typed `skipped` results, and never install dependencies, provision
+  credentials, start daemons, or download large assets from a lifecycle hook.
 - `leworldmodel` exposes `score`, not `predict`, `generate`, or `reason`; do not fake those
   capabilities around a cost model.
 - `gr00t` exposes `policy`, not `predict`, `score`, or `generate`; do not call an embodied policy
@@ -252,6 +297,10 @@ generated documentation surfaces.
 - Provider events are log-facing records. Keep `target`, `message`, and `metadata` sanitized so
   bearer tokens, API keys, signed URL query strings, and secret-like metadata never reach event
   sinks.
+- Workflow traces are artifact-facing records for composed operations. Keep step IDs, artifact
+  references, error summaries, metadata, and parent-child relationships JSON-native and sanitized;
+  do not capture raw prompts, tensors, credentials, controller telemetry, or distributed tracing
+  backend state.
 - Keep public API models typed and serializable. Validate boundary values before persistence or
   outbound network I/O.
 - Keep action parameters, scene metadata, provider-event metadata, score metadata, policy raw
@@ -263,8 +312,30 @@ generated documentation surfaces.
 - Add regression tests for every bug fix and every documented failure mode.
 - Provider contract helpers in `src/worldforge/testing/` must raise explicit `AssertionError`
   messages instead of relying on Python `assert` statements.
+- Artifact/report tests that compare exact rendered output should use
+  `worldforge.testing.DeterministicClock`, `DeterministicIdFactory`, `stable_snapshot`, and
+  `stable_json_dumps` instead of local paths, random IDs, or live wall-clock timestamps.
+- Public CLI error messages must keep command owner context, include a first triage step when a
+  recovery path exists, and redact signed URLs, secret-like assignments, and host-local paths.
 - Put remote provider payload fixtures under `tests/fixtures/providers/` and assert both parser
   errors and public provider errors.
+- After changing capability fixtures, provider payload fixtures, benchmark inputs, scenario files,
+  or scene artifact fixtures, run the fixture snapshot check; use `--write` only after the fixture
+  diff is intended and reviewed.
+- Scenario parameter matrices must stay bounded and JSON-native. Use whole-value placeholders only;
+  keep supported substitutions limited to provider names, object positions, action targets, and
+  expected artifact values.
+- Dataset manifests are provenance records, not dataset storage. Keep paths repository-relative,
+  record checksums/license/privacy/safety fields, and leave host-owned acquisition outside the repo.
+- Runtime asset manifests are evidence records, not cache ownership. Keep full host-local `path`
+  and `cache_root` fields local-only; run manifests should include safe `runtime_assets`
+  references without checkpoint bytes, local cache roots, tokens, or generated assets.
+- Non-secret configuration profiles are shareable defaults, not a secret manager. Keep profile
+  paths relative, reject secret-looking keys and signed URLs, and store only safe `config_profile`
+  provenance in run manifests.
+- Report renderer extensions must declare artifact family, output format, media type, supported
+  schemas, and safe-to-attach versus local-only behavior. Do not load renderers from arbitrary
+  files, and reject unsafe output before returning attachable artifacts.
 - Update README, docs, changelog, playbooks, and this file when public behavior changes.
 - Keep operator docs concrete: every new runtime, provider, persistence, or release workflow
   should state the command to run, the expected success signal, and the first triage step.
@@ -307,6 +378,9 @@ generated documentation surfaces.
   mutation/predict/export/import/fork flows, and keep service-grade durability host-owned.
 - World IDs are file stems for local JSON persistence. Reject path separators, traversal-shaped
   values, and other non-file-safe IDs before loading, importing, or saving world state.
+- World migration previews are read-only issue-facing reports. They may report required changes,
+  invalid fields, unsafe IDs, and bounding-box corrections, but they must not rewrite local state
+  or silently repair malformed JSON.
 - Persisted history is part of the state contract: history entries must have non-negative steps,
   non-empty summaries, valid snapshot states, valid serialized `Action` payloads when present, and
   no entry step greater than the current world step. Scene object add/update/remove mutations
@@ -390,11 +464,20 @@ generated documentation surfaces.
   in `README.md`. Do not drop `scripts` from either target.
 - `uv run python scripts/generate_provider_docs.py --check`,
   `uv run python scripts/check_docs_commands.py`,
+  `uv run python scripts/check_docs_snippets.py`,
+  `uv run python scripts/manage_fixture_snapshots.py --format markdown`,
   `uv run python scripts/check_wrapper_portability.py`,
+  `uv run python scripts/check_optional_import_boundaries.py`,
   `uv run python scripts/check_core_performance.py`, and `uv run mkdocs build --strict` check
-  generated provider docs, documented command drift, wrapper portability, checkout-safe core
-  performance budgets, and the MkDocs Material site. A warning in the published docs build is a
-  release blocker.
+  generated provider docs, documented command drift, executable docs snippets, fixture snapshot
+  drift, wrapper portability, optional-runtime import boundaries, checkout-safe core performance
+  budgets, and the MkDocs Material site. A warning in the published docs build is a release
+  blocker.
+- `uv run python scripts/generate_dependency_audit_evidence.py` preserves dependency-audit JSON and
+  Markdown evidence for release review without keeping the temporary requirements file.
+- `uv run python scripts/generate_quality_dashboard.py` reads existing quality artifacts and writes
+  `.worldforge/quality-dashboard/quality-dashboard.json` plus Markdown with first failed gate,
+  raw failure details, skipped host-owned checks, warnings, and not-run rows.
 - `worldforge benchmark --budget-file <path>` evaluates direct provider benchmark results against
   JSON thresholds and exits non-zero on violations. Keep benchmark budgets tied to preserved run
   artifacts when using them for release or paper claims.

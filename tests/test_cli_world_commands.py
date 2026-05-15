@@ -124,7 +124,12 @@ def test_world_cli_deletes_persisted_world(tmp_path, monkeypatch, capsys) -> Non
     with pytest.raises(SystemExit) as excinfo:
         main()
     assert excinfo.value.code == 2
-    assert f"World '{world_id}' is not present" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert f"World '{world_id}' is not present" in error
+    assert "WorldForge CLI error [world delete]" in error
+    assert "First triage:" in error
+    assert "worldforge world list --state-dir <state-dir>" in error
+    assert str(tmp_path) not in error
 
 
 def test_world_cli_prediction_saves_or_dry_runs_persisted_world(
@@ -235,3 +240,114 @@ def test_world_cli_rejects_incomplete_object_updates(tmp_path, monkeypatch, caps
 
     assert excinfo.value.code == 2
     assert "Position updates require --x, --y, and --z together." in capsys.readouterr().err
+
+
+def test_world_cli_public_error_contract_for_malformed_state(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "broken.json").write_text("{not-json", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "world",
+            "show",
+            "broken",
+            "--state-dir",
+            str(tmp_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+
+    error = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "WorldForge CLI error [world show]" in error
+    assert "World file '<host-local-path>' is invalid" in error
+    assert "First triage:" in error
+    assert "Traceback" not in error
+    assert str(tmp_path) not in error
+
+
+def test_world_cli_migration_preview_is_read_only_and_attachable(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    created = json.loads(_run_world_cli(tmp_path, monkeypatch, capsys, "create", "lab"))
+    world_id = created["id"]
+    world_path = tmp_path / f"{world_id}.json"
+    before = world_path.read_text(encoding="utf-8")
+
+    preview = json.loads(
+        _run_world_cli(
+            tmp_path,
+            monkeypatch,
+            capsys,
+            "migration-preview",
+            world_id,
+        )
+    )
+
+    assert preview["status"] == "passed"
+    assert preview["read_only"] is True
+    assert preview["safe_to_attach"] is True
+    assert world_path.read_text(encoding="utf-8") == before
+
+    exported_path = tmp_path / "exported.json"
+    exported_path.write_text(
+        json.dumps({"schema_version": 1, "state": json.loads(before)}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "world",
+            "migration-preview",
+            str(exported_path),
+            "--source-path",
+            "--format",
+            "markdown",
+        ],
+    )
+
+    assert main() == 0
+    output = capsys.readouterr().out
+    assert "# WorldForge World Migration Preview" in output
+    assert "can_apply_safely: `true`" in output
+    assert str(tmp_path) not in output
+
+
+def test_world_cli_migration_preview_returns_nonzero_for_blocked_state(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    (tmp_path / "broken.json").write_text("{bad", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "world",
+            "migration-preview",
+            "broken",
+            "--state-dir",
+            str(tmp_path),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert main() == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "blocked"
+    assert report["can_apply_safely"] is False
+    assert report["invalid_fields"][0]["path"] == "source"
+    assert str(tmp_path) not in json.dumps(report)

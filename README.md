@@ -158,10 +158,11 @@ uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-
 ```
 
 The checkout-safe Rerun demo records provider event logs, world snapshots, a predictive plan,
-3D object boxes, and benchmark metrics into a local `.rrd` file. The robotics showcase records the
-real PushT policy+score run with candidate target points, selected trajectory, score bars, latency
-bars, provider events, plan payload, and replay snapshots. Use `--spawn`, `--connect-url`, or
-`--serve-grpc-port` for live viewer workflows in the checkout-safe demo.
+workflow trace artifacts, 3D object boxes, and benchmark metrics into a local `.rrd` file. The
+robotics showcase records the real PushT policy+score run with candidate target points, selected
+trajectory, score bars, latency bars, provider events, plan payload, and replay snapshots. Use
+`--spawn`, `--connect-url`, or `--serve-grpc-port` for live viewer workflows in the checkout-safe
+demo.
 
 More detail: [Rerun integration docs](https://abdelstark.github.io/worldforge/rerun/).
 
@@ -196,8 +197,8 @@ application's responsibility.
 | **Composable planning** | Combine predictive, score, and policy providers in a single planning loop. Rank candidates, roll out futures, execute actions, persist state. |
 | **Deterministic by default** | Built-in `mock` provider, reusable contract assertions (`worldforge.testing`), and packaged demos that run from a clean checkout without credentials or GPUs. |
 | **Host-owned runtimes** | No torch, CUDA, robot controllers, or checkpoints in base dependencies. LeWorldModel, GR00T, LeRobot, Cosmos, and Runway integrate through their own surfaces. |
-| **Diagnostics** | `worldforge doctor`, provider events, benchmark and evaluation harnesses, and an optional Textual TUI (`TheWorldHarness`) for inspecting traces. |
-| **Rerun observability** | Optional `rerun-sdk` bridge for event streams, world snapshots, plans, and benchmark artifacts. |
+| **Diagnostics** | `worldforge doctor`, provider events, workflow traces, benchmark and evaluation harnesses, and an optional Textual TUI (`TheWorldHarness`). |
+| **Rerun observability** | Optional `rerun-sdk` bridge for event streams, workflow traces, world snapshots, plans, and benchmark artifacts. |
 | **Quality gates** | `py.typed`, import-isolated pytest, ruff, a 90% coverage floor, strict docs, and wheel + sdist contract tests in CI on Python 3.13. |
 
 ## Install
@@ -310,10 +311,12 @@ uv run worldforge world list                                            # persis
 uv run worldforge world objects <world-id>                              # scene objects
 uv run worldforge world history <world-id>                              # object edits + predictions
 uv run worldforge world preflight                                       # read-only local state diagnostics
+uv run worldforge world migration-preview <world-id>                    # read-only schema review
 uv run worldforge world export <world-id> --output world.json           # portable state JSON
 uv run worldforge world delete <world-id>                               # remove local JSON state
 uv run worldforge provider list                                         # registered providers
-uv run worldforge provider info mock                                    # capability surface
+uv run worldforge provider info mock                                    # capability and lifecycle surface
+uv run worldforge provider contract mock --format json                  # attachable contract evidence
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 uv run worldforge eval --suite planning --provider mock --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format json
@@ -418,66 +421,6 @@ coverage, request limits, and docs.
   └──────────────────────────────────────────────┘
 ```
 
-| Path | Responsibility |
-| --- | --- |
-| `src/worldforge/models.py` | Domain models, serialization, validation errors, provider metadata, result types, request policies |
-| `src/worldforge/framework.py` | `WorldForge`, `World`, persistence, planning, prediction, comparison, diagnostics |
-| `src/worldforge/providers/catalog.py` | In-repo provider factories and auto-registration policy |
-| `src/worldforge/providers/base.py` | Provider interfaces, `ProviderError`, remote-provider behavior, `PredictionPayload` |
-| `src/worldforge/providers/` | Concrete adapters: mock, Cosmos, Cosmos-Policy, Runway, LeWorldModel, GR00T, LeRobot, JEPA, Genie |
-| `src/worldforge/evaluation/` | Deterministic evaluation suites and report renderers |
-| `src/worldforge/benchmark.py` | Capability-aware latency, retry, throughput, and event benchmark harness |
-| `src/worldforge/observability.py` | `ProviderEvent` sinks for logs, recording, and metrics |
-| `src/worldforge/rerun.py` | Optional Rerun SDK bridge for events, worlds, plans, and benchmark artifacts |
-| `src/worldforge/testing/` | Reusable provider contract assertions |
-
-Read [architecture](https://abdelstark.github.io/worldforge/architecture/) ·
-[world-model taxonomy](https://abdelstark.github.io/worldforge/world-model-taxonomy/) ·
-[provider authoring guide](https://abdelstark.github.io/worldforge/provider-authoring-guide/)
-before adding a new adapter.
-
-## Command And Example Index
-
-The README keeps the primary showcase and quickstart visible. Use the docs for the full command
-surface and runtime-specific entrypoints:
-
-| Need | Start here |
-| --- | --- |
-| Full CLI command map | [CLI reference](https://abdelstark.github.io/worldforge/cli/) |
-| Runnable example index | [Examples and CLI commands](https://abdelstark.github.io/worldforge/examples/) or `uv run worldforge examples` |
-| Checkout-safe demo evidence workflows | [Demo showcase workflows](https://abdelstark.github.io/worldforge/demo-showcases/) or `uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases` |
-| Task-oriented demo recipes | [Use case cookbook](https://abdelstark.github.io/worldforge/use-case-cookbook/) |
-| LeRobot + LeWorldModel replay showcase | [Robotics showcase walkthrough](https://abdelstark.github.io/worldforge/robotics-showcase/) |
-| Checkout-safe visual flows | [TheWorldHarness](https://abdelstark.github.io/worldforge/theworldharness/) |
-| Rerun event and artifact recording | [Rerun integration](https://abdelstark.github.io/worldforge/rerun/) or `uv run --extra rerun worldforge-demo-rerun` |
-| Optional runtime operations | [Operator playbooks](https://abdelstark.github.io/worldforge/playbooks/#8-run-optional-runtime-smokes) |
-| Support, security, citation | [Support](./SUPPORT.md), [Security](./SECURITY.md), [Citation](./CITATION.cff) |
-
-## Who It's For
-
-- Researchers comparing world-model surfaces without rewriting the harness for each one.
-- Robotics and physical-AI engineers wiring policies, scorers, simulators, and media providers
-  around their own stacks.
-- Framework builders shipping adapter packages, CLI workflows, and reproducible demos.
-- Anyone who wants the repo to run from a clean checkout before installing CUDA or downloading
-  checkpoints.
-
-## Operating Boundaries
-
-- Capabilities are contracts. Don't advertise an operation unless the adapter implements it and
-  returns the typed WorldForge result.
-- Optional runtimes remain host-owned. No torch, LeWorldModel, LeRobot, GR00T, Cosmos-Policy,
-  CUDA, TensorRT, controllers, checkpoints, or datasets in base dependencies.
-- Embodiment-specific action translation is host-owned. Policy providers preserve raw actions; the
-  caller converts them into executable `Action` objects.
-- Local JSON persistence is single-writer and available through both Python APIs and
-  `worldforge world` CLI commands. Services needing locking, transactions, or migrations own that
-  layer.
-- Built-in evaluation suites are deterministic contract harnesses. They are not physical-fidelity,
-  media-quality, or real-world safety claims.
-- Scaffold adapters (`jepa`, `genie`, `jepa-wms`) are placeholders, not real integrations.
-- World IDs are local storage identifiers. Path separators and traversal-shaped IDs are rejected.
-
 ## Development
 
 Primary local gate (same as CI):
@@ -489,7 +432,9 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -515,29 +460,6 @@ uv run python scripts/scaffold_provider.py "Acme WM" \
 Contributor guide: [CONTRIBUTING.md](./CONTRIBUTING.md). Repository agent context:
 [AGENTS.md](./AGENTS.md).
 
-## Project Status
-
-WorldForge is pre-1.0 beta. Minor releases may still include breaking changes when the public API
-needs to tighten.
-
-**Useful today for**
-
-- local provider adapter development
-- deterministic planning and evaluation experiments
-- checkout-safe demos and optional-runtime smoke tests
-- contract testing for third-party provider packages
-- CLI diagnostics around provider registration, health, and capabilities
-
-**Known limits**
-
-- `jepa` requires host-owned PyTorch, JEPA-WMS dependencies, checkpoints, and task preprocessing
-- `genie` is a capability-fail-closed scaffold adapter
-- `jepa-wms` remains a direct-construction candidate for host experiments
-- local JSON persistence is single-writer only
-- evaluation scores are contract signals, not physical-fidelity or safety claims
-- optional runtimes, checkpoints, trace export, dashboards, and production telemetry stay
-  host-owned
-
 ## Citing WorldForge
 
 If you use WorldForge in academic work, a BibTeX entry is:
@@ -558,7 +480,9 @@ Issues, discussions, and pull requests are welcome. Please read
 [CONTRIBUTING.md](./CONTRIBUTING.md) and open an issue for non-trivial changes before sending a
 patch. For provider work, start with the
 [provider authoring guide](https://abdelstark.github.io/worldforge/provider-authoring-guide/) and
-the [playbooks](https://abdelstark.github.io/worldforge/playbooks/).
+the [playbooks](https://abdelstark.github.io/worldforge/playbooks/). External adopters can share
+integration stories through the
+[adoption case-study template](./docs/src/adoption-case-studies/README.md).
 
 ## License
 

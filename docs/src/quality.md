@@ -54,12 +54,23 @@ framework should track:
   mutation.
 - Test fixtures must be deterministic unless a test explicitly validates nondeterministic runtime
   handling.
+- Artifact and report tests should use `worldforge.testing.DeterministicClock`,
+  `DeterministicIdFactory`, `deterministic_run_workspace`, `stable_snapshot`, and
+  `stable_json_dumps` when they assert exact JSON or Markdown snapshots. Normalize temporary paths,
+  generated IDs, and known volatile fields before comparing text.
+- Exact snapshots are appropriate for stable artifact schemas, rendered user-facing report text,
+  command snippets, schema-versioned manifests, and failure templates. Prefer semantic assertions
+  for real provider latency, throughput, host paths, current git commits, live timestamps, optional
+  runtime warnings, and other values whose truth depends on the host environment.
 - Every provider capability must have both a positive contract test and a failure-mode test for the
   boundary it documents.
 - Reusable provider contract helpers must use explicit exceptions instead of Python `assert`, so
   adapter validation does not disappear when tests run under optimized Python.
 - Public exception assertions should match literal messages precisely enough to catch regressions
   without depending on unrelated text.
+- Public CLI error contracts must preserve owner context, a first triage step, and safe wording.
+  Regression tests should assert exact text only for stable messages; use semantic assertions for
+  paths, timings, provider endpoints, and other host-owned values.
 - `xfail` is strict. A test that starts passing should be investigated and either promoted or
   removed.
 
@@ -100,7 +111,9 @@ uv run ruff check src tests examples scripts
 uv run ruff format --check src tests examples scripts
 uv run python scripts/generate_provider_docs.py --check
 uv run python scripts/check_docs_commands.py
+uv run python scripts/check_docs_snippets.py
 uv run python scripts/check_wrapper_portability.py
+uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/check_core_performance.py
 uv run mkdocs build --strict
 uv run pytest
@@ -110,22 +123,53 @@ uv build --out-dir dist --clear --no-build-logs
 ```
 
 The local gate runs the lock check, Ruff, generated-provider-doc drift check, documented-command
-drift check, wrapper portability check, checkout-safe core performance budgets, strict MkDocs
-build, full pytest, harness coverage gate, wheel/sdist package contract, and distribution build.
-The wrapper portability check verifies shebangs, executable bits, documented `uv run` commands, and
-Python 3.13 expectations without installing optional runtimes. The core performance budget gate
+drift check, docs snippet gate, wrapper portability check, optional import boundary audit,
+checkout-safe core performance budgets, strict MkDocs build, full pytest, harness coverage gate,
+wheel/sdist package contract, and distribution build. The docs snippet gate executes only selected
+Python snippets and parses only selected JSON snippets; host-owned, credentialed, and illustrative
+examples need explicit skip markers. The wrapper portability check verifies shebangs, executable
+bits, documented `uv run` commands, and Python 3.13 expectations without installing optional
+runtimes. The optional import boundary audit verifies that base package imports, CLI startup,
+`worldforge.rerun`, and non-TUI harness modules do not import Textual, Rerun, torch,
+stable-worldmodel, LeRobot, GR00T, or Cosmos-Policy packages. Allowed direct imports stay limited
+to `worldforge.harness.tui` for Textual and prepared-host smoke modules for torch/stable-worldmodel;
+provider adapters must use lazy imports or injected runtimes. The core performance budget gate
 writes JSON with measured local paths and a claim boundary; it detects regressions in checkout paths
 and is not a cross-machine benchmark or optional-runtime performance claim. Before a release tag,
 also run:
 
 ```bash
-tmp_req="$(mktemp requirements-audit.XXXXXX)"
-uv export --frozen --all-groups --no-emit-project --no-hashes -o "$tmp_req" >/dev/null
-uvx --from pip-audit pip-audit -r "$tmp_req" --no-deps --disable-pip --progress-spinner off
-rm -f "$tmp_req"
+uv run python scripts/generate_dependency_audit_evidence.py
 ```
 
-For release hardening, use the dependency audit in [Operations](./operations.md).
+For release hardening, use the dependency-audit evidence workflow in
+[Operations](./operations.md). It preserves JSON and Markdown summaries without keeping the
+temporary requirements file.
+
+To rehearse release readiness without publishing, run:
+
+```bash
+uv run python scripts/release_readiness_drill.py
+```
+
+The drill writes clean-pass and controlled-failure release-evidence fixtures, names the first
+failed gate and triage command, and keeps optional-runtime evidence as explicit host-owned skips.
+It is a quality rehearsal only; actual release approval still depends on current gate outputs,
+dependency-audit evidence, package validation, and maintainer review.
+
+For a local quality overview, generate the dashboard after release evidence, dependency-audit
+evidence, and any core-performance report exist:
+
+```bash
+uv run python scripts/generate_quality_dashboard.py
+```
+
+The dashboard writes `.worldforge/quality-dashboard/quality-dashboard.json` and
+`.worldforge/quality-dashboard/quality-dashboard.md`. It reads existing outputs and normalizes the
+status vocabulary to `passed`, `failed`, `warning`, `skipped`, and `not-run`; it does not execute
+gates or replace the raw artifacts. Use release evidence for release claims and artifact hashes,
+and use the dashboard for branch-level triage across docs, tests, coverage, package checks,
+dependency audit, core performance, and host-owned optional skips.
 
 ## Optional Live Robotics CI
 

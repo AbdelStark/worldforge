@@ -9,6 +9,149 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added an adoption case-study gallery, reusable case-study template, Adoption Story issue
+  template, and smoke tests for future submitted adoption stories.
+- Added a runnable capability protocol mini-demo with docs and tests for in-process predictor,
+  policy, and cost registration.
+- Added a checkout-safe external provider package demo workflow. `scripts/demo_showcases.py run
+  external-provider-package` generates a temp provider package, proves `worldforge.providers`
+  entry-point discovery, disabled discovery, duplicate-name handling, and missing optional
+  dependency skip reporting, and preserves a safe discovery report without publishing or mutating
+  tracked source.
+- Expanded the custom evaluation suite example into a checkout-safe walkthrough. The demo now runs a
+  deterministic custom suite against `mock`, preserves JSON/Markdown/HTML/failure-gallery
+  artifacts with provenance, and includes one controlled failed case for report review without
+  claiming model quality.
+- Added a checkout-safe policy+score candidate lab. The demo builds deterministic bounded move
+  candidates, preserves raw policy actions, scores candidate plans, records the selected action and
+  workflow trace, and captures invalid candidate bounds plus missing-translator failures without
+  requiring a robot, simulator, or checkpoint.
+- Added a checkout-safe fixture drift review walkthrough. The demo builds a temp fixture snapshot
+  manifest, shows missing fixture, digest drift, schema-version drift, unsafe path, and
+  intended-update review outputs, and preserves the approved update path without touching tracked
+  fixtures.
+- Added a checkout-safe capability negotiation preflight demo. The workflow preserves negotiation
+  JSON/Markdown for ready, missing-config, missing-dependency, unsupported, and not-registered
+  cases across generate, transfer, score, policy+score, and evaluation workflow shapes without
+  installing dependencies or executing fallback workflows.
+- Added a checkout-safe embodied policy replay comparison. It compares LeRobot, GR00T, and
+  Cosmos-Policy policy contracts side by side, preserves provider-specific raw action metadata,
+  records missing-translator blockers, and links each provider to its prepared-host live smoke.
+- Added a scenario gallery under `examples/scenarios/` covering successful world setup,
+  intentionally failed expectations, invalid action triage, evaluation-oriented setup, and
+  report/export output through the existing `worldforge scenario` CLI.
+- Added a checkout-safe release readiness drill script that renders clean-pass and controlled
+  failure release-evidence artifacts, reports host-owned optional-runtime skips, and records the
+  first failed gate without publishing, tagging, signing, or creating a release.
+- Added a non-developer evidence review demo that builds a static HTML/JSON/Markdown review
+  package from evaluation, benchmark, world-diff, and issue-bundle artifacts while escaping display
+  text and marking unsafe host-local references as local-only.
+- Added a provider failure mode gallery demo and docs page covering fixture-backed parser errors,
+  provider errors, retry exhaustion, missing config, optional-runtime setup, scaffold boundaries,
+  unsupported behavior, and safe artifact handling with first triage commands.
+- Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
+  `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
+  safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for
+  lifecycle readiness and skip reasons.
+- Added `worldforge runs compare --mode regression` for baseline-vs-candidate review across
+  preserved benchmark, evaluation, and demo-showcase runs. Regression reports include metric
+  deltas, budget status changes, new and removed failures, safe artifact drift, provenance
+  differences, and unsafe artifact exclusion counts in JSON, Markdown, CSV, and HTML.
+- Added scenario parameter matrices for bounded checkout-safe sweeps. Scenario files can now
+  declare JSON-native `matrix.parameters`, use whole-value placeholders for provider names, object
+  positions, action targets, and expected artifact values, validate every expanded case before
+  execution, and return aggregate pass/fail counts plus failed-case details from
+  `worldforge scenario run`.
+- Added evaluation dataset manifest contracts. `worldforge eval --dataset-manifest <path>` now
+  cites schema-versioned manifest references in provenance, with validation for local fixture
+  paths, remote references, host-owned asset records, checksums, license/provenance/privacy/safety
+  fields, and evidence-bundle copying of safe source-controlled manifest files without embedding
+  datasets.
+- Added `worldforge provider contract` for external adapter authors. It runs metadata and
+  capability-aware provider contract checks for registered providers or direct `module:factory`
+  paths, emits safe-to-attach JSON/Markdown evidence with skipped host-owned checks and validation
+  commands, and keeps live provider calls behind an explicit `--live` flag.
+- Added runtime asset manifests for prepared-host optional runtimes. LeWorldModel and
+  LeRobot/LeWorldModel smoke outputs now include safe `runtime_assets` references in run manifests,
+  while full local-only paths, cache roots, and checkpoint bytes stay out of attachable evidence.
+- Added non-secret JSON/TOML configuration profiles for repeatable eval and benchmark CLI defaults.
+  Profiles reject secret-looking keys and unsafe paths, and preserved run manifests now include
+  safe `config_profile` provenance with the profile digest instead of profile contents.
+- Added a safe report-renderer registry for comparison and evidence bundle artifacts. Built-in
+  JSON/Markdown/CSV/HTML renderers keep their output unchanged, while external code can register
+  validated safe-to-attach or local-only renderers without file-based plugin loading.
+- Added read-only world migration previews through `worldforge world migration-preview`. The report
+  covers persisted worlds and exported world JSON, schema versions, required canonicalization
+  changes, invalid fields, unsafe IDs, bounding-box corrections, safe-to-attach status, and whether
+  an explicit migration can be applied safely without silently rewriting local state.
+- Added schema-versioned workflow trace artifacts for composed operations. Plans now include
+  sanitized trace metadata, evaluation reports export trace JSON/Markdown and render trace tables
+  in HTML, provider events can be converted into trace steps, and the optional Rerun artifact logger
+  can record workflow traces without changing provider capability semantics.
+- Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
+  semi-public JSON artifact families. The page records each schema's owner, version field,
+  validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards
+  schema-version exports and required artifact families against missing ownership notes.
+- Added `scripts/check_optional_import_boundaries.py`, a checkout-safe audit that statically checks
+  optional runtime imports and verifies base package, CLI, Rerun, provider, and non-TUI harness
+  imports do not load Textual, Rerun, torch, stable-worldmodel, LeRobot, GR00T, or Cosmos-Policy
+  runtime packages.
+- Added `scripts/check_docs_snippets.py`, a marker-based docs snippet gate for selected Python and
+  JSON examples across the Python API, scenarios, provider routing, external provider,
+  benchmarking, artifact, and report docs. The gate executes Python snippets in a temp workspace,
+  parses JSON snippets, applies scenario and benchmark schema checks, and requires explicit
+  host-owned, credentialed, or illustrative skip markers.
+- Added `worldforge.testing` deterministic controls for artifact and report tests:
+  `DeterministicClock`, `DeterministicIdFactory`, `deterministic_run_workspace`,
+  `stable_snapshot`, `stable_path`, and `stable_json_dumps`. Evidence bundle generation, issue
+  bundle tests, release evidence tests, preserved benchmark snapshots, scenario result snapshots,
+  and live-smoke run manifest tests can now pin clocks, IDs, temp paths, volatile fields, and
+  sorted JSON without weakening real runtime timing.
+- Added a generated Provider Configuration Index that derives each catalog provider's required and
+  optional inputs, optional packages, credential gates, prepared-host assets, default request
+  timeouts, first diagnostic command, smoke command, and evidence level from provider metadata and
+  runtime manifests. The provider-docs generator now checks that index alongside the provider
+  catalog tables.
+- Added user-facing error-message regression coverage for CLI world/scenario failures, unsupported
+  capability names, provider budget failures, and secret/path redaction. CLI errors now include a
+  command owner context plus a first triage step while redacting signed URLs, secret assignments,
+  and host-local paths.
+- Added contributor task starter packs for provider, docs-only, demo, artifact/report,
+  evaluation/benchmark, and CLI/operator work, with issue-template links and docs tests guarding
+  required sections, validation commands, evidence artifacts, docs/changelog expectations, and
+  review checklists.
+- Added `scripts/generate_release_notes.py`, a maintainer-editable release notes draft generator
+  that assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
+  validation summaries, docs/public-surface links, caveats, compatibility notes, and host-owned
+  optional runtime evidence without publishing a GitHub release or changing tag/signing workflows.
+- Added `scripts/generate_dependency_audit_evidence.py`, a checkout-safe dependency-audit evidence
+  wrapper that runs the documented locked `uv export` plus `pip-audit` flow through a temporary
+  requirements file and writes JSON/Markdown summaries with tool versions, dependency-set digest,
+  vulnerability summaries, explicit ignore rationales, sanitized command output, and first triage
+  steps.
+- Added `scripts/generate_quality_dashboard.py`, a local quality dashboard generator that reads
+  release evidence, dependency-audit evidence, and core-performance output, then writes JSON and
+  Markdown summaries with normalized pass/fail/warning/skip/not-run statuses, command lines,
+  timestamps, raw failure details, skipped host-owned checks, and the first failed gate.
+- Added a public custom evaluation-suite authoring API: `EvaluationSuite.custom(...)`,
+  process-local `EvaluationSuite.register(...)` / `from_registered(...)`, callable
+  `EvaluationScenario.from_callable(...)`, `EvaluationContext`, and `EvaluationScenarioOutcome`.
+  Custom reports reuse the existing provenance, failure-gallery, artifact, and claim-boundary
+  machinery while rejecting non-JSON metric payloads.
+- Added provider-agnostic action candidate helpers for score and policy+score workflows:
+  `cartesian_offset_candidates(...)`, `object_near_candidates(...)`,
+  `swap_action_candidates(...)`, `bounded_move_grid_candidates(...)`,
+  `normalize_action_candidates(...)`, and `action_candidates_to_score_payload(...)`.
+- Added fixture snapshot governance for source-controlled JSON fixtures. The new
+  `worldforge.testing.fixture_snapshots` helpers and `scripts/manage_fixture_snapshots.py` validate
+  `tests/fixtures/fixture-snapshots.json` against capability fixtures, provider payload fixtures,
+  benchmark inputs, scenario files, and scene artifact fixtures, with review output that separates
+  accidental drift from entries marked `intended-update`.
+- Added a checkout-safe GR00T PolicyClient replay flow in TheWorldHarness. The flow replays a
+  sanitized saved policy response through `GrootPolicyClientProvider`, validates `eef_9d`,
+  `gripper_position`, and `joint_position` tensor shapes, translates the trajectory into
+  WorldForge actions, and preserves a replay artifact without requiring CUDA, checkpoints, raw
+  observations, private endpoints, or GPU logs.
 - Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
   production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
   focuses on artifact schema governance, executable docs snippets, optional dependency import

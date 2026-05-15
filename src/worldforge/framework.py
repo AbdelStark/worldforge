@@ -48,6 +48,8 @@ from worldforge.models import (
     ProviderEvent,
     ProviderHealth,
     ProviderInfo,
+    ProviderLifecycleResult,
+    ProviderLifecycleStatus,
     ProviderProfile,
     ReasoningResult,
     SceneObject,
@@ -80,6 +82,7 @@ from worldforge.providers.entry_points import (
     discover_entry_point_providers,
 )
 from worldforge.providers.observable import CAPABILITY_METHOD_MAP, _ObservableCapability
+from worldforge.workflow_trace import WorkflowArtifactRef, WorkflowTrace, WorkflowTraceStep
 
 if TYPE_CHECKING:
     from worldforge.evaluation import EvaluationReport, EvaluationResult
@@ -180,6 +183,105 @@ def _require_score_count_matches_candidates(
             f"Provider '{provider}' returned {score_count} score(s) for "
             f"{candidate_count} candidate action plan(s)."
         )
+
+
+def _plan_workflow_trace(
+    *,
+    mode: str,
+    planner: str,
+    provider: str,
+    action_count: int,
+    candidate_count: int | None = None,
+    policy_provider: str | None = None,
+    score_provider: str | None = None,
+    predict_step_count: int = 0,
+) -> JSONDict:
+    steps: list[WorkflowTraceStep] = [
+        WorkflowTraceStep(
+            step_id="plan",
+            operation=f"{mode} planning",
+            status="success",
+            provider=provider,
+            input_artifacts=(WorkflowArtifactRef(label="world-state"),),
+            output_artifacts=(WorkflowArtifactRef(label="plan"),),
+        )
+    ]
+    if mode in {"policy", "policy+score"}:
+        steps.append(
+            WorkflowTraceStep(
+                step_id="policy",
+                parent_id="plan",
+                operation="select action candidates",
+                status="success",
+                provider=policy_provider or provider,
+                capability="policy",
+                output_artifacts=(WorkflowArtifactRef(label="policy-candidates"),),
+            )
+        )
+    elif mode == "score":
+        steps.append(
+            WorkflowTraceStep(
+                step_id="policy",
+                parent_id="plan",
+                operation="select action candidates",
+                status="skipped",
+                capability="policy",
+                error_summary=(
+                    "Policy provider not requested; score planning used caller candidates."
+                ),
+            )
+        )
+    if mode in {"score", "policy+score"}:
+        steps.append(
+            WorkflowTraceStep(
+                step_id="score",
+                parent_id="plan",
+                operation="rank action candidates",
+                status="success",
+                provider=score_provider or provider,
+                capability="score",
+                input_artifacts=(WorkflowArtifactRef(label="action-candidates"),),
+                output_artifacts=(WorkflowArtifactRef(label="score-ranking"),),
+            )
+        )
+    elif mode == "policy":
+        steps.append(
+            WorkflowTraceStep(
+                step_id="score",
+                parent_id="plan",
+                operation="rank action candidates",
+                status="skipped",
+                capability="score",
+                error_summary="Score provider not requested; policy result used directly.",
+            )
+        )
+    if mode == "predict":
+        steps.extend(
+            (
+                WorkflowTraceStep(
+                    step_id=f"predict-{index + 1}",
+                    parent_id="plan",
+                    operation="predict next state",
+                    status="success",
+                    provider=provider,
+                    capability="predict",
+                    input_artifacts=(WorkflowArtifactRef(label="world-state"),),
+                    output_artifacts=(WorkflowArtifactRef(label=f"predicted-state-{index + 1}"),),
+                )
+            )
+            for index in range(max(0, predict_step_count))
+        )
+    return WorkflowTrace(
+        workflow_id=f"plan:{mode.replace('+', '-')}",
+        name=f"World plan ({mode})",
+        steps=steps,
+        metadata={
+            "planner": planner,
+            "planning_mode": mode,
+            "action_count": action_count,
+            "candidate_count": candidate_count,
+        },
+    ).to_dict()
 
 
 def _world_file(state_dir: Path, world_id: str) -> Path:
@@ -1165,6 +1267,15 @@ class World:
                     "candidate_count": len(candidate_action_plans),
                     "success_probability_source": "inverse_best_cost_heuristic",
                 }
+                metadata["workflow_trace"] = _plan_workflow_trace(
+                    mode="policy+score",
+                    planner=planner,
+                    provider=selected_score_provider,
+                    action_count=len(selected_actions),
+                    candidate_count=len(candidate_action_plans),
+                    policy_provider=selected_policy_provider,
+                    score_provider=selected_score_provider,
+                )
                 if execution_provider is not None:
                     metadata["execution_provider"] = execution_provider
                 return Plan(
@@ -1186,6 +1297,14 @@ class World:
                 "candidate_count": len(candidate_action_plans),
                 "success_probability_source": "policy_provider_no_world_model",
             }
+            metadata["workflow_trace"] = _plan_workflow_trace(
+                mode="policy",
+                planner=planner,
+                provider=selected_policy_provider,
+                action_count=len(selected_actions),
+                candidate_count=len(candidate_action_plans),
+                policy_provider=selected_policy_provider,
+            )
             if execution_provider is not None:
                 metadata["execution_provider"] = execution_provider
             return Plan(
@@ -1236,6 +1355,14 @@ class World:
                 "candidate_count": len(candidate_action_plans),
                 "success_probability_source": "inverse_best_cost_heuristic",
             }
+            metadata["workflow_trace"] = _plan_workflow_trace(
+                mode="score",
+                planner=planner,
+                provider=selected_score_provider,
+                action_count=len(selected_actions),
+                candidate_count=len(candidate_action_plans),
+                score_provider=selected_score_provider,
+            )
             if execution_provider is not None:
                 metadata["execution_provider"] = execution_provider
             return Plan(
@@ -1271,7 +1398,16 @@ class World:
             actions=actions,
             predicted_states=predicted_states,
             success_probability=max(0.65, min(0.98, average(scores) if scores else 0.7)),
-            metadata={"planning_mode": "predict"},
+            metadata={
+                "planning_mode": "predict",
+                "workflow_trace": _plan_workflow_trace(
+                    mode="predict",
+                    planner=planner,
+                    provider=selected_provider,
+                    action_count=len(actions),
+                    predict_step_count=len(predicted_states),
+                ),
+            },
         )
 
     def execute_plan(
@@ -1687,6 +1823,81 @@ class WorldForge:
             details=details,
         )
 
+    def _merged_lifecycle_status(
+        self,
+        name: str,
+        *,
+        legacy_provider: BaseProvider | None,
+        wrappers: Sequence[_ObservableCapability],
+        run_warmup: bool = False,
+        run_teardown: bool = False,
+    ) -> ProviderLifecycleStatus:
+        lifecycle_statuses: list[ProviderLifecycleStatus] = []
+        if legacy_provider is not None:
+            lifecycle_statuses.append(
+                legacy_provider.lifecycle_status(
+                    run_warmup=run_warmup,
+                    run_teardown=run_teardown,
+                )
+            )
+        lifecycle_statuses.extend(
+            wrapper.lifecycle_status(
+                run_warmup=run_warmup,
+                run_teardown=run_teardown,
+            )
+            for wrapper in wrappers
+        )
+        if not lifecycle_statuses:
+            raise ProviderError(f"Provider '{name}' is unknown.")
+        if len(lifecycle_statuses) == 1:
+            return lifecycle_statuses[0]
+        if any(status.status == "teardown-failed" for status in lifecycle_statuses):
+            status_value = "teardown-failed"
+        elif any(status.status == "failed" for status in lifecycle_statuses):
+            status_value = "failed"
+        elif any(status.status == "skipped" for status in lifecycle_statuses):
+            status_value = "skipped"
+        elif any(status.status == "ready" for status in lifecycle_statuses):
+            status_value = "ready"
+        else:
+            status_value = "no-op"
+        issue = next(
+            (
+                lifecycle
+                for lifecycle in lifecycle_statuses
+                if lifecycle.status in {"teardown-failed", "failed", "skipped"}
+            ),
+            None,
+        )
+        details = (
+            "; ".join(
+                f"{lifecycle.provider}: {lifecycle.details}"
+                for lifecycle in lifecycle_statuses
+                if lifecycle.details
+            )
+            or status_value
+        )
+        skip_reason = issue.skip_reason if issue and issue.status == "skipped" else ""
+        preflight = ProviderLifecycleResult(
+            provider=name,
+            hook="preflight",
+            status=status_value,
+            ready=status_value in {"no-op", "ready"},
+            latency_ms=sum(lifecycle.preflight.latency_ms for lifecycle in lifecycle_statuses),
+            details=details,
+            skip_reason=skip_reason,
+            evidence={"components": [lifecycle.to_dict() for lifecycle in lifecycle_statuses]},
+        )
+        return ProviderLifecycleStatus(
+            provider=name,
+            status=status_value,
+            ready=status_value in {"no-op", "ready"},
+            preflight=preflight,
+            details=details,
+            skip_reason=skip_reason,
+            evidence={"components": [lifecycle.to_dict() for lifecycle in lifecycle_statuses]},
+        )
+
     def _registered_or_known_provider(
         self,
         name: str,
@@ -1825,6 +2036,24 @@ class WorldForge:
             wrappers=wrappers,
         )
 
+    def provider_lifecycle_status(
+        self,
+        name: str,
+        *,
+        run_warmup: bool = False,
+        run_teardown: bool = False,
+    ) -> ProviderLifecycleStatus:
+        provider_name = _require_non_empty_text(name, name="Provider name")
+        legacy_provider = self._registered_or_known_provider(provider_name, include_known=True)
+        wrappers = self._capability_wrappers_for_name(provider_name)
+        return self._merged_lifecycle_status(
+            provider_name,
+            legacy_provider=legacy_provider,
+            wrappers=wrappers,
+            run_warmup=run_warmup,
+            run_teardown=run_teardown,
+        )
+
     def provider_config_summary(self, name: str) -> ProviderConfigSummary:
         """Return value-free configuration status for a registered or known provider."""
 
@@ -1878,11 +2107,17 @@ class WorldForge:
                 legacy_provider=legacy_provider,
                 wrappers=wrappers,
             )
+            lifecycle = self._merged_lifecycle_status(
+                name,
+                legacy_provider=legacy_provider,
+                wrappers=wrappers,
+            )
             statuses.append(
                 ProviderDoctorStatus(
                     registered=name in self._registered_provider_names(),
                     profile=profile,
                     health=health,
+                    lifecycle=lifecycle,
                 )
             )
             if not health.healthy:

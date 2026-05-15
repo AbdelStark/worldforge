@@ -1,3 +1,5 @@
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import sys
@@ -40,6 +42,33 @@ options:
   -h, --help            show this help message and exit
   --format {markdown,json}
                         Output format for provider docs metadata.
+""",
+    ("provider", "contract", "--help"): """\
+usage: worldforge provider contract [-h] [--factory FACTORY]
+                                    [--format {markdown,json}] [--live]
+                                    [--score-info SCORE_INFO]
+                                    [--score-candidates SCORE_CANDIDATES]
+                                    [--policy-info POLICY_INFO]
+                                    [--state-dir STATE_DIR]
+                                    [name]
+
+positional arguments:
+  name                  Registered or known provider name.
+
+options:
+  -h, --help            show this help message and exit
+  --factory FACTORY     Direct provider factory path as module:factory.
+  --format {markdown,json}
+                        Output format for contract evidence.
+  --live                Allow live provider calls on a prepared host.
+  --score-info SCORE_INFO
+                        JSON score info payload for score providers.
+  --score-candidates SCORE_CANDIDATES
+                        JSON action candidates payload for score providers.
+  --policy-info POLICY_INFO
+                        JSON policy info payload for policy providers.
+  --state-dir STATE_DIR
+                        World state directory.
 """,
     ("world", "create", "--help"): """\
 usage: worldforge world create [-h] [--provider PROVIDER] [--prompt PROMPT]
@@ -99,9 +128,28 @@ options:
   --format {json,markdown}
                         Output format for the preflight report.
 """,
+    ("world", "migration-preview", "--help"): """\
+usage: worldforge world migration-preview [-h] [--state-dir STATE_DIR]
+                                          [--source-path]
+                                          [--format {json,markdown}]
+                                          source
+
+positional arguments:
+  source                World id relative to --state-dir, or a JSON file when
+                        --source-path is set.
+
+options:
+  -h, --help            show this help message and exit
+  --state-dir STATE_DIR
+                        World state directory used when source is a world id.
+  --source-path         Treat source as an explicit persisted or exported JSON
+                        file path.
+  --format {json,markdown}
+                        Output format for the migration preview report.
+""",
     ("harness", "--help"): """\
 usage: worldforge harness [-h]
-                          [--flow {leworldmodel,lerobot,diagnostics,workbench,eval,benchmark,runs}]
+                          [--flow {leworldmodel,lerobot,cosmos-policy,gr00t,diagnostics,workbench,eval,benchmark,runs}]
                           [--state-dir STATE_DIR] [--list] [--connectors]
                           [--runs] [--workspace-dir WORKSPACE_DIR]
                           [--provider PROVIDER] [--capability CAPABILITY]
@@ -112,7 +160,7 @@ usage: worldforge harness [-h]
 
 options:
   -h, --help            show this help message and exit
-  --flow {leworldmodel,lerobot,diagnostics,workbench,eval,benchmark,runs}
+  --flow {leworldmodel,lerobot,cosmos-policy,gr00t,diagnostics,workbench,eval,benchmark,runs}
                         Harness flow to open.
   --state-dir STATE_DIR
                         Directory for persisted demo worlds. Defaults to a
@@ -173,15 +221,18 @@ options:
     ("eval", "--help"): """\
 usage: worldforge eval [-h]
                        [--suite {generation,physics,planning,reasoning,transfer}]
-                       [--provider PROVIDERS]
+                       [--provider PROVIDERS] [--profile PROFILE]
                        [--format {markdown,json,csv,html}]
                        [--state-dir STATE_DIR] [--run-workspace RUN_WORKSPACE]
+                       [--dataset-manifest DATASET_MANIFESTS]
 
 options:
   -h, --help            show this help message and exit
   --suite {generation,physics,planning,reasoning,transfer}
                         Built-in evaluation suite.
   --provider PROVIDERS  Provider name to evaluate. Can be repeated.
+  --profile PROFILE     Non-secret JSON/TOML configuration profile for CLI
+                        defaults.
   --format {markdown,json,csv,html}
                         Evaluation report format.
   --state-dir STATE_DIR
@@ -189,9 +240,12 @@ options:
   --run-workspace RUN_WORKSPACE
                         Preserve sanitized eval artifacts under
                         RUN_WORKSPACE/runs/<run-id>/.
+  --dataset-manifest DATASET_MANIFESTS
+                        Dataset manifest JSON to cite in evaluation
+                        provenance. Can be repeated.
 """,
     ("benchmark", "--help"): """\
-usage: worldforge benchmark [-h] [--provider PROVIDERS]
+usage: worldforge benchmark [-h] [--provider PROVIDERS] [--profile PROFILE]
                             [--operation {predict,reason,generate,transfer,embed,score,policy}]
                             [--iterations ITERATIONS]
                             [--concurrency CONCURRENCY]
@@ -205,6 +259,8 @@ usage: worldforge benchmark [-h] [--provider PROVIDERS]
 options:
   -h, --help            show this help message and exit
   --provider PROVIDERS  Provider name to benchmark. Can be repeated.
+  --profile PROFILE     Non-secret JSON/TOML configuration profile for CLI
+                        defaults.
   --operation {predict,reason,generate,transfer,embed,score,policy}
                         Operation to benchmark. Can be repeated.
   --iterations ITERATIONS
@@ -248,6 +304,8 @@ WORLD_HELP_COMMANDS: tuple[tuple[str, str], ...] = (
     ("export", "Export a persisted world as JSON."),
     ("import", "Import and save exported world JSON."),
     ("fork", "Fork a world from a history entry."),
+    ("diff", "Diff two persisted or exported world JSON snapshots."),
+    ("migration-preview", "Preview world JSON migration requirements without"),
     ("preflight", "Check local world JSON state and run workspaces without"),
 )
 
@@ -293,6 +351,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "worldforge provider list",
         "worldforge provider docs",
         "worldforge provider info mock",
+        "worldforge provider contract mock",
         "worldforge harness --list",
         "worldforge eval --suite planning --provider mock --format json",
         "worldforge runs list",

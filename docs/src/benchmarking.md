@@ -8,6 +8,7 @@ need planning-path latency.
 
 ## Python
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from worldforge import ProviderBenchmarkHarness
 
@@ -28,6 +29,7 @@ records the same report JSON plus per-result metric scalars into a `.rrd` inspec
 Score and policy providers use the same benchmark runner with provider-native inputs supplied by
 the host:
 
+<!-- worldforge-snippet: skip-illustrative -->
 ```python
 from worldforge import BenchmarkInputs, ProviderBenchmarkHarness
 
@@ -87,6 +89,13 @@ uv run worldforge runs compare \
 uv run worldforge runs compare \
   .worldforge/runs/<baseline-run-id> \
   .worldforge/runs/<candidate-run-id> \
+  --mode regression \
+  --format html \
+  --output .worldforge/runs/regression-comparison.html
+
+uv run worldforge runs compare \
+  .worldforge/runs/<baseline-run-id> \
+  .worldforge/runs/<candidate-run-id> \
   --format csv \
   --output .worldforge/runs/benchmark-comparison.csv
 ```
@@ -100,12 +109,21 @@ include metric deltas, event counts, budget status, missing evidence, skip reaso
 and input or budget provenance references. The output is stable enough to attach to issues, but it
 is not a public leaderboard or a ranking across different tasks or capabilities.
 
+Use `--mode regression` when the first run is the preserved baseline and the second run is the
+candidate. Regression mode supports preserved benchmark, evaluation, and demo-showcase runs. It
+reports metric deltas, budget status changes, new and removed failures, safe artifact drift, and
+provenance differences in JSON, Markdown, CSV, or HTML. Unsafe artifact references such as absolute
+paths, traversal-shaped paths, binary/checkpoint suffixes, or raw private artifacts are counted as
+excluded and are not rendered in the comparison report. Regression reports are review artifacts only:
+they do not update baselines or weaken budgets automatically.
+
 Use `--input-file` when a benchmark result needs to be reproducible from preserved inputs. The
 file can contain input fields directly, or an `inputs` object plus metadata. The checked-in
 `examples/benchmark-inputs.json` fixture is checkout-safe for the mock provider's `predict`,
 `generate`, `transfer`, and `embed` operations; score and policy entries require providers that
 advertise those capabilities.
 
+<!-- worldforge-snippet: parse -->
 ```json
 {
   "metadata": {
@@ -181,6 +199,7 @@ Use a budget file when a benchmark run is part of a release gate, regression che
 claim. Budget selectors can pin a provider and operation, or omit either field to apply the
 threshold to every matching result:
 
+<!-- worldforge-snippet: parse -->
 ```json
 {
   "budgets": [

@@ -19,6 +19,8 @@
 - Decisions
   - [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md)
 - [Providers](./providers/README.md)
+  - [Provider Configuration Index](./provider-configuration-index.md)
+  - [Provider Failure Mode Gallery](./provider-failure-gallery.md)
   - [Cosmos](./providers/cosmos.md)
   - [Cosmos-Policy](./providers/cosmos-policy.md)
   - [Genie](./providers/genie.md)
@@ -31,17 +33,21 @@
 - Authoring And API
   - [Provider Authoring Guide](./provider-authoring-guide.md)
   - [External Provider Packages](./external-providers.md)
+  - [Adoption Case Studies](./adoption-case-studies/README.md)
+  - [Adoption Case Study Template](./adoption-case-studies/_template.md)
   - [Scenario Definition Format](./scenarios.md)
   - [Provider Routing And Fallback](./provider-routing.md)
   - [Python API](./api/python.md)
   - [Public API Stability](./api-stability.md)
   - [Capability Fixture Corpus](./fixtures.md)
   - [Capability Negotiation](./capability-negotiation.md)
+  - [Capability Protocols Quickstart](./capability-protocols-quickstart.md)
 - Evidence And Evaluation
   - [Evaluation](./evaluation.md)
   - [Benchmarking](./benchmarking.md)
   - [Live Smoke Evidence Registry](./live-smoke-evidence.md)
   - [Claim-To-Evidence Map](./claim-evidence-map.md)
+  - [Artifact Schemas](./artifact-schemas.md)
   - [Artifact Integrity](./artifact-integrity.md)
 - Operations And Quality
   - [User And Operator Playbooks](./playbooks.md)
@@ -53,8 +59,10 @@
   - [Security](./security.md)
   - [Support](./support.md)
   - [Contributing](./contributing.md)
+  - [Contributor Task Starters](./task-starters.md)
 - Planning Records
   - [Roadmap](./roadmap.md)
+  - [Roadmap Expansion 3](./roadmap-expansion-3.md)
   - [Roadmap Expansion 2](./roadmap-expansion-2.md)
   - [Roadmap Expansion](./roadmap-expansion.md)
   - [Roadmap Continuation](./roadmap-continuation.md)

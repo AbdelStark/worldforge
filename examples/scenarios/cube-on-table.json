@@ -27,5 +27,8 @@
     {"label": "object_count", "kind": "object_count", "value": 1},
     {"label": "step_count", "kind": "step", "value": 2}
   ],
-  "metadata": {}
+  "metadata": {
+    "gallery_intent": "world setup",
+    "first_triage_step": "If this fails, inspect the initial cube pose and mock provider setup."
+  }
 }

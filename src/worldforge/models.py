@@ -10,8 +10,8 @@ This module owns the typed contracts crossed by every public surface:
   numeric primitives shared by scene objects, predictions, and evaluation suites.
 - **Provider contracts.** :class:`ProviderCapabilities`, :class:`ProviderInfo`,
   :class:`ProviderProfile`, :class:`ProviderRequestPolicy`, :class:`RetryPolicy`,
-  :class:`RequestOperationPolicy`, :class:`ProviderHealth`, and :class:`ProviderEvent` describe
-  what an adapter promises and how its calls are policed.
+  :class:`RequestOperationPolicy`, :class:`ProviderHealth`, :class:`ProviderLifecycleStatus`,
+  and :class:`ProviderEvent` describe what an adapter promises and how its calls are policed.
 - **Result payloads.** :class:`PredictionPayload`, :class:`VideoClip`, :class:`ReasoningResult`,
   :class:`EmbeddingResult`, :class:`ActionScoreResult`, and :class:`ActionPolicyResult` are the
   return types of capability calls.
@@ -48,6 +48,8 @@ CAPABILITY_NAMES = (
     "score",
     "policy",
 )
+PROVIDER_LIFECYCLE_HOOKS = ("preflight", "warmup", "teardown")
+PROVIDER_LIFECYCLE_STATUSES = ("no-op", "ready", "skipped", "failed", "teardown-failed")
 _REDACTED_OBSERVABLE_VALUE = "[redacted]"
 _SENSITIVE_FIELD_PATTERN = re.compile(
     r"(api[_-]?key|authorization|bearer|credential|password|secret|signature|signed[_-]?url|token)",
@@ -1508,12 +1510,139 @@ class ProviderHealth:
 
 
 @dataclass(slots=True)
+class ProviderLifecycleResult:
+    """Result from one provider lifecycle hook.
+
+    Hooks are provider-owned and optional. A result describes exactly one phase
+    (`preflight`, `warmup`, or `teardown`) without leaking host paths, endpoints,
+    credentials, or raw runtime payloads into diagnostics.
+    """
+
+    provider: str
+    hook: str
+    status: str
+    ready: bool
+    latency_ms: float
+    details: str = ""
+    skip_reason: str = ""
+    evidence: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ProviderLifecycleResult provider must be a non-empty string.")
+        if self.hook not in PROVIDER_LIFECYCLE_HOOKS:
+            hooks = ", ".join(PROVIDER_LIFECYCLE_HOOKS)
+            raise WorldForgeError(f"ProviderLifecycleResult hook must be one of: {hooks}.")
+        if self.status not in PROVIDER_LIFECYCLE_STATUSES:
+            statuses = ", ".join(PROVIDER_LIFECYCLE_STATUSES)
+            raise WorldForgeError(f"ProviderLifecycleResult status must be one of: {statuses}.")
+        self.ready = require_bool(self.ready, name="ProviderLifecycleResult ready")
+        self.latency_ms = require_finite_number(
+            self.latency_ms,
+            name="ProviderLifecycleResult latency_ms",
+        )
+        if self.latency_ms < 0.0:
+            raise WorldForgeError("ProviderLifecycleResult latency_ms must be non-negative.")
+        if not isinstance(self.details, str):
+            raise WorldForgeError("ProviderLifecycleResult details must be a string.")
+        if not isinstance(self.skip_reason, str):
+            raise WorldForgeError("ProviderLifecycleResult skip_reason must be a string.")
+        self.provider = self.provider.strip()
+        self.details = _redact_observable_text(self.details)
+        self.skip_reason = _redact_observable_text(self.skip_reason)
+        self.evidence = require_json_dict(
+            _redact_observable_value(dict(self.evidence)),
+            name="ProviderLifecycleResult evidence",
+        )
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "provider": self.provider,
+            "hook": self.hook,
+            "status": self.status,
+            "ready": self.ready,
+            "latency_ms": self.latency_ms,
+            "details": self.details,
+            "skip_reason": self.skip_reason,
+            "evidence": dict(self.evidence),
+        }
+
+
+@dataclass(slots=True)
+class ProviderLifecycleStatus:
+    """Aggregate lifecycle readiness for provider diagnostics."""
+
+    provider: str
+    status: str
+    ready: bool
+    preflight: ProviderLifecycleResult
+    warmup: ProviderLifecycleResult | None = None
+    teardown: ProviderLifecycleResult | None = None
+    details: str = ""
+    skip_reason: str = ""
+    evidence: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ProviderLifecycleStatus provider must be a non-empty string.")
+        if self.status not in PROVIDER_LIFECYCLE_STATUSES:
+            statuses = ", ".join(PROVIDER_LIFECYCLE_STATUSES)
+            raise WorldForgeError(f"ProviderLifecycleStatus status must be one of: {statuses}.")
+        self.ready = require_bool(self.ready, name="ProviderLifecycleStatus ready")
+        self.provider = self.provider.strip()
+        for result in (self.preflight, self.warmup, self.teardown):
+            if result is None:
+                continue
+            if not isinstance(result, ProviderLifecycleResult):
+                raise WorldForgeError(
+                    "ProviderLifecycleStatus hook results must be ProviderLifecycleResult."
+                )
+            if result.provider != self.provider:
+                raise WorldForgeError(
+                    "ProviderLifecycleStatus hook result providers must match status provider."
+                )
+        if self.preflight.hook != "preflight":
+            raise WorldForgeError("ProviderLifecycleStatus preflight hook must be 'preflight'.")
+        if self.warmup is not None and self.warmup.hook != "warmup":
+            raise WorldForgeError("ProviderLifecycleStatus warmup hook must be 'warmup'.")
+        if self.teardown is not None and self.teardown.hook != "teardown":
+            raise WorldForgeError("ProviderLifecycleStatus teardown hook must be 'teardown'.")
+        if not isinstance(self.details, str):
+            raise WorldForgeError("ProviderLifecycleStatus details must be a string.")
+        if not isinstance(self.skip_reason, str):
+            raise WorldForgeError("ProviderLifecycleStatus skip_reason must be a string.")
+        self.details = _redact_observable_text(self.details)
+        self.skip_reason = _redact_observable_text(self.skip_reason)
+        self.evidence = require_json_dict(
+            _redact_observable_value(dict(self.evidence)),
+            name="ProviderLifecycleStatus evidence",
+        )
+
+    def to_dict(self) -> JSONDict:
+        hooks: JSONDict = {"preflight": self.preflight.to_dict()}
+        if self.warmup is not None:
+            hooks["warmup"] = self.warmup.to_dict()
+        if self.teardown is not None:
+            hooks["teardown"] = self.teardown.to_dict()
+        return {
+            "provider": self.provider,
+            "status": self.status,
+            "ready": self.ready,
+            "details": self.details,
+            "skip_reason": self.skip_reason,
+            "evidence": dict(self.evidence),
+            "hooks": hooks,
+        }
+
+
+@dataclass(slots=True)
 class ProviderDoctorStatus:
     """Diagnostic snapshot for a provider in the active environment."""
 
     registered: bool
     profile: ProviderProfile
     health: ProviderHealth
+    lifecycle: ProviderLifecycleStatus
 
     def to_dict(self) -> JSONDict:
         return {
@@ -1521,6 +1650,7 @@ class ProviderDoctorStatus:
             "registered": self.registered,
             "profile": self.profile.to_dict(),
             "health": self.health.to_dict(),
+            "lifecycle": self.lifecycle.to_dict(),
         }
 
 

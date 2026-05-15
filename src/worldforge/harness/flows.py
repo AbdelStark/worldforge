@@ -1778,16 +1778,22 @@ def preserve_eval_run_workspace(
     artifacts: dict[str, str],
     report: EvaluationReport,
     command: str,
+    config_profile: JSONDict | None = None,
 ) -> RunWorkspace:
     """Preserve an evaluation report in the shared run workspace layout."""
 
+    input_summary: dict[str, object] = {"suite_id": suite_id, "providers": list(providers)}
+    if report.provenance is not None and report.provenance.dataset_manifests:
+        input_summary["dataset_manifests"] = [
+            ref["id"] for ref in report.provenance.dataset_manifests
+        ]
     workspace = create_run_workspace(
         workspace_dir,
         kind="eval",
         command=command,
         provider=", ".join(providers),
         operation=suite_id,
-        input_summary={"suite_id": suite_id, "providers": list(providers)},
+        input_summary=input_summary,
     )
     paths = _write_report_artifacts(workspace, artifacts)
     result_summary = {
@@ -1804,9 +1810,10 @@ def preserve_eval_run_workspace(
         provider=", ".join(providers),
         operation=suite_id,
         status="completed",
-        input_summary={"suite_id": suite_id, "providers": list(providers)},
+        input_summary=input_summary,
         result_summary=result_summary,
         artifact_paths=paths,
+        config_profile=config_profile,
     )
     return workspace
 
@@ -1820,6 +1827,7 @@ def preserve_benchmark_run_workspace(
     report: BenchmarkReport,
     command: str,
     budget_passed: bool | None = None,
+    config_profile: JSONDict | None = None,
 ) -> RunWorkspace:
     """Preserve a benchmark report in the shared run workspace layout."""
 
@@ -1851,6 +1859,7 @@ def preserve_benchmark_run_workspace(
         input_summary=input_summary,
         result_summary=result_summary,
         artifact_paths=paths,
+        config_profile=config_profile,
         event_count=sum(
             int(event.get("request_count", 0))
             for result in report.results
@@ -2000,6 +2009,14 @@ def _eval_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
         if isinstance(payload.get("provenance"), dict)
         else None
     )
+    report_kwargs: dict[str, object] = {}
+    workflow_trace = payload.get("workflow_trace")
+    if isinstance(workflow_trace, dict):
+        report_kwargs["workflow_trace"] = workflow_trace
+    if isinstance(payload.get("claim_boundary"), str):
+        report_kwargs["claim_boundary"] = payload["claim_boundary"]
+    if isinstance(payload.get("metric_semantics"), str):
+        report_kwargs["metric_semantics"] = payload["metric_semantics"]
     report = EvaluationReport(
         suite_id=suite_id,
         suite=suite,
@@ -2016,6 +2033,7 @@ def _eval_artifacts_from_payload(payload: JSONDict) -> dict[str, str]:
             for result in payload.get("results", [])
         ],
         provenance=provenance,
+        **report_kwargs,
     )
     return report.artifacts()
 

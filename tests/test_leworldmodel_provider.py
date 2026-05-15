@@ -6,7 +6,12 @@ from typing import Any
 
 import pytest
 
-from worldforge import Action, ActionScoreResult, WorldForge, WorldForgeError
+from worldforge import (
+    ActionScoreResult,
+    WorldForge,
+    WorldForgeError,
+    bounded_move_grid_candidates,
+)
 from worldforge.providers import LeWorldModelProvider, ProviderError
 from worldforge.testing import assert_provider_contract
 
@@ -215,11 +220,14 @@ def test_leworldmodel_score_planning_selects_best_candidate_and_execution_provid
     forge.register_provider(provider)
     world = forge.create_world_from_prompt("room with cube", provider="mock")
 
-    candidate_plans = [
-        [Action.move_to(0.1, 0.5, 0.0)],
-        [Action.move_to(0.4, 0.5, 0.0)],
-        [Action.move_to(0.7, 0.5, 0.0)],
-    ]
+    candidate_plans = bounded_move_grid_candidates(
+        x_bounds=(0.1, 0.7),
+        y_bounds=(0.5, 0.5),
+        z_bounds=(0.0, 0.0),
+        x_steps=3,
+        y_steps=1,
+        z_steps=1,
+    )
     plan = world.plan(
         goal="choose the lowest-cost LeWorldModel action",
         provider="leworldmodel",

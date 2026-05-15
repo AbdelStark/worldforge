@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from worldforge.config_profiles import validate_config_profile_provenance
 from worldforge.models import JSONDict
 
 RUN_WORKSPACE_SCHEMA_VERSION = 1
@@ -152,6 +153,7 @@ def write_run_manifest(
     input_summary: JSONDict | None = None,
     result_summary: JSONDict | None = None,
     artifact_paths: dict[str, str] | None = None,
+    config_profile: JSONDict | None = None,
     event_count: int = 0,
 ) -> Path:
     """Write the sanitized manifest for a preserved run."""
@@ -177,6 +179,8 @@ def write_run_manifest(
             "logs": "logs/",
         },
     }
+    if config_profile is not None:
+        payload["config_profile"] = validate_config_profile_provenance(config_profile)
     workspace.manifest_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

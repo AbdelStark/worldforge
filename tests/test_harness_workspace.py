@@ -16,6 +16,7 @@ from worldforge.harness.workspace import (
     workspace_root_for_state_dir,
     write_run_manifest,
 )
+from worldforge.testing import DeterministicIdFactory, stable_json_dumps, stable_snapshot
 
 
 def test_run_flow_preserves_shared_workspace_layout(tmp_path) -> None:
@@ -64,6 +65,61 @@ def test_eval_cli_preserves_run_workspace(tmp_path, monkeypatch, capsys) -> None
     assert json.loads((run_path / "reports" / "report.json").read_text())["suite_id"] == "planning"
     assert (run_path / "reports" / "report.md").exists()
     assert (run_path / "reports" / "report.csv").exists()
+
+
+def test_benchmark_cli_profile_applies_defaults_and_preserves_provenance(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "name": "profiled-benchmark",
+                "providers": ["mock"],
+                "operations": ["predict"],
+                "run_workspace": ".worldforge/profiled-runs",
+                "state_dir": ".worldforge/worlds",
+                "output_format": "json",
+                "timeout_preset": "checkout-safe",
+                "retry_preset": "none",
+                "runtime_cache_roots": {"leworldmodel": ".worldforge/cache/leworldmodel"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "benchmark",
+            "--profile",
+            str(profile_path),
+            "--iterations",
+            "1",
+        ],
+    )
+
+    assert main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"][0]["provider"] == "mock"
+    runs = list_run_workspaces(Path(".worldforge/profiled-runs"))
+
+    assert len(runs) == 1
+    manifest = json.loads((Path(str(runs[0]["path"])) / "run_manifest.json").read_text())
+    assert manifest["provider"] == "mock"
+    assert manifest["operation"] == "predict"
+    assert manifest["config_profile"]["name"] == "profiled-benchmark"
+    assert manifest["config_profile"]["providers"] == ["mock"]
+    assert manifest["config_profile"]["operations"] == ["predict"]
+    assert manifest["config_profile"]["run_workspace"] == ".worldforge/profiled-runs"
+    assert manifest["config_profile"]["state_dir"] == ".worldforge/worlds"
+    assert manifest["config_profile"]["sha256"].startswith("sha256:")
+    assert "api_token" not in json.dumps(manifest)
 
 
 def test_benchmark_cli_preserves_failed_budget_workspace(tmp_path, monkeypatch, capsys) -> None:
@@ -243,7 +299,8 @@ def test_runs_compare_exports_benchmark_artifacts(tmp_path, monkeypatch, capsys)
     assert payload["baseline_run_id"] == "20260101T000000Z-00000001"
     assert payload["rows"][1]["delta_average_latency_ms"] == 5.0
     assert "budget_file:/tmp/budget.json#abc123" in payload["runs"][0]["provenance_refs"]
-    assert str(first.path / "reports" / "report.json") in payload["runs"][0]["artifact_refs"]
+    assert "reports/report.json" in payload["runs"][0]["artifact_refs"]
+    assert str(first.path / "reports" / "report.json") not in payload["runs"][0]["artifact_refs"]
 
     monkeypatch.setattr(
         sys,
@@ -365,6 +422,57 @@ def test_workspace_helpers_reject_escape_and_invalid_cleanup(tmp_path) -> None:
     bad_manifest.parent.mkdir(parents=True)
     bad_manifest.write_text("not-json", encoding="utf-8")
     assert [run["run_id"] for run in list_run_workspaces(tmp_path)] == ["20260101T000000Z-00000001"]
+
+
+def test_deterministic_controls_pin_preserved_benchmark_snapshot(tmp_path: Path) -> None:
+    ids = DeterministicIdFactory()
+    run = _preserved_benchmark_run(
+        tmp_path,
+        run_id=ids.run_id(),
+        average_latency_ms=10.0,
+        throughput_per_second=5.0,
+    )
+    report = json.loads((run.path / "reports" / "report.json").read_text(encoding="utf-8"))
+
+    snapshot = stable_snapshot(
+        {
+            "run_id": run.run_id,
+            "report_path": run.path / "reports" / "report.json",
+            "benchmark": report["results"][0],
+        },
+        path_roots={tmp_path: "<workspace>"},
+    )
+
+    assert stable_json_dumps(snapshot) == (
+        "{\n"
+        '  "benchmark": {\n'
+        '    "average_latency_ms": 10.0,\n'
+        '    "concurrency": 1,\n'
+        '    "error_count": 0,\n'
+        '    "errors": [],\n'
+        '    "iterations": 2,\n'
+        '    "max_latency_ms": 10.0,\n'
+        '    "min_latency_ms": 10.0,\n'
+        '    "operation": "predict",\n'
+        '    "operation_metrics": {\n'
+        '      "events": [\n'
+        "        {\n"
+        '          "request_count": 2\n'
+        "        }\n"
+        "      ]\n"
+        "    },\n"
+        '    "p50_latency_ms": 10.0,\n'
+        '    "p95_latency_ms": 10.0,\n'
+        '    "provider": "mock",\n'
+        '    "retry_count": 1,\n'
+        '    "success_count": 2,\n'
+        '    "throughput_per_second": 5.0,\n'
+        '    "total_time_ms": 20.0\n'
+        "  },\n"
+        '  "report_path": "<workspace>/runs/20260101T000000Z-00000001/reports/report.json",\n'
+        '  "run_id": "20260101T000000Z-00000001"\n'
+        "}\n"
+    )
 
 
 def _preserved_benchmark_run(

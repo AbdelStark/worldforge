@@ -27,12 +27,20 @@ from worldforge.models import (
     ProviderEvent,
     ProviderHealth,
     ProviderInfo,
+    ProviderLifecycleResult,
+    ProviderLifecycleStatus,
     ProviderProfile,
     ReasoningResult,
     VideoClip,
     WorldForgeError,
 )
-from worldforge.providers.base import PredictionPayload, ProviderError, ProviderProfileSpec
+from worldforge.providers.base import (
+    PredictionPayload,
+    ProviderError,
+    ProviderProfileSpec,
+    _provider_lifecycle_result,
+    build_provider_lifecycle_status,
+)
 
 ProviderEventHandler = Callable[[ProviderEvent], None]
 
@@ -152,6 +160,85 @@ class _ObservableCapability:
             healthy=healthy,
             latency_ms=max(0.1, (perf_counter() - started) * 1000),
             details=details,
+        )
+
+    def _missing_lifecycle_configuration(self) -> str:
+        missing = [var for var in self.required_env_vars() if not os.environ.get(var)]
+        return "missing " + ", ".join(missing) if missing else "provider is not configured"
+
+    def preflight(self) -> ProviderLifecycleResult:
+        hook = getattr(self._impl, "preflight", None)
+        if callable(hook):
+            return hook()
+        started = perf_counter()
+        if not self.configured():
+            reason = self._missing_lifecycle_configuration()
+            return _provider_lifecycle_result(
+                provider=self.name,
+                hook="preflight",
+                status="skipped",
+                started=started,
+                ready=False,
+                details=reason,
+                skip_reason=reason,
+                evidence={"configured": False},
+            )
+        return _provider_lifecycle_result(
+            provider=self.name,
+            hook="preflight",
+            status="no-op",
+            started=started,
+            details="no provider preflight hook declared",
+            evidence={"configured": True},
+        )
+
+    def warmup(self) -> ProviderLifecycleResult:
+        hook = getattr(self._impl, "warmup", None)
+        if callable(hook):
+            return hook()
+        started = perf_counter()
+        if not self.configured():
+            reason = self._missing_lifecycle_configuration()
+            return _provider_lifecycle_result(
+                provider=self.name,
+                hook="warmup",
+                status="skipped",
+                started=started,
+                ready=False,
+                details=reason,
+                skip_reason=reason,
+                evidence={"configured": False},
+            )
+        return _provider_lifecycle_result(
+            provider=self.name,
+            hook="warmup",
+            status="no-op",
+            started=started,
+            details="no provider warmup hook declared",
+        )
+
+    def teardown(self) -> ProviderLifecycleResult:
+        hook = getattr(self._impl, "teardown", None)
+        if callable(hook):
+            return hook()
+        return _provider_lifecycle_result(
+            provider=self.name,
+            hook="teardown",
+            status="no-op",
+            details="no provider teardown hook declared",
+        )
+
+    def lifecycle_status(
+        self,
+        *,
+        run_warmup: bool = False,
+        run_teardown: bool = False,
+    ) -> ProviderLifecycleStatus:
+        return build_provider_lifecycle_status(
+            provider=self.name,
+            preflight=self.preflight,
+            warmup=self.warmup if run_warmup else None,
+            teardown=self.teardown if run_teardown else None,
         )
 
     def info(self) -> ProviderInfo:
