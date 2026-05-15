@@ -1050,8 +1050,9 @@ class RunInspectorScreen(Screen):
         Binding("2", "select_flow('lerobot')", "LeRobot", show=True),
         Binding("3", "select_flow('cosmos-policy')", "Cosmos", show=True),
         Binding("4", "select_flow('gr00t-replay')", "GR00T", show=True),
-        Binding("5", "select_flow('diagnostics')", "Diagnostics", show=True),
-        Binding("6", "select_flow('workbench')", "Workbench", show=True),
+        Binding("5", "select_flow('robotics-compare')", "Compare", show=True),
+        Binding("6", "select_flow('diagnostics')", "Diagnostics", show=True),
+        Binding("7", "select_flow('workbench')", "Workbench", show=True),
     ]
 
     DEFAULT_CSS = """

@@ -41,6 +41,7 @@ uv run --extra harness worldforge-harness
 uv run --extra harness worldforge-harness --flow lerobot
 uv run --extra harness worldforge-harness --flow cosmos-policy
 uv run --extra harness worldforge-harness --flow gr00t-replay
+uv run --extra harness worldforge-harness --flow robotics-compare
 uv run --extra harness worldforge-harness --flow diagnostics
 uv run --extra harness worldforge-harness --flow workbench
 uv run worldforge harness --list
@@ -57,6 +58,7 @@ Available flows:
 | `lerobot` | Visual policy-plus-score path through the LeRobot provider surface. |
 | `cosmos-policy` | Visual saved ALOHA `/act` replay through the Cosmos-Policy provider surface. |
 | `gr00t-replay` | Visual saved GR00T N1.7 PolicyClient replay through the GR00T provider surface. |
+| `robotics-compare` | Visual LeRobot, Cosmos-Policy, and GR00T policy comparison through one replay surface. |
 | `diagnostics` | Visual provider diagnostics and benchmark comparison path. |
 | `workbench` | Visual provider-authoring evidence path for adapter promotion work. |
 
