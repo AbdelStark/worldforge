@@ -77,15 +77,17 @@ safety checks, robot-controller integration, and task-specific preprocessing sta
 
 ```bash
 scripts/robotics-showcase
+uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases
 ```
 
-The command launches a staged Textual report by default, writes the same run data to
+The first command launches a staged Textual report by default, writes the same run data to
 `/tmp/worldforge-robotics-showcase/real-run.json`, and writes a visual Rerun recording to
 `/tmp/worldforge-robotics-showcase/real-run.rrd`. Press `o` in the TUI to open that recording in
 Rerun. Use `--tui-stage-delay 0.1` for a faster reveal, `--no-tui-animation` to skip sleeps and
 arm motion, `--no-tui` for the plain terminal report, `--no-rerun` to skip the Rerun artifact,
 `--json-only` for automation, or `--health-only` for a non-mutating dependency/checkpoint
 preflight. Use `--lewm-revision <40-char-commit-sha>` to pin auto-built LeWorldModel assets.
+The second command runs the checkout-safe demo showcase suite without external credentials.
 
 The optional live robotics workflow, `.github/workflows/robotics-showcase.yml`, runs this same
 showcase in non-interactive JSON mode on every pull request run and on pushes to `main`. It caches
