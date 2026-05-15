@@ -358,7 +358,7 @@ def test_harness_robotics_compare_preserves_other_artifacts_when_subflow_raises(
     run = run_flow("robotics-compare", state_dir=tmp_path)
 
     assert run.validation_errors == (
-        "cosmos-policy: WorldStateError: transport exploded for https://example.test/act "
+        "cosmos-policy: ProviderError: transport exploded for https://example.test/act "
         "with api_key=[redacted]",
     )
     assert run.workspace_path is not None

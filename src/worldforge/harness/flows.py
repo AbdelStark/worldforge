@@ -1778,7 +1778,7 @@ def _robotics_compare_exception_type_name(exc: BaseException) -> str:
         return "WorldStateError"
     if isinstance(exc, WorldForgeError):
         return "WorldForgeError"
-    return "WorldStateError"
+    return "ProviderError"
 
 
 def _robotics_compare_failure_summary(
