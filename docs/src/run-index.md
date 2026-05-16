@@ -93,17 +93,35 @@ machine-readable reason.
 
 ## Retention and cleanup interaction
 
-The indexer is read-only. It does not delete or rewrite anything. To
-reclaim space, run `worldforge runs cleanup --workspace-dir <dir> --keep N`
-after reviewing the index. Two recommended workflows:
+The indexer is read-only. It does not delete or rewrite anything. Two
+companion commands reclaim disk space:
 
-1. **Pre-cleanup audit.** Run `runs index --format markdown` and attach the
-   table to a cleanup issue. After approval, run `runs cleanup --keep <N>`
-   and re-run `runs index` to confirm only the kept runs remain.
+- `worldforge runs cleanup --workspace-dir <dir> --keep N` — drops the
+  oldest workspaces past the `--keep` newest count, irrespective of
+  age. Quick blanket trim.
+- `worldforge runs prune --workspace-dir <dir>` — applies a typed
+  retention policy (`--max-age-days`, `--keep-latest`, repeatable
+  `--family <kind>`) with explicit dry-run by default. `--apply`
+  actually deletes. Use this when you want to keep recent runs of
+  every kind but trim older `eval` or `benchmark` directories
+  selectively. The 24-hour safety window blocks deletion of very fresh
+  runs unless you pass `--max-age-days=0`.
+
+Two recommended workflows:
+
+1. **Pre-cleanup audit.** Run `runs index --format markdown` and attach
+   the table to a cleanup issue. After approval, run `runs prune
+   --apply --max-age-days 30 --keep-latest 10` (or `runs cleanup`) and
+   re-run `runs index` to confirm only the kept runs remain.
 2. **Stale-directory triage.** If the `issues` list is non-empty,
-   investigate each `run_dir` before cleanup. `runs cleanup` only removes
-   workspaces older than the newest `--keep` valid manifests; corrupted
-   directories with no manifest may need manual removal.
+   investigate each `run_dir` before cleanup. `runs cleanup` and `runs
+   prune` only operate on workspaces under `<workspace>/runs/`;
+   corrupted directories with no manifest may need manual removal.
+
+`runs prune` accepts `--retention-profile <path>` pointing at a
+non-secret config profile that declares a `runs_retention` block
+(`max_age_days`, `keep_latest`, `families`). Flags passed on the
+command line still override the profile values.
 
 ## Public Python surface
 

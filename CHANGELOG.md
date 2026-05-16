@@ -18,6 +18,18 @@ releases may still include breaking changes when the public API needs to tighten
   `uv run python scripts/update_public_api_snapshot.py` or by setting
   `WORLDFORGE_UPDATE_PUBLIC_API_SNAPSHOT=1`. `docs/src/api-stability.md`
   now points at the snapshot as the authoritative Stable surface.
+- Added a typed retention policy and `worldforge runs prune` subcommand. The
+  new `worldforge.runs_prune` module ships `RunsRetentionPolicy`,
+  `PruneCandidate`, `PruneReport`, `plan_prune`, `apply_prune`, and
+  `parse_runs_retention`. Default behavior is dry-run; `--apply` actually
+  removes selected directories. `--max-age-days`, `--keep-latest`, and
+  repeatable `--family <kind>` control the policy; a 24-hour safety window
+  blocks deletion of fresh runs unless `--max-age-days=0` is passed. The
+  command refuses to operate on paths outside `<workspace>/runs/`. Config
+  profiles can carry a `runs_retention` block consumed via
+  `--retention-profile <path>` with explicit CLI flags still overriding.
+  Documentation lives in `docs/src/run-index.md` under the retention
+  section.
 - Added an adoption case-study gallery, reusable case-study template, Adoption Story issue
   template, and smoke tests for future submitted adoption stories.
 - Added a runnable capability protocol mini-demo with docs and tests for in-process predictor,
