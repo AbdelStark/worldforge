@@ -18,6 +18,12 @@ releases may still include breaking changes when the public API needs to tighten
   `uv run python scripts/update_public_api_snapshot.py` or by setting
   `WORLDFORGE_UPDATE_PUBLIC_API_SNAPSHOT=1`. `docs/src/api-stability.md`
   now points at the snapshot as the authoritative Stable surface.
+- Added scenario inheritance via the new optional `extends` field (schema version 2). A child
+  scenario can name a single relative parent path; resolution merges top-level keys with the child
+  winning, detects cycles, rejects absolute paths, bounds chain depth, and is validated end-to-end
+  through new fixtures under `examples/scenarios/inheritance/` plus tests in
+  `tests/test_scenario_inheritance.py`. Schema version 1 scenarios continue to validate without
+  changes.
 - Added an adoption case-study gallery, reusable case-study template, Adoption Story issue
   template, and smoke tests for future submitted adoption stories.
 - Added a runnable capability protocol mini-demo with docs and tests for in-process predictor,

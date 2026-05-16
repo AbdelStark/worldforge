@@ -40,6 +40,7 @@ small starting points for local worlds and scenario-result artifacts:
 | `invalid-action-missing-target.json` | invalid action boundary | `scenario validate` passes, `scenario run` fails with missing `z` | inspect `actions[0].parameters` for the missing coordinate |
 | `evaluation-readiness.json` | evaluation-oriented setup | passing result with two static objects and `step=0` | inspect the initial world object payload before changing evaluation code |
 | `report-export-basic.json` | report/export example | passing JSON or Markdown result suitable for `--output` attachment | compare scenario result JSON before checking world export |
+| `inheritance/base.json`, `child-a.json`, `child-b.json` | scenario inheritance (`extends`) | base passes alone; children inherit the world setup and override actions / expectations | run the base first to confirm shared setup before debugging a child |
 
 Run the gallery through the same CLI surface as any local scenario:
 
@@ -54,7 +55,14 @@ The failed and invalid examples are deliberate. They are marked in
 `metadata.expected_failure` or `metadata.expected_cli_error` so tests can
 prove the failure mode without weakening the normal CLI contract.
 
-## Schema (version 1)
+## Schema (version 2)
+
+The minimal scenario shape is unchanged from version 1; the bump only
+adds the optional `extends` top-level field documented under [Scenario
+Inheritance](#scenario-inheritance-extends). Files claiming
+`schema_version: 1` continue to validate unchanged, but they cannot use
+`extends`.
+
 
 <!-- worldforge-snippet: parse -->
 ```json
@@ -125,6 +133,66 @@ override it via `parameters.provider`.
 Failed expectations do not raise; they appear as `passed: false` rows
 in the result so the caller (CI gate, human reviewer, scripted check)
 can decide whether to fail the run.
+
+## Scenario Inheritance (`extends`)
+
+Schema version 2 adds a single optional top-level field, `extends`, so a
+child scenario can reuse a base file instead of copying its full setup.
+The base remains a standalone scenario you can run on its own.
+
+<!-- worldforge-snippet: skip-illustrative -->
+```json
+{
+  "schema_version": 2,
+  "extends": "./base.json",
+  "id": "lab-setup-child-a",
+  "name": "Lab setup child A",
+  "actions": [
+    {"kind": "predict", "parameters": {"x": 0.25, "y": 0.5, "z": 0.0, "steps": 2}}
+  ],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 1},
+    {"label": "step_count", "kind": "step", "value": 2}
+  ]
+}
+```
+
+### Merge semantics
+
+- **Replace at the top level, no deep merge.** If the child names a
+  top-level key (for example, `world`, `actions`, `expected_artifacts`,
+  `metadata`), the child's value replaces the parent's wholesale. To
+  tweak a single object inside `world.objects`, the child copies the
+  full `world` block.
+- **Child wins on conflict.** Identical keys present in both files take
+  the child value. Keys the child omits keep the parent value.
+- **Single parent only.** `extends` is one string, not a list.
+- **Resolution is relative to the child file.** Absolute paths are
+  rejected to keep scenario folders checkout-safe.
+- **Inheritance happens before matrix expansion.** A child can introduce
+  a `matrix` block, override an inherited one, or inherit the parent's
+  matrix unchanged.
+
+### Validation rules
+
+| Rule | Behavior |
+| --- | --- |
+| Missing parent file | `WorldForgeError` with the resolved path |
+| Absolute `extends` path | `WorldForgeError`, must be relative |
+| Empty or non-string `extends` | `WorldForgeError` |
+| `extends` in a `schema_version: 1` file | `WorldForgeError` (requires schema version 2) |
+| Cycle in the `extends` chain | `WorldForgeError` listing the offending chain |
+| Chain depth above `SCENARIO_MAX_EXTENDS_DEPTH` | `WorldForgeError` |
+| `extends` passed to `parse_scenario` (dict, no path) | `WorldForgeError` — use `load_scenario(<path>)` |
+
+The gallery under `examples/scenarios/inheritance/` ships a base plus
+two children to exercise these rules end-to-end:
+
+```bash
+uv run worldforge scenario run examples/scenarios/inheritance/base.json
+uv run worldforge scenario run examples/scenarios/inheritance/child-a.json
+uv run worldforge scenario run examples/scenarios/inheritance/child-b.json
+```
 
 ## Scenario Parameter Matrices
 
