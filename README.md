@@ -3,7 +3,7 @@
 <p align="center">
   <img
     alt="WorldForge banner with two robot mascots under a violet night sky"
-    src="https://abdelstark.github.io/worldforge/assets/img/worldforge-readme-banner.png"
+    src="./src/assets/img/worldforge-readme-banner.png"
     width="100%"
   />
 </p>
