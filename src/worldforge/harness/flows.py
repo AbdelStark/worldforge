@@ -23,7 +23,13 @@ from worldforge.harness.workspace import (
     workspace_root_for_state_dir,
     write_run_manifest,
 )
-from worldforge.models import JSONDict, ProviderEvent, WorldForgeError, WorldStateError
+from worldforge.models import (
+    JSONDict,
+    ProviderEvent,
+    WorldForgeError,
+    WorldStateError,
+    _redact_observable_text,
+)
 from worldforge.provenance import ProvenanceEnvelope
 from worldforge.providers.base import ProviderError
 
@@ -86,6 +92,21 @@ FLOWS: tuple[HarnessFlow, ...] = (
             "Replay a sanitized NVIDIA GR00T N1.7 PolicyClient response through the real provider "
             "boundary, validate named action tensors, translate 40 steps, and preserve an "
             "inspectable artifact without requiring a live GPU."
+        ),
+    ),
+    HarnessFlow(
+        id="robotics-compare",
+        title="Robotics Policy Replay Comparison",
+        short_title="Compare",
+        focus="cross-provider policy inspection",
+        provider="LeRobot + Cosmos-Policy + GR00T",
+        capability="policy",
+        command="uv run --extra harness worldforge-harness --flow robotics-compare",
+        accent="#ffcc66",
+        summary=(
+            "Run the checkout-safe LeRobot, Cosmos-Policy, and GR00T policy paths side by side, "
+            "compare action shapes and translation counts, and preserve a sanitized comparison "
+            "artifact without keeping GPU servers online."
         ),
     ),
     HarnessFlow(
@@ -1611,11 +1632,407 @@ def _run_lerobot_demo(**kwargs: object) -> JSONDict:
     return lerobot_e2e.run_demo(**kwargs)  # type: ignore[arg-type]
 
 
+def _run_robotics_compare_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
+    subflows = {
+        "lerobot": _run_robotics_compare_subflow(
+            "lerobot",
+            _run_lerobot_demo,
+            state_dir / "lerobot",
+        ),
+        "cosmos-policy": _run_robotics_compare_subflow(
+            "cosmos-policy",
+            _run_cosmos_policy_demo,
+            state_dir=state_dir / "cosmos-policy",
+        ),
+        "gr00t-replay": _run_robotics_compare_subflow(
+            "gr00t-replay",
+            _run_gr00t_replay_demo,
+            state_dir=state_dir / "gr00t-replay",
+        ),
+    }
+    validation_errors = _robotics_compare_validation_errors(subflows)
+    source_validation = _robotics_compare_source_validation()
+    if validation_errors:
+        return _robotics_compare_failure_summary(
+            state_dir=state_dir,
+            subflows=subflows,
+            source_validation=source_validation,
+            validation_errors=validation_errors,
+            emit=emit,
+        )
+
+    try:
+        rows = [
+            _robotics_compare_lerobot_row(subflows["lerobot"]),
+            _robotics_compare_cosmos_row(subflows["cosmos-policy"]),
+            _robotics_compare_groot_row(subflows["gr00t-replay"]),
+        ]
+        provider_events = _robotics_compare_provider_events(subflows, rows=rows)
+        comparison_payload: JSONDict = {
+            "schema_version": 1,
+            "flow_id": "robotics-compare",
+            "status": "completed",
+            "source_validation": source_validation,
+            "rows": rows,
+            "artifacts": {},
+            "notes": [
+                (
+                    "WorldForge owns the common policy contract, validation, events, and "
+                    "replay surface."
+                ),
+                "Robotics model runtimes remain host-owned and are not required for this replay.",
+            ],
+        }
+        harness_artifacts = _robotics_compare_artifacts(
+            subflows,
+            comparison_payload,
+            require_replays=True,
+        )
+        comparison_payload["artifacts"] = _robotics_compare_replay_artifact_paths(harness_artifacts)
+    except Exception as exc:
+        return _robotics_compare_failure_summary(
+            state_dir=state_dir,
+            subflows=subflows,
+            source_validation=source_validation,
+            validation_errors=[_robotics_compare_exception_error("robotics-compare", exc)],
+            emit=emit,
+        )
+
+    summary: JSONDict = {
+        "demo_kind": "robotics_policy_replay_comparison",
+        "state_dir": str(state_dir),
+        "providers": [str(row["provider"]) for row in rows],
+        "flow_ids": [str(row["flow_id"]) for row in rows],
+        "comparison_count": len(rows),
+        "rows": rows,
+        "total_translated_actions": sum(int(row["translated_action_count"]) for row in rows),
+        "gpu_required": False,
+        "source_validation": comparison_payload["source_validation"],
+        "event_phases": [str(event.get("phase", "unknown")) for event in provider_events],
+        "provider_events": provider_events,
+        "harness_artifacts": harness_artifacts,
+    }
+    if emit:
+        print("\n".join(_transcript_for("robotics-compare", summary)))
+    return summary
+
+
+def _run_robotics_compare_subflow(
+    flow_id: str,
+    runner: FlowRunner,
+    state_dir: Path,
+) -> JSONDict:
+    try:
+        summary = runner(state_dir=state_dir, emit=False)
+    except Exception as exc:
+        return _robotics_compare_failed_subflow_summary(
+            flow_id,
+            state_dir,
+            _robotics_compare_exception_error("", exc),
+        )
+    if not isinstance(summary, dict):
+        return _robotics_compare_failed_subflow_summary(
+            flow_id,
+            state_dir,
+            f"WorldStateError: {flow_id} subflow returned {type(summary).__name__}, "
+            "expected JSON object",
+        )
+    return summary
+
+
+def _robotics_compare_failed_subflow_summary(
+    flow_id: str,
+    state_dir: Path,
+    message: str,
+) -> JSONDict:
+    safe_message = _redact_observable_text(message).strip()
+    event = ProviderEvent(
+        provider=flow_index()[flow_id].provider,
+        operation=flow_id,
+        phase="failure",
+        message=safe_message,
+        metadata={"stage": "robotics-compare-subflow"},
+    )
+    return {
+        "demo_kind": "robotics_compare_subflow",
+        "state_dir": str(state_dir),
+        "status": "failed",
+        "providers": [flow_id],
+        "event_phases": [event.phase],
+        "provider_events": [event.to_dict()],
+        "validation_errors": [safe_message],
+    }
+
+
+def _robotics_compare_exception_error(prefix: str, exc: BaseException) -> str:
+    detail = _redact_observable_text(str(exc)).strip()
+    type_name = _robotics_compare_exception_type_name(exc)
+    message = f"{type_name}: {detail}" if detail else type_name
+    return f"{prefix}: {message}" if prefix else message
+
+
+def _robotics_compare_exception_type_name(exc: BaseException) -> str:
+    if isinstance(exc, ProviderError):
+        return "ProviderError"
+    if isinstance(exc, WorldStateError):
+        return "WorldStateError"
+    if isinstance(exc, WorldForgeError):
+        return "WorldForgeError"
+    return "ProviderError"
+
+
+def _robotics_compare_failure_summary(
+    *,
+    state_dir: Path,
+    subflows: dict[str, JSONDict],
+    source_validation: JSONDict,
+    validation_errors: list[str],
+    emit: bool,
+) -> JSONDict:
+    validation_errors = [_redact_observable_text(error) for error in validation_errors]
+    comparison_payload: JSONDict = {
+        "schema_version": 1,
+        "flow_id": "robotics-compare",
+        "status": "failed",
+        "source_validation": source_validation,
+        "validation_errors": validation_errors,
+        "artifacts": {},
+        "notes": [
+            "At least one subflow failed before comparison rows could be normalized.",
+            "Available sanitized replay artifacts are still preserved for triage.",
+        ],
+    }
+    provider_events = _robotics_compare_provider_events(
+        subflows,
+        validation_errors=validation_errors,
+    )
+    harness_artifacts = _robotics_compare_artifacts(
+        subflows,
+        comparison_payload,
+        require_replays=False,
+    )
+    comparison_payload["artifacts"] = _robotics_compare_replay_artifact_paths(harness_artifacts)
+    summary: JSONDict = {
+        "demo_kind": "robotics_policy_replay_comparison",
+        "state_dir": str(state_dir),
+        "status": "failed",
+        "providers": ["lerobot", "cosmos-policy", "gr00t"],
+        "flow_ids": list(subflows),
+        "comparison_count": len(subflows),
+        "gpu_required": False,
+        "source_validation": source_validation,
+        "event_phases": [str(event.get("phase", "unknown")) for event in provider_events],
+        "provider_events": provider_events,
+        "validation_errors": validation_errors,
+        "harness_artifacts": harness_artifacts,
+    }
+    if emit:
+        print("\n".join(_transcript_for("robotics-compare", summary)))
+    return summary
+
+
+def _robotics_compare_source_validation() -> JSONDict:
+    return {
+        "lerobot": "deterministic checkout-safe provider demo",
+        "cosmos-policy": "validated live on RTX A6000; committed artifact is sanitized",
+        "gr00t-replay": "validated live on RTX A6000; committed artifact is sanitized",
+    }
+
+
+def _robotics_compare_validation_errors(subflows: dict[str, JSONDict]) -> list[str]:
+    errors: list[str] = []
+    for flow_id, summary in subflows.items():
+        flow_errors = summary.get("validation_errors")
+        if isinstance(flow_errors, list):
+            errors.extend(_redact_observable_text(f"{flow_id}: {error}") for error in flow_errors)
+    return errors
+
+
+def _robotics_compare_provider_events(
+    subflows: dict[str, JSONDict],
+    *,
+    rows: list[JSONDict] | None = None,
+    validation_errors: list[str] | None = None,
+) -> list[JSONDict]:
+    events: list[JSONDict] = []
+    for subflow_id, summary in subflows.items():
+        events.extend(_robotics_compare_subflow_events(subflow_id, summary))
+    if rows is not None:
+        events.extend(
+            ProviderEvent(
+                provider=str(row["provider"]),
+                operation="robotics-compare",
+                phase="success",
+                message=f"{row['flow_id']} policy output compared",
+                metadata={
+                    "flow_id": row["flow_id"],
+                    "raw_shape": row["raw_shape"],
+                    "translated_action_count": row["translated_action_count"],
+                },
+            ).to_dict()
+            for row in rows
+        )
+    if validation_errors:
+        events.append(
+            ProviderEvent(
+                provider="robotics-compare",
+                operation="robotics-compare",
+                phase="failure",
+                message="; ".join(validation_errors),
+                metadata={"failed": True},
+            ).to_dict()
+        )
+    return events
+
+
+def _robotics_compare_subflow_events(subflow_id: str, summary: JSONDict) -> list[JSONDict]:
+    events = summary.get("provider_events")
+    if not isinstance(events, list):
+        return []
+    tagged: list[JSONDict] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        copied = dict(event)
+        metadata = copied.get("metadata")
+        copied["metadata"] = {
+            **(metadata if isinstance(metadata, dict) else {}),
+            "comparison_flow_id": "robotics-compare",
+            "subflow_id": subflow_id,
+        }
+        tagged.append(copied)
+    return tagged
+
+
+def _robotics_compare_artifacts(
+    subflows: dict[str, JSONDict],
+    comparison_payload: JSONDict,
+    *,
+    require_replays: bool,
+) -> JSONDict:
+    artifacts: JSONDict = {
+        "robotics_comparison": {
+            "path": "artifacts/robotics-policy-comparison.json",
+            "payload": comparison_payload,
+        },
+    }
+    replay_artifacts = (
+        ("cosmos-policy", "cosmos_policy_replay", "artifacts/cosmos-policy-replay.json"),
+        ("gr00t-replay", "gr00t_replay", "artifacts/gr00t-replay.json"),
+    )
+    for flow_id, name, path in replay_artifacts:
+        try:
+            payload = _harness_artifact_payload(subflows[flow_id], name)
+        except WorldStateError:
+            if require_replays:
+                raise
+            continue
+        artifacts[name] = {"path": path, "payload": payload}
+    return artifacts
+
+
+def _robotics_compare_replay_artifact_paths(harness_artifacts: JSONDict) -> JSONDict:
+    paths: JSONDict = {}
+    for name in ("cosmos_policy_replay", "gr00t_replay"):
+        descriptor = harness_artifacts.get(name)
+        if not isinstance(descriptor, dict):
+            continue
+        path = descriptor.get("path")
+        if isinstance(path, str):
+            paths[name] = path
+    return paths
+
+
+def _robotics_compare_lerobot_row(summary: JSONDict) -> JSONDict:
+    try:
+        selected_index = int(summary["selected_candidate_index"])
+        candidate_costs = list(summary["candidate_costs"])
+        selected_cost = candidate_costs[selected_index]
+        return {
+            "flow_id": "lerobot",
+            "provider": "lerobot",
+            "model": "injected deterministic LeRobot-shaped policy",
+            "source": "checkout-safe policy plus score demo",
+            "raw_shape": f"{summary['policy_candidate_count']} candidate chunks",
+            "candidate_count": int(summary["policy_candidate_count"]),
+            "selected_candidate_index": selected_index,
+            "selected_score": float(selected_cost),
+            "translated_action_count": len(summary["selected_actions"]),
+            "events": len(summary.get("event_phases", [])),
+            "artifact": "run summary only",
+        }
+    except KeyError as exc:
+        raise WorldStateError(f"lerobot comparison summary missing required key {exc!s}.") from exc
+    except (IndexError, TypeError, ValueError) as exc:
+        raise WorldStateError(f"lerobot comparison summary is malformed: {exc}") from exc
+
+
+def _robotics_compare_cosmos_row(summary: JSONDict) -> JSONDict:
+    try:
+        raw_shape = " x ".join(str(item) for item in summary["raw_action_shape"])
+        return {
+            "flow_id": "cosmos-policy",
+            "provider": str(summary["providers"][0]),
+            "model": summary["model"],
+            "source": "sanitized ALOHA /act replay",
+            "raw_shape": raw_shape,
+            "candidate_count": int(summary["candidate_count"]),
+            "selected_candidate_index": int(summary["selected_candidate_index"]),
+            "value_prediction": summary["value_prediction"],
+            "translated_action_count": int(summary["translated_action_count"]),
+            "events": len(summary.get("event_phases", [])),
+            "artifact": "artifacts/cosmos-policy-replay.json",
+        }
+    except KeyError as exc:
+        raise WorldStateError(
+            f"cosmos-policy comparison summary missing required key {exc!s}."
+        ) from exc
+    except (IndexError, TypeError, ValueError) as exc:
+        raise WorldStateError(f"cosmos-policy comparison summary is malformed: {exc}") from exc
+
+
+def _robotics_compare_groot_row(summary: JSONDict) -> JSONDict:
+    try:
+        return {
+            "flow_id": "gr00t-replay",
+            "provider": str(summary["providers"][0]),
+            "model": summary["model"],
+            "source": "sanitized GR00T PolicyClient replay",
+            "raw_shape": _groot_shape_result(summary),
+            "raw_tensor_count": len(summary["raw_action_shapes"]),
+            "embodiment_tag": summary["embodiment_tag"],
+            "latency_ms": summary["latency_ms"],
+            "translated_action_count": int(summary["translated_action_count"]),
+            "events": len(summary.get("event_phases", [])),
+            "artifact": "artifacts/gr00t-replay.json",
+        }
+    except KeyError as exc:
+        raise WorldStateError(
+            f"gr00t-replay comparison summary missing required key {exc!s}."
+        ) from exc
+    except (IndexError, TypeError, ValueError) as exc:
+        raise WorldStateError(f"gr00t-replay comparison summary is malformed: {exc}") from exc
+
+
+def _harness_artifact_payload(summary: JSONDict, name: str) -> JSONDict:
+    artifacts = summary.get("harness_artifacts")
+    if not isinstance(artifacts, dict):
+        raise WorldStateError(f"{name} source flow did not expose harness artifacts.")
+    descriptor = artifacts.get(name)
+    if not isinstance(descriptor, dict) or "payload" not in descriptor:
+        raise WorldStateError(f"{name} source flow did not expose an artifact payload.")
+    payload = descriptor["payload"]
+    if not isinstance(payload, dict):
+        raise WorldStateError(f"{name} source flow artifact payload must be a JSON object.")
+    return payload
+
+
 _RUNNERS: dict[str, FlowRunner] = {
     "leworldmodel": _run_leworldmodel_demo,
     "lerobot": _run_lerobot_demo,
     "cosmos-policy": _run_cosmos_policy_demo,
     "gr00t-replay": _run_gr00t_replay_demo,
+    "robotics-compare": _run_robotics_compare_demo,
     "diagnostics": _run_diagnostics_demo,
     "workbench": _run_workbench_demo,
 }
@@ -2354,6 +2771,52 @@ def _steps_for(flow_id: str, summary: JSONDict) -> tuple[HarnessStep, ...]:
                 f"events={', '.join(summary['event_phases'])}",
             ),
         )
+    if flow_id == "robotics-compare":
+        rows_by_flow = {str(row["flow_id"]): row for row in summary["rows"]}
+        return (
+            HarnessStep(
+                "Run LeRobot policy path",
+                "Execute the checkout-safe LeRobot policy-plus-score flow.",
+                (
+                    f"{rows_by_flow['lerobot']['candidate_count']} candidate chunks, "
+                    f"selected #{rows_by_flow['lerobot']['selected_candidate_index']}."
+                ),
+                f"translated_actions={rows_by_flow['lerobot']['translated_action_count']}",
+            ),
+            HarnessStep(
+                "Replay Cosmos-Policy /act",
+                "Route the sanitized ALOHA replay through CosmosPolicyProvider.",
+                f"raw action shape {rows_by_flow['cosmos-policy']['raw_shape']}.",
+                f"translated_actions={rows_by_flow['cosmos-policy']['translated_action_count']}",
+            ),
+            HarnessStep(
+                "Replay GR00T PolicyClient",
+                "Route the sanitized DROID replay through GrootPolicyClientProvider.",
+                str(rows_by_flow["gr00t-replay"]["raw_shape"]),
+                f"translated_actions={rows_by_flow['gr00t-replay']['translated_action_count']}",
+            ),
+            HarnessStep(
+                "Normalize policy contracts",
+                (
+                    "Compare provider outputs by shape, selected candidate, and translated "
+                    "action count."
+                ),
+                f"{summary['comparison_count']} policy surfaces normalized.",
+                f"total_translated_actions={summary['total_translated_actions']}",
+            ),
+            HarnessStep(
+                "Inspect provider events",
+                "Record a comparable event for each policy surface.",
+                _event_result(summary),
+                f"events={len(summary['event_phases'])}",
+            ),
+            HarnessStep(
+                "Preserve comparison artifact",
+                "Write a sanitized comparison plus replay artifacts for offline inspection.",
+                "artifact=artifacts/robotics-policy-comparison.json",
+                "gpu_required=false",
+            ),
+        )
     if flow_id == "diagnostics":
         return (
             HarnessStep(
@@ -2568,6 +3031,36 @@ def _metrics_for(flow_id: str, summary: JSONDict) -> tuple[HarnessMetric, ...]:
             ),
             HarnessMetric("Artifact", "replay", "artifacts/gr00t-replay.json"),
         )
+    if flow_id == "robotics-compare":
+        rows_by_flow = {str(row["flow_id"]): row for row in summary["rows"]}
+        return (
+            HarnessMetric("Flow", "policy comparison", "three robotics policy surfaces"),
+            HarnessMetric(
+                "LeRobot",
+                f"{rows_by_flow['lerobot']['candidate_count']} candidates",
+                f"selected #{rows_by_flow['lerobot']['selected_candidate_index']}",
+            ),
+            HarnessMetric(
+                "Cosmos",
+                str(rows_by_flow["cosmos-policy"]["raw_shape"]),
+                f"value={_format_optional_float(rows_by_flow['cosmos-policy']['value_prediction'])}",
+            ),
+            HarnessMetric(
+                "GR00T",
+                str(rows_by_flow["gr00t-replay"]["raw_tensor_count"]),
+                "named action tensors",
+            ),
+            HarnessMetric(
+                "Translated",
+                str(summary["total_translated_actions"]),
+                "WorldForge Action objects",
+            ),
+            HarnessMetric(
+                "Artifacts",
+                "3",
+                "comparison plus replay artifacts",
+            ),
+        )
 
     flow_label = "score" if flow_id == "leworldmodel" else "policy+score"
     return (
@@ -2645,6 +3138,37 @@ def _transcript_for(flow_id: str, summary: JSONDict) -> tuple[str, ...]:
             f"latency_ms: {float(summary['latency_ms']):.1f}",
             f"result_digest: {summary['result_digest']}",
             "saved_replay_artifact: artifacts/gr00t-replay.json",
+            f"events: {', '.join(summary['event_phases'])}",
+        )
+    if flow_id == "robotics-compare":
+        rows_by_flow = {str(row["flow_id"]): row for row in summary["rows"]}
+        return (
+            "flow: robotics-compare",
+            f"providers: {', '.join(summary['providers'])}",
+            f"flow_ids: {', '.join(summary['flow_ids'])}",
+            "gpu_required: false",
+            (
+                "lerobot: "
+                f"candidates={rows_by_flow['lerobot']['candidate_count']} "
+                f"selected=#{rows_by_flow['lerobot']['selected_candidate_index']} "
+                f"translated_actions={rows_by_flow['lerobot']['translated_action_count']}"
+            ),
+            (
+                "cosmos-policy: "
+                f"raw_shape={rows_by_flow['cosmos-policy']['raw_shape']} "
+                f"translated_actions={rows_by_flow['cosmos-policy']['translated_action_count']} "
+                "value_prediction="
+                f"{_format_optional_float(rows_by_flow['cosmos-policy']['value_prediction'])}"
+            ),
+            (
+                "gr00t-replay: "
+                f"raw_tensors={rows_by_flow['gr00t-replay']['raw_tensor_count']} "
+                f"translated_actions={rows_by_flow['gr00t-replay']['translated_action_count']} "
+                f"latency_ms={_format_ms(rows_by_flow['gr00t-replay']['latency_ms'])}"
+            ),
+            f"total_translated_actions: {summary['total_translated_actions']}",
+            "comparison_artifact: artifacts/robotics-policy-comparison.json",
+            "replay_artifacts: artifacts/cosmos-policy-replay.json, artifacts/gr00t-replay.json",
             f"events: {', '.join(summary['event_phases'])}",
         )
 

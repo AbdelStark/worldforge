@@ -37,6 +37,17 @@ def _copy_json_payload(value: object) -> object:
     return json.loads(json.dumps(value))
 
 
+def _contains_dict_key(value: object, key: str) -> bool:
+    if isinstance(value, dict):
+        return any(
+            item_key == key or _contains_dict_key(item_value, key)
+            for item_key, item_value in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_dict_key(item, key) for item in value)
+    return False
+
+
 def _write_cosmos_replay_payload(tmp_path: Path, name: str, payload: object) -> Path:
     path = tmp_path / name
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -73,6 +84,7 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
         "lerobot",
         "cosmos-policy",
         "gr00t-replay",
+        "robotics-compare",
         "diagnostics",
         "workbench",
     ]
@@ -83,8 +95,11 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
     assert payload[1]["focus"] == "policy plus score planning"
     assert payload[2]["command"] == "uv run --extra harness worldforge-harness --flow cosmos-policy"
     assert payload[3]["command"] == "uv run --extra harness worldforge-harness --flow gr00t-replay"
-    assert payload[4]["command"] == "uv run worldforge harness --flow diagnostics"
-    assert payload[5]["command"] == "uv run worldforge provider workbench mock"
+    assert payload[4]["command"] == (
+        "uv run --extra harness worldforge-harness --flow robotics-compare"
+    )
+    assert payload[5]["command"] == "uv run worldforge harness --flow diagnostics"
+    assert payload[6]["command"] == "uv run worldforge provider workbench mock"
 
 
 def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
@@ -228,6 +243,236 @@ def test_harness_groot_replay_flow_can_emit_transcript(tmp_path, capsys) -> None
     assert summary["translated_action_count"] == 40
     assert "flow: gr00t-replay" in output
     assert "translated_actions: 40" in output
+
+
+def test_harness_runs_robotics_compare_flow(tmp_path) -> None:
+    run = run_flow("robotics-compare", state_dir=tmp_path)
+
+    assert run.flow.id == "robotics-compare"
+    assert len(run.steps) == 6
+    assert len(run.metrics) == 6
+    assert run.summary["comparison_count"] == 3
+    assert run.summary["gpu_required"] is False
+    rows = {row["flow_id"]: row for row in run.summary["rows"]}
+    assert rows["lerobot"]["candidate_count"] == 3
+    assert rows["lerobot"]["selected_candidate_index"] == 1
+    assert rows["lerobot"]["translated_action_count"] == 2
+    assert rows["cosmos-policy"]["raw_shape"] == "50 x 14"
+    assert rows["cosmos-policy"]["translated_action_count"] == 50
+    assert rows["cosmos-policy"]["value_prediction"] == 0.190714
+    assert rows["gr00t-replay"]["raw_tensor_count"] == 3
+    assert rows["gr00t-replay"]["translated_action_count"] == 40
+    assert run.summary["total_translated_actions"] == 92
+    assert {event["phase"] for event in run.provider_events} == {"success"}
+    comparison_events = [
+        event
+        for event in run.provider_events
+        if event["operation"] == "robotics-compare" and event["metadata"].get("flow_id") in rows
+    ]
+    assert {event["metadata"]["flow_id"] for event in comparison_events} == {
+        "lerobot",
+        "cosmos-policy",
+        "gr00t-replay",
+    }
+    assert {
+        event["metadata"]["subflow_id"]
+        for event in run.provider_events
+        if "subflow_id" in event.get("metadata", {})
+    } == {"lerobot", "cosmos-policy", "gr00t-replay"}
+    transcript = "\n".join(run.transcript)
+    assert "flow: robotics-compare" in transcript
+    assert "comparison_artifact: artifacts/robotics-policy-comparison.json" in transcript
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["artifact_paths"]["robotics_comparison"] == (
+        "artifacts/robotics-policy-comparison.json"
+    )
+    assert manifest["artifact_paths"]["cosmos_policy_replay"] == (
+        "artifacts/cosmos-policy-replay.json"
+    )
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    comparison = json.loads(
+        (run.workspace_path / "artifacts/robotics-policy-comparison.json").read_text()
+    )
+    assert comparison["source_validation"]["gr00t-replay"] == (
+        "validated live on RTX A6000; committed artifact is sanitized"
+    )
+    assert not _contains_dict_key(comparison, "observation")
+
+
+def test_harness_robotics_compare_preserves_replay_artifacts_on_subflow_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from worldforge.harness import flows
+
+    original_cosmos = flows._run_cosmos_policy_demo
+
+    def failed_cosmos(*, state_dir: Path, emit: bool = False) -> dict:
+        summary = original_cosmos(state_dir=state_dir, emit=emit)
+        summary["validation_errors"] = ["simulated replay validation failure"]
+        return summary
+
+    monkeypatch.setattr(flows, "_run_cosmos_policy_demo", failed_cosmos)
+
+    run = run_flow("robotics-compare", state_dir=tmp_path)
+
+    assert run.validation_errors == ("cosmos-policy: simulated replay validation failure",)
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["artifact_paths"]["robotics_comparison"] == (
+        "artifacts/robotics-policy-comparison.json"
+    )
+    assert manifest["artifact_paths"]["cosmos_policy_replay"] == (
+        "artifacts/cosmos-policy-replay.json"
+    )
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    comparison = json.loads(
+        (run.workspace_path / "artifacts/robotics-policy-comparison.json").read_text()
+    )
+    assert comparison["status"] == "failed"
+    assert comparison["validation_errors"] == ["cosmos-policy: simulated replay validation failure"]
+    assert comparison["artifacts"] == {
+        "cosmos_policy_replay": "artifacts/cosmos-policy-replay.json",
+        "gr00t_replay": "artifacts/gr00t-replay.json",
+    }
+    assert run.provider_events[-1]["phase"] == "failure"
+
+
+def test_harness_robotics_compare_preserves_other_artifacts_when_subflow_raises(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from worldforge.harness import flows
+
+    def failed_cosmos(*, state_dir: Path, emit: bool = False) -> dict:
+        _ = (state_dir, emit)
+        raise RuntimeError(
+            "transport exploded for https://example.test/act?token=cosmos-secret "
+            "with api_key=raw-secret"
+        )
+
+    monkeypatch.setattr(flows, "_run_cosmos_policy_demo", failed_cosmos)
+
+    run = run_flow("robotics-compare", state_dir=tmp_path)
+
+    assert run.validation_errors == (
+        "cosmos-policy: ProviderError: transport exploded for https://example.test/act "
+        "with api_key=[redacted]",
+    )
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["artifact_paths"]["robotics_comparison"] == (
+        "artifacts/robotics-policy-comparison.json"
+    )
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    assert "cosmos_policy_replay" not in manifest["artifact_paths"]
+    comparison = json.loads(
+        (run.workspace_path / "artifacts/robotics-policy-comparison.json").read_text()
+    )
+    assert comparison["artifacts"] == {"gr00t_replay": "artifacts/gr00t-replay.json"}
+    comparison_text = json.dumps(comparison)
+    assert "RuntimeError" not in comparison_text
+    assert "cosmos-secret" not in comparison_text
+    assert "raw-secret" not in comparison_text
+    assert "token=" not in comparison_text
+    assert run.provider_events[-1]["phase"] == "failure"
+    assert any(
+        event["metadata"].get("subflow_id") == "cosmos-policy" for event in run.provider_events
+    )
+
+
+def test_harness_robotics_compare_handles_non_dict_subflow_result(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from worldforge.harness import flows
+
+    def invalid_cosmos(*, state_dir: Path, emit: bool = False) -> None:
+        _ = (state_dir, emit)
+
+    monkeypatch.setattr(flows, "_run_cosmos_policy_demo", invalid_cosmos)
+
+    run = run_flow("robotics-compare", state_dir=tmp_path)
+
+    assert run.validation_errors == (
+        "cosmos-policy: WorldStateError: cosmos-policy subflow returned NoneType, "
+        "expected JSON object",
+    )
+    assert run.workspace_path is not None
+    manifest = json.loads((run.workspace_path / "run_manifest.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["artifact_paths"]["robotics_comparison"] == (
+        "artifacts/robotics-policy-comparison.json"
+    )
+    assert manifest["artifact_paths"]["gr00t_replay"] == "artifacts/gr00t-replay.json"
+    assert "cosmos_policy_replay" not in manifest["artifact_paths"]
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "flow_id", "summary", "missing_key"),
+    [
+        (
+            "_robotics_compare_lerobot_row",
+            "lerobot",
+            {"selected_candidate_index": 0, "candidate_costs": [0.0], "selected_actions": []},
+            "policy_candidate_count",
+        ),
+        (
+            "_robotics_compare_cosmos_row",
+            "cosmos-policy",
+            {
+                "providers": ["cosmos-policy"],
+                "model": "cosmos",
+                "candidate_count": 1,
+                "selected_candidate_index": 0,
+                "value_prediction": None,
+                "translated_action_count": 50,
+            },
+            "raw_action_shape",
+        ),
+        (
+            "_robotics_compare_groot_row",
+            "gr00t-replay",
+            {
+                "providers": ["gr00t"],
+                "model": "gr00t",
+                "embodiment_tag": "DROID",
+                "latency_ms": 1.0,
+                "translated_action_count": 40,
+            },
+            "raw_action_shapes",
+        ),
+    ],
+)
+def test_harness_robotics_compare_rows_report_missing_keys(
+    helper_name: str,
+    flow_id: str,
+    summary: dict,
+    missing_key: str,
+) -> None:
+    from worldforge.harness import flows
+
+    helper = getattr(flows, helper_name)
+
+    with pytest.raises(
+        WorldStateError,
+        match=rf"{flow_id} comparison summary missing required key '{missing_key}'",
+    ):
+        helper(summary)
+
+
+def test_harness_robotics_compare_flow_can_emit_transcript(tmp_path, capsys) -> None:
+    from worldforge.harness import flows
+
+    summary = flows._run_robotics_compare_demo(state_dir=tmp_path, emit=True)
+
+    output = capsys.readouterr().out
+    assert summary["comparison_count"] == 3
+    assert "flow: robotics-compare" in output
+    assert "total_translated_actions: 92" in output
 
 
 def test_harness_loads_groot_replay_artifact(tmp_path) -> None:
