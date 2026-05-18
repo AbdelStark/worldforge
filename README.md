@@ -1,3 +1,11 @@
+<p align="center">
+  <img
+    alt="WorldForge banner with two robot mascots under a violet night sky"
+    src="./docs/src/assets/img/worldforge-readme-banner.png"
+    width="100%"
+  />
+</p>
+
 <div align="center">
 
 # WorldForge
@@ -39,6 +47,28 @@ controllers, and deployment host-owned.
 [**Security**](./SECURITY.md)
 
 </div>
+
+## What WorldForge Does
+
+WorldForge makes mixed physical-AI workflows explicit and inspectable.
+
+- **Policy providers propose action chunks** from robot observations or task instructions.
+- **Score and world-model providers rank candidate futures** instead of pretending every model has
+  the same interface.
+- **WorldForge validates, records, replays, and compares runs** through typed provider contracts.
+- **TheWorldHarness and Rerun make the loop visible** before a host connects real robot hardware.
+
+## First Run
+
+Install the package, then open the checkout-safe robotics comparison flow:
+
+```bash
+uv add "worldforge-ai[harness]"
+uv run worldforge-harness --flow robotics-compare
+```
+
+The flow compares LeRobot, Cosmos-Policy, and GR00T policy surfaces from sanitized replay artifacts,
+so it does not need credentials, checkpoints, a GPU, or a robot.
 
 ## Robotics Showcase: LeRobot + LeWorldModel
 
@@ -491,13 +521,17 @@ integration stories through the
 
 WorldForge is released under the [MIT License](./LICENSE).
 
-## Links
+## Resources
 
 - Documentation: <https://abdelstark.github.io/worldforge/>
 - Quickstart: <https://abdelstark.github.io/worldforge/quickstart/>
+- TheWorldHarness: <https://abdelstark.github.io/worldforge/theworldharness/>
+- Provider authoring guide: <https://abdelstark.github.io/worldforge/provider-authoring-guide/>
+- Rerun integration: <https://abdelstark.github.io/worldforge/rerun/>
 - Playbooks: <https://abdelstark.github.io/worldforge/playbooks/>
 - Architecture: <https://abdelstark.github.io/worldforge/architecture/>
 - World-model taxonomy: <https://abdelstark.github.io/worldforge/world-model-taxonomy/>
+- Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
 - Security policy: [SECURITY.md](./SECURITY.md)
 - Repository: <https://github.com/AbdelStark/worldforge>
 - Issues: <https://github.com/AbdelStark/worldforge/issues>
