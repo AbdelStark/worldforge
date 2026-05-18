@@ -168,7 +168,10 @@ The base remains a standalone scenario you can run on its own.
   the child value. Keys the child omits keep the parent value.
 - **Single parent only.** `extends` is one string, not a list.
 - **Resolution is relative to the child file.** Absolute paths are
-  rejected to keep scenario folders checkout-safe.
+  rejected, and any `..` segment in the `extends` value is rejected
+  before the path is resolved so a child cannot escape its own scenario
+  directory. Reorganize parents into a shared subfolder if you need to
+  share a base across siblings.
 - **Inheritance happens before matrix expansion.** A child can introduce
   a `matrix` block, override an inherited one, or inherit the parent's
   matrix unchanged.
@@ -177,9 +180,11 @@ The base remains a standalone scenario you can run on its own.
 
 | Rule | Behavior |
 | --- | --- |
-| Missing parent file | `WorldForgeError` with the resolved path |
+| Missing parent file | `WorldForgeError` with the offending reference |
 | Absolute `extends` path | `WorldForgeError`, must be relative |
-| Empty or non-string `extends` | `WorldForgeError` |
+| `extends` path with any `..` segment | `WorldForgeError` — siblings must be reachable without parent-directory traversal |
+| Empty, missing-key-null, or non-string `extends` | `WorldForgeError` (`extends: null` is treated as malformed, not as absent) |
+| `schema_version` that is `bool`, `float`, or any non-`int` | `WorldForgeError` (`True`, `2.0`, `"2"` are all rejected) |
 | `extends` in a `schema_version: 1` file | `WorldForgeError` (requires schema version 2) |
 | Cycle in the `extends` chain | `WorldForgeError` listing the offending chain |
 | Chain depth above `SCENARIO_MAX_EXTENDS_DEPTH` | `WorldForgeError` |

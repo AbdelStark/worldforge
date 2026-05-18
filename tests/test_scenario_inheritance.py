@@ -475,6 +475,87 @@ def test_parse_scenario_matrix_rejects_extends_with_matrix() -> None:
         parse_scenario_matrix(payload)
 
 
+def test_extends_traversal_rejected(tmp_path: Path) -> None:
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    _write_json(tmp_path / "parent.json", _base_payload(id="traversal-parent"))
+    child_path = _write_json(
+        nested / "child.json",
+        {
+            "schema_version": 2,
+            "extends": "../parent.json",
+            "id": "child-traversal",
+            "name": "Child with traversal",
+        },
+    )
+    with pytest.raises(WorldForgeError, match=r"may not contain '\.\.'"):
+        load_scenario(child_path)
+
+
+def test_extends_traversal_rejected_in_subpath(tmp_path: Path) -> None:
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    _write_json(sibling / "target.json", _base_payload(id="sibling-target"))
+    child_path = _write_json(
+        nested / "child.json",
+        {
+            "schema_version": 2,
+            "extends": "../sibling/target.json",
+            "id": "child-sibling-traversal",
+            "name": "Child with sibling traversal",
+        },
+    )
+    with pytest.raises(WorldForgeError, match=r"may not contain '\.\.'"):
+        load_scenario(child_path)
+
+
+def test_extends_null_rejected(tmp_path: Path) -> None:
+    child_path = _write_json(
+        tmp_path / "child.json",
+        {
+            "schema_version": 2,
+            "extends": None,
+            "id": "child-null",
+            "name": "Child with explicit null extends",
+        },
+    )
+    with pytest.raises(WorldForgeError, match="non-empty string path"):
+        load_scenario(child_path)
+
+
+def test_schema_version_rejects_float(tmp_path: Path) -> None:
+    payload = _base_payload(id="float-version")
+    payload["schema_version"] = 2.0
+    path = _write_json(tmp_path / "scenario.json", payload)
+    with pytest.raises(WorldForgeError, match="must be an integer"):
+        load_scenario(path)
+
+
+def test_schema_version_rejects_bool(tmp_path: Path) -> None:
+    payload = _base_payload(id="bool-version")
+    payload["schema_version"] = True
+    path = _write_json(tmp_path / "scenario.json", payload)
+    with pytest.raises(WorldForgeError, match="must be an integer"):
+        load_scenario(path)
+
+
+def test_extends_with_float_schema_version_rejected(tmp_path: Path) -> None:
+    _write_json(tmp_path / "parent.json", _base_payload(id="float-parent"))
+    child_path = _write_json(
+        tmp_path / "child.json",
+        {
+            "schema_version": 2.0,
+            "extends": "./parent.json",
+            "id": "child-float-version",
+            "name": "Child with float schema_version",
+        },
+    )
+    with pytest.raises(WorldForgeError, match="must be an integer"):
+        load_scenario(child_path)
+
+
 def test_inheritance_example_fixtures_round_trip() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     base = load_scenario(repo_root / "examples" / "scenarios" / "inheritance" / "base.json")
