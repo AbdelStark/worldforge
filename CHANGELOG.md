@@ -9,6 +9,15 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a public-API snapshot test. `tests/fixtures/public_api/exports.json`
+  records the current export set for `worldforge`, `worldforge.testing`,
+  `worldforge.observability`, `worldforge.providers`, and
+  `worldforge.capabilities`; `tests/test_public_api_snapshot.py` fails loudly
+  on any add/rename/remove with a clear diff and the regenerate command.
+  Intentional public-API changes regenerate the snapshot via
+  `uv run python scripts/update_public_api_snapshot.py` or by setting
+  `WORLDFORGE_UPDATE_PUBLIC_API_SNAPSHOT=1`. `docs/src/api-stability.md`
+  now points at the snapshot as the authoritative Stable surface.
 - Added an adoption case-study gallery, reusable case-study template, Adoption Story issue
   template, and smoke tests for future submitted adoption stories.
 - Added a runnable capability protocol mini-demo with docs and tests for in-process predictor,
