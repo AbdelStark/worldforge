@@ -72,8 +72,8 @@ so it does not need credentials, checkpoints, a GPU, or a robot.
 
 Success looks like the TUI opening on **Robotics Policy Replay Comparison** with successful provider
 events and `gpu_required=false`. If it fails, first rerun
-`uv run worldforge-harness --flow robotics-compare --no-animation` so the terminal prints the
-failing flow step directly.
+`uv run worldforge-harness --flow robotics-compare --no-animation` to remove reveal delays and make
+the failed step or traceback appear immediately in the TUI.
 
 ## Robotics Showcase: LeRobot + LeWorldModel
 
