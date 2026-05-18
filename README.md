@@ -1,14 +1,14 @@
+# WorldForge
+
 <p align="center">
   <img
     alt="WorldForge banner with two robot mascots under a violet night sky"
-    src="./docs/src/assets/img/worldforge-readme-banner.png"
+    src="https://abdelstark.github.io/worldforge/assets/img/worldforge-readme-banner.png"
     width="100%"
   />
 </p>
 
 <div align="center">
-
-# WorldForge
 
 **Testable world-model workflows for physical-AI systems.**
 
@@ -69,6 +69,11 @@ uv run worldforge-harness --flow robotics-compare
 
 The flow compares LeRobot, Cosmos-Policy, and GR00T policy surfaces from sanitized replay artifacts,
 so it does not need credentials, checkpoints, a GPU, or a robot.
+
+Success looks like the TUI opening on **Robotics Policy Replay Comparison** with successful provider
+events and `gpu_required=false`. If it fails, first rerun
+`uv run worldforge-harness --flow robotics-compare --no-animation` so the terminal prints the
+failing flow step directly.
 
 ## Robotics Showcase: LeRobot + LeWorldModel
 
