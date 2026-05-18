@@ -199,11 +199,16 @@ def apply_prune(report: PruneReport) -> PruneReport:
         raise WorldForgeError("apply_prune expects a PruneReport.")
     if report.applied:
         raise WorldForgeError("PruneReport already applied; build a fresh plan first.")
+    workspace_root = Path(report.workspace_dir).expanduser().resolve()
+    runs_root = (workspace_root / "runs").resolve()
     for candidate in report.selected_for_delete():
         target = Path(candidate.run_dir).expanduser().resolve()
-        _ensure_inside_runs(target, workspace_display=report.workspace_dir)
+        _ensure_inside_runs(target, runs_root=runs_root)
         if target.exists():
-            shutil.rmtree(target)
+            try:
+                shutil.rmtree(target)
+            except OSError as exc:
+                raise WorldForgeError(f"Failed to remove run workspace {target}: {exc}") from exc
     return PruneReport(
         schema_version=report.schema_version,
         workspace_dir=report.workspace_dir,
@@ -223,16 +228,31 @@ def parse_runs_retention(payload: object) -> RunsRetentionPolicy:
     unknown = sorted(set(payload) - allowed)
     if unknown:
         raise WorldForgeError(f"runs_retention has unsupported keys: {', '.join(unknown)}.")
-    max_age_days = int(payload.get("max_age_days", 30))
-    keep_latest = int(payload.get("keep_latest", 10))
+    max_age_days = _coerce_retention_int(payload.get("max_age_days", 30), name="max_age_days")
+    keep_latest = _coerce_retention_int(payload.get("keep_latest", 10), name="keep_latest")
     families_raw = payload.get("families", [])
     if not isinstance(families_raw, list | tuple):
         raise WorldForgeError("runs_retention.families must be an array.")
+    for index, item in enumerate(families_raw):
+        if not isinstance(item, str):
+            raise WorldForgeError(
+                f"runs_retention.families[{index}] must be a string; got {type(item).__name__}."
+            )
     return RunsRetentionPolicy(
         max_age_days=max_age_days,
         keep_latest=keep_latest,
-        families=tuple(str(item) for item in families_raw),
+        families=tuple(families_raw),
     )
+
+
+def _coerce_retention_int(value: object, *, name: str) -> int:
+    """Coerce a retention profile integer field, raising ``WorldForgeError`` on bad shapes."""
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WorldForgeError(
+            f"runs_retention.{name} must be an integer; got {type(value).__name__}."
+        )
+    return value
 
 
 def _safe_runs_root(workspace_dir: Path | str) -> tuple[Path, str]:
@@ -249,14 +269,18 @@ def _safe_runs_root(workspace_dir: Path | str) -> tuple[Path, str]:
     return runs_root, display
 
 
-def _ensure_inside_runs(target: Path, *, workspace_display: str) -> None:
-    """Refuse to operate on paths outside ``<workspace>/runs/``."""
+def _ensure_inside_runs(target: Path, *, runs_root: Path) -> None:
+    """Refuse to delete anything outside the resolved ``<workspace>/runs/`` root.
 
-    parts = target.parts
-    if "runs" not in parts:
+    Both paths must already be resolved so that any symlink in either
+    side is followed before the relativity check, defeating crafted
+    report paths that point at a different ``runs/`` directory on disk.
+    """
+
+    if not target.is_relative_to(runs_root):
         raise WorldForgeError(
-            f"Refusing to prune outside runs directory (got: {target}). "
-            f"workspace was {workspace_display}."
+            f"Refusing to prune outside runs directory; target {target} "
+            f"is not inside resolved runs root {runs_root}."
         )
 
 
@@ -278,8 +302,15 @@ def _scan_candidates(
 
     family_filter = {family.lower() for family in policy.families}
     candidates: list[PruneCandidate] = []
-    # Identify the indices of the newest `keep_latest` runs (any kind).
-    kept_indices = set(range(min(policy.keep_latest, len(entries))))
+    # Compute keep_latest *inside* the filtered family set so a non-matching
+    # newer run cannot consume a keep slot when --family is used.
+    in_family_indices = [
+        index
+        for index, (_, manifest, _) in enumerate(entries)
+        if not family_filter
+        or (isinstance(manifest, dict) and str(manifest.get("kind") or "").lower() in family_filter)
+    ]
+    kept_indices = set(in_family_indices[: policy.keep_latest])
     safety_cutoff = now - _PRUNE_KEEP_SAFETY_WINDOW
     age_cutoff = now - timedelta(days=policy.max_age_days) if policy.max_age_days > 0 else now
 

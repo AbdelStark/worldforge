@@ -120,8 +120,22 @@ Two recommended workflows:
 
 `runs prune` accepts `--retention-profile <path>` pointing at a
 non-secret config profile that declares a `runs_retention` block
-(`max_age_days`, `keep_latest`, `families`). Flags passed on the
-command line still override the profile values.
+(`max_age_days`, `keep_latest`, `families`). CLI flags passed in any
+argparse form (`--max-age-days 7` *or* `--max-age-days=7`) still
+override the profile values.
+
+`keep_latest` is **scoped to the family filter**: when `--family eval`
+is set, the policy retains the newest `keep_latest` runs that match
+`kind=eval` rather than the newest `keep_latest` runs across all kinds.
+This avoids the surprise where a newer non-matching run silently
+consumes the keep slot reserved for the filtered family. With no
+`--family` flag, `keep_latest` is global.
+
+`runs prune` only deletes paths that resolve under the resolved
+`<workspace>/runs/` root (symlinks pointing outside that tree are
+caught by the path check, not followed for deletion). `shutil.rmtree`
+failures during `--apply` are wrapped as `WorldForgeError` so CLI
+callers see a stable error envelope rather than a traceback.
 
 ## Public Python surface
 

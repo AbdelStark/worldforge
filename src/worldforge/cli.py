@@ -1080,14 +1080,17 @@ def _build_parser() -> argparse.ArgumentParser:
     runs_prune.add_argument(
         "--max-age-days",
         type=int,
-        default=30,
-        help="Delete runs older than this many days. Pass 0 to override the 24h safety window.",
+        default=None,
+        help=(
+            "Delete runs older than this many days (default 30). "
+            "Pass 0 to override the 24h safety window."
+        ),
     )
     runs_prune.add_argument(
         "--keep-latest",
         type=int,
-        default=10,
-        help="Always retain the newest N runs irrespective of age.",
+        default=None,
+        help="Always retain the newest N runs irrespective of age (default 10).",
     )
     runs_prune.add_argument(
         "--family",
@@ -1647,12 +1650,19 @@ def _cmd_runs(args: argparse.Namespace) -> int:
             retention = profile_payload.get("runs_retention")
             if isinstance(retention, dict):
                 policy_from_profile = parse_runs_retention(retention)
-                if "--max-age-days" not in sys.argv:
+                # CLI flags override profile values regardless of argparse form
+                # (`--flag value` or `--flag=value`); the parser leaves explicit
+                # defaults at None when the user did not pass the flag at all.
+                if max_age_days is None:
                     max_age_days = policy_from_profile.max_age_days
-                if "--keep-latest" not in sys.argv:
+                if keep_latest is None:
                     keep_latest = policy_from_profile.keep_latest
                 if not families and policy_from_profile.families:
                     families = policy_from_profile.families
+        if max_age_days is None:
+            max_age_days = 30
+        if keep_latest is None:
+            keep_latest = 10
         policy = RunsRetentionPolicy(
             max_age_days=max_age_days,
             keep_latest=keep_latest,
