@@ -12,6 +12,29 @@ change policy. This policy sets review expectations; it is not a 1.0 compatibili
 | Experimental | `jepa-wms` direct-construction candidate, scaffold provider reservations, optional robotics wrappers, prepared-host live smokes, Rerun visual artifacts | May change faster, but docs must keep capability and runtime ownership honest. Experimental status does not allow secret leakage or silent coercion. |
 | Internal | Private helpers, generated implementation details, test-only fixtures, non-exported parser helpers, TUI internals outside documented harness APIs | Can change without deprecation. Do not import these from downstream code. |
 
+## Stable Surface Snapshot
+
+The authoritative list of currently-Stable Python symbols lives at
+[`tests/fixtures/public_api/exports.json`](https://github.com/AbdelStark/worldforge/blob/main/tests/fixtures/public_api/exports.json).
+It captures the union of `__all__` (or non-underscore `dir()`) for
+`worldforge`, `worldforge.testing`, `worldforge.observability`,
+`worldforge.providers`, and `worldforge.capabilities`. The
+`tests/test_public_api_snapshot.py` test fails loudly when any of these
+modules drift from the snapshot — including silent renames or removals.
+
+Regenerate the snapshot in the same commit as an intentional surface
+change:
+
+```bash
+uv run python scripts/update_public_api_snapshot.py
+# or
+WORLDFORGE_UPDATE_PUBLIC_API_SNAPSHOT=1 uv run pytest tests/test_public_api_snapshot.py
+```
+
+Then update the changelog entry and (if a Stable symbol was added,
+renamed, or removed) revise this page so the Stable tier description
+stays accurate.
+
 ## Deprecation Rules
 
 Deprecation is required when a change affects a stable public import, constructor argument, model
