@@ -46,7 +46,10 @@ from worldforge.models import (
 if TYPE_CHECKING:
     from worldforge.framework import World, WorldForge
 
-SCENARIO_SCHEMA_VERSION = 1
+SCENARIO_SCHEMA_VERSION = 2
+SCENARIO_SUPPORTED_SCHEMA_VERSIONS: tuple[int, ...] = (1, 2)
+SCENARIO_EXTENDS_MIN_SCHEMA_VERSION = 2
+SCENARIO_MAX_EXTENDS_DEPTH = 8
 
 SCENARIO_ACTION_KINDS: tuple[str, ...] = ("move_to", "spawn_object", "predict")
 SCENARIO_MATRIX_MAX_CASES = 64
@@ -403,35 +406,41 @@ class ScenarioMatrixResult:
 
 
 def load_scenario(path: Path | str) -> Scenario:
-    """Load a scenario from a JSON file with strict validation."""
+    """Load a scenario from a JSON file with strict validation.
+
+    Supports the ``extends`` field for single-parent scenario inheritance; the
+    parent path is resolved relative to the child file. See
+    :doc:`scenarios.md <docs/src/scenarios.md>` for merge semantics.
+    """
 
     target = Path(path).expanduser()
-    try:
-        text = target.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise WorldForgeError(f"Failed to read scenario file {target}: {exc}") from exc
-    return _scenario_from_json_text(text, source=str(target))
+    payload = _read_scenario_json(target)
+    resolved = _resolve_extends_chain(payload, base_path=target.resolve(), source=str(target))
+    return _scenario_from_dict(resolved, source=str(target))
 
 
 def load_scenario_matrix(path: Path | str) -> ScenarioMatrix:
-    """Load and expand a scenario file that may declare a parameter matrix."""
+    """Load and expand a scenario file that may declare a parameter matrix.
+
+    Supports the ``extends`` field; inheritance resolution happens before
+    matrix expansion, so a child scenario can override matrix declarations
+    inherited from a parent file.
+    """
 
     target = Path(path).expanduser()
-    try:
-        text = target.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise WorldForgeError(f"Failed to read scenario file {target}: {exc}") from exc
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise WorldForgeError(f"Scenario file {target} contains invalid JSON: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise WorldForgeError(f"Scenario file {target} must be a JSON object.")
-    return parse_scenario_matrix(payload, source=str(target))
+    payload = _read_scenario_json(target)
+    resolved = _resolve_extends_chain(payload, base_path=target.resolve(), source=str(target))
+    return parse_scenario_matrix(resolved, source=str(target))
 
 
 def parse_scenario(payload: JSONDict | str) -> Scenario:
-    """Parse a scenario from a dict or JSON string."""
+    """Parse a scenario from a dict or JSON string.
+
+    Inheritance via ``extends`` is only supported through
+    :func:`load_scenario` because the parent path is resolved relative to the
+    child file on disk. Passing a payload with ``extends`` here raises
+    :class:`WorldForgeError`.
+    """
 
     if isinstance(payload, str):
         return _scenario_from_json_text(payload, source="<string>")
@@ -623,19 +632,146 @@ def _scenario_from_json_text(text: str, *, source: str) -> Scenario:
     return _scenario_from_dict(payload, source=source)
 
 
+def _check_schema_version(value: object, *, source: str) -> int:
+    """Strictly validate a scenario ``schema_version`` value.
+
+    Rejects ``bool`` and ``float`` (including ``1.0``) so the check cannot
+    be silently bypassed by Python's int-equal comparison rules.
+    """
+
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise WorldForgeError(
+            f"Scenario {source} schema_version must be an integer; got {type(value).__name__}."
+        )
+    if value not in SCENARIO_SUPPORTED_SCHEMA_VERSIONS:
+        raise WorldForgeError(
+            f"Scenario {source} schema_version {value} is not supported "
+            f"(expected one of {list(SCENARIO_SUPPORTED_SCHEMA_VERSIONS)})."
+        )
+    return value
+
+
+def _read_scenario_json(target: Path) -> JSONDict:
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise WorldForgeError(f"Failed to read scenario file {target}: {exc}") from exc
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise WorldForgeError(f"Scenario file {target} contains invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise WorldForgeError(f"Scenario file {target} must be a JSON object.")
+    return payload
+
+
+def _resolve_extends_chain(
+    payload: JSONDict,
+    *,
+    base_path: Path,
+    source: str,
+    seen: tuple[Path, ...] = (),
+) -> JSONDict:
+    """Resolve a scenario's ``extends`` chain into a single merged payload.
+
+    Returns a new dict with the ``extends`` field removed. Child top-level
+    keys replace parent values (no deep merge). Raises
+    :class:`WorldForgeError` on missing parents, absolute paths, cycles, or
+    depth overruns.
+    """
+
+    if "extends" not in payload:
+        return dict(payload)
+
+    extends_ref = payload["extends"]
+    if not isinstance(extends_ref, str) or not extends_ref.strip():
+        raise WorldForgeError(f"Scenario {source} 'extends' must be a non-empty string path.")
+
+    raw_schema_version = payload.get("schema_version", SCENARIO_SCHEMA_VERSION)
+    if not (isinstance(raw_schema_version, int) and not isinstance(raw_schema_version, bool)):
+        raise WorldForgeError(
+            f"Scenario {source} schema_version must be an integer; got "
+            f"{type(raw_schema_version).__name__}."
+        )
+    if raw_schema_version < SCENARIO_EXTENDS_MIN_SCHEMA_VERSION:
+        raise WorldForgeError(
+            f"Scenario {source} uses 'extends' but schema_version {raw_schema_version} "
+            f"predates inheritance support (requires {SCENARIO_EXTENDS_MIN_SCHEMA_VERSION})."
+        )
+
+    ref = Path(extends_ref)
+    if ref.is_absolute():
+        raise WorldForgeError(
+            f"Scenario {source} 'extends' path must be relative; got '{extends_ref}'."
+        )
+    if any(part == ".." for part in ref.parts):
+        raise WorldForgeError(
+            f"Scenario {source} 'extends' path may not contain '..' segments; got '{extends_ref}'."
+        )
+
+    parent_path = (base_path.parent / ref).resolve()
+    if parent_path == base_path:
+        chain = " -> ".join(str(p) for p in (base_path, parent_path))
+        raise WorldForgeError(f"Scenario inheritance cycle detected: {chain}.")
+    if parent_path in seen:
+        chain = " -> ".join(str(p) for p in (*seen, base_path, parent_path))
+        raise WorldForgeError(f"Scenario inheritance cycle detected: {chain}.")
+    if len(seen) + 1 > SCENARIO_MAX_EXTENDS_DEPTH:
+        raise WorldForgeError(
+            f"Scenario {source} 'extends' chain exceeds maximum depth {SCENARIO_MAX_EXTENDS_DEPTH}."
+        )
+
+    try:
+        parent_text = parent_path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise WorldForgeError(
+            f"Scenario {source} extends parent '{extends_ref}' which does not exist."
+        ) from exc
+    except OSError as exc:
+        raise WorldForgeError(
+            f"Scenario {source} extends parent '{extends_ref}' which could not be read: {exc}."
+        ) from exc
+
+    try:
+        parent_payload = json.loads(parent_text)
+    except json.JSONDecodeError as exc:
+        raise WorldForgeError(
+            f"Scenario {source} extends parent '{extends_ref}' which contains invalid JSON: {exc}"
+        ) from exc
+    if not isinstance(parent_payload, dict):
+        raise WorldForgeError(
+            f"Scenario {source} extends parent '{extends_ref}' which must be a JSON object."
+        )
+
+    resolved_parent = _resolve_extends_chain(
+        parent_payload,
+        base_path=parent_path,
+        source=str(parent_path),
+        seen=(*seen, base_path),
+    )
+    merged = dict(resolved_parent)
+    for key, value in payload.items():
+        if key == "extends":
+            continue
+        merged[key] = value
+    return merged
+
+
 def _matrix_from_payload(
     payload: JSONDict,
     *,
     matrix_payload: JSONDict,
     source: str,
 ) -> ScenarioMatrix:
-    base_payload = {key: value for key, value in payload.items() if key != "matrix"}
-    schema_version = base_payload.get("schema_version", SCENARIO_SCHEMA_VERSION)
-    if schema_version != SCENARIO_SCHEMA_VERSION:
+    if "extends" in payload:
         raise WorldForgeError(
-            f"Scenario {source} schema_version {schema_version} is not supported "
-            f"(expected {SCENARIO_SCHEMA_VERSION})."
+            f"Scenario {source} contains unresolved 'extends'; load it via "
+            "load_scenario_matrix(<path>) so the parent path can be resolved from disk."
         )
+    base_payload = {key: value for key, value in payload.items() if key != "matrix"}
+    _check_schema_version(
+        base_payload.get("schema_version", SCENARIO_SCHEMA_VERSION), source=source
+    )
     base_scenario_id = _require_text(base_payload.get("id"), name="scenario id", source=source)
     if base_scenario_id in {".", ".."} or "/" in base_scenario_id or "\\" in base_scenario_id:
         raise WorldForgeError(
@@ -824,12 +960,12 @@ def _format_matrix_path(path: tuple[str, ...]) -> str:
 
 
 def _scenario_from_dict(payload: JSONDict, *, source: str) -> Scenario:
-    schema_version = payload.get("schema_version", SCENARIO_SCHEMA_VERSION)
-    if schema_version != SCENARIO_SCHEMA_VERSION:
+    if "extends" in payload:
         raise WorldForgeError(
-            f"Scenario {source} schema_version {schema_version} is not supported "
-            f"(expected {SCENARIO_SCHEMA_VERSION})."
+            f"Scenario {source} contains unresolved 'extends'; load it via "
+            "load_scenario(<path>) so the parent path can be resolved from disk."
         )
+    _check_schema_version(payload.get("schema_version", SCENARIO_SCHEMA_VERSION), source=source)
     scenario_id = _require_text(payload.get("id"), name="scenario id", source=source)
     if scenario_id in {".", ".."} or "/" in scenario_id or "\\" in scenario_id:
         raise WorldForgeError(
@@ -1023,14 +1159,25 @@ def _optional_bbox_from_payload(payload: Mapping, key: str) -> BBox | None:
 
 __all__ = [
     "SCENARIO_ACTION_KINDS",
+    "SCENARIO_EXTENDS_MIN_SCHEMA_VERSION",
+    "SCENARIO_MATRIX_MAX_CASES",
+    "SCENARIO_MAX_EXTENDS_DEPTH",
     "SCENARIO_SCHEMA_VERSION",
+    "SCENARIO_SUPPORTED_SCHEMA_VERSIONS",
     "Scenario",
     "ScenarioAction",
     "ScenarioExpectationCheck",
     "ScenarioExpectedArtifact",
+    "ScenarioMatrix",
+    "ScenarioMatrixCase",
+    "ScenarioMatrixCaseResult",
+    "ScenarioMatrixResult",
     "ScenarioObjectSpec",
     "ScenarioResult",
     "load_scenario",
+    "load_scenario_matrix",
     "parse_scenario",
+    "parse_scenario_matrix",
     "run_scenario",
+    "run_scenario_matrix",
 ]
