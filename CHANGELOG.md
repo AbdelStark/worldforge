@@ -24,6 +24,25 @@ releases may still include breaking changes when the public API needs to tighten
   through new fixtures under `examples/scenarios/inheritance/` plus tests in
   `tests/test_scenario_inheritance.py`. Schema version 1 scenarios continue to validate without
   changes.
+- Added a typed retention policy and `worldforge runs prune` subcommand. The
+  new `worldforge.runs_prune` module ships `RunsRetentionPolicy`,
+  `PruneCandidate`, `PruneReport`, `plan_prune`, `apply_prune`, and
+  `parse_runs_retention`. Default behavior is dry-run; `--apply` actually
+  removes selected directories. `--max-age-days`, `--keep-latest`, and
+  repeatable `--family <kind>` control the policy; a 24-hour safety window
+  blocks deletion of fresh runs unless `--max-age-days=0` is passed. The
+  delete path checks `target.is_relative_to(<workspace>/runs)` on the
+  fully-resolved paths so symlinked or crafted run paths cannot escape the
+  workspace. `keep_latest` is scoped to the family filter so a non-matching
+  newer run cannot consume a keep slot when `--family` is set. CLI flags
+  passed in either argparse form (`--max-age-days 7` or `--max-age-days=7`)
+  override the profile. Config profiles can carry a `runs_retention` block
+  consumed via `--retention-profile <path>` with explicit CLI flags still
+  overriding. Invalid retention profile shapes raise typed `WorldForgeError`
+  rather than leaking `ValueError`/`AttributeError`, and `shutil.rmtree`
+  failures during `--apply` are wrapped as `WorldForgeError` for a stable
+  CLI envelope. Documentation lives in `docs/src/run-index.md` under the
+  retention section.
 - Added an adoption case-study gallery, reusable case-study template, Adoption Story issue
   template, and smoke tests for future submitted adoption stories.
 - Added a runnable capability protocol mini-demo with docs and tests for in-process predictor,
