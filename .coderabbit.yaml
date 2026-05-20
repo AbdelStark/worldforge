@@ -1,0 +1,127 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  changed_files_summary: true
+  review_status: true
+  review_details: true
+  commit_status: true
+  fail_commit_status: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    ignore_title_keywords:
+      - "wip"
+      - "draft"
+  path_filters:
+    - "!dist/**"
+    - "!build/**"
+    - "!site/**"
+    - "!htmlcov/**"
+    - "!docs/site/**"
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.jpeg"
+    - "!**/*.gif"
+    - "!**/*.svg"
+    - "!**/*.rrd"
+  path_instructions:
+    - path: "src/worldforge/providers/**"
+      instructions: |
+        Review provider code as an adversarial trust boundary.
+        - Verify capability declarations match implemented behavior end to end.
+        - Flag SSRF, private-network egress, unbounded downloads, unsafe redirects, and missing timeout/retry policy.
+        - Check that provider events, metadata, exceptions, and logs do not expose tokens, signed URLs, credentials, or secret-like values.
+        - Prefer typed parser failures and public ProviderError surfaces over raw third-party exceptions.
+        - Require fixture-backed tests for malformed upstream responses, boundary values, and public error messages.
+    - path: "src/worldforge/smoke/**"
+      instructions: |
+        Optional runtime and checkpoint code must be reviewed as local operator code that may touch untrusted model repositories.
+        - Flag unsafe deserialization, dynamic imports, Hydra/object instantiation from untrusted configs, and unpinned remote revisions.
+        - Ensure safety messaging covers every code-execution surface before weights are loaded.
+        - Keep torch, robotics, CUDA, and checkpoint dependencies host-owned and outside base install requirements.
+    - path: "src/worldforge/models.py"
+      instructions: |
+        Treat model changes as public API and persistence contract changes.
+        - Enforce JSON-native values only: string keys, finite numbers, lists, dicts, booleans, strings, and nulls.
+        - Reject object instances, tuples, non-finite numbers, and ambiguous coercions before persistence or outbound I/O.
+        - Preserve explicit WorldForgeError, WorldStateError, and ProviderError boundaries.
+    - path: "src/worldforge/framework.py"
+      instructions: |
+        Review planning, persistence, and execution changes for cross-provider contract drift.
+        - Verify policy, score, predict, generate, reason, embed, transfer, and plan surfaces stay separate.
+        - Ensure planning results remain internally coherent: candidate counts, scores, selected actions, metadata, and event history must agree.
+        - Require regression tests for bug fixes and documented failure modes.
+    - path: "src/worldforge/harness/**"
+      instructions: |
+        TheWorldHarness must stay an optional Textual surface.
+        - Do not allow Textual imports from worldforge.__init__, worldforge.cli, or non-TUI harness modules.
+        - Keep flow metadata/runners testable without Textual.
+        - Check that displayed transcripts and provider metadata stay sanitized.
+    - path: "tests/**"
+      instructions: |
+        Check that tests cover behavior, not implementation details.
+        - Add negative cases for malformed provider payloads, unsafe URLs, oversized artifacts, secret redaction, and invalid JSON-native values.
+        - Contract helpers should raise explicit AssertionError messages, not bare assert statements.
+        - Keep optional-runtime tests injectable or skipped without requiring real checkpoints, GPUs, robot stacks, or credentials.
+    - path: "docs/**"
+      instructions: |
+        Documentation must be operator-grade.
+        - Every new provider, runtime, persistence path, or release workflow should include the command to run, expected success signal, and first triage step.
+        - Do not claim real provider/runtime support unless implemented and tested end to end.
+        - Keep mkdocs.yml navigation synchronized with docs/src/SUMMARY.md when public pages change.
+    - path: ".github/workflows/**"
+      instructions: |
+        Review CI and release changes as supply-chain sensitive.
+        - Check pinned action versions, minimal permissions, concurrency behavior, and secret exposure.
+        - Ensure Python 3.13, uv lock validation, ruff, pytest coverage, docs build, package contract, and security gates remain represented.
+        - Prefer additive validation over weakening existing gates.
+  tools:
+    actionlint:
+      enabled: true
+    github-checks:
+      enabled: true
+      timeout_ms: 900000
+    gitleaks:
+      enabled: true
+    markdownlint:
+      enabled: true
+    ruff:
+      enabled: true
+    semgrep:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "best_practices.md"
+      - "pr_compliance_checklist.yaml"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+  issues:
+    scope: "local"
+  pull_requests:
+    scope: "local"
+  web_search:
+    enabled: true
+
+chat:
+  auto_reply: true
+  art: false
+  allow_non_org_members: true
