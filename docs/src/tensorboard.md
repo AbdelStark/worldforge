@@ -84,6 +84,14 @@ The summary JSON gains a ``"tensorboard"`` block listing ``log_dir``,
 ``run_name``, ``flush_secs``, and an ``events_written`` flag that mirrors what
 the wrapper would show under the ``Artifacts`` section of the visual report.
 
+The Textual showcase report (`worldforge.harness.tui.RoboticsShowcaseApp`)
+surfaces the run with a ``RoboticsTensorBoardPane`` and a ``t`` keybinding that
+launches ``uvx --from "tensorboard>=2.16,<3" tensorboard --logdir <path>`` in a
+detached subprocess. The shortcut is also visible in the footer alongside
+``o`` for Rerun. If the summary lacks a ``"tensorboard"`` block (for example
+when ``--no-tensorboard`` is passed), the pane is omitted and the keybinding
+emits a warning notification instead of launching anything.
+
 ## Programmatic surface
 
 Hosts that already drive WorldForge directly can use the bridge without going

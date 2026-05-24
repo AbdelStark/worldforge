@@ -3494,6 +3494,32 @@ def _robotics_rerun_viewer_command_text(path: Path) -> str:
     return " ".join(shlex.quote(part) for part in _robotics_rerun_viewer_command(path))
 
 
+def _robotics_tensorboard_log_dir(payload: dict[str, object]) -> Path | None:
+    tensorboard = payload.get("tensorboard")
+    if not isinstance(tensorboard, dict):
+        return None
+    log_dir = tensorboard.get("log_dir")
+    if not isinstance(log_dir, str) or not log_dir.strip():
+        return None
+    path = Path(log_dir).expanduser()
+    return path if path.is_absolute() else path.resolve()
+
+
+def _robotics_tensorboard_viewer_command(path: Path) -> list[str]:
+    return [
+        "uvx",
+        "--from",
+        "tensorboard>=2.16,<3",
+        "tensorboard",
+        "--logdir",
+        str(path),
+    ]
+
+
+def _robotics_tensorboard_viewer_command_text(path: Path) -> str:
+    return " ".join(shlex.quote(part) for part in _robotics_tensorboard_viewer_command(path))
+
+
 def _robotics_color(token: str) -> str:
     return {
         "accent": "cyan",
@@ -3698,6 +3724,47 @@ class RoboticsRerunPane(Static, _ThemedRenderer):
         table.add_row(Text("open", style="dim"), Text(command, style=_robotics_color("accent")))
         table.add_row(Text("shortcut", style="dim"), Text("press o", style="bold"))
         self.update(Panel(table, title="Rerun Recording", border_style=_robotics_color("success")))
+
+
+class RoboticsTensorBoardPane(Static, _ThemedRenderer):
+    """TensorBoard log directory and viewer command."""
+
+    def __init__(self, summary: dict[str, object]) -> None:
+        super().__init__()
+        self.summary = summary
+
+    def on_mount(self) -> None:
+        path = _robotics_tensorboard_log_dir(self.summary)
+        if path is None:
+            self.update(
+                Panel(
+                    Text(
+                        "TensorBoard recording was not enabled for this run.",
+                        style="dim",
+                    ),
+                    title="TensorBoard Logs",
+                    border_style=_robotics_color("panel"),
+                )
+            )
+            return
+        tensorboard = self.summary.get("tensorboard")
+        events_written = None
+        run_name = None
+        if isinstance(tensorboard, dict):
+            events_written = tensorboard.get("events_written")
+            run_name = tensorboard.get("run_name")
+        status = "events written" if events_written else "configured"
+        command = _robotics_tensorboard_viewer_command_text(path)
+        table = Table.grid(expand=True)
+        table.add_column(no_wrap=True)
+        table.add_column(ratio=1)
+        table.add_row(Text("path", style="dim"), Text(str(path), style="bold"))
+        if isinstance(run_name, str) and run_name.strip():
+            table.add_row(Text("run", style="dim"), Text(run_name, style="bold"))
+        table.add_row(Text("status", style="dim"), Text(status, style="bold"))
+        table.add_row(Text("open", style="dim"), Text(command, style=_robotics_color("accent")))
+        table.add_row(Text("shortcut", style="dim"), Text("press t", style="bold"))
+        self.update(Panel(table, title="TensorBoard Logs", border_style=_robotics_color("success")))
 
 
 class RoboticsMetricsPane(Static, _ThemedRenderer):
@@ -4083,6 +4150,7 @@ class RoboticsShowcaseApp(App[None]):
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("?", "show_tabletop_help", "Help", show=True),
         Binding("o", "open_rerun", "Open Rerun", show=True),
+        Binding("t", "open_tensorboard", "Open TensorBoard", show=True),
         Binding("q", "quit", "Quit", show=True),
         Binding("ctrl+t", "toggle_theme", "Theme", show=True),
     ]
@@ -4128,6 +4196,11 @@ class RoboticsShowcaseApp(App[None]):
         margin-bottom: 1;
     }
 
+    RoboticsTensorBoardPane {
+        height: 10;
+        margin-bottom: 1;
+    }
+
     RoboticsMetricsPane {
         height: 12;
         margin-bottom: 1;
@@ -4168,6 +4241,7 @@ class RoboticsShowcaseApp(App[None]):
         self.stage_delay = max(0.0, stage_delay)
         self.animate_arm = animate_arm
         self.rerun_recording_path = _robotics_rerun_recording_path(summary)
+        self.tensorboard_log_dir = _robotics_tensorboard_log_dir(summary)
         self.register_theme(_build_theme(THEME_NAME_DARK, WORLDFORGE_DARK_PALETTE, dark=True))
         self.register_theme(_build_theme(THEME_NAME_LIGHT, WORLDFORGE_LIGHT_PALETTE, dark=False))
         self.register_theme(
@@ -4188,6 +4262,8 @@ class RoboticsShowcaseApp(App[None]):
                 yield RoboticsReportGuidePane()
                 if self.rerun_recording_path is not None:
                     yield RoboticsRerunPane(self.summary)
+                if self.tensorboard_log_dir is not None:
+                    yield RoboticsTensorBoardPane(self.summary)
                 yield RoboticsMetricsPane(self.summary)
                 yield RoboticsArmPane(self.summary, animate=self.animate_arm)
                 yield RoboticsCandidatePane(self.summary)
@@ -4220,6 +4296,13 @@ class RoboticsShowcaseApp(App[None]):
                 (
                     "Attaching Rerun artifact location and viewer command.",
                     RoboticsRerunPane(self.summary),
+                )
+            )
+        if self.tensorboard_log_dir is not None:
+            stages.append(
+                (
+                    "Attaching TensorBoard log directory and viewer command.",
+                    RoboticsTensorBoardPane(self.summary),
                 )
             )
         stages.extend(
@@ -4292,6 +4375,39 @@ class RoboticsShowcaseApp(App[None]):
             _robotics_rerun_viewer_command_text(path),
             severity="information",
             title="Opening Rerun",
+        )
+
+    def action_open_tensorboard(self) -> None:
+        path = self.tensorboard_log_dir
+        if path is None:
+            self.notify(
+                "This run does not include a TensorBoard log directory.",
+                severity="warning",
+                title="TensorBoard",
+            )
+            return
+        if not path.is_dir():
+            self.notify(
+                f"TensorBoard log directory not found: {path}",
+                severity="error",
+                title="TensorBoard",
+            )
+            return
+        command = _robotics_tensorboard_viewer_command(path)
+        try:
+            subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            self.notify(str(exc), severity="error", title="TensorBoard")
+            return
+        self.notify(
+            _robotics_tensorboard_viewer_command_text(path),
+            severity="information",
+            title="Opening TensorBoard",
         )
 
 

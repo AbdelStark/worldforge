@@ -9,6 +9,14 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a `t` keybinding to `RoboticsShowcaseApp` that launches the run's
+  TensorBoard log directory via
+  `uvx --from "tensorboard>=2.16,<3" tensorboard --logdir <path>` in a
+  detached subprocess, mirroring the existing `o` shortcut for Rerun. A new
+  `RoboticsTensorBoardPane` surfaces the resolved log directory, run name,
+  `events_written` status, the viewer command, and the shortcut hint. The
+  pane and binding gracefully degrade when the run summary has no
+  `"tensorboard"` block. Issue #304.
 - Added an optional TensorBoard bridge for inspecting the LeWorldModel
   checkpoint used during local inference in the robotics showcase. The new
   `worldforge.tensorboard` module exposes `TensorBoardLogConfig`,

@@ -75,7 +75,7 @@ Open the Rerun artifact from the TUI with `o`, or from the shell with:
 uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 ```
 
-Open the TensorBoard logs with:
+Open the TensorBoard logs from the TUI with `t`, or from the shell with:
 
 ```bash
 uvx --from "tensorboard>=2.16,<3" tensorboard --logdir .worldforge/tensorboard
