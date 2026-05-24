@@ -86,11 +86,18 @@ the wrapper would show under the ``Artifacts`` section of the visual report.
 
 The Textual showcase report (`worldforge.harness.tui.RoboticsShowcaseApp`)
 surfaces the run with a ``RoboticsTensorBoardPane`` and a ``t`` keybinding that
-launches ``uvx --from "tensorboard>=2.16,<3" tensorboard --logdir <path>`` in a
-detached subprocess. The shortcut is also visible in the footer alongside
-``o`` for Rerun. If the summary lacks a ``"tensorboard"`` block (for example
-when ``--no-tensorboard`` is passed), the pane is omitted and the keybinding
-emits a warning notification instead of launching anything.
+launches ``uvx --from "tensorboard>=2.16,<3" tensorboard --logdir <path> --port 6006``
+in a detached subprocess. The shortcut is also visible in the footer alongside
+``o`` for Rerun. Because TensorBoard is a web server (not a GUI app like
+Rerun), the binding additionally schedules a ~2.5 s delayed browser-open to
+``http://localhost:6006/`` via Python's ``webbrowser`` module so the run is
+visible without manual steps. The URL is also surfaced in the pane and in the
+notification so headless / remote users can copy-paste it (or set up an SSH
+tunnel). If ``webbrowser`` cannot find a default browser, the binding emits a
+warning telling the user to visit the URL manually. If the summary lacks a
+``"tensorboard"`` block (for example when ``--no-tensorboard`` is passed),
+the pane is omitted, no subprocess is started, no browser is opened, and the
+keybinding emits a warning notification instead.
 
 ## Programmatic surface
 

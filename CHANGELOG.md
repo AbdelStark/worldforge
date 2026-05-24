@@ -7,6 +7,17 @@ releases may still include breaking changes when the public API needs to tighten
 
 ## Unreleased
 
+### Fixed
+
+- The `t` shortcut in `RoboticsShowcaseApp` now actually shows TensorBoard.
+  The launched command pins `--port 6006`, and the action additionally
+  schedules a `webbrowser.open("http://localhost:6006/")` via a Textual timer
+  (~2.5 s after launch) so the run becomes visible without manual browser
+  navigation - parity with the desktop Rerun viewer. The URL is also
+  surfaced in `RoboticsTensorBoardPane` and in the action notification so
+  headless / remote users can copy-paste it; a fallback warning is emitted
+  when `webbrowser.open` returns false. Issue #306.
+
 ### Added
 
 - Added a `t` keybinding to `RoboticsShowcaseApp` that launches the run's
