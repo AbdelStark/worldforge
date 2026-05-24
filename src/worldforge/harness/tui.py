@@ -8,6 +8,7 @@ import shlex
 import statistics
 import subprocess
 import time
+import webbrowser
 from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
@@ -3505,6 +3506,10 @@ def _robotics_tensorboard_log_dir(payload: dict[str, object]) -> Path | None:
     return path if path.is_absolute() else path.resolve()
 
 
+ROBOTICS_TENSORBOARD_DEFAULT_PORT = 6006
+ROBOTICS_TENSORBOARD_BROWSER_DELAY_S = 2.5
+
+
 def _robotics_tensorboard_viewer_command(path: Path) -> list[str]:
     return [
         "uvx",
@@ -3513,11 +3518,17 @@ def _robotics_tensorboard_viewer_command(path: Path) -> list[str]:
         "tensorboard",
         "--logdir",
         str(path),
+        "--port",
+        str(ROBOTICS_TENSORBOARD_DEFAULT_PORT),
     ]
 
 
 def _robotics_tensorboard_viewer_command_text(path: Path) -> str:
     return " ".join(shlex.quote(part) for part in _robotics_tensorboard_viewer_command(path))
+
+
+def _robotics_tensorboard_url() -> str:
+    return f"http://localhost:{ROBOTICS_TENSORBOARD_DEFAULT_PORT}/"
 
 
 def _robotics_color(token: str) -> str:
@@ -3755,6 +3766,7 @@ class RoboticsTensorBoardPane(Static, _ThemedRenderer):
             run_name = tensorboard.get("run_name")
         status = "events written" if events_written else "configured"
         command = _robotics_tensorboard_viewer_command_text(path)
+        url = _robotics_tensorboard_url()
         table = Table.grid(expand=True)
         table.add_column(no_wrap=True)
         table.add_column(ratio=1)
@@ -3762,6 +3774,7 @@ class RoboticsTensorBoardPane(Static, _ThemedRenderer):
         if isinstance(run_name, str) and run_name.strip():
             table.add_row(Text("run", style="dim"), Text(run_name, style="bold"))
         table.add_row(Text("status", style="dim"), Text(status, style="bold"))
+        table.add_row(Text("url", style="dim"), Text(url, style=_robotics_color("accent")))
         table.add_row(Text("open", style="dim"), Text(command, style=_robotics_color("accent")))
         table.add_row(Text("shortcut", style="dim"), Text("press t", style="bold"))
         self.update(Panel(table, title="TensorBoard Logs", border_style=_robotics_color("success")))
@@ -4197,7 +4210,7 @@ class RoboticsShowcaseApp(App[None]):
     }
 
     RoboticsTensorBoardPane {
-        height: 10;
+        height: 11;
         margin-bottom: 1;
     }
 
@@ -4404,11 +4417,29 @@ class RoboticsShowcaseApp(App[None]):
         except OSError as exc:
             self.notify(str(exc), severity="error", title="TensorBoard")
             return
+        url = _robotics_tensorboard_url()
+        self.set_timer(
+            ROBOTICS_TENSORBOARD_BROWSER_DELAY_S,
+            lambda: self._open_tensorboard_browser(url),
+        )
         self.notify(
-            _robotics_tensorboard_viewer_command_text(path),
+            f"{_robotics_tensorboard_viewer_command_text(path)}\n{url}",
             severity="information",
             title="Opening TensorBoard",
         )
+
+    def _open_tensorboard_browser(self, url: str) -> None:
+        try:
+            opened = webbrowser.open(url)
+        except webbrowser.Error as exc:
+            self.notify(str(exc), severity="warning", title="TensorBoard")
+            return
+        if not opened:
+            self.notify(
+                f"Could not auto-open a browser. Visit {url} manually.",
+                severity="warning",
+                title="TensorBoard",
+            )
 
 
 # ---------------------------------------------------------------------------
