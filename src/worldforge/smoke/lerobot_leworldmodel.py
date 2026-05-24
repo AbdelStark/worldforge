@@ -12,6 +12,7 @@ action tensor bridge must all describe the same robotics task.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import importlib.util
 import json
@@ -513,6 +514,73 @@ def _rerun_payload(args: argparse.Namespace, session: object | None) -> dict[str
     }
 
 
+def _create_tensorboard_inspector(args: argparse.Namespace) -> object | None:
+    if getattr(args, "tensorboard_logdir", None) is None:
+        return None
+    from worldforge.tensorboard import (
+        TensorBoardCheckpointInspector,
+        TensorBoardLogConfig,
+        TensorBoardSession,
+        default_run_name,
+    )
+
+    run_name = args.tensorboard_run_name or default_run_name("robotics-showcase")
+    config = TensorBoardLogConfig(
+        log_dir=args.tensorboard_logdir,
+        run_name=run_name,
+        flush_secs=args.tensorboard_flush_secs,
+    )
+    session = TensorBoardSession(config=config)
+    return TensorBoardCheckpointInspector(session=session)
+
+
+def _tensorboard_payload(
+    args: argparse.Namespace,
+    inspector: object | None,
+) -> dict[str, Any] | None:
+    if getattr(args, "tensorboard_logdir", None) is None or inspector is None:
+        return None
+    log_dir = getattr(inspector, "log_dir", None)
+    return {
+        "log_dir": str(log_dir) if log_dir is not None else str(args.tensorboard_logdir),
+        "run_name": args.tensorboard_run_name,
+        "flush_secs": args.tensorboard_flush_secs,
+        "events_written": None,
+    }
+
+
+def _finish_tensorboard_recording(
+    payload: dict[str, Any],
+    inspector: object | None,
+) -> None:
+    if inspector is None:
+        return
+    log_dir = getattr(inspector, "log_dir", None)
+    try:
+        inspector.flush()  # type: ignore[attr-defined]
+        inspector.close()  # type: ignore[attr-defined]
+    except Exception:
+        return
+    tb_payload = payload.get("tensorboard")
+    if not isinstance(tb_payload, dict):
+        return
+    if log_dir is None:
+        return
+    log_path = Path(str(log_dir))
+    events_written = False
+    if log_path.exists():
+        for entry in log_path.rglob("events.out.tfevents.*"):
+            if entry.is_file() and entry.stat().st_size > 0:
+                events_written = True
+                break
+    tb_payload.update(
+        {
+            "log_dir": str(log_path),
+            "events_written": events_written,
+        }
+    )
+
+
 def _finish_rerun_recording(
     payload: dict[str, Any],
     args: argparse.Namespace,
@@ -992,6 +1060,30 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Serve the Rerun policy+score recording over an in-process gRPC endpoint.",
     )
+    parser.add_argument(
+        "--tensorboard-logdir",
+        type=Path,
+        default=None,
+        help=(
+            "Write per-run TensorBoard ``tfevents`` logs to this directory so the "
+            "LeWorldModel checkpoint's provenance, score distribution, latencies, and "
+            "provider events can be inspected with `tensorboard --logdir <path>`."
+        ),
+    )
+    parser.add_argument(
+        "--tensorboard-run-name",
+        default=None,
+        help=(
+            "Optional subdirectory name under --tensorboard-logdir for this run. Defaults "
+            "to a timestamped name when --tensorboard-logdir is provided without a run name."
+        ),
+    )
+    parser.add_argument(
+        "--tensorboard-flush-secs",
+        type=int,
+        default=30,
+        help="Flush interval (seconds) for the TensorBoard SummaryWriter. Defaults to 30.",
+    )
     parser.add_argument("--json-only", action="store_true")
     parser.add_argument(
         "--color",
@@ -1089,6 +1181,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     rerun_logging = _create_rerun_loggers(args)
     if rerun_logging is not None:
         rerun_session, rerun_events, rerun_artifacts = rerun_logging
+    tensorboard_inspector = _create_tensorboard_inspector(args)
 
     object_path, lewm_cache_dir = _resolve_checkpoint(
         policy=args.lewm_policy,
@@ -1136,6 +1229,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         provider_events.append(event)
         if rerun_events is not None:
             rerun_events(event)  # type: ignore[operator]
+        if tensorboard_inspector is not None:
+            with contextlib.suppress(Exception):
+                tensorboard_inspector.log_provider_event(event)  # type: ignore[attr-defined]
 
     translator = _load_callable(args.translator, name="translator")
     candidate_builder = (
@@ -1227,6 +1323,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             rerun_artifacts.log_json("robotics_showcase/preflight", payload)  # type: ignore[attr-defined]
         if rerun_session is not None:
             _finish_rerun_recording(payload, args, rerun_session)
+        tensorboard_payload = _tensorboard_payload(args, tensorboard_inspector)
+        if tensorboard_payload is not None:
+            payload["tensorboard"] = tensorboard_payload
+        if tensorboard_inspector is not None:
+            with contextlib.suppress(Exception):
+                tensorboard_inspector.log_json(  # type: ignore[attr-defined]
+                    "robotics_showcase/preflight", payload
+                )
+            _finish_tensorboard_recording(payload, tensorboard_inspector)
         if args.json_output is not None:
             _write_json_output(args.json_output, payload)
         if args.run_manifest is not None:
@@ -1473,6 +1578,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         rerun_artifacts.log_robotics_showcase_summary(payload)  # type: ignore[attr-defined]
     if rerun_session is not None:
         _finish_rerun_recording(payload, args, rerun_session)
+    tensorboard_payload = _tensorboard_payload(args, tensorboard_inspector)
+    if tensorboard_payload is not None:
+        payload["tensorboard"] = tensorboard_payload
+    if tensorboard_inspector is not None:
+        with contextlib.suppress(Exception):
+            tensorboard_inspector.log_checkpoint_summary(  # type: ignore[attr-defined]
+                {
+                    "checkpoint": str(object_path),
+                    "output": str(object_path),
+                    "policy": args.lewm_policy,
+                    "created": checkpoint_exists,
+                }
+            )
+            tensorboard_inspector.log_robotics_showcase_summary(payload)  # type: ignore[attr-defined]
+        _finish_tensorboard_recording(payload, tensorboard_inspector)
     json_output_path = _write_json_output(args.json_output, payload) if args.json_output else None
     run_manifest_path = None
     if args.run_manifest is not None:
@@ -1562,10 +1682,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"  mock final block       {execution_summary['final_block_position']}")
     _print_provider_events(event_payload)
     rerun_artifact = payload.get("rerun")
+    tensorboard_artifact = payload.get("tensorboard")
     if (
         json_output_path is not None
         or run_manifest_path is not None
         or isinstance(rerun_artifact, dict)
+        or isinstance(tensorboard_artifact, dict)
     ):
         print("\nArtifacts")
         print("---------")
@@ -1585,6 +1707,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"  rerun stream           {server_uri}")
             else:
                 print("  rerun recording        viewer")
+        if isinstance(tensorboard_artifact, dict):
+            log_dir = tensorboard_artifact.get("log_dir")
+            if log_dir:
+                suffix = " (events written)" if tensorboard_artifact.get("events_written") else ""
+                print(f"  tensorboard logdir     {_display_path(Path(str(log_dir)))}{suffix}")
     print("\nCompleted real LeRobot + LeWorldModel policy+score inference.")
     print("Use --json-only for the machine-readable summary.")
     return 0

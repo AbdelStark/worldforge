@@ -13,6 +13,7 @@
   - [Robotics Showcase Deep Dive](./robotics-showcase-deep-dive.md)
   - [TheWorldHarness](./theworldharness.md)
   - [Rerun Integration](./rerun.md)
+  - [TensorBoard Integration](./tensorboard.md)
 - System Model
   - [World Model Taxonomy](./world-model-taxonomy.md)
   - [Architecture](./architecture.md)

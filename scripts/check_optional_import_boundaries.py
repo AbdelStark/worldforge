@@ -73,6 +73,7 @@ DEFAULT_BOUNDARIES = (
             "src/worldforge/providers/jepa_wms.py",
             "src/worldforge/providers/lerobot.py",
             "src/worldforge/smoke/jepa_wms.py",
+            "src/worldforge/tensorboard.py",
         ),
         triage_step="Keep torch imports in prepared-host providers or optional smoke modules.",
     ),

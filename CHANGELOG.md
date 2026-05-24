@@ -9,6 +9,20 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added an optional TensorBoard bridge for inspecting the LeWorldModel
+  checkpoint used during local inference in the robotics showcase. The new
+  `worldforge.tensorboard` module exposes `TensorBoardLogConfig`,
+  `TensorBoardSession`, `TensorBoardCheckpointInspector`, and a
+  `create_tensorboard_inspector` helper. It writes sanitized provenance text,
+  per-candidate cost scalars and a histogram, latency metrics, and a
+  per-provider-event text feed to a local `tfevents` directory.
+  `scripts/robotics-showcase` enables the writer by default (unless
+  `--no-tensorboard`, `--health-only`, or `--json-only` is passed) and gains
+  `--tensorboard`, `--tensorboard-logdir`, `--tensorboard-run-name`,
+  `--tensorboard-flush-secs`, and `--no-tensorboard` flags. Install with
+  `uv add "worldforge-ai[tensorboard]"`. Base WorldForge still depends only on
+  `httpx`. See `docs/src/tensorboard.md` for the tag layout and programmatic
+  API. Issue #302.
 - Added a public-API snapshot test. `tests/fixtures/public_api/exports.json`
   records the current export set for `worldforge`, `worldforge.testing`,
   `worldforge.observability`, `worldforge.providers`, and
