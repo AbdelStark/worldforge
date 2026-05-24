@@ -640,3 +640,117 @@ def test_robotics_showcase_tui_mode_captures_json_and_launches_report(
     assert captured["summary_path"] == json_path
     assert captured["stage_delay"] == 0.2
     assert captured["animate_arm"] is True
+
+
+def test_robotics_showcase_forwards_tensorboard_when_requested(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_low_level_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(robotics_showcase.lerobot_leworldmodel, "main", fake_low_level_main)
+
+    assert (
+        robotics_showcase.main(
+            [
+                "--checkpoint",
+                "/tmp/pusht/lewm_object.ckpt",
+                "--tensorboard",
+                "--no-json-output",
+            ]
+        )
+        == 0
+    )
+
+    forwarded = captured["argv"]
+    assert forwarded[forwarded.index("--tensorboard-logdir") + 1] == str(
+        robotics_showcase.DEFAULT_TENSORBOARD_OUTPUT
+    )
+    assert forwarded[forwarded.index("--tensorboard-flush-secs") + 1] == "30"
+    assert "--tensorboard-run-name" not in forwarded
+
+
+def test_robotics_showcase_forwards_tensorboard_with_explicit_logdir_and_run_name(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_low_level_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(robotics_showcase.lerobot_leworldmodel, "main", fake_low_level_main)
+
+    log_dir = tmp_path / "tb"
+    assert (
+        robotics_showcase.main(
+            [
+                "--checkpoint",
+                "/tmp/pusht/lewm_object.ckpt",
+                "--tensorboard-logdir",
+                str(log_dir),
+                "--tensorboard-run-name",
+                "run-42",
+                "--tensorboard-flush-secs",
+                "5",
+                "--no-json-output",
+            ]
+        )
+        == 0
+    )
+
+    forwarded = captured["argv"]
+    assert forwarded[forwarded.index("--tensorboard-logdir") + 1] == str(log_dir)
+    assert forwarded[forwarded.index("--tensorboard-run-name") + 1] == "run-42"
+    assert forwarded[forwarded.index("--tensorboard-flush-secs") + 1] == "5"
+
+
+def test_robotics_showcase_no_tensorboard_disables_default(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_low_level_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(robotics_showcase.lerobot_leworldmodel, "main", fake_low_level_main)
+
+    assert (
+        robotics_showcase.main(
+            [
+                "--checkpoint",
+                "/tmp/pusht/lewm_object.ckpt",
+                "--tensorboard",
+                "--no-tensorboard",
+                "--no-json-output",
+            ]
+        )
+        == 0
+    )
+
+    assert "--tensorboard-logdir" not in captured["argv"]
+
+
+def test_robotics_showcase_does_not_forward_tensorboard_for_health_only(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_low_level_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(robotics_showcase.lerobot_leworldmodel, "main", fake_low_level_main)
+
+    assert (
+        robotics_showcase.main(
+            [
+                "--checkpoint",
+                "/tmp/pusht/lewm_object.ckpt",
+                "--tensorboard",
+                "--health-only",
+                "--no-json-output",
+            ]
+        )
+        == 0
+    )
+
+    assert "--tensorboard-logdir" not in captured["argv"]

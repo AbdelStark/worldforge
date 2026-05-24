@@ -268,6 +268,13 @@ If you want Rerun-backed event and artifact recording:
 uv add "worldforge-ai[rerun]"
 ```
 
+If you want TensorBoard inspection of the LeWorldModel checkpoint used during
+the robotics showcase:
+
+```bash
+uv add "worldforge-ai[tensorboard]"
+```
+
 ### From source (bleeding edge)
 
 ```bash
@@ -288,6 +295,7 @@ Optional extras:
 ```bash
 uv sync --group dev --extra harness   # TheWorldHarness Textual TUI
 uv sync --group dev --extra rerun     # Rerun event and artifact recording
+uv sync --group dev --extra tensorboard  # TensorBoard LeWorldModel checkpoint inspection
 ```
 
 Python 3.13 only. Base install depends only on `httpx`. Optional runtimes are host-owned.

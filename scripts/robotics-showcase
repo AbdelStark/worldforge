@@ -62,6 +62,28 @@ should_enable_rerun() {
   return 0
 }
 
+has_tensorboard_arg() {
+  for arg in "$@"; do
+    case "$arg" in
+      --tensorboard|--tensorboard-logdir|--tensorboard-run-name|--tensorboard-flush-secs)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+should_enable_tensorboard() {
+  for arg in "$@"; do
+    case "$arg" in
+      --help|-h|--health-only|--no-tensorboard)
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
 is_help_request() {
   for arg in "$@"; do
     case "$arg" in
@@ -84,6 +106,9 @@ showcase_args=("$@")
 if should_enable_rerun "$@" && ! has_rerun_sink_arg "$@"; then
   showcase_args=(--rerun "$@")
 fi
+if should_enable_tensorboard "$@" && ! has_tensorboard_arg "$@"; then
+  showcase_args=(--tensorboard "${showcase_args[@]}")
+fi
 runtime_args=(
   --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git"
   --with "datasets>=2.21"
@@ -99,6 +124,7 @@ runtime_args=(
   --with "pymunk"
   --with "gymnasium"
   --with "shapely"
+  --with "tensorboard>=2.16,<3"
 )
 
 if should_launch_tui "$@"; then

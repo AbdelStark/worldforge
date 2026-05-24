@@ -742,3 +742,94 @@ def test_main_health_only_reports_missing_checkpoint_without_loading_inputs(
     assert payload["checkpoint_exists"] is False
     assert payload["health"]["leworldmodel"]["healthy"] is False
     assert "object checkpoint not found" in payload["health"]["leworldmodel"]["details"]
+
+
+class _FakeSummaryWriter:
+    def __init__(self, **kwargs: object) -> None:
+        self.log_dir = kwargs.get("log_dir")
+        self.scalars: list[tuple[str, float, int]] = []
+        self.texts: list[tuple[str, str, int]] = []
+        self.histograms: list[tuple[str, object, int]] = []
+        self.closed = False
+
+    def add_scalar(self, tag: str, value: float, step: int) -> None:
+        self.scalars.append((tag, float(value), int(step)))
+
+    def add_text(self, tag: str, text: str, step: int) -> None:
+        self.texts.append((tag, text, int(step)))
+
+    def add_histogram(self, tag: str, values: object, step: int, *, bins: object = "auto") -> None:
+        self.histograms.append((tag, values, int(step)))
+
+    def flush(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_main_json_flow_writes_tensorboard_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import worldforge.tensorboard as tensorboard_module
+
+    captured_writers: list[_FakeSummaryWriter] = []
+
+    def fake_loader(sdk: object | None) -> object:
+        def _build(**kwargs: object) -> _FakeSummaryWriter:
+            writer = _FakeSummaryWriter(**kwargs)
+            captured_writers.append(writer)
+            return writer
+
+        return _build
+
+    monkeypatch.setattr(tensorboard_module, "_load_summary_writer_class", fake_loader)
+
+    checkpoint, observation_path, score_info_path = _write_common_inputs(tmp_path)
+    bridge_path = _write_candidate_builder(tmp_path)
+    tensorboard_dir = tmp_path / "tb"
+    _patch_fake_providers(monkeypatch)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "lewm-lerobot-real",
+            "--policy-path",
+            "lerobot/diffusion_pusht",
+            "--checkpoint",
+            str(checkpoint),
+            "--observation-json",
+            str(observation_path),
+            "--score-info-json",
+            str(score_info_path),
+            "--candidate-builder",
+            f"{bridge_path}:build",
+            "--expected-action-dim",
+            "2",
+            "--expected-horizon",
+            "2",
+            "--tensorboard-logdir",
+            str(tensorboard_dir),
+            "--tensorboard-run-name",
+            "unit-run",
+            "--tensorboard-flush-secs",
+            "10",
+            "--json-only",
+        ],
+    )
+
+    assert lerobot_leworldmodel.main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["tensorboard"]["log_dir"].endswith("unit-run")
+    assert payload["tensorboard"]["run_name"] == "unit-run"
+    assert payload["tensorboard"]["flush_secs"] == 10
+    assert len(captured_writers) == 1
+    writer = captured_writers[0]
+    assert writer.closed is True
+    scalar_tags = {tag for tag, *_ in writer.scalars}
+    assert "worldforge/leworldmodel/scores/best_index" in scalar_tags
+    text_tags = {tag for tag, *_ in writer.texts}
+    assert "worldforge/leworldmodel/checkpoint/provenance" in text_tags
