@@ -796,7 +796,7 @@ uv run python scripts/generate_release_evidence.py \
 uv run python scripts/generate_quality_dashboard.py
 ```
 
-成功信号：`.worldforge/quality-dashboard/quality-dashboard.json` 和 `.worldforge/quality-dashboard/quality-dashboard.md` 存在，表格区分 `failed`、`warning`、`skipped` 和 `not-run` 行，且第一个失败门控指回底层原始输出。仪表盘读取现有门控输出，而不是运行它们。它是本地速览审查索引；发布证据仍是包含哈希值、关联运行清单、可选运行时声明边界和已知限制的发布工件。
+成功信号：`.worldforge/quality-dashboard/quality-dashboard.json` 和 `.worldforge/quality-dashboard/quality-dashboard.md` 存在，表格区分 `failed`、`warning`、`skipped` 和 `not-run` 行，且第一个失败门控指回底层输出的已清理原始详情。仪表盘读取现有门控输出，而不是运行它们；它会在写入 JSON 或 Markdown 前清理原始详情的键和值。它是本地速览审查索引；发布证据仍是包含哈希值、关联运行清单、可选运行时声明边界和已知限制的发布工件。
 
 然后从更新日志、证据 JSON 和可选的已关闭议题元数据中创建可由维护者编辑的发布说明草稿：
 

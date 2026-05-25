@@ -55,9 +55,10 @@ rule, and validation surface before changing a public artifact contract.
 
 The quality dashboard reads existing JSON outputs instead of running gates. It is useful for a
 single local review page because it distinguishes `failed`, `warning`, `skipped`, and `not-run`
-checks and preserves raw output tails. It does not replace release evidence: release evidence is
-still the release-claim artifact for artifact hashes, linked run manifests, and explicit
-limitations.
+checks and preserves sanitized raw output tails. It sanitizes raw-detail keys and values before
+JSON or Markdown rendering, with deterministic suffixes for redacted-key collisions. It does not
+replace release evidence: release evidence is still the release-claim artifact for artifact hashes,
+linked run manifests, and explicit limitations.
 
 The release readiness drill is a rehearsal artifact, not approval to publish:
 

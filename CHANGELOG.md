@@ -47,6 +47,10 @@ releases may still include breaking changes when the public API needs to tighten
   as failed even when a stale top-level `passed: true` flag is present, and
   marks malformed core-performance artifacts as warnings instead of reporting
   that all recorded rows passed.
+- The quality dashboard now sanitizes raw-detail object keys as well as values
+  before writing JSON or Markdown, preserving colliding redacted keys with
+  deterministic suffixes so hostile artifact metadata cannot leak host-local
+  paths, signed URLs, or secret-shaped key names.
 - Release notes drafts now derive `needs-validation-review` from failed
   `validation_gates` rows as well as `validation_summary.failed`, so stale
   release-evidence summaries cannot mark a draft ready while an individual

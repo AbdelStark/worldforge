@@ -515,7 +515,7 @@ uv run python scripts/release_readiness_drill.py \
 uv run python scripts/generate_quality_dashboard.py
 ```
 
-看板默认输出至 `.worldforge/quality-dashboard/quality-dashboard.json` 和 `.worldforge/quality-dashboard/quality-dashboard.md`。它读取已有的发布证据、依赖审计证据和核心性能 JSON；它不执行门禁。状态行使用 `passed`、`failed`、`warning`、`skipped` 和 `not-run`，保留原始失败输出尾部，列出已跳过的宿主方拥有的提供方检查，并指出第一个失败的门禁。将其作为本地质量索引使用。发布证据仍是发布声明、工件哈希值、关联的 `run_manifest.json` 文件和已知限制的工件。
+看板默认输出至 `.worldforge/quality-dashboard/quality-dashboard.json` 和 `.worldforge/quality-dashboard/quality-dashboard.md`。它读取已有的发布证据、依赖审计证据和核心性能 JSON；它不执行门禁。状态行使用 `passed`、`failed`、`warning`、`skipped` 和 `not-run`，保留已清理的原始失败输出尾部，列出已跳过的宿主方拥有的提供方检查，并指出第一个失败的门禁。原始详情的键和值会在写入 JSON 或 Markdown 前被清理；被隐去后发生冲突的键会保留确定性后缀，而不是丢弃条目。将其作为本地质量索引使用。发布证据仍是发布声明、工件哈希值、关联的 `run_manifest.json` 文件和已知限制的工件。
 
 证据存在后，起草供维护者编辑的发布说明：
 

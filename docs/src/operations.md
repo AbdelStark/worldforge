@@ -767,12 +767,13 @@ uv run python scripts/generate_quality_dashboard.py
 The dashboard defaults to `.worldforge/quality-dashboard/quality-dashboard.json` and
 `.worldforge/quality-dashboard/quality-dashboard.md`. It reads existing release evidence,
 dependency-audit evidence, and core-performance JSON; it does not execute gates. Status rows use
-`passed`, `failed`, `warning`, `skipped`, and `not-run`, preserve raw failure output tails, list
-skipped host-owned provider checks, and name the first failed gate. Use it as a local quality
-index. Core-performance status is derived from both the top-level artifact status and row-level
-budget results, so a stale `passed: true` flag cannot hide failed budget rows. Release evidence remains
-the artifact for release claims, artifact hashes, linked `run_manifest.json` files, and known
-limitations.
+`passed`, `failed`, `warning`, `skipped`, and `not-run`, preserve sanitized raw failure output
+tails, list skipped host-owned provider checks, and name the first failed gate. Use it as a local
+quality index. Raw-detail keys and values are sanitized before JSON or Markdown rendering, and
+colliding redacted keys keep deterministic suffixes instead of dropping entries. Core-performance
+status is derived from both the top-level artifact status and row-level budget results, so a stale
+`passed: true` flag cannot hide failed budget rows. Release evidence remains the artifact for
+release claims, artifact hashes, linked `run_manifest.json` files, and known limitations.
 
 After evidence exists, draft release notes for maintainer editing:
 

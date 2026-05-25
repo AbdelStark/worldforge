@@ -987,8 +987,9 @@ uv run python scripts/generate_quality_dashboard.py
 
 Success signal: `.worldforge/quality-dashboard/quality-dashboard.json` and
 `.worldforge/quality-dashboard/quality-dashboard.md` exist, the table distinguishes `failed`,
-`warning`, `skipped`, and `not-run` rows, and the first failed gate points back to the underlying
-raw output. The dashboard reads existing gate outputs rather than running them. It is an
+`warning`, `skipped`, and `not-run` rows, and the first failed gate points back to sanitized raw
+details for the underlying output. The dashboard reads existing gate outputs rather than running
+them, and it sanitizes both raw-detail keys and values before JSON or Markdown rendering. It is an
 at-a-glance local review index; release evidence remains the release artifact for hashes, linked
 run manifests, optional runtime claim boundaries, and known limitations.
 

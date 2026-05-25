@@ -103,7 +103,7 @@ uv run python scripts/release_readiness_drill.py
 uv run python scripts/generate_quality_dashboard.py
 ```
 
-看板默认写入 `.worldforge/quality-dashboard/quality-dashboard.json` 和 `.worldforge/quality-dashboard/quality-dashboard.md`。它读取已有的输出并将状态词汇规范化为 `passed`、`failed`、`warning`、`skipped` 和 `not-run`；它不执行门禁，也不替换原始工件。发布证据用于发布声明和工件哈希，看板用于跨文档、测试、覆盖率、包检查、依赖审计、核心性能和宿主方可选跳过项的分支级别分类排查。
+看板默认写入 `.worldforge/quality-dashboard/quality-dashboard.json` 和 `.worldforge/quality-dashboard/quality-dashboard.md`。它读取已有的输出并将状态词汇规范化为 `passed`、`failed`、`warning`、`skipped` 和 `not-run`；它不执行门禁，也不替换原始工件。原始详情的键和值会在输出前被清理；被隐去后发生冲突的键会保留确定性后缀。发布证据用于发布声明和工件哈希，看板用于跨文档、测试、覆盖率、包检查、依赖审计、核心性能和宿主方可选跳过项的分支级别分类排查。
 
 ## 可选实时机器人 CI
 

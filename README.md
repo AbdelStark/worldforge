@@ -491,7 +491,10 @@ bash scripts/test_package.sh
 uv build --out-dir dist --clear --no-build-logs
 ```
 
-Before a tag, also run the locked dependency audit. The expanded gate and triage steps live in the
+Before a tag, also run the locked dependency audit and generate the release evidence plus quality
+dashboard artifacts. Dashboard raw details are sanitized before JSON or Markdown rendering so
+host-local paths, signed URLs, and secret-shaped keys stay out of attachable review output. The
+expanded gate and triage steps live in the
 [operator playbooks](https://abdelstark.github.io/worldforge/playbooks/#9-prepare-a-release-or-public-branch).
 If local setup fails before the gate starts, run
 `uv run python scripts/contributor_doctor.py --format markdown` for a safe-to-attach diagnosis.
