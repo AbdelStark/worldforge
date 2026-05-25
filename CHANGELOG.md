@@ -9,6 +9,15 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Fixed
 
+- The `t` shortcut in `RoboticsShowcaseApp` no longer opens the browser
+  before TensorBoard has bound the port (causing a blank page on first-run
+  `uvx` resolves). The fixed `set_timer(2.5, ...)` is replaced with a
+  Textual background worker that polls `localhost:6006` every ~0.5 s for
+  up to ~60 s and only calls `webbrowser.open` once the port responds.
+  The action also stops swallowing the TensorBoard subprocess's output:
+  stdout/stderr are now captured to `tensorboard.stdout.log` and
+  `tensorboard.stderr.log` inside the run's log directory. Timeouts now
+  emit an error notification pointing at the stderr log path. Issue #308.
 - The `t` shortcut in `RoboticsShowcaseApp` now actually shows TensorBoard.
   The launched command pins `--port 6006`, and the action additionally
   schedules a `webbrowser.open("http://localhost:6006/")` via a Textual timer
