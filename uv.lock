@@ -488,6 +488,18 @@ wheels = [
 ]
 
 [[package]]
+name = "mkdocs-static-i18n"
+version = "1.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mkdocs" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ce/f9/51e2ffda9c7210bc35a24f3717b08c052cd4b728dfa87f901c00d8005259/mkdocs_static_i18n-1.3.1.tar.gz", hash = "sha256:a6125ea7db6cc1a900d76a967f262535af09831160a93c56d7f0d522a79b5faf", size = 1371325, upload-time = "2026-02-20T10:42:41.835Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/0b/43ff4afb6b438d47718b1959a22075ed95d8460d8c47381878b37a40de63/mkdocs_static_i18n-1.3.1-py3-none-any.whl", hash = "sha256:4036e24795a150c9c4d4b001ed24a43aec01335f76188dbe5a5d8fb4a27eba65", size = 21853, upload-time = "2026-02-20T10:42:40.551Z" },
+]
+
+[[package]]
 name = "msgpack"
 version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1081,6 +1093,7 @@ tensorboard = [
 [package.dev-dependencies]
 dev = [
     { name = "mkdocs-material" },
+    { name = "mkdocs-static-i18n" },
     { name = "pip-audit" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -1099,6 +1112,7 @@ provides-extras = ["harness", "rerun", "tensorboard"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mkdocs-material", specifier = ">=9.6,<10" },
+    { name = "mkdocs-static-i18n", specifier = ">=1.2,<2" },
     { name = "pip-audit", specifier = ">=2.9,<3" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=7.0" },
