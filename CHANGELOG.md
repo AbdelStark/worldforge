@@ -51,6 +51,11 @@ releases may still include breaking changes when the public API needs to tighten
   `validation_gates` rows as well as `validation_summary.failed`, so stale
   release-evidence summaries cannot mark a draft ready while an individual
   gate records failure.
+- Release evidence reports now redact host-local paths for externally supplied
+  artifacts and manifests. Repo-relative artifacts remain linkable, while
+  outside-checkout artifacts are recorded as `<host-local-path>/<name>` with
+  their hashes and sizes instead of leaking `/Users`, `/private`, or temporary
+  workspace paths into attachable JSON or Markdown.
 - Live-smoke `run_manifest.json` artifact references no longer preserve
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that

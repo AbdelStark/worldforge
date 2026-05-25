@@ -305,15 +305,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(report, encoding="utf-8")
-    print(f"wrote {output.relative_to(ROOT) if output.is_relative_to(ROOT) else output}")
+    print(f"wrote {_display_path(output)}")
     if json_output == "-":
         print(json.dumps(payload, indent=2, sort_keys=True))
     elif json_output is not None:
         json_path = Path(json_output).expanduser().resolve()
         json_path.parent.mkdir(parents=True, exist_ok=True)
         json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        display = json_path.relative_to(ROOT) if json_path.is_relative_to(ROOT) else json_path
-        print(f"wrote {display}")
+        print(f"wrote {_display_path(json_path)}")
     failed = [result for result in gate_results if result.status == "failed"]
     return 1 if failed else 0
 
@@ -712,7 +711,13 @@ def _artifact_lines(paths: tuple[Path, ...], output: Path, *, empty: str) -> lis
 def _markdown_link(path: Path, output: Path) -> str:
     resolved = path.expanduser().resolve()
     display = _display_path(resolved)
-    link = os.path.relpath(resolved, start=output.parent).replace(os.sep, "/")
+    if not _is_repo_relative(resolved):
+        return f"`{display}`"
+    output_parent = output.expanduser().resolve().parent
+    if _is_repo_relative(output_parent):
+        link = os.path.relpath(resolved, start=output_parent).replace(os.sep, "/")
+    else:
+        link = display
     return f"[`{display}`]({link})"
 
 
@@ -721,7 +726,15 @@ def _display_path(path: Path) -> str:
     try:
         return str(resolved.relative_to(ROOT))
     except ValueError:
-        return str(resolved)
+        return f"<host-local-path>/{resolved.name}"
+
+
+def _is_repo_relative(path: Path) -> bool:
+    try:
+        path.expanduser().resolve().relative_to(ROOT)
+    except ValueError:
+        return False
+    return True
 
 
 def _glob_existing(directory: Path, pattern: str) -> tuple[Path, ...]:

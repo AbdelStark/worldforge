@@ -1979,7 +1979,9 @@ def test_contributor_task_starters_cover_issue_233_contract() -> None:
 def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    integrity = (ROOT / "docs/src/artifact-integrity.md").read_text(encoding="utf-8")
     release_script = (ROOT / "scripts/generate_release_evidence.py").read_text(encoding="utf-8")
+    release_tests = (ROOT / "tests/test_release_evidence.py").read_text(encoding="utf-8")
 
     for signal in (
         "--run-gates",
@@ -1988,8 +1990,9 @@ def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
         "`passed`, `failed`, or `skipped`",
         "first triage step",
         "`host-owned`",
+        "`<host-local-path>/<name>`",
     ):
-        assert signal in operations or signal in playbooks
+        assert signal in operations or signal in playbooks or signal in integrity
 
     for implementation_signal in (
         "class ReleaseGateResult",
@@ -1997,8 +2000,11 @@ def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
         "validation_summary",
         "stdout_tail",
         "stderr_tail",
+        "_is_repo_relative",
     ):
         assert implementation_signal in release_script
+
+    assert "test_release_evidence_redacts_host_local_artifact_paths" in release_tests
 
 
 def test_release_notes_draft_docs_cover_issue_234_contract() -> None:

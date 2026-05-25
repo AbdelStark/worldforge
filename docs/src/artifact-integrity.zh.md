@@ -37,7 +37,7 @@ uv run python scripts/generate_release_evidence.py --run-gates \
 uv run python scripts/generate_quality_dashboard.py
 ```
 
-依赖项审计封装器使用 `uv export --frozen --all-groups --no-emit-project --no-hashes` 加上 `uvx --from pip-audit pip-audit ... --format json`，并使用审计后删除的临时依赖项文件。发布证据 JSON 记录已链接工件的工件路径和 SHA-256 摘要。证据包、依赖项审计证据、运行清单、基准测试报告和冒烟测试清单应从发布说明中链接，而不是手动复制。在修改公开工件契约之前，请使用[工件结构定义](./artifact-schemas.md)来确认所属模块、版本字段、迁移规则和验证面。
+依赖项审计封装器使用 `uv export --frozen --all-groups --no-emit-project --no-hashes` 加上 `uvx --from pip-audit pip-audit ... --format json`，并使用审计后删除的临时依赖项文件。发布证据 JSON 记录仓库相对工件路径，或记录隐去后的 `<host-local-path>/<name>` 标签以及已链接工件的 SHA-256 摘要；它不会保留检出目录之外的绝对路径。证据包、依赖项审计证据、运行清单、基准测试报告和冒烟测试清单应从发布说明中链接，而不是手动复制。在修改公开工件契约之前，请使用[工件结构定义](./artifact-schemas.md)来确认所属模块、版本字段、迁移规则和验证面。
 
 质量仪表板读取现有的 JSON 输出，而不是运行门控。它适合用于单一本地审查页面，因为它区分 `failed`、`warning`、`skipped` 和 `not-run` 检查，并保留原始输出尾部。它不替代发布证据：发布证据仍然是工件哈希、已链接运行清单和明确限制的发布主张工件。
 

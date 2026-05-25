@@ -70,8 +70,8 @@ def test_release_evidence_renders_without_credentials(
     assert "uv run python scripts/check_optional_import_boundaries.py" in report
     assert "uv run --extra harness pytest --cov=src/worldforge" in report
     assert "Run with `--run-gates` to execute this checkout-safe gate." in report
-    assert "[`" in report
-    assert "benchmark.json" in report
+    assert "`<host-local-path>/benchmark.json`" in report
+    assert str(tmp_path) not in report
     assert "No prepared-host smokes were run for this branch." in report
 
 
@@ -109,6 +109,39 @@ def test_release_evidence_links_live_manifest_and_artifact(tmp_path: Path) -> No
     assert "`generate`" in report
     assert "`video`=" in report
     assert "video.mp4" in report
+
+
+def test_release_evidence_redacts_host_local_artifact_paths(tmp_path: Path) -> None:
+    output = tmp_path / "release-evidence.md"
+    artifact = tmp_path / "dist" / "worldforge.whl"
+    artifact.parent.mkdir()
+    artifact.write_bytes(b"wheel-bytes")
+    gate_results = release_gate_results(
+        (ReleaseGate("Docs", "uv run mkdocs build --strict", "fix docs"),),
+        run=False,
+    )
+
+    payload = generate_release_evidence.release_evidence_payload(
+        manifests=(),
+        benchmark_artifacts=(artifact,),
+        artifacts=(artifact,),
+        gate_results=gate_results,
+    )
+    report = render_release_evidence(
+        output=output,
+        manifests=(),
+        benchmark_artifacts=(artifact,),
+        artifacts=(artifact,),
+        gate_results=gate_results,
+    )
+
+    payload_text = json.dumps(payload, sort_keys=True)
+    assert payload["benchmark_artifacts"][0]["path"] == "<host-local-path>/worldforge.whl"
+    assert payload["release_artifacts"][0]["path"] == "<host-local-path>/worldforge.whl"
+    assert str(tmp_path) not in payload_text
+    assert str(tmp_path) not in report
+    assert "`<host-local-path>/worldforge.whl`" in report
+    assert "](../../" not in report
 
 
 def test_release_evidence_main_writes_default_shape(tmp_path: Path) -> None:
@@ -221,7 +254,7 @@ def test_release_evidence_payload_uses_explicit_clock_for_snapshot(tmp_path: Pat
     )
 
     assert snapshot["generated_at"] == "2026-01-01T00:00:00+00:00"
-    assert snapshot["benchmark_artifacts"][0]["path"] == "<tmp>/benchmark.json"
+    assert snapshot["benchmark_artifacts"][0]["path"] == "<host-local-path>/benchmark.json"
     assert snapshot["git"]["commit"] == "<commit>"
 
 
