@@ -55,6 +55,10 @@ releases may still include breaking changes when the public API needs to tighten
   values before writing safe-to-attach JSON or Markdown, preserving colliding
   redacted keys with deterministic suffixes so direct API callers cannot leak
   host-local paths, signed URLs, or secret-shaped key names.
+- Release notes drafts now sanitize changelog entries, closed issue metadata,
+  release-evidence text, and maintainer caveats with the shared observable-text
+  redactor, so token assignments, bearer headers, signed URLs, and host-local
+  paths do not leak into draft Markdown.
 - Release notes drafts now derive `needs-validation-review` from failed
   `validation_gates` rows as well as `validation_summary.failed`, so stale
   release-evidence summaries cannot mark a draft ready while an individual

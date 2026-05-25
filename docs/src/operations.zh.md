@@ -530,7 +530,7 @@ uv run python scripts/generate_release_notes.py \
   --known-caveat "No prepared-host live smoke was run for <provider>."
 ```
 
-发布说明命令写入 `.worldforge/release-notes/release-notes-draft.md`。这仅是草稿工件：维护者在发布前必须编辑它，该命令不创建标签、GitHub 发布、签名或可信发布工件。成功信号：草稿包含新增、变更、修复、文档、验证、兼容性、注意事项和宿主方可选运行时等章节。草稿状态同时读取 `validation_summary` 和逐行的 `validation_gates`；任何失败的 gate 行都会让草稿保持 `needs-validation-review`，即使过期摘要声称失败数为零。验证缺失时的首要排查步骤：运行 `uv run python scripts/generate_release_evidence.py --run-gates` 并重新生成草稿。在发布脚本中使用 `--require-validation-evidence`，以便在证据 JSON 缺失或无效时使命令失败。
+发布说明命令写入 `.worldforge/release-notes/release-notes-draft.md`。这仅是草稿工件：维护者在发布前必须编辑它，该命令不创建标签、GitHub 发布、签名或可信发布工件。成功信号：草稿包含新增、变更、修复、文档、验证、兼容性、注意事项和宿主方可选运行时等章节。草稿状态同时读取 `validation_summary` 和逐行的 `validation_gates`；任何失败的 gate 行都会让草稿保持 `needs-validation-review`，即使过期摘要声称失败数为零。验证缺失时的首要排查步骤：运行 `uv run python scripts/generate_release_evidence.py --run-gates` 并重新生成草稿。在发布脚本中使用 `--require-validation-evidence`，以便在证据 JSON 缺失或无效时使命令失败。更新日志条目、已关闭议题元数据、发布证据文本和 `--known-caveat` 值会在 Markdown 渲染前被清理，避免 token 赋值、Bearer 头、签名 URL 和宿主本地路径进入发布说明草稿。
 
 `uv run python scripts/check_core_performance.py` 为世界持久化、基准测试夹具加载、提供方诊断、证据包创建和报告渲染写入检出安全的 JSON 报告。成功信号：`passed` 为 true，且当提供了 `--workspace-dir <path>` 时，每个结果行都有已保留的工件路径。首要排查步骤：在更改预算之前，检查失败行的测量路径并修复回归。这些预算是本地回归防护，不是跨机器或可选运行时的性能声明。
 

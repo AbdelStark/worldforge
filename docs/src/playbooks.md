@@ -1016,7 +1016,9 @@ checks both `validation_summary` and individual `validation_gates`, so a failed 
 draft in `needs-validation-review` until release evidence is regenerated from passing gates. If the
 draft says validation evidence is missing, run
 `uv run python scripts/generate_release_evidence.py --run-gates` first. Use
-`--require-validation-evidence` when release automation should fail on missing evidence.
+`--require-validation-evidence` when release automation should fail on missing evidence. The draft
+sanitizes changelog text, closed issue metadata, release-evidence text, and `--known-caveat`
+values before Markdown rendering.
 
 Success signal:
 

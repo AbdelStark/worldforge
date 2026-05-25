@@ -13,7 +13,7 @@ uv run python scripts/generate_release_notes.py \
   --release-evidence .worldforge/release-evidence/release-evidence.json
 ```
 
-草稿是可由维护者编辑的源材料。在发布 GitHub Release 前对其进行评审和编辑，不要将缺失的验证凭证、宿主方持有的可选运行时行、或生成的措辞视为最终发布审批。
+草稿是可由维护者编辑的源材料。在发布 GitHub Release 前对其进行评审和编辑，不要将缺失的验证凭证、宿主方持有的可选运行时行、或生成的措辞视为最终发布审批。草稿输入会在 Markdown 渲染前被清理，避免 token 赋值、Bearer 头、签名 URL 和宿主本地路径进入发布说明。
 
 更改更新日志中发布流程文本时，请在起草说明前先演练凭证路径：
 

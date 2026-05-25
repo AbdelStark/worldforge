@@ -2038,6 +2038,8 @@ def test_release_notes_draft_docs_cover_issue_234_contract() -> None:
         "failed gate row",
         "needs-validation-review",
         "host-owned optional-runtime",
+        "sanitizes changelog text",
+        "token assignments",
     ):
         assert (
             signal in operations
@@ -2056,12 +2058,15 @@ def test_release_notes_draft_docs_cover_issue_234_contract() -> None:
         "Missing changelog",
         "Validation evidence missing",
         "_failed_validation_gate_count",
+        "_redact_observable_text",
+        "HOST_PATH_PATTERN",
     ):
         assert implementation_signal in release_notes_script
 
     for test_signal in (
         "test_release_notes_draft_collects_changelog_issues_and_evidence",
         "test_release_notes_draft_uses_failed_gate_rows_for_status",
+        "test_release_notes_draft_redacts_secret_shapes_from_all_user_inputs",
         "test_release_notes_main_reports_missing_validation_evidence",
         "test_release_notes_main_reports_missing_changelog",
     ):

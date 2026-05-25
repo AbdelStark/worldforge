@@ -798,7 +798,9 @@ sections. Draft status is derived from both `validation_summary` and row-level
 stale summary reports zero failures. First triage step when validation is missing: run
 `uv run python scripts/generate_release_evidence.py --run-gates` and regenerate the draft. Use
 `--require-validation-evidence` in release scripts when a missing or invalid evidence JSON should
-fail the command.
+fail the command. Changelog entries, closed issue metadata, release-evidence text, and
+`--known-caveat` values are sanitized before Markdown rendering so token assignments, bearer
+headers, signed URLs, and host-local paths stay out of draft release notes.
 
 `uv run python scripts/check_core_performance.py` writes a checkout-safe JSON report for world
 persistence, benchmark fixture loading, provider diagnostics, evidence-bundle creation, and report

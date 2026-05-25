@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
 DEFAULT_CHANGELOG = ROOT / "CHANGELOG.md"
 DEFAULT_RELEASE_EVIDENCE = ROOT / ".worldforge" / "release-evidence" / "release-evidence.json"
 DEFAULT_OUTPUT = ROOT / ".worldforge" / "release-notes" / "release-notes-draft.md"
@@ -25,7 +29,11 @@ GITHUB_ISSUE_EXPORT_COMMAND = (
     "> .worldforge/release-notes/closed-issues.json"
 )
 
-HOST_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes)/[^\s)`|]+")
+from worldforge.models import _redact_observable_text  # noqa: E402
+
+HOST_PATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes|var/folders|tmp)/[^\s)`|]+"
+)
 SIGNED_URL_PATTERN = re.compile(
     r"https?://[^\s)`|]*(?:X-Amz-Signature|sig=|signature=|token=|secret=)[^\s)`|]*",
     re.IGNORECASE,
@@ -706,9 +714,9 @@ def _release_known_limitations(release_evidence: ReleaseEvidenceRecord) -> tuple
 
 
 def _sanitize_text(value: str) -> str:
-    return HOST_PATH_PATTERN.sub(
-        "<host-local-path>", SIGNED_URL_PATTERN.sub("[redacted-url]", value)
-    )
+    sanitized = SIGNED_URL_PATTERN.sub("[redacted-url]", value)
+    sanitized = _redact_observable_text(sanitized)
+    return HOST_PATH_PATTERN.sub("<host-local-path>", sanitized)
 
 
 def _display_path(path: Path) -> str:
