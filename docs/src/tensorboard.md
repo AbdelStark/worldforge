@@ -86,9 +86,12 @@ the wrapper would show under the ``Artifacts`` section of the visual report.
 
 The Textual showcase report (`worldforge.harness.tui.RoboticsShowcaseApp`)
 surfaces the run with a ``RoboticsTensorBoardPane`` and a ``t`` keybinding that
-launches ``uvx --from "tensorboard>=2.16,<3" tensorboard --logdir <path> --port 6006``
-in a detached subprocess. The shortcut is also visible in the footer alongside
-``o`` for Rerun.
+launches
+``uvx --from "tensorboard>=2.16,<3" --with "setuptools<81" tensorboard --logdir <path> --port 6006``
+in a detached subprocess. The ``setuptools<81`` constraint keeps
+``pkg_resources`` available for TensorBoard's import path (TensorBoard still
+calls ``import pkg_resources`` at startup but ``setuptools>=81`` removed that
+package). The shortcut is also visible in the footer alongside ``o`` for Rerun.
 
 Because TensorBoard is a web server (not a GUI app like Rerun), the binding
 then runs a Textual background worker that polls ``localhost:6006`` every
@@ -109,6 +112,43 @@ If the summary lacks a ``"tensorboard"`` block (for example when
 ``--no-tensorboard`` is passed), the pane is omitted, no subprocess is
 started, no browser is opened, and the keybinding emits a warning
 notification instead.
+
+## Non-interactive launcher (`worldforge-open-tensorboard`)
+
+The same launch / poll / probe flow is available as a CLI for non-interactive
+use - validating the wiring in CI, opening TensorBoard from a shell without
+running the Textual report, or testing changes to the launch command:
+
+```bash
+uv run worldforge-open-tensorboard --logdir .worldforge/tensorboard/<run>
+```
+
+Common flags:
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| ``--logdir <path>`` | required | Run directory with ``events.out.tfevents.*`` files. |
+| ``--port <int>`` | ``6006`` | TCP port to bind. |
+| ``--host <host>`` | ``localhost`` | Host to poll and probe. |
+| ``--ready-timeout <sec>`` | ``60`` | How long to wait for the port to bind. |
+| ``--poll-interval <sec>`` | ``0.5`` | Seconds between TCP probes during the ready wait. |
+| ``--probe`` | off | After ready, fetch ``http://host:port/`` and assert the body contains the ``TensorBoard`` marker. Tears the subprocess down on success or failure. Useful for "did it actually work" smoke checks. |
+| ``--no-browser`` | off | Skip ``webbrowser.open`` after the server is ready. |
+| ``--keep-running`` | off (implied without ``--probe``) | Block until the subprocess exits or SIGINT is received. |
+| ``--shutdown-timeout <sec>`` | ``5`` | Seconds to wait for graceful subprocess teardown. |
+
+Exit codes: ``0`` on success, ``1`` on ready timeout or probe failure, ``2``
+on bad input (missing ``--logdir``, non-positive timing, launch ``OSError``).
+
+Example smoke check:
+
+```bash
+mkdir -p /tmp/tb-smoke
+uv run worldforge-open-tensorboard \
+  --logdir /tmp/tb-smoke \
+  --probe --no-browser \
+  --ready-timeout 120
+```
 
 ## Programmatic surface
 

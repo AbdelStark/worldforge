@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import queue
 import shlex
-import socket
 import statistics
 import subprocess
 import time
@@ -59,6 +58,7 @@ from worldforge import (
     list_eval_suites,
 )
 from worldforge.benchmark import BENCHMARKABLE_OPERATIONS
+from worldforge.harness import tensorboard_launcher
 from worldforge.harness.connectors import (
     ProviderConnectorSummary,
     provider_connector_summaries,
@@ -3507,43 +3507,35 @@ def _robotics_tensorboard_log_dir(payload: dict[str, object]) -> Path | None:
     return path if path.is_absolute() else path.resolve()
 
 
-ROBOTICS_TENSORBOARD_DEFAULT_PORT = 6006
-ROBOTICS_TENSORBOARD_READY_TIMEOUT_S = 60.0
-ROBOTICS_TENSORBOARD_POLL_INTERVAL_S = 0.5
-ROBOTICS_TENSORBOARD_STDOUT_LOG = "tensorboard.stdout.log"
-ROBOTICS_TENSORBOARD_STDERR_LOG = "tensorboard.stderr.log"
+ROBOTICS_TENSORBOARD_DEFAULT_PORT = tensorboard_launcher.DEFAULT_PORT
+ROBOTICS_TENSORBOARD_READY_TIMEOUT_S = tensorboard_launcher.DEFAULT_READY_TIMEOUT_S
+ROBOTICS_TENSORBOARD_POLL_INTERVAL_S = tensorboard_launcher.DEFAULT_POLL_INTERVAL_S
+ROBOTICS_TENSORBOARD_STDOUT_LOG = tensorboard_launcher.STDOUT_LOG
+ROBOTICS_TENSORBOARD_STDERR_LOG = tensorboard_launcher.STDERR_LOG
 
 
 def _tensorboard_port_open(host: str, port: int, *, timeout: float = 1.0) -> bool:
     """Return True when a TCP connect to ``host:port`` succeeds within ``timeout``."""
 
-    try:
-        sock = socket.create_connection((host, port), timeout=timeout)
-    except OSError:
-        return False
-    sock.close()
-    return True
+    return tensorboard_launcher.port_open(host, port, timeout=timeout)
 
 
 def _robotics_tensorboard_viewer_command(path: Path) -> list[str]:
-    return [
-        "uvx",
-        "--from",
-        "tensorboard>=2.16,<3",
-        "tensorboard",
-        "--logdir",
-        str(path),
-        "--port",
-        str(ROBOTICS_TENSORBOARD_DEFAULT_PORT),
-    ]
+    return tensorboard_launcher.viewer_command(
+        path,
+        port=ROBOTICS_TENSORBOARD_DEFAULT_PORT,
+    )
 
 
 def _robotics_tensorboard_viewer_command_text(path: Path) -> str:
-    return " ".join(shlex.quote(part) for part in _robotics_tensorboard_viewer_command(path))
+    return tensorboard_launcher.viewer_command_text(
+        path,
+        port=ROBOTICS_TENSORBOARD_DEFAULT_PORT,
+    )
 
 
 def _robotics_tensorboard_url() -> str:
-    return f"http://localhost:{ROBOTICS_TENSORBOARD_DEFAULT_PORT}/"
+    return tensorboard_launcher.viewer_url(port=ROBOTICS_TENSORBOARD_DEFAULT_PORT)
 
 
 def _robotics_color(token: str) -> str:

@@ -204,6 +204,16 @@ scripts/robotics-showcase
 uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 ```
 
+Open the run's TensorBoard logs without launching the Textual report - useful
+for non-interactive verification or for opening TensorBoard from a shell:
+
+```bash
+uv run worldforge-open-tensorboard --logdir .worldforge/tensorboard/<run>
+uv run worldforge-open-tensorboard --logdir .worldforge/tensorboard/<run> --probe --no-browser
+```
+
+See [TensorBoard Integration](./tensorboard.md) for the full flag reference.
+
 Live GR00T and LeRobot policy smoke helpers:
 
 ```bash

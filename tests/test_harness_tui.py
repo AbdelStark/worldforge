@@ -262,6 +262,8 @@ def test_robotics_showcase_app_exposes_tensorboard_open_shortcut(
         "uvx",
         "--from",
         "tensorboard>=2.16,<3",
+        "--with",
+        "setuptools<81",
         "tensorboard",
         "--logdir",
         str(tensorboard_dir),
