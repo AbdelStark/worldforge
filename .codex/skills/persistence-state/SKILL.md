@@ -12,6 +12,8 @@ description: "Use for WorldForge local JSON persistence, world CLI commands, wor
 - World IDs are file stems. Reject path separators, traversal, and unsafe values before load, import, or save.
 - Malformed persisted/provider state raises `WorldStateError`.
 - Do not silently coerce invalid state.
+- Treat existing `.worldforge/` user state as off-limits unless the user explicitly points at a
+  disposable state directory. Tests must use `tmp_path`.
 
 ## Workflow
 
@@ -22,6 +24,13 @@ description: "Use for WorldForge local JSON persistence, world CLI commands, wor
 5. Scene object add/update/remove mutations append typed history entries without advancing provider time.
 6. Position patches translate bounding boxes by the same delta as object poses.
 7. Test CLI flows with `tmp_path` state dirs. Never use or delete the user's real `.worldforge/` state.
+
+## Definition Of Done
+
+- State validators reject unsafe IDs, malformed history, invalid action payloads, and non-JSON-native fields loudly.
+- CLI handlers delegate to `WorldForge` persistence APIs rather than duplicating file I/O contracts.
+- Regression tests cover both the changed happy path and the invalid persisted/provider-state path.
+- Docs or command help include the command, success signal, and first recovery step when behavior changes.
 
 ## Do Not Add
 

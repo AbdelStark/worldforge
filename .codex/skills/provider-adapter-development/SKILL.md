@@ -12,6 +12,8 @@ description: "Use for WorldForge provider work: adding adapters, changing capabi
 - `plan` is a WorldForge facade workflow. Do not benchmark or advertise it as a provider operation unless a real provider-owned planner exists.
 - Optional runtimes, checkpoints, datasets, CUDA, robot packages, credentials, and robot controllers stay out of base dependencies and repo artifacts.
 - Provider events are a log boundary. Never emit bearer tokens, API keys, signed URL query strings, or secret-like metadata.
+- Treat upstream marketing names as untrusted. Capability labels come from observed callable behavior
+  and contract tests, not from model family branding.
 
 ## Capability Map
 
@@ -37,6 +39,13 @@ description: "Use for WorldForge provider work: adding adapters, changing capabi
 7. Add `worldforge.testing.assert_provider_contract()` coverage for every advertised capability.
 8. Update `.env.example`, provider docs, generated catalog surfaces, README, changelog, `AGENTS.md`, or `CLAUDE.md` only when public behavior or env vars change.
 9. Validate with focused provider tests, ruff, generated provider-doc check, and the coverage/package gates when the public surface changes.
+
+## Definition Of Done
+
+- Every advertised capability has a provider-contract test and at least one malformed/provider-error test.
+- Provider metadata, docs, generated catalog output, and `.env.example` agree on capabilities and configuration.
+- Events and public errors redact credentials, signed URLs, host-local secrets, and unsafe metadata.
+- Optional-runtime paths degrade to typed skipped/preflight results without installing host-owned packages.
 
 ## Sharp Edges
 
