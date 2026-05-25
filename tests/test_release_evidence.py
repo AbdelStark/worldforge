@@ -186,6 +186,60 @@ def test_release_evidence_gate_runner_records_pass_fail_and_skip() -> None:
     assert results[2].triage_step == "host skipped intentionally"
 
 
+def test_release_evidence_gate_runner_redacts_output_and_reasons() -> None:
+    gates = (
+        ReleaseGate("Fail", "python /Users/alice/private/run.py", "inspect /Users/alice/logs"),
+        ReleaseGate("Skip", "skip-command", "inspect skip"),
+    )
+
+    def runner(command: str, **kwargs) -> CompletedProcess[str]:
+        assert kwargs["shell"] is True
+        return CompletedProcess(
+            command,
+            2,
+            stdout="wrote /Users/alice/private/out.json token=stdout-secret",
+            stderr=(
+                "failed Authorization: Bearer stderr-secret at "
+                "https://example.test/artifact.json?token=download-secret"
+            ),
+        )
+
+    results = release_gate_results(
+        gates,
+        run=True,
+        skip_gates=("Skip",),
+        skip_reason="host skipped /private/tmp/run token=skip-secret",
+        runner=runner,
+    )
+    payload = generate_release_evidence.release_evidence_payload(
+        manifests=(),
+        benchmark_artifacts=(),
+        artifacts=(),
+        gate_results=results,
+    )
+    report = render_release_evidence(
+        output=Path(".worldforge/release-evidence/release-evidence.md"),
+        manifests=(),
+        benchmark_artifacts=(),
+        artifacts=(),
+        gate_results=results,
+        known_limitations=("local log /Users/alice/private/log token=limitation-secret",),
+    )
+
+    evidence_text = json.dumps(payload, sort_keys=True) + report
+    assert "/Users/alice" not in evidence_text
+    assert "/private/tmp" not in evidence_text
+    assert "stdout-secret" not in evidence_text
+    assert "stderr-secret" not in evidence_text
+    assert "download-secret" not in evidence_text
+    assert "skip-secret" not in evidence_text
+    assert "limitation-secret" not in evidence_text
+    assert "<host-local-path>" in evidence_text
+    assert "token=[redacted]" in evidence_text
+    assert "Authorization: [redacted]" in evidence_text
+    assert "https://example.test/artifact.json" in evidence_text
+
+
 def test_release_evidence_gate_runner_accepts_deterministic_clock() -> None:
     gate = ReleaseGate("Docs", "uv run mkdocs build --strict", "fix docs")
     clock = DeterministicClock(

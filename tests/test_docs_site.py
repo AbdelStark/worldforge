@@ -1980,6 +1980,7 @@ def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
     integrity = (ROOT / "docs/src/artifact-integrity.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     release_script = (ROOT / "scripts/generate_release_evidence.py").read_text(encoding="utf-8")
     release_tests = (ROOT / "tests/test_release_evidence.py").read_text(encoding="utf-8")
 
@@ -1991,8 +1992,11 @@ def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
         "first triage step",
         "`host-owned`",
         "`<host-local-path>/<name>`",
+        "sanitized command output",
     ):
-        assert signal in operations or signal in playbooks or signal in integrity
+        assert (
+            signal in operations or signal in playbooks or signal in integrity or signal in agents
+        )
 
     for implementation_signal in (
         "class ReleaseGateResult",
@@ -2001,10 +2005,12 @@ def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
         "stdout_tail",
         "stderr_tail",
         "_is_repo_relative",
+        "_sanitize_text",
     ):
         assert implementation_signal in release_script
 
     assert "test_release_evidence_redacts_host_local_artifact_paths" in release_tests
+    assert "test_release_evidence_gate_runner_redacts_output_and_reasons" in release_tests
 
 
 def test_release_notes_draft_docs_cover_issue_234_contract() -> None:

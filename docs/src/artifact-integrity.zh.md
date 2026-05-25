@@ -15,7 +15,7 @@
 | 封装器可移植性 | `uv run python scripts/check_wrapper_portability.py` | 封装器具有预期的 shebang、可执行位、Python 3.13 uv 调用及文档 | 修复命名封装器或文档化命令 |
 | 核心 checkout 性能 | `uv run python scripts/check_core_performance.py` | 报告中 checkout 安全的核心路径 `passed: true` | 检查失败行，在修改预算之前修复回归问题 |
 | 发布就绪演练 | `uv run python scripts/release_readiness_drill.py` | 通过和受控失败的发布证据夹具写入 `.worldforge/release-readiness-drill/` | 检查第一个失败的门控并重新运行其排查命令 |
-| 发布证据 | `uv run python scripts/generate_release_evidence.py --run-gates` | Markdown 和 JSON 摘要链接门控状态、工件、哈希值和冒烟测试清单 | 检查失败的门控行及其首步排查 |
+| 发布证据 | `uv run python scripts/generate_release_evidence.py --run-gates` | Markdown 和 JSON 摘要链接门控状态、已清理的命令输出、工件、哈希值和冒烟测试清单 | 检查失败的门控行及其首步排查 |
 | 质量仪表板 | `uv run python scripts/generate_quality_dashboard.py` | 本地 JSON 和 Markdown 汇总发布证据、依赖项审计、核心性能、跳过的宿主方检查、未运行的检查及第一个失败门控 | 检查原始失败详细信息部分，然后重新运行底层门控工件 |
 | 发布说明草稿 | `uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json` | 可供维护者编辑的 Markdown 链接变更日志条目、已关闭问题、验证证据、注意事项和宿主方持有的可选运行时证据 | 重新生成发布证据或修复 `CHANGELOG.md`，然后重新运行草稿命令 |
 | 发布来源 | `.github/workflows/release.yml` 构建来源证明 | 标记发布构建上传发行版并请求 GitHub 工件来源 | 检查发布工作流运行和附加的 GitHub 证明 |
@@ -37,7 +37,7 @@ uv run python scripts/generate_release_evidence.py --run-gates \
 uv run python scripts/generate_quality_dashboard.py
 ```
 
-依赖项审计封装器使用 `uv export --frozen --all-groups --no-emit-project --no-hashes` 加上 `uvx --from pip-audit pip-audit ... --format json`，并使用审计后删除的临时依赖项文件。发布证据 JSON 记录仓库相对工件路径，或记录隐去后的 `<host-local-path>/<name>` 标签以及已链接工件的 SHA-256 摘要；它不会保留检出目录之外的绝对路径。证据包、依赖项审计证据、运行清单、基准测试报告和冒烟测试清单应从发布说明中链接，而不是手动复制。在修改公开工件契约之前，请使用[工件结构定义](./artifact-schemas.md)来确认所属模块、版本字段、迁移规则和验证面。
+依赖项审计封装器使用 `uv export --frozen --all-groups --no-emit-project --no-hashes` 加上 `uvx --from pip-audit pip-audit ... --format json`，并使用审计后删除的临时依赖项文件。发布证据 JSON 记录仓库相对工件路径，或记录隐去后的 `<host-local-path>/<name>` 标签以及已链接工件的 SHA-256 摘要；它不会保留检出目录之外的绝对路径。失败验证门控的 stdout/stderr 尾部、跳过门控原因和已知限制在写入 JSON 或 Markdown 前会被清理，因此 bearer token、签名 URL、类似密钥的赋值和宿主本地路径不会泄漏到可附加的发布证据中。证据包、依赖项审计证据、运行清单、基准测试报告和冒烟测试清单应从发布说明中链接，而不是手动复制。在修改公开工件契约之前，请使用[工件结构定义](./artifact-schemas.md)来确认所属模块、版本字段、迁移规则和验证面。
 
 质量仪表板读取现有的 JSON 输出，而不是运行门控。它适合用于单一本地审查页面，因为它区分 `failed`、`warning`、`skipped` 和 `not-run` 检查，并保留原始输出尾部。它不替代发布证据：发布证据仍然是工件哈希、已链接运行清单和明确限制的发布主张工件。
 

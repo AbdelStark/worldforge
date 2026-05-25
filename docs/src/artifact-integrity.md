@@ -19,7 +19,7 @@ without requiring signing credentials or optional model runtimes.
 | Wrapper portability | `uv run python scripts/check_wrapper_portability.py` | wrappers have expected shebangs, executable bits, Python 3.13 uv invocations, and docs | fix the named wrapper or documented command |
 | Core checkout performance | `uv run python scripts/check_core_performance.py` | report has `passed: true` for checkout-safe core paths | inspect the failing row and fix the regression before changing budgets |
 | Release readiness drill | `uv run python scripts/release_readiness_drill.py` | clean-pass and controlled-failure release-evidence fixtures are written under `.worldforge/release-readiness-drill/` | inspect the first failed gate and rerun its triage command |
-| Release evidence | `uv run python scripts/generate_release_evidence.py --run-gates` | Markdown and JSON summaries link gate status, artifacts, hashes, and live-smoke manifests | inspect the failed gate row and its first triage step |
+| Release evidence | `uv run python scripts/generate_release_evidence.py --run-gates` | Markdown and JSON summaries link gate status, sanitized command output, artifacts, hashes, and live-smoke manifests | inspect the failed gate row and its first triage step |
 | Quality dashboard | `uv run python scripts/generate_quality_dashboard.py` | local JSON and Markdown summarize release evidence, dependency audit, core performance, skipped host-owned checks, not-run checks, and first failed gate | inspect the raw failure details section, then rerun the underlying gate artifact |
 | Release notes draft | `uv run python scripts/generate_release_notes.py --release-evidence .worldforge/release-evidence/release-evidence.json` | maintainer-editable Markdown links changelog entries, closed issues, validation evidence, caveats, and host-owned optional runtime evidence | regenerate release evidence or fix `CHANGELOG.md`, then rerun the draft command |
 | Release provenance | `.github/workflows/release.yml` build provenance attestation | tagged release builds upload distributions and request GitHub artifact provenance | inspect the release workflow run and attached GitHub attestation |
@@ -45,9 +45,11 @@ The dependency-audit wrapper uses `uv export --frozen --all-groups --no-emit-pro
 plus `uvx --from pip-audit pip-audit ... --format json` with a temporary requirements file that is
 removed after the audit. The release evidence JSON records repo-relative artifact paths or redacted
 `<host-local-path>/<name>` labels plus SHA-256 digests for linked artifacts; it does not preserve
-absolute paths outside the checkout. Evidence bundles, dependency-audit evidence, run manifests,
-benchmark reports, and live-smoke manifests should be linked from release notes instead of copied by
-hand. Use
+absolute paths outside the checkout. Failed validation gate stdout/stderr tails, skipped-gate
+reasons, and known limitations are sanitized before JSON or Markdown rendering, so bearer tokens,
+signed URLs, secret-shaped assignments, and host-local paths do not leak into attachable release
+evidence. Evidence bundles, dependency-audit evidence, run manifests, benchmark reports, and
+live-smoke manifests should be linked from release notes instead of copied by hand. Use
 [Artifact Schemas](./artifact-schemas.md) to identify the owning module, version field, migration
 rule, and validation surface before changing a public artifact contract.
 

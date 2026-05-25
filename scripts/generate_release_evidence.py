@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from worldforge.live_smoke_evidence import (  # noqa: E402
     render_live_smoke_registry_table,
     validate_live_smoke_registry,
 )
+from worldforge.models import _redact_observable_text  # noqa: E402
 from worldforge.smoke.run_manifest import validate_run_manifest  # noqa: E402
 
 DEFAULT_OUTPUT = ROOT / ".worldforge" / "release-evidence" / "release-evidence.md"
@@ -34,6 +36,7 @@ DEFAULT_EVIDENCE_BUNDLES_DIR = ROOT / ".worldforge" / "evidence-bundles"
 DEFAULT_DEPENDENCY_AUDIT_DIR = ROOT / ".worldforge" / "dependency-audit"
 
 MAX_CAPTURE_CHARS = 4_000
+HOST_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes|var/folders)/[^\s)`|]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,16 +65,16 @@ class ReleaseGateResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "name": self.name,
-            "command": self.command,
-            "status": self.status,
+            "name": _sanitize_text(self.name),
+            "command": _sanitize_text(self.command),
+            "status": _sanitize_text(self.status),
             "exit_code": self.exit_code,
             "duration_ms": self.duration_ms,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
-            "stdout_tail": self.stdout_tail,
-            "stderr_tail": self.stderr_tail,
-            "triage_step": self.triage_step,
+            "stdout_tail": _sanitize_text(self.stdout_tail),
+            "stderr_tail": _sanitize_text(self.stderr_tail),
+            "triage_step": _sanitize_text(self.triage_step),
         }
 
 
@@ -466,8 +469,9 @@ def render_release_evidence(
     for result in resolved_gate_results:
         exit_code = "-" if result.exit_code is None else str(result.exit_code)
         lines.append(
-            f"| {result.name} | `{result.command}` | {result.status} | "
-            f"{exit_code} | {result.triage_step} |"
+            f"| {_sanitize_text(result.name)} | `{_sanitize_text(result.command)}` | "
+            f"{_sanitize_text(result.status)} | {exit_code} | "
+            f"{_sanitize_text(result.triage_step)} |"
         )
 
     lines.extend(
@@ -528,7 +532,7 @@ def render_release_evidence(
         ]
     )
     if known_limitations:
-        lines.extend(f"- {item}" for item in known_limitations)
+        lines.extend(f"- {_sanitize_text(item)}" for item in known_limitations)
     else:
         lines.append(
             "- Live-provider evidence is optional and absent providers are reported explicitly."
@@ -577,10 +581,15 @@ def _selected_gates(names: tuple[str, ...]) -> tuple[ReleaseGate, ...]:
 def _capture_tail(value: str | None) -> str:
     if not value:
         return ""
-    stripped = value.strip()
+    stripped = _sanitize_text(value.strip())
     if len(stripped) <= MAX_CAPTURE_CHARS:
         return stripped
     return stripped[-MAX_CAPTURE_CHARS:]
+
+
+def _sanitize_text(value: str) -> str:
+    sanitized = _redact_observable_text(value)
+    return HOST_PATH_PATTERN.sub("<host-local-path>", sanitized)
 
 
 def _gate_summary(results: tuple[ReleaseGateResult, ...]) -> dict[str, int]:

@@ -56,6 +56,10 @@ releases may still include breaking changes when the public API needs to tighten
   outside-checkout artifacts are recorded as `<host-local-path>/<name>` with
   their hashes and sizes instead of leaking `/Users`, `/private`, or temporary
   workspace paths into attachable JSON or Markdown.
+- Release evidence validation gate records now sanitize command output tails,
+  skipped-gate reasons, and known limitations before writing JSON or Markdown,
+  so failed gate logs cannot leak bearer tokens, signed URLs, secret-shaped
+  assignments, or host-local paths into attachable release artifacts.
 - Live-smoke `run_manifest.json` artifact references no longer preserve
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that

@@ -68,6 +68,9 @@ evaluation harnesses, and testable prototypes.
 - `scripts/release_readiness_drill.py`: checkout-safe release readiness drill that renders
   clean-pass and controlled-failure release-evidence artifacts without publishing, tagging,
   signing, or running host-owned optional runtimes.
+- `scripts/generate_release_evidence.py`: checkout-safe release evidence generator that records
+  validation gate status, sanitized command output, artifact hashes, live-smoke manifest links,
+  known limitations, and claim boundaries without publishing, tagging, or signing.
 - `scripts/generate_dependency_audit_evidence.py`: checkout-safe dependency-audit evidence wrapper
   around the documented `uv export` plus `pip-audit` flow; writes JSON and Markdown summaries
   without preserving the temporary requirements file.
