@@ -791,7 +791,9 @@ The release-notes command writes `.worldforge/release-notes/release-notes-draft.
 artifact only: maintainers must edit it before publishing, and the command never creates a tag,
 GitHub release, signature, or trusted-publishing artifact. Success signal: the draft contains
 added, changed, fixed, docs, validation, compatibility, caveat, and host-owned optional-runtime
-sections. First triage step when validation is missing: run
+sections. Draft status is derived from both `validation_summary` and row-level
+`validation_gates`; any failed gate row keeps the draft at `needs-validation-review` even if a
+stale summary reports zero failures. First triage step when validation is missing: run
 `uv run python scripts/generate_release_evidence.py --run-gates` and regenerate the draft. Use
 `--require-validation-evidence` in release scripts when a missing or invalid evidence JSON should
 fail the command.

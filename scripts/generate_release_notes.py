@@ -442,12 +442,42 @@ def _label_names(raw_labels: Any) -> tuple[str, ...]:
 def _draft_status(release_evidence: ReleaseEvidenceRecord) -> str:
     if release_evidence.status != "present":
         return "needs-validation-evidence"
-    summary = (
-        release_evidence.payload.get("validation_summary", {}) if release_evidence.payload else {}
-    )
-    if isinstance(summary, dict) and int(summary.get("failed") or 0) > 0:
+    payload = release_evidence.payload or {}
+    if _validation_summary_failed_count(payload) > 0 or _failed_validation_gate_count(payload) > 0:
         return "needs-validation-review"
     return "ready-for-maintainer-review"
+
+
+def _validation_summary_failed_count(payload: dict[str, Any]) -> int:
+    summary = payload.get("validation_summary", {})
+    if not isinstance(summary, dict):
+        return 0
+    return _validation_summary_count(summary, "failed")
+
+
+def _failed_validation_gate_count(payload: dict[str, Any]) -> int:
+    gates = payload.get("validation_gates", [])
+    if not isinstance(gates, list):
+        return 0
+    failed = 0
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        raw_status = gate.get("status")
+        if isinstance(raw_status, str) and raw_status.strip().lower() == "failed":
+            failed += 1
+    return failed
+
+
+def _validation_summary_count(summary: dict[str, Any], name: str) -> int:
+    value = summary.get(name)
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value)
+    return 0
 
 
 def _release_evidence_warnings(release_evidence: ReleaseEvidenceRecord) -> list[str]:
@@ -554,7 +584,7 @@ def _render_validation(release_evidence: ReleaseEvidenceRecord) -> list[str]:
     lines.append(
         "- Summary: "
         + ", ".join(
-            f"`{name}`={int(summary.get(name) or 0)}"
+            f"`{name}`={_validation_summary_count(summary, name)}"
             for name in ("passed", "failed", "skipped", "host-owned")
         )
     )

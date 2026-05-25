@@ -76,7 +76,8 @@ uv run python scripts/generate_release_notes.py \
 
 The draft is not a publishing step. It is safe to attach for review because missing validation
 evidence is called out explicitly, host-local paths are redacted, and optional runtime claims remain
-scoped to linked live-smoke manifests.
+scoped to linked live-smoke manifests. Its status uses both `validation_summary` and row-level
+`validation_gates`, so a stale summary cannot hide an individual failed gate row.
 
 Unsafe artifacts stay out of public bundles: `.env` files, credentials, signed URL query strings,
 checkpoint archives, downloaded datasets, robot-controller logs, local cache directories, and

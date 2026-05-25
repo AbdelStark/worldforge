@@ -811,7 +811,7 @@ uv run python scripts/generate_release_notes.py \
   --known-caveat "No prepared-host live smoke was run for <provider>."
 ```
 
-成功信号：`.worldforge/release-notes/release-notes-draft.md` 包含 `Added`、`Changed`、`Fixed`、`Docs`、`Validation`、`Compatibility Notes`、`Known Caveats` 和 `Host-Owned Optional Runtime Evidence` 章节。草稿是供发布编辑使用的原始材料，不是发布步骤本身：它不会创建 GitHub release 或标签、签署工件或编辑可信发布配置。若草稿提示验证证据缺失，请先运行 `uv run python scripts/generate_release_evidence.py --run-gates`。当发布自动化在证据缺失时应失败，使用 `--require-validation-evidence`。
+成功信号：`.worldforge/release-notes/release-notes-draft.md` 包含 `Added`、`Changed`、`Fixed`、`Docs`、`Validation`、`Compatibility Notes`、`Known Caveats` 和 `Host-Owned Optional Runtime Evidence` 章节。草稿是供发布编辑使用的原始材料，不是发布步骤本身：它不会创建 GitHub release 或标签、签署工件或编辑可信发布配置。草稿状态同时检查 `validation_summary` 和每个 `validation_gates` 行；失败的 gate 行会让草稿保持 `needs-validation-review`，直到从通过的 gate 重新生成发布证据。若草稿提示验证证据缺失，请先运行 `uv run python scripts/generate_release_evidence.py --run-gates`。当发布自动化在证据缺失时应失败，使用 `--require-validation-evidence`。
 
 成功信号：
 

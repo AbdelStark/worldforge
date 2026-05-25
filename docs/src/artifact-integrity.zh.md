@@ -57,7 +57,7 @@ uv run python scripts/generate_release_notes.py \
   --release-evidence .worldforge/release-evidence/release-evidence.json
 ```
 
-草稿不是发布步骤。可以安全地附加用于审查，因为缺失的验证证据会被明确指出，宿主本地路径会被隐去，可选运行时主张仍限定在已链接的冒烟测试清单范围内。
+草稿不是发布步骤。可以安全地附加用于审查，因为缺失的验证证据会被明确指出，宿主本地路径会被隐去，可选运行时主张仍限定在已链接的冒烟测试清单范围内。草稿状态同时使用 `validation_summary` 和逐行的 `validation_gates`，因此过期摘要不能隐藏单个失败的 gate 行。
 
 不安全的工件不得出现在公开包中：`.env` 文件、凭据、签名 URL 查询字符串、检查点压缩包、下载的数据集、机器人控制器日志、本地缓存目录以及未隐去的提供方载荷。请使用 `worldforge runs bundle <run-id>` 或 `scripts/generate_evidence_bundle.py` 生成经过清理的 issue 和发布工件。
 

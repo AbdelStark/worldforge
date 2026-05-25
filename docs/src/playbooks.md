@@ -1009,7 +1009,9 @@ uv run python scripts/generate_release_notes.py \
 Success signal: `.worldforge/release-notes/release-notes-draft.md` includes `Added`, `Changed`,
 `Fixed`, `Docs`, `Validation`, `Compatibility Notes`, `Known Caveats`, and `Host-Owned Optional
 Runtime Evidence` sections. The draft is source material for release editing, not a publish step:
-it never creates a GitHub release or tag, signs artifacts, or edits trusted publishing. If the
+it never creates a GitHub release or tag, signs artifacts, or edits trusted publishing. Its status
+checks both `validation_summary` and individual `validation_gates`, so a failed gate row keeps the
+draft in `needs-validation-review` until release evidence is regenerated from passing gates. If the
 draft says validation evidence is missing, run
 `uv run python scripts/generate_release_evidence.py --run-gates` first. Use
 `--require-validation-evidence` when release automation should fail on missing evidence.

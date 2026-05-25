@@ -147,6 +147,54 @@ def test_release_notes_draft_collects_changelog_issues_and_evidence(tmp_path: Pa
     assert "/Users/alice" not in draft.markdown
 
 
+def test_release_notes_draft_uses_failed_gate_rows_for_status(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        """# Changelog
+
+## Unreleased
+
+### Fixed
+
+- Fixed release evidence status handling.
+""",
+        encoding="utf-8",
+    )
+    evidence = tmp_path / "release-evidence.json"
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "validation_summary": {
+                    "passed": 1,
+                    "failed": 0,
+                    "skipped": 0,
+                    "host-owned": 0,
+                },
+                "validation_gates": [
+                    {
+                        "name": "Tests",
+                        "status": "failed",
+                        "command": "uv run pytest",
+                        "triage_step": "fix tests",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    draft = build_release_notes_draft(
+        changelog_path=changelog,
+        release_evidence_path=evidence,
+        now_utc=DeterministicClock(start=datetime(2026, 5, 11, tzinfo=UTC)).now,
+    )
+
+    assert draft.status == "needs-validation-review"
+    assert "- Draft status: `needs-validation-review`" in draft.markdown
+    assert "| Tests | failed | `uv run pytest` | fix tests |" in draft.markdown
+
+
 def test_release_notes_main_reports_missing_validation_evidence(
     tmp_path: Path,
     capsys,

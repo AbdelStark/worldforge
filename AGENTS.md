@@ -76,7 +76,8 @@ evaluation harnesses, and testable prototypes.
   summaries without running gates.
 - `scripts/generate_release_notes.py`: maintainer-editable release notes draft generator that
   assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
-  validation summaries, caveats, and host-owned optional runtime evidence without publishing.
+  validation summaries, row-level validation gate status, caveats, and host-owned optional runtime
+  evidence without publishing.
 - `src/worldforge/harness/`: optional TheWorldHarness TUI package. Keep flow metadata and runners
   independent from Textual; `tui.py` is the only Textual-dependent module. Current flows cover
   LeWorldModel score planning, LeRobot policy-plus-score planning, Cosmos-Policy ALOHA replay,
