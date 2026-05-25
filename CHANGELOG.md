@@ -28,6 +28,10 @@ releases may still include breaking changes when the public API needs to tighten
   `route_capability(...)` stores a sanitized `str(exc)` so bearer tokens, API
   key assignments, and signed artifact URL query strings do not leak through
   routing result artifacts even when an adapter raises a raw exception.
+- `RoutingResult` now rejects incoherent public artifacts: succeeded results
+  must include a matching final succeeded attempt, chosen provider, and value;
+  failed results cannot carry stale values or succeeded attempts; and attempt
+  capabilities must match the result capability.
 - Live-smoke `run_manifest.json` artifact references no longer preserve
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that

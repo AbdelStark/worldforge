@@ -90,5 +90,8 @@ clip = result.value
 - 链（``preferred + fallbacks``）不得包含重复项
 - ``require_capability`` 必须是 ``bool`` 类型
 - ``operation`` 必须是非空字符串
+- `RoutingResult` 的所有尝试必须与结果能力一致
+- 成功结果必须包含一个最终的成功尝试、匹配的选定提供方以及返回值
+- 失败结果不得携带选定提供方、陈旧返回值或成功尝试
 
 每个违规都会触发 ``WorldForgeError``，使配置错误在策略构造时暴露，而不是在调度路径中。

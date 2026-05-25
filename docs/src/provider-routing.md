@@ -132,6 +132,11 @@ Routing inputs are validated at construction:
 - the chain (``preferred + fallbacks``) cannot contain duplicates
 - ``require_capability`` must be a ``bool``
 - ``operation`` must be a non-empty string
+- `RoutingResult` attempts must all match the result capability
+- succeeded results must have one final succeeded attempt, a matching chosen
+  provider, and a returned value
+- failed results must not carry a chosen provider, stale value, or succeeded
+  attempt
 
 Each violation raises ``WorldForgeError`` so misconfiguration surfaces at
 policy construction, not in a dispatch path.

@@ -194,12 +194,47 @@ class RoutingResult[T]:
             not isinstance(self.chosen, str) or not self.chosen.strip()
         ):
             raise WorldForgeError("RoutingResult chosen must be None or a non-empty provider name.")
+        object.__setattr__(self, "chosen", self.chosen.strip() if self.chosen else None)
         if not isinstance(self.succeeded, bool):
             raise WorldForgeError("RoutingResult succeeded must be a bool.")
         if not isinstance(self.attempts, tuple) or any(
             not isinstance(item, RoutingAttempt) for item in self.attempts
         ):
             raise WorldForgeError("RoutingResult attempts must be a tuple of RoutingAttempt.")
+        if any(attempt.capability != self.capability for attempt in self.attempts):
+            raise WorldForgeError(
+                "RoutingResult attempt capabilities must match result capability."
+            )
+        succeeded_attempts = tuple(
+            attempt for attempt in self.attempts if attempt.status == "succeeded"
+        )
+        if self.succeeded:
+            if self.chosen is None:
+                raise WorldForgeError("RoutingResult succeeded results require a chosen provider.")
+            if self.value is None:
+                raise WorldForgeError("RoutingResult succeeded results require a value.")
+            if len(succeeded_attempts) != 1:
+                raise WorldForgeError(
+                    "RoutingResult succeeded results must include exactly one succeeded attempt."
+                )
+            succeeded_attempt = succeeded_attempts[0]
+            if succeeded_attempt.provider != self.chosen:
+                raise WorldForgeError(
+                    "RoutingResult chosen provider must match the succeeded attempt."
+                )
+            if self.attempts[-1] != succeeded_attempt:
+                raise WorldForgeError(
+                    "RoutingResult succeeded attempt must be the final routing attempt."
+                )
+            return
+        if self.chosen is not None:
+            raise WorldForgeError("RoutingResult failed results must not choose a provider.")
+        if self.value is not None:
+            raise WorldForgeError("RoutingResult failed results must not carry a value.")
+        if succeeded_attempts:
+            raise WorldForgeError(
+                "RoutingResult failed results must not include succeeded attempts."
+            )
 
     def to_dict(self) -> JSONDict:
         return {

@@ -138,7 +138,7 @@ def test_routing_attempt_rejects_non_string_optional_text(field: str) -> None:
 def test_routing_result_to_dict_includes_attempts() -> None:
     result = RoutingResult(
         capability="predict",
-        chosen="mock",
+        chosen=" mock ",
         succeeded=True,
         attempts=(RoutingAttempt(provider="mock", capability="predict", status="succeeded"),),
         value={"answer": 42},
@@ -148,6 +148,96 @@ def test_routing_result_to_dict_includes_attempts() -> None:
     assert payload["chosen"] == "mock"
     assert payload["succeeded"] is True
     assert payload["attempts"][0]["status"] == "succeeded"
+
+
+def test_routing_result_rejects_incoherent_success() -> None:
+    succeeded = RoutingAttempt(provider="mock", capability="predict", status="succeeded")
+    failed = RoutingAttempt(provider="alt", capability="predict", status="failed")
+
+    with pytest.raises(WorldForgeError, match="require a chosen provider"):
+        RoutingResult(
+            capability="predict",
+            chosen=None,
+            succeeded=True,
+            attempts=(succeeded,),
+            value="ok",
+        )
+
+    with pytest.raises(WorldForgeError, match="require a value"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=True,
+            attempts=(succeeded,),
+            value=None,
+        )
+
+    with pytest.raises(WorldForgeError, match="exactly one succeeded attempt"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=True,
+            attempts=(failed,),
+            value="ok",
+        )
+
+    with pytest.raises(WorldForgeError, match="chosen provider must match"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=True,
+            attempts=(RoutingAttempt(provider="alt", capability="predict", status="succeeded"),),
+            value="ok",
+        )
+
+    with pytest.raises(WorldForgeError, match="final routing attempt"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=True,
+            attempts=(succeeded, failed),
+            value="ok",
+        )
+
+
+def test_routing_result_rejects_incoherent_failure() -> None:
+    succeeded = RoutingAttempt(provider="mock", capability="predict", status="succeeded")
+    failed = RoutingAttempt(provider="mock", capability="predict", status="failed")
+
+    with pytest.raises(WorldForgeError, match="must not choose"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=False,
+            attempts=(failed,),
+        )
+
+    with pytest.raises(WorldForgeError, match="must not carry a value"):
+        RoutingResult(
+            capability="predict",
+            chosen=None,
+            succeeded=False,
+            attempts=(failed,),
+            value="stale",
+        )
+
+    with pytest.raises(WorldForgeError, match="must not include succeeded attempts"):
+        RoutingResult(
+            capability="predict",
+            chosen=None,
+            succeeded=False,
+            attempts=(succeeded,),
+        )
+
+
+def test_routing_result_requires_attempt_capabilities_to_match_result() -> None:
+    with pytest.raises(WorldForgeError, match="attempt capabilities"):
+        RoutingResult(
+            capability="predict",
+            chosen=None,
+            succeeded=False,
+            attempts=(RoutingAttempt(provider="mock", capability="generate", status="failed"),),
+        )
 
 
 def test_route_capability_returns_first_success(tmp_path) -> None:
