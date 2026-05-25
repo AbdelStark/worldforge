@@ -27,7 +27,7 @@ WorldForge 提供了一个类型化的路由辅助工具，用于优先尝试首
 | `ROUTING_ATTEMPT_STATUSES` | 枚举状态：`succeeded`、`failed`、`skipped-not-registered`、`skipped-incompatible` |
 | `route_capability(policy, forge, *, invoke)` | 尝试整条链，返回第一次成功的结果 |
 
-`route_capability` 是确定性的。提供方按 `(preferred, *fallbacks)` 的顺序依次尝试，链在第一次成功时停止。每个未注册或能力不兼容的提供方被记录为跳过的尝试，**不会**触发调用；只有已注册且能力兼容的提供方才会被传入 ``invoke``。``invoke`` 抛出的任何异常都会被捕获为 `failed` 尝试，记录异常类名和 ``str(exc)``，然后链继续执行。
+`route_capability` 是确定性的。提供方按 `(preferred, *fallbacks)` 的顺序依次尝试，链在第一次成功时停止。每个未注册或能力不兼容的提供方被记录为跳过的尝试，**不会**触发调用；只有已注册且能力兼容的提供方才会被传入 ``invoke``。``invoke`` 抛出的任何异常都会被捕获为 `failed` 尝试，记录异常类名和经过脱敏的 ``str(exc)``，然后链继续执行。
 
 ## 示例
 
@@ -78,7 +78,7 @@ clip = result.value
 
 - ``status="failed"``
 - ``error_type``：异常类名（例如 ``"ProviderError"``、``"ProviderBudgetExceededError"``）
-- ``error_message``：``str(exc)``。适配器有责任确保异常消息经过脱敏——与适用于 `ProviderEvent` 消息和元数据的契约相同。
+- ``error_message``：经过脱敏的 ``str(exc)``。适配器仍然有责任抛出已脱敏的提供方错误，但路由尝试是面向工件的记录，因此在序列化前会防御性地移除常见 bearer token、API key、secret 赋值以及签名 URL 查询参数形状。
 
 ## 验证门控
 

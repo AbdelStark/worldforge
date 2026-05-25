@@ -23,6 +23,11 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Fixed
 
+- Provider routing failed-attempt records now redact exception messages before
+  serialization. `RoutingAttempt` validates optional reason/error text and
+  `route_capability(...)` stores a sanitized `str(exc)` so bearer tokens, API
+  key assignments, and signed artifact URL query strings do not leak through
+  routing result artifacts even when an adapter raises a raw exception.
 - Live-smoke `run_manifest.json` artifact references no longer preserve
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that

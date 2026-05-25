@@ -36,7 +36,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from worldforge.models import CAPABILITY_NAMES, JSONDict, WorldForgeError
+from worldforge.models import (
+    CAPABILITY_NAMES,
+    JSONDict,
+    WorldForgeError,
+    _redact_observable_text,
+)
 
 if TYPE_CHECKING:
     from worldforge.framework import WorldForge
@@ -115,9 +120,9 @@ class RoutingAttempt:
 
     ``status`` is one of :data:`ROUTING_ATTEMPT_STATUSES`. ``reason`` carries a
     human-readable note for skipped steps. ``error_type`` and ``error_message``
-    capture the exception class name and ``str(exc)`` from a failed call;
-    callers' provider adapters are responsible for keeping those messages
-    sanitized as required by the provider event contract.
+    capture the exception class name and a redacted ``str(exc)`` from a failed
+    call. Adapters should still raise sanitized provider errors, but routing
+    attempts are artifact-facing records and therefore redact defensively too.
     """
 
     provider: str
@@ -137,6 +142,21 @@ class RoutingAttempt:
         if self.status not in ROUTING_ATTEMPT_STATUSES:
             options = ", ".join(ROUTING_ATTEMPT_STATUSES)
             raise WorldForgeError(f"RoutingAttempt status must be one of: {options}.")
+        object.__setattr__(
+            self,
+            "reason",
+            _sanitize_optional_attempt_text(self.reason, field="reason"),
+        )
+        object.__setattr__(
+            self,
+            "error_type",
+            _sanitize_optional_attempt_text(self.error_type, field="error_type"),
+        )
+        object.__setattr__(
+            self,
+            "error_message",
+            _sanitize_optional_attempt_text(self.error_message, field="error_message"),
+        )
 
     def to_dict(self) -> JSONDict:
         return {
@@ -217,7 +237,7 @@ def route_capability[T](
        continue.
     3. Otherwise call ``invoke(name)``. On return record ``succeeded`` and
        short-circuit; on any exception record ``failed`` (with
-       ``type(exc).__name__`` and ``str(exc)``) and continue.
+       ``type(exc).__name__`` and redacted ``str(exc)``) and continue.
 
     Returns a :class:`RoutingResult` with the chosen provider, the value, and
     the full attempt history. ``succeeded=False`` when no provider satisfied
@@ -297,3 +317,12 @@ def route_capability[T](
         attempts=tuple(attempts),
         value=None,
     )
+
+
+def _sanitize_optional_attempt_text(value: object, *, field: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise WorldForgeError(f"RoutingAttempt {field} must be a string when provided.")
+    sanitized = _redact_observable_text(value.strip())
+    return sanitized or None

@@ -57,8 +57,8 @@ masked.
 unregistered or capability-incompatible provider is recorded as a skipped
 attempt **without** invoking the call; only registered, compatible providers
 are passed to ``invoke``. Any exception raised by ``invoke`` is captured as a
-`failed` attempt with the exception class name and ``str(exc)`` and the chain
-continues.
+`failed` attempt with the exception class name and a redacted ``str(exc)`` and
+the chain continues.
 
 ## Example
 
@@ -117,9 +117,10 @@ Failed attempts in `attempts` carry:
 - ``status="failed"``
 - ``error_type``: the exception class name (e.g. ``"ProviderError"``,
   ``"ProviderBudgetExceededError"``)
-- ``error_message``: ``str(exc)``. Adapters are responsible for keeping
-  exception messages sanitized — the same contract that applies to
-  `ProviderEvent` messages and metadata.
+- ``error_message``: redacted ``str(exc)``. Adapters are still responsible for
+  raising sanitized provider errors, but routing attempts are artifact-facing
+  records and defensively strip common bearer token, API key, secret assignment,
+  and signed-URL query shapes before serialization.
 
 ## Validation gates
 
