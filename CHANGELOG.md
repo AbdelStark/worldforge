@@ -38,6 +38,11 @@ releases may still include breaking changes when the public API needs to tighten
   now reject score results whose `best_index` contradicts `lower_is_better`,
   so planners and adapter contract tests cannot accept the wrong candidate for
   the declared score direction.
+- Capability-specific provider conformance helpers now normalize
+  `WorldForgeError` validation failures from invalid public result construction
+  and configured-provider `ProviderError`s into explicit `AssertionError`
+  contract failures for predict, reason, embed, generate, transfer, score, and
+  policy checks.
 - The `t` shortcut in `RoboticsShowcaseApp` no longer fails silently because
   TensorBoard cannot import `pkg_resources`. The launched `uvx` command now
   pins `--with "setuptools<81"` so `pkg_resources` is available (setuptools

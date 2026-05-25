@@ -553,6 +553,10 @@ tests/
 | `assert_policy_conformance(...)` | `select_actions -> ActionPolicyResult` |
 | `assert_provider_events_conform(...)` | JSON 原生、脱敏安全的提供方事件 |
 
+能力辅助工具会针对契约失败抛出 `AssertionError`，包括提供方构造公共结果模型时触发
+`WorldForgeError` 验证失败的情况，以及配置完成的提供方在应返回有效结果时抛出的
+`ProviderError`。
+
 当夹具或注入的运行时仅覆盖一个操作时，使用特定能力的辅助工具。当测试能安全地覆盖提供方的所有已声明能力时，使用 `assert_provider_contract(...)`。
 
 ### 契约 CLI 证据

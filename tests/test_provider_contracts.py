@@ -4,12 +4,21 @@ import importlib.util
 import inspect
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 import worldforge.testing.providers as provider_testing
-from worldforge import Action, ActionPolicyResult, ActionScoreResult, ProviderCapabilities
+from worldforge import (
+    Action,
+    ActionPolicyResult,
+    ActionScoreResult,
+    EmbeddingResult,
+    ProviderCapabilities,
+    ReasoningResult,
+    VideoClip,
+)
 from worldforge.cli import main as worldforge_main
 from worldforge.models import ProviderEvent, ProviderHealth
 from worldforge.providers import (
@@ -158,6 +167,78 @@ class FakePolicyProvider(BaseProvider):
         )
 
 
+class InvalidPublicResultProvider(BaseProvider):
+    def __init__(self) -> None:
+        super().__init__(
+            name="invalid-public-result",
+            capabilities=ProviderCapabilities(
+                predict=True,
+                reason=True,
+                embed=True,
+                generate=True,
+                transfer=True,
+                score=True,
+                policy=True,
+            ),
+            profile=ProviderProfileSpec(
+                description="Provider that constructs invalid public result models",
+                is_local=True,
+                deterministic=True,
+                requires_credentials=False,
+            ),
+        )
+
+    def predict(self, world_state, action, steps) -> PredictionPayload:
+        return PredictionPayload(
+            state={"metadata": {"not_json": object()}},
+            confidence=0.5,
+            physics_score=0.5,
+            frames=[],
+            metadata={"provider": self.name},
+            latency_ms=0.1,
+        )
+
+    def reason(self, query, *, world_state=None) -> ReasoningResult:
+        return ReasoningResult(provider=self.name, answer="ok", confidence=2.0)
+
+    def embed(self, *, text) -> EmbeddingResult:
+        return EmbeddingResult(provider=self.name, model="fixture", vector=[])
+
+    def generate(self, prompt, duration_seconds, *, options=None) -> VideoClip:
+        return VideoClip(frames=[b"frame"], fps=0.0, resolution=(1, 1), duration_seconds=0.0)
+
+    def transfer(self, clip, *, width, height, fps, prompt="", options=None) -> VideoClip:
+        return VideoClip(frames=[b"frame"], fps=0.0, resolution=(1, 1), duration_seconds=0.0)
+
+    def score_actions(self, *, info, action_candidates) -> ActionScoreResult:
+        return ActionScoreResult(
+            provider=self.name,
+            scores=[0.4, 0.1],
+            best_index=0,
+            lower_is_better=True,
+        )
+
+    def select_actions(self, *, info) -> ActionPolicyResult:
+        return ActionPolicyResult(provider=self.name, actions=[])
+
+
+class ProviderErrorResultProvider(BaseProvider):
+    def __init__(self) -> None:
+        super().__init__(
+            name="provider-error-result",
+            capabilities=ProviderCapabilities(score=True),
+            profile=ProviderProfileSpec(
+                description="Provider that raises ProviderError from a declared capability",
+                is_local=True,
+                deterministic=True,
+                requires_credentials=False,
+            ),
+        )
+
+    def score_actions(self, *, info, action_candidates) -> ActionScoreResult:
+        raise ProviderError("score runtime unavailable")
+
+
 class BrokenContractProvider(BaseProvider):
     def __init__(self, *, event_handler=None) -> None:
         super().__init__(
@@ -254,6 +335,60 @@ def test_score_conformance_rejects_best_index_that_contradicts_direction(
         assert_score_conformance(
             provider,
             info={"fixture": "score"},
+            action_candidates=[["a"], ["b"]],
+        )
+
+
+@pytest.mark.parametrize(
+    ("helper", "expected_message"),
+    [
+        (
+            lambda provider: assert_predict_conformance(provider),
+            "predict must return a valid PredictionPayload",
+        ),
+        (
+            lambda provider: assert_reason_conformance(provider),
+            "reason must return a valid ReasoningResult",
+        ),
+        (
+            lambda provider: assert_embed_conformance(provider),
+            "embed must return a valid EmbeddingResult",
+        ),
+        (
+            lambda provider: assert_generate_conformance(provider),
+            "generate must return a valid VideoClip",
+        ),
+        (
+            lambda provider: assert_transfer_conformance(provider),
+            "transfer must return a valid VideoClip",
+        ),
+        (
+            lambda provider: assert_score_conformance(
+                provider,
+                info={},
+                action_candidates=[["a"], ["b"]],
+            ),
+            "score must return a valid ActionScoreResult",
+        ),
+        (
+            lambda provider: assert_policy_conformance(provider),
+            "policy must return a valid ActionPolicyResult",
+        ),
+    ],
+)
+def test_capability_conformance_helpers_normalize_public_model_errors(
+    helper: Callable[[InvalidPublicResultProvider], object],
+    expected_message: str,
+) -> None:
+    with pytest.raises(AssertionError, match=expected_message):
+        helper(InvalidPublicResultProvider())
+
+
+def test_capability_conformance_helpers_normalize_provider_errors() -> None:
+    with pytest.raises(AssertionError, match="provider raised ProviderError"):
+        assert_score_conformance(
+            ProviderErrorResultProvider(),
+            info={},
             action_candidates=[["a"], ["b"]],
         )
 

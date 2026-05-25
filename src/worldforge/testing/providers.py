@@ -112,6 +112,22 @@ def _contract_json(value: object, message: str) -> None:
         raise AssertionError(message) from exc
 
 
+def _invoke_contract[T](
+    operation_name: str,
+    result_name: str,
+    call: Callable[[], T],
+) -> T:
+    try:
+        return call()
+    except ProviderError as exc:
+        raise AssertionError(
+            f"{operation_name} must return a valid {result_name}; provider raised ProviderError: "
+            f"{exc}"
+        ) from exc
+    except WorldForgeError as exc:
+        raise AssertionError(f"{operation_name} must return a valid {result_name}: {exc}") from exc
+
+
 def _validate_prediction(provider: str, payload: PredictionPayload) -> None:
     _contract_check(
         isinstance(payload, PredictionPayload),
@@ -255,7 +271,11 @@ def assert_predict_conformance(
         raise AssertionError("Provider does not declare the predict capability.")
     sample_state = world_state or sample_contract_world_state()
     sample_action = action or sample_contract_action()
-    prediction = provider.predict(sample_state, sample_action, steps)
+    prediction = _invoke_contract(
+        "predict",
+        "PredictionPayload",
+        lambda: provider.predict(sample_state, sample_action, steps),
+    )
     _validate_prediction(provider.name, prediction)
     return prediction
 
@@ -270,7 +290,11 @@ def assert_reason_conformance(
 
     if not provider.profile().capabilities.reason:
         raise AssertionError("Provider does not declare the reason capability.")
-    result = provider.reason(query, world_state=world_state or sample_contract_world_state())
+    result = _invoke_contract(
+        "reason",
+        "ReasoningResult",
+        lambda: provider.reason(query, world_state=world_state or sample_contract_world_state()),
+    )
     _validate_reasoning(provider.name, result)
     return result
 
@@ -284,7 +308,7 @@ def assert_embed_conformance(
 
     if not provider.profile().capabilities.embed:
         raise AssertionError("Provider does not declare the embed capability.")
-    result = provider.embed(text=text)
+    result = _invoke_contract("embed", "EmbeddingResult", lambda: provider.embed(text=text))
     _validate_embedding(provider.name, result)
     return result
 
@@ -299,7 +323,11 @@ def assert_generate_conformance(
 
     if not provider.profile().capabilities.generate:
         raise AssertionError("Provider does not declare the generate capability.")
-    clip = provider.generate(prompt, duration_seconds=duration_seconds)
+    clip = _invoke_contract(
+        "generate",
+        "VideoClip",
+        lambda: provider.generate(prompt, duration_seconds=duration_seconds),
+    )
     _validate_clip(clip)
     return clip
 
@@ -323,7 +351,11 @@ def assert_transfer_conformance(
         duration_seconds=0.125,
         metadata={"provider": provider.name},
     )
-    result = provider.transfer(transfer_input, width=width, height=height, fps=fps)
+    result = _invoke_contract(
+        "transfer",
+        "VideoClip",
+        lambda: provider.transfer(transfer_input, width=width, height=height, fps=fps),
+    )
     _validate_clip(result)
     return result
 
@@ -338,10 +370,11 @@ def assert_score_conformance(
 
     if not provider.profile().capabilities.score:
         raise AssertionError("Provider does not declare the score capability.")
-    try:
-        result = provider.score_actions(info=info, action_candidates=action_candidates)
-    except WorldForgeError as exc:
-        raise AssertionError(f"score must return a valid ActionScoreResult: {exc}") from exc
+    result = _invoke_contract(
+        "score",
+        "ActionScoreResult",
+        lambda: provider.score_actions(info=info, action_candidates=action_candidates),
+    )
     _validate_action_scores(provider.name, result)
     return result
 
@@ -355,7 +388,11 @@ def assert_policy_conformance(
 
     if not provider.profile().capabilities.policy:
         raise AssertionError("Provider does not declare the policy capability.")
-    result = provider.select_actions(info=info or sample_contract_policy_info())
+    result = _invoke_contract(
+        "policy",
+        "ActionPolicyResult",
+        lambda: provider.select_actions(info=info or sample_contract_policy_info()),
+    )
     _validate_action_policy(provider.name, result)
     return result
 

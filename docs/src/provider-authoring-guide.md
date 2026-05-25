@@ -616,6 +616,10 @@ Reusable conformance helpers are available for narrow provider tests:
 | `assert_policy_conformance(...)` | `select_actions -> ActionPolicyResult` |
 | `assert_provider_events_conform(...)` | JSON-native, redaction-safe provider events |
 
+Capability helpers raise `AssertionError` for contract failures, including invalid public result
+models that fail `WorldForgeError` validation while the provider constructs them and
+configured-provider `ProviderError`s raised where a valid result was expected.
+
 Use the capability-specific helper when a fixture or injected runtime exercises one operation.
 Use `assert_provider_contract(...)` when the test can safely exercise every declared capability for
 the provider.
