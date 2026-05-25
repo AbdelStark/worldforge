@@ -88,16 +88,27 @@ The Textual showcase report (`worldforge.harness.tui.RoboticsShowcaseApp`)
 surfaces the run with a ``RoboticsTensorBoardPane`` and a ``t`` keybinding that
 launches ``uvx --from "tensorboard>=2.16,<3" tensorboard --logdir <path> --port 6006``
 in a detached subprocess. The shortcut is also visible in the footer alongside
-``o`` for Rerun. Because TensorBoard is a web server (not a GUI app like
-Rerun), the binding additionally schedules a ~2.5 s delayed browser-open to
-``http://localhost:6006/`` via Python's ``webbrowser`` module so the run is
-visible without manual steps. The URL is also surfaced in the pane and in the
-notification so headless / remote users can copy-paste it (or set up an SSH
-tunnel). If ``webbrowser`` cannot find a default browser, the binding emits a
-warning telling the user to visit the URL manually. If the summary lacks a
-``"tensorboard"`` block (for example when ``--no-tensorboard`` is passed),
-the pane is omitted, no subprocess is started, no browser is opened, and the
-keybinding emits a warning notification instead.
+``o`` for Rerun.
+
+Because TensorBoard is a web server (not a GUI app like Rerun), the binding
+then runs a Textual background worker that polls ``localhost:6006`` every
+~0.5 s for up to ~60 s and only opens the browser to ``http://localhost:6006/``
+once the port responds. This survives a slow first-run ``uvx`` resolve where
+TensorBoard takes longer than a couple of seconds to bind. The URL is surfaced
+in the pane and in the notification so headless / remote users can copy-paste
+it (or set up an SSH tunnel). If ``webbrowser`` cannot find a default browser,
+the binding emits a warning telling the user to visit the URL manually.
+
+The TensorBoard subprocess's ``stdout`` and ``stderr`` are captured to
+``tensorboard.stdout.log`` and ``tensorboard.stderr.log`` next to the run's
+``events.out.tfevents.*`` files. When the server never comes up within the
+poll window, the binding emits an error notification pointing at the stderr
+log so the failure is debuggable rather than silent.
+
+If the summary lacks a ``"tensorboard"`` block (for example when
+``--no-tensorboard`` is passed), the pane is omitted, no subprocess is
+started, no browser is opened, and the keybinding emits a warning
+notification instead.
 
 ## Programmatic surface
 

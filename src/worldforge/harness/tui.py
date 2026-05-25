@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import queue
 import shlex
+import socket
 import statistics
 import subprocess
 import time
@@ -3507,7 +3508,21 @@ def _robotics_tensorboard_log_dir(payload: dict[str, object]) -> Path | None:
 
 
 ROBOTICS_TENSORBOARD_DEFAULT_PORT = 6006
-ROBOTICS_TENSORBOARD_BROWSER_DELAY_S = 2.5
+ROBOTICS_TENSORBOARD_READY_TIMEOUT_S = 60.0
+ROBOTICS_TENSORBOARD_POLL_INTERVAL_S = 0.5
+ROBOTICS_TENSORBOARD_STDOUT_LOG = "tensorboard.stdout.log"
+ROBOTICS_TENSORBOARD_STDERR_LOG = "tensorboard.stderr.log"
+
+
+def _tensorboard_port_open(host: str, port: int, *, timeout: float = 1.0) -> bool:
+    """Return True when a TCP connect to ``host:port`` succeeds within ``timeout``."""
+
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+    except OSError:
+        return False
+    sock.close()
+    return True
 
 
 def _robotics_tensorboard_viewer_command(path: Path) -> list[str]:
@@ -4406,31 +4421,63 @@ class RoboticsShowcaseApp(App[None]):
                 title="TensorBoard",
             )
             return
+        stdout_log = path / ROBOTICS_TENSORBOARD_STDOUT_LOG
+        stderr_log = path / ROBOTICS_TENSORBOARD_STDERR_LOG
         command = _robotics_tensorboard_viewer_command(path)
         try:
-            subprocess.Popen(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            stdout_handle = stdout_log.open("wb")
+            try:
+                stderr_handle = stderr_log.open("wb")
+                try:
+                    subprocess.Popen(
+                        command,
+                        stdout=stdout_handle,
+                        stderr=stderr_handle,
+                        start_new_session=True,
+                    )
+                finally:
+                    stderr_handle.close()
+            finally:
+                stdout_handle.close()
         except OSError as exc:
             self.notify(str(exc), severity="error", title="TensorBoard")
             return
         url = _robotics_tensorboard_url()
-        self.set_timer(
-            ROBOTICS_TENSORBOARD_BROWSER_DELAY_S,
-            lambda: self._open_tensorboard_browser(url),
-        )
         self.notify(
-            f"{_robotics_tensorboard_viewer_command_text(path)}\n{url}",
+            f"Waiting for TensorBoard to start at {url}\nlogs: {stderr_log}",
             severity="information",
-            title="Opening TensorBoard",
+            title="TensorBoard",
+        )
+        self.run_worker(
+            self._open_tensorboard_browser_when_ready(url, stderr_log),
+            name="tensorboard.open",
+            group="tensorboard",
+            exclusive=True,
         )
 
-    def _open_tensorboard_browser(self, url: str) -> None:
+    async def _open_tensorboard_browser_when_ready(self, url: str, stderr_log: Path) -> None:
+        deadline = time.monotonic() + ROBOTICS_TENSORBOARD_READY_TIMEOUT_S
+        ready = False
+        while time.monotonic() < deadline:
+            if await asyncio.to_thread(
+                _tensorboard_port_open,
+                "localhost",
+                ROBOTICS_TENSORBOARD_DEFAULT_PORT,
+            ):
+                ready = True
+                break
+            await asyncio.sleep(ROBOTICS_TENSORBOARD_POLL_INTERVAL_S)
+        if not ready:
+            self.notify(
+                f"TensorBoard did not come up at {url} within "
+                f"{ROBOTICS_TENSORBOARD_READY_TIMEOUT_S:.0f}s. "
+                f"See {stderr_log} for the launcher output.",
+                severity="error",
+                title="TensorBoard",
+            )
+            return
         try:
-            opened = webbrowser.open(url)
+            opened = await asyncio.to_thread(webbrowser.open, url)
         except webbrowser.Error as exc:
             self.notify(str(exc), severity="warning", title="TensorBoard")
             return
@@ -4440,6 +4487,12 @@ class RoboticsShowcaseApp(App[None]):
                 severity="warning",
                 title="TensorBoard",
             )
+            return
+        self.notify(
+            f"Opening {url}",
+            severity="information",
+            title="TensorBoard",
+        )
 
 
 # ---------------------------------------------------------------------------
