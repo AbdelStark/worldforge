@@ -59,6 +59,9 @@ releases may still include breaking changes when the public API needs to tighten
   release-evidence text, and maintainer caveats with the shared observable-text
   redactor, so token assignments, bearer headers, signed URLs, and host-local
   paths do not leak into draft Markdown.
+- `scripts/smoke_gr00t_policy.py --start-server` now redacts forwarded
+  secret-shaped server arguments and host-local paths from its startup command
+  line before writing stderr, while still launching the raw host-owned command.
 - Release notes drafts now derive `needs-validation-review` from failed
   `validation_gates` rows as well as `validation_summary.failed`, so stale
   release-evidence summaries cannot mark a draft ready while an individual

@@ -206,6 +206,8 @@ uv run python scripts/smoke_gr00t_policy.py \
   --run-manifest .worldforge/runs/gr00t-live/run_manifest.json
 ```
 
+使用 `--start-server` 时，冒烟脚本会向 stderr 写入已清理的启动命令行：转发给服务器的密钥形参数和宿主本地路径会在显示前被隐去，但启动上游服务器时仍使用宿主方拥有的原始命令。
+
 启动上游 Isaac GR00T 需要兼容的 NVIDIA/Linux 运行时，以满足 CUDA 和 TensorRT 的依赖要求。在不受支持的宿主机上，请将 WorldForge 连接到已运行的远程策略服务器。
 
 对于远程 GPU，请尽量将 GR00T 服务器保持私有，并通过 SSH 隧道连接：

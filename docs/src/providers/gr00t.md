@@ -234,6 +234,10 @@ uv run python scripts/smoke_gr00t_policy.py \
   --run-manifest .worldforge/runs/gr00t-live/run_manifest.json
 ```
 
+When `--start-server` is used, the smoke script logs a sanitized startup command line to stderr:
+forwarded secret-shaped server args and host-local paths are redacted before display, while the raw
+host-owned command is still used to launch the upstream server.
+
 Starting upstream Isaac GR00T requires a compatible NVIDIA/Linux runtime for CUDA and TensorRT
 dependencies. On unsupported hosts, connect WorldForge to an already running remote policy server.
 

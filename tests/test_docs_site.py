@@ -448,6 +448,8 @@ def test_gr00t_live_smoke_docs_cover_remote_policy_contract() -> None:
         "ssh -N -L 5555:127.0.0.1:5555",
         "uv run worldforge provider health gr00t",
         "Hibernate or terminate",
+        "sanitized startup command line",
+        "forwarded secret-shaped server args",
     ):
         assert signal in provider_doc or signal in operations or signal in playbooks
 

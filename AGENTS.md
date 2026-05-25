@@ -114,7 +114,8 @@ evaluation harnesses, and testable prototypes.
 - `scripts/smoke_leworldmodel.py`: compatibility wrapper for
   `uv run --python 3.13 --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" --with "datasets>=2.21" worldforge-smoke-leworldmodel`.
 - `scripts/smoke_gr00t_policy.py`: optional live GR00T PolicyClient smoke for host environments
-  with Isaac-GR00T or a reachable policy server.
+  with Isaac-GR00T or a reachable policy server; startup command logs must redact forwarded
+  secret-shaped server args and host-local paths.
 - `scripts/smoke_cosmos_policy.py`: optional live Cosmos-Policy `/act` smoke for host
   environments with a reachable ALOHA policy server.
 - `scripts/smoke_lerobot_policy.py`: optional live LeRobot `PreTrainedPolicy` smoke for host

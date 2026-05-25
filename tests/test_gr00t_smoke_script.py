@@ -327,6 +327,45 @@ def test_smoke_script_redacts_cli_api_token_in_manifest(
     assert manifest["command_argv"].count("[redacted]") == 3
 
 
+def test_start_server_log_redacts_forwarded_secret_args_and_host_paths(
+    monkeypatch,
+    capsys,
+) -> None:
+    script = _load_script()
+    launched: dict[str, object] = {}
+
+    class StubProcess:
+        pass
+
+    def fake_popen(command: list[str], cwd: str | None = None) -> StubProcess:
+        launched["command"] = command
+        launched["cwd"] = cwd
+        return StubProcess()
+
+    monkeypatch.setattr(script, "_server_module_available", lambda: True)
+    monkeypatch.setattr(script.sys, "executable", "/Users/operator/worldforge/.venv/bin/python3")
+    monkeypatch.setattr(script.subprocess, "Popen", fake_popen)
+
+    process = script._start_server(
+        _args(
+            start_server=True,
+            device=None,
+            model_path="/Users/operator/checkpoints/gr00t.ckpt",
+            server_arg=["--hf-token", "hf-secret", "--api-key=inline-secret"],
+        )
+    )
+
+    assert isinstance(process, StubProcess)
+    assert "hf-secret" in launched["command"]
+    assert "--api-key=inline-secret" in launched["command"]
+    stderr = capsys.readouterr().err
+    assert "hf-secret" not in stderr
+    assert "inline-secret" not in stderr
+    assert "/Users/operator" not in stderr
+    assert "[redacted]" in stderr
+    assert "<host-local-path>" in stderr
+
+
 def test_smoke_script_writes_failed_manifest_on_parse_error(tmp_path: Path) -> None:
     manifest_path = tmp_path / "runs" / "gr00t-parse-failed" / "run_manifest.json"
     script = _load_script()
