@@ -216,7 +216,16 @@ def test_inspector_log_methods_sanitize_and_dispatch(tmp_path: Path) -> None:
         "links",
         "open https://example.com/path?signature=abc&other=keep",
     )
+    inspector.log_text("auth", "Authorization: Bearer bearer-secret")
     inspector.log_json("payload", {"alpha": 1, "beta": [1, 2, 3]})
+    inspector.log_json(
+        "secret_payload",
+        {
+            "api_key": "json-secret",
+            "nested": {"authorization": "Bearer nested-secret"},
+            "safe": "keep",
+        },
+    )
     inspector.log_scalar("metrics/latency_ms", 12.5)
     inspector.log_scalar("metrics/latency_ms", float("nan"))  # silently dropped
     inspector.log_histogram("scores/values", [0.1, 0.2, 0.3, float("nan")])
@@ -228,8 +237,16 @@ def test_inspector_log_methods_sanitize_and_dispatch(tmp_path: Path) -> None:
     assert "worldforge/leworldmodel/greeting" in texts
     assert "api_key=[REDACTED]" in texts["worldforge/leworldmodel/greeting"]
     assert "supersecret" not in texts["worldforge/leworldmodel/greeting"]
-    assert "signature=[REDACTED]" in texts["worldforge/leworldmodel/links"]
+    assert "https://example.com/path" in texts["worldforge/leworldmodel/links"]
+    assert "signature=abc" not in texts["worldforge/leworldmodel/links"]
+    assert "other=keep" not in texts["worldforge/leworldmodel/links"]
+    assert "bearer-secret" not in texts["worldforge/leworldmodel/auth"]
+    assert "[REDACTED]" in texts["worldforge/leworldmodel/auth"]
     assert "alpha" in texts["worldforge/leworldmodel/payload"]
+    assert "json-secret" not in texts["worldforge/leworldmodel/secret_payload"]
+    assert "nested-secret" not in texts["worldforge/leworldmodel/secret_payload"]
+    assert '"api_key": "[REDACTED]"' in texts["worldforge/leworldmodel/secret_payload"]
+    assert '"safe": "keep"' in texts["worldforge/leworldmodel/secret_payload"]
     assert any(
         tag == "worldforge/leworldmodel/metrics/latency_ms" and math.isclose(value, 12.5)
         for tag, value, _ in writer.scalars

@@ -27,15 +27,16 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from worldforge.models import JSONDict, ProviderEvent, WorldForgeError, require_json_dict
+from worldforge.models import (
+    JSONDict,
+    ProviderEvent,
+    WorldForgeError,
+    _redact_observable_text,
+    require_json_dict,
+)
 
 _DEFAULT_NAMESPACE = "worldforge/leworldmodel"
 _TAG_SEGMENT_PATTERN = re.compile(r"[^A-Za-z0-9_.\-/]+")
-_SECRET_HINT_PATTERN = re.compile(
-    r"(api[_-]?key|token|secret|signature|password|authorization)=[^\s&]+",
-    re.IGNORECASE,
-)
-_SIGNED_URL_QUERY_PATTERN = re.compile(r"([?&](?:sig|signature|token|auth)=)[^&]+", re.IGNORECASE)
 
 
 def _require_text(value: object, *, name: str) -> str:
@@ -104,12 +105,7 @@ def _finite_float(value: object) -> float | None:
 
 
 def _sanitize_text(value: str) -> str:
-    def _redact_kv(match: re.Match[str]) -> str:
-        key = match.group(0).split("=", 1)[0]
-        return f"{key}=[REDACTED]"
-
-    redacted = _SECRET_HINT_PATTERN.sub(_redact_kv, value)
-    return _SIGNED_URL_QUERY_PATTERN.sub(r"\1[REDACTED]", redacted)
+    return _redact_observable_text(value).replace("[redacted]", "[REDACTED]")
 
 
 def _pretty_json(payload: JSONDict) -> str:
