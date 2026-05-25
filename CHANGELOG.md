@@ -39,6 +39,10 @@ releases may still include breaking changes when the public API needs to tighten
 - Raw `run_manifest.json` validation now enforces the same status enum as
   `LiveSmokeRunManifest` construction, rejecting externally supplied manifests
   whose status is not `passed`, `failed`, or `skipped`.
+- Live-smoke evidence registry validation now rejects stale mixed state:
+  passed/failed rows must link sanitized evidence and cannot carry a
+  `skip_reason`, while skipped/not-run rows must carry a `skip_reason` and
+  cannot link an `artifact_path`.
 - Live-smoke `run_manifest.json` artifact references no longer preserve
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that

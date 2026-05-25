@@ -21,8 +21,8 @@ Each entry records:
 | `date` | Registry decision date as `YYYY-MM-DD`. |
 | `version` | WorldForge package version used for the registry row. |
 | `status` | `passed`, `failed`, `not_run`, `skipped_missing_runtime`, `skipped_missing_credentials`, or `skipped_not_configured`. |
-| `artifact_path` | Sanitized `run_manifest.json` or artifact path for passed/failed evidence, otherwise `null`. |
-| `skip_reason` | Required for skipped or not-run entries. |
+| `artifact_path` | Sanitized `run_manifest.json` or artifact path for passed/failed evidence; must be `null` for skipped or not-run entries. |
+| `skip_reason` | Required for skipped or not-run entries; must be `null` for passed or failed entries. |
 | `known_limitations` | List of explicit caveats and host-owned responsibilities. |
 
 Validate the registry in tests or release tooling:
@@ -34,8 +34,9 @@ registry = validate_live_smoke_registry(payload)
 ```
 
 The validator rejects signed URLs, URL query strings, fragments, obvious secret material,
-secret-like metadata keys, duplicate provider/capability rows, missing skip reasons, and missing
-artifact paths for passed or failed evidence.
+secret-like metadata keys, duplicate provider/capability rows, missing skip reasons, stale
+artifact paths on skipped rows, stale skip reasons on passed or failed rows, and missing artifact
+paths for passed or failed evidence.
 
 ## Status Semantics
 
