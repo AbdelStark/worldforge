@@ -10,6 +10,8 @@
 
 <div align="center">
 
+### 🌐 &nbsp; **English** &nbsp; · &nbsp; [简体中文](./README.zh-CN.md)
+
 **Testable world-model workflows for physical-AI systems.**
 
 WorldForge is a Python integration layer that gives world-model providers, score models, embodied
