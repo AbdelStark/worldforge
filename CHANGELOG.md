@@ -42,7 +42,9 @@ releases may still include breaking changes when the public API needs to tighten
   `WorldForgeError` validation failures from invalid public result construction
   and configured-provider `ProviderError`s into explicit `AssertionError`
   contract failures for predict, reason, embed, generate, transfer, score, and
-  policy checks.
+  policy checks. The helpers also revalidate returned mutable result objects
+  for finite numeric fields and JSON-native score/policy payloads before
+  accepting provider output.
 - The `t` shortcut in `RoboticsShowcaseApp` no longer fails silently because
   TensorBoard cannot import `pkg_resources`. The launched `uvx` command now
   pins `--with "setuptools<81"` so `pkg_resources` is available (setuptools

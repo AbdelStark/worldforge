@@ -239,6 +239,68 @@ class ProviderErrorResultProvider(BaseProvider):
         raise ProviderError("score runtime unavailable")
 
 
+class MutatedPublicResultProvider(BaseProvider):
+    def __init__(self, mutation: str) -> None:
+        super().__init__(
+            name="mutated-public-result",
+            capabilities=ProviderCapabilities(
+                reason=True,
+                embed=True,
+                generate=True,
+                score=True,
+                policy=True,
+            ),
+            profile=ProviderProfileSpec(
+                description="Provider that mutates public result models after construction",
+                is_local=True,
+                deterministic=True,
+                requires_credentials=False,
+            ),
+        )
+        self._mutation = mutation
+
+    def reason(self, query, *, world_state=None) -> ReasoningResult:
+        result = ReasoningResult(provider=self.name, answer="ok", confidence=1.0)
+        if self._mutation == "reason_bool_confidence":
+            result.confidence = True  # type: ignore[assignment]
+        if self._mutation == "reason_non_string_evidence":
+            result.evidence = [object()]  # type: ignore[list-item]
+        return result
+
+    def embed(self, *, text) -> EmbeddingResult:
+        result = EmbeddingResult(provider=self.name, model="fixture", vector=[1.0])
+        if self._mutation == "embed_non_finite_vector":
+            result.vector = [float("nan")]
+        return result
+
+    def generate(self, prompt, duration_seconds, *, options=None) -> VideoClip:
+        result = VideoClip(frames=[b"frame"], fps=1.0, resolution=(1, 1), duration_seconds=0.0)
+        if self._mutation == "generate_bool_fps":
+            result.fps = True  # type: ignore[assignment]
+        if self._mutation == "generate_bad_resolution_shape":
+            result.resolution = (1,)  # type: ignore[assignment]
+        return result
+
+    def score_actions(self, *, info, action_candidates) -> ActionScoreResult:
+        result = ActionScoreResult(provider=self.name, scores=[0.1, 0.2], best_index=0)
+        if self._mutation == "score_non_finite_score":
+            result.scores = [0.1, float("nan")]
+        if self._mutation == "score_non_json_metadata":
+            result.metadata = {"bad": object()}
+        return result
+
+    def select_actions(self, *, info) -> ActionPolicyResult:
+        action = Action.move_to(0.1, 0.2, 0.3)
+        result = ActionPolicyResult(provider=self.name, actions=[action], raw_actions={})
+        if self._mutation == "policy_bool_horizon":
+            result.action_horizon = True  # type: ignore[assignment]
+        if self._mutation == "policy_non_json_raw_actions":
+            result.raw_actions = {"bad": object()}
+        if self._mutation == "policy_bad_candidate_shape":
+            result.action_candidates = [action]  # type: ignore[list-item]
+        return result
+
+
 class BrokenContractProvider(BaseProvider):
     def __init__(self, *, event_handler=None) -> None:
         super().__init__(
@@ -391,6 +453,78 @@ def test_capability_conformance_helpers_normalize_provider_errors() -> None:
             info={},
             action_candidates=[["a"], ["b"]],
         )
+
+
+@pytest.mark.parametrize(
+    ("provider", "helper", "expected_message"),
+    [
+        (
+            MutatedPublicResultProvider("reason_bool_confidence"),
+            lambda provider: assert_reason_conformance(provider),
+            "reason confidence must be a probability",
+        ),
+        (
+            MutatedPublicResultProvider("reason_non_string_evidence"),
+            lambda provider: assert_reason_conformance(provider),
+            "reason evidence must contain only strings",
+        ),
+        (
+            MutatedPublicResultProvider("embed_non_finite_vector"),
+            lambda provider: assert_embed_conformance(provider),
+            "embed vector values must be finite floats",
+        ),
+        (
+            MutatedPublicResultProvider("generate_bool_fps"),
+            lambda provider: assert_generate_conformance(provider),
+            "VideoClip fps must be a finite number",
+        ),
+        (
+            MutatedPublicResultProvider("generate_bad_resolution_shape"),
+            lambda provider: assert_generate_conformance(provider),
+            "VideoClip resolution must contain width and height",
+        ),
+        (
+            MutatedPublicResultProvider("score_non_finite_score"),
+            lambda provider: assert_score_conformance(
+                provider,
+                info={},
+                action_candidates=[["a"], ["b"]],
+            ),
+            "score values must be finite floats",
+        ),
+        (
+            MutatedPublicResultProvider("score_non_json_metadata"),
+            lambda provider: assert_score_conformance(
+                provider,
+                info={},
+                action_candidates=[["a"], ["b"]],
+            ),
+            "score result must be JSON serializable",
+        ),
+        (
+            MutatedPublicResultProvider("policy_bool_horizon"),
+            lambda provider: assert_policy_conformance(provider),
+            "policy action_horizon must be positive",
+        ),
+        (
+            MutatedPublicResultProvider("policy_non_json_raw_actions"),
+            lambda provider: assert_policy_conformance(provider),
+            "policy result must be JSON serializable",
+        ),
+        (
+            MutatedPublicResultProvider("policy_bad_candidate_shape"),
+            lambda provider: assert_policy_conformance(provider),
+            "policy action candidate plans must be non-empty lists",
+        ),
+    ],
+)
+def test_capability_conformance_helpers_revalidate_mutable_results(
+    provider: MutatedPublicResultProvider,
+    helper: Callable[[MutatedPublicResultProvider], object],
+    expected_message: str,
+) -> None:
+    with pytest.raises(AssertionError, match=expected_message):
+        helper(provider)
 
 
 def test_corpus_valid_baselines_pass_mock_provider_conformance() -> None:
