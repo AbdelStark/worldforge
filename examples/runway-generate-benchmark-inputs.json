@@ -1,0 +1,12 @@
+{
+  "metadata": {
+    "purpose": "Runway generate benchmark inputs",
+    "provider": "runway",
+    "operation": "generate",
+    "artifact_policy": "downloaded output must be persisted by the host before signed URLs expire"
+  },
+  "inputs": {
+    "generation_prompt": "a calibrated robot arm places a cube on a tray, stable camera",
+    "generation_duration_seconds": 5.0
+  }
+}

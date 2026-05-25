@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "extends": "./base.json",
+  "id": "lab-setup-child-b",
+  "name": "Lab setup child B: spawn a mug",
+  "description": "Inherits the lab base setup and spawns an extra mug before the predict step so the final world has two objects. Overrides actions and object_count expectation.",
+  "actions": [
+    {
+      "kind": "spawn_object",
+      "parameters": {
+        "name": "mug",
+        "x": 0.4,
+        "y": 0.5,
+        "z": 0.0,
+        "bbox": {
+          "min": {"x": 0.35, "y": 0.45, "z": -0.05},
+          "max": {"x": 0.45, "y": 0.55, "z": 0.05}
+        }
+      }
+    },
+    {
+      "kind": "predict",
+      "parameters": {"x": 0.4, "y": 0.5, "z": 0.0, "steps": 1}
+    }
+  ],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 2},
+    {"label": "step_count", "kind": "step", "value": 2}
+  ],
+  "metadata": {
+    "gallery_intent": "inheritance child adding actions and overriding object expectation",
+    "first_triage_step": "If this fails after the base scenario passes, inspect the spawn_object bbox and the followup predict step."
+  }
+}

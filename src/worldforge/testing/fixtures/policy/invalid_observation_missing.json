@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "policy.invalid_observation_missing",
+  "capability": "policy",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "observation",
+  "description": "Policy rejects an info payload that has no observation key: there is no input the policy can act on.",
+  "payload": {
+    "info": {
+      "action_horizon": 1,
+      "embodiment_tag": "fixture",
+      "mode": "select_action"
+    }
+  }
+}

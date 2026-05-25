@@ -1,0 +1,855 @@
+# Changelog
+
+All notable user-visible changes to WorldForge are recorded here.
+
+This project follows the spirit of Keep a Changelog. Versioning is currently pre-1.0, so minor
+releases may still include breaking changes when the public API needs to tighten.
+
+## Unreleased
+
+### Added
+
+- Added a non-interactive TensorBoard launcher CLI:
+  `worldforge-open-tensorboard --logdir <path> [--probe] [--no-browser]
+  [--keep-running] [--ready-timeout 60] [--poll-interval 0.5]`. Wraps the
+  same launch / poll / probe flow the TUI uses behind a single shell
+  command; `--probe` fetches the index page and asserts it contains the
+  `TensorBoard` marker so wiring changes can be validated end-to-end from
+  a script. Exit codes are `0` on success, `1` on ready timeout / probe
+  failure, `2` on bad input. The new `worldforge.harness.tensorboard_launcher`
+  module owns the shared helpers (`viewer_command`, `port_open`,
+  `wait_until_ready`, `probe_html`, `launch`); the TUI now imports them so
+  both surfaces stay in sync. Issue #310.
+
+### Fixed
+
+- The `t` shortcut in `RoboticsShowcaseApp` no longer fails silently because
+  TensorBoard cannot import `pkg_resources`. The launched `uvx` command now
+  pins `--with "setuptools<81"` so `pkg_resources` is available (setuptools
+  81+ removed it; TensorBoard still imports it at startup). Captured
+  `tensorboard.stderr.log` files for previous-version runs showed the
+  `ModuleNotFoundError`; the new command resolves a working environment.
+  Issue #310.
+- The `t` shortcut in `RoboticsShowcaseApp` no longer opens the browser
+  before TensorBoard has bound the port (causing a blank page on first-run
+  `uvx` resolves). The fixed `set_timer(2.5, ...)` is replaced with a
+  Textual background worker that polls `localhost:6006` every ~0.5 s for
+  up to ~60 s and only calls `webbrowser.open` once the port responds.
+  The action also stops swallowing the TensorBoard subprocess's output:
+  stdout/stderr are now captured to `tensorboard.stdout.log` and
+  `tensorboard.stderr.log` inside the run's log directory. Timeouts now
+  emit an error notification pointing at the stderr log path. Issue #308.
+- The `t` shortcut in `RoboticsShowcaseApp` now actually shows TensorBoard.
+  The launched command pins `--port 6006`, and the action additionally
+  schedules a `webbrowser.open("http://localhost:6006/")` via a Textual timer
+  (~2.5 s after launch) so the run becomes visible without manual browser
+  navigation - parity with the desktop Rerun viewer. The URL is also
+  surfaced in `RoboticsTensorBoardPane` and in the action notification so
+  headless / remote users can copy-paste it; a fallback warning is emitted
+  when `webbrowser.open` returns false. Issue #306.
+
+### Added
+
+- Added a `t` keybinding to `RoboticsShowcaseApp` that launches the run's
+  TensorBoard log directory via
+  `uvx --from "tensorboard>=2.16,<3" tensorboard --logdir <path>` in a
+  detached subprocess, mirroring the existing `o` shortcut for Rerun. A new
+  `RoboticsTensorBoardPane` surfaces the resolved log directory, run name,
+  `events_written` status, the viewer command, and the shortcut hint. The
+  pane and binding gracefully degrade when the run summary has no
+  `"tensorboard"` block. Issue #304.
+- Added an optional TensorBoard bridge for inspecting the LeWorldModel
+  checkpoint used during local inference in the robotics showcase. The new
+  `worldforge.tensorboard` module exposes `TensorBoardLogConfig`,
+  `TensorBoardSession`, `TensorBoardCheckpointInspector`, and a
+  `create_tensorboard_inspector` helper. It writes sanitized provenance text,
+  per-candidate cost scalars and a histogram, latency metrics, and a
+  per-provider-event text feed to a local `tfevents` directory.
+  `scripts/robotics-showcase` enables the writer by default (unless
+  `--no-tensorboard`, `--health-only`, or `--json-only` is passed) and gains
+  `--tensorboard`, `--tensorboard-logdir`, `--tensorboard-run-name`,
+  `--tensorboard-flush-secs`, and `--no-tensorboard` flags. Install with
+  `uv add "worldforge-ai[tensorboard]"`. Base WorldForge still depends only on
+  `httpx`. See `docs/src/tensorboard.md` for the tag layout and programmatic
+  API. Issue #302.
+- Added a public-API snapshot test. `tests/fixtures/public_api/exports.json`
+  records the current export set for `worldforge`, `worldforge.testing`,
+  `worldforge.observability`, `worldforge.providers`, and
+  `worldforge.capabilities`; `tests/test_public_api_snapshot.py` fails loudly
+  on any add/rename/remove with a clear diff and the regenerate command.
+  Intentional public-API changes regenerate the snapshot via
+  `uv run python scripts/update_public_api_snapshot.py` or by setting
+  `WORLDFORGE_UPDATE_PUBLIC_API_SNAPSHOT=1`. `docs/src/api-stability.md`
+  now points at the snapshot as the authoritative Stable surface.
+- Added scenario inheritance via the new optional `extends` field (schema version 2). A child
+  scenario can name a single relative parent path; resolution merges top-level keys with the child
+  winning, detects cycles, rejects absolute paths, bounds chain depth, and is validated end-to-end
+  through new fixtures under `examples/scenarios/inheritance/` plus tests in
+  `tests/test_scenario_inheritance.py`. Schema version 1 scenarios continue to validate without
+  changes.
+- Added a typed retention policy and `worldforge runs prune` subcommand. The
+  new `worldforge.runs_prune` module ships `RunsRetentionPolicy`,
+  `PruneCandidate`, `PruneReport`, `plan_prune`, `apply_prune`, and
+  `parse_runs_retention`. Default behavior is dry-run; `--apply` actually
+  removes selected directories. `--max-age-days`, `--keep-latest`, and
+  repeatable `--family <kind>` control the policy; a 24-hour safety window
+  blocks deletion of fresh runs unless `--max-age-days=0` is passed. The
+  delete path checks `target.is_relative_to(<workspace>/runs)` on the
+  fully-resolved paths so symlinked or crafted run paths cannot escape the
+  workspace. `keep_latest` is scoped to the family filter so a non-matching
+  newer run cannot consume a keep slot when `--family` is set. CLI flags
+  passed in either argparse form (`--max-age-days 7` or `--max-age-days=7`)
+  override the profile. Config profiles can carry a `runs_retention` block
+  consumed via `--retention-profile <path>` with explicit CLI flags still
+  overriding. Invalid retention profile shapes raise typed `WorldForgeError`
+  rather than leaking `ValueError`/`AttributeError`, and `shutil.rmtree`
+  failures during `--apply` are wrapped as `WorldForgeError` for a stable
+  CLI envelope. Documentation lives in `docs/src/run-index.md` under the
+  retention section.
+- Added an adoption case-study gallery, reusable case-study template, Adoption Story issue
+  template, and smoke tests for future submitted adoption stories.
+- Added a runnable capability protocol mini-demo with docs and tests for in-process predictor,
+  policy, and cost registration.
+- Added a checkout-safe external provider package demo workflow. `scripts/demo_showcases.py run
+  external-provider-package` generates a temp provider package, proves `worldforge.providers`
+  entry-point discovery, disabled discovery, duplicate-name handling, and missing optional
+  dependency skip reporting, and preserves a safe discovery report without publishing or mutating
+  tracked source.
+- Expanded the custom evaluation suite example into a checkout-safe walkthrough. The demo now runs a
+  deterministic custom suite against `mock`, preserves JSON/Markdown/HTML/failure-gallery
+  artifacts with provenance, and includes one controlled failed case for report review without
+  claiming model quality.
+- Added a checkout-safe policy+score candidate lab. The demo builds deterministic bounded move
+  candidates, preserves raw policy actions, scores candidate plans, records the selected action and
+  workflow trace, and captures invalid candidate bounds plus missing-translator failures without
+  requiring a robot, simulator, or checkpoint.
+- Added a checkout-safe fixture drift review walkthrough. The demo builds a temp fixture snapshot
+  manifest, shows missing fixture, digest drift, schema-version drift, unsafe path, and
+  intended-update review outputs, and preserves the approved update path without touching tracked
+  fixtures.
+- Added a checkout-safe capability negotiation preflight demo. The workflow preserves negotiation
+  JSON/Markdown for ready, missing-config, missing-dependency, unsupported, and not-registered
+  cases across generate, transfer, score, policy+score, and evaluation workflow shapes without
+  installing dependencies or executing fallback workflows.
+- Added a checkout-safe embodied policy replay comparison. It compares LeRobot, GR00T, and
+  Cosmos-Policy policy contracts side by side, preserves provider-specific raw action metadata,
+  records missing-translator blockers, and links each provider to its prepared-host live smoke.
+- Added a scenario gallery under `examples/scenarios/` covering successful world setup,
+  intentionally failed expectations, invalid action triage, evaluation-oriented setup, and
+  report/export output through the existing `worldforge scenario` CLI.
+- Added a checkout-safe release readiness drill script that renders clean-pass and controlled
+  failure release-evidence artifacts, reports host-owned optional-runtime skips, and records the
+  first failed gate without publishing, tagging, signing, or creating a release.
+- Added a non-developer evidence review demo that builds a static HTML/JSON/Markdown review
+  package from evaluation, benchmark, world-diff, and issue-bundle artifacts while escaping display
+  text and marking unsafe host-local references as local-only.
+- Added a provider failure mode gallery demo and docs page covering fixture-backed parser errors,
+  provider errors, retry exhaustion, missing config, optional-runtime setup, scaffold boundaries,
+  unsupported behavior, and safe artifact handling with first triage commands.
+- Added typed provider lifecycle diagnostics with `ProviderLifecycleResult`,
+  `ProviderLifecycleStatus`, optional provider-owned `preflight`, `warmup`, and `teardown` hooks,
+  safe no-op/skipped defaults, protocol-wrapper support, and doctor/provider-info JSON output for
+  lifecycle readiness and skip reasons.
+- Added `worldforge runs compare --mode regression` for baseline-vs-candidate review across
+  preserved benchmark, evaluation, and demo-showcase runs. Regression reports include metric
+  deltas, budget status changes, new and removed failures, safe artifact drift, provenance
+  differences, and unsafe artifact exclusion counts in JSON, Markdown, CSV, and HTML.
+- Added scenario parameter matrices for bounded checkout-safe sweeps. Scenario files can now
+  declare JSON-native `matrix.parameters`, use whole-value placeholders for provider names, object
+  positions, action targets, and expected artifact values, validate every expanded case before
+  execution, and return aggregate pass/fail counts plus failed-case details from
+  `worldforge scenario run`.
+- Added evaluation dataset manifest contracts. `worldforge eval --dataset-manifest <path>` now
+  cites schema-versioned manifest references in provenance, with validation for local fixture
+  paths, remote references, host-owned asset records, checksums, license/provenance/privacy/safety
+  fields, and evidence-bundle copying of safe source-controlled manifest files without embedding
+  datasets.
+- Added `worldforge provider contract` for external adapter authors. It runs metadata and
+  capability-aware provider contract checks for registered providers or direct `module:factory`
+  paths, emits safe-to-attach JSON/Markdown evidence with skipped host-owned checks and validation
+  commands, and keeps live provider calls behind an explicit `--live` flag.
+- Added runtime asset manifests for prepared-host optional runtimes. LeWorldModel and
+  LeRobot/LeWorldModel smoke outputs now include safe `runtime_assets` references in run manifests,
+  while full local-only paths, cache roots, and checkpoint bytes stay out of attachable evidence.
+- Added non-secret JSON/TOML configuration profiles for repeatable eval and benchmark CLI defaults.
+  Profiles reject secret-looking keys and unsafe paths, and preserved run manifests now include
+  safe `config_profile` provenance with the profile digest instead of profile contents.
+- Added a safe report-renderer registry for comparison and evidence bundle artifacts. Built-in
+  JSON/Markdown/CSV/HTML renderers keep their output unchanged, while external code can register
+  validated safe-to-attach or local-only renderers without file-based plugin loading.
+- Added read-only world migration previews through `worldforge world migration-preview`. The report
+  covers persisted worlds and exported world JSON, schema versions, required canonicalization
+  changes, invalid fields, unsafe IDs, bounding-box corrections, safe-to-attach status, and whether
+  an explicit migration can be applied safely without silently rewriting local state.
+- Added schema-versioned workflow trace artifacts for composed operations. Plans now include
+  sanitized trace metadata, evaluation reports export trace JSON/Markdown and render trace tables
+  in HTML, provider events can be converted into trace steps, and the optional Rerun artifact logger
+  can record workflow traces without changing provider capability semantics.
+- Added `docs/src/artifact-schemas.md`, an ownership and migration map for public and
+  semi-public JSON artifact families. The page records each schema's owner, version field,
+  validation surface, docs/CLI entry point, and migration rules, and the docs test suite now guards
+  schema-version exports and required artifact families against missing ownership notes.
+- Added `scripts/check_optional_import_boundaries.py`, a checkout-safe audit that statically checks
+  optional runtime imports and verifies base package, CLI, Rerun, provider, and non-TUI harness
+  imports do not load Textual, Rerun, torch, stable-worldmodel, LeRobot, GR00T, or Cosmos-Policy
+  runtime packages.
+- Added `scripts/check_docs_snippets.py`, a marker-based docs snippet gate for selected Python and
+  JSON examples across the Python API, scenarios, provider routing, external provider,
+  benchmarking, artifact, and report docs. The gate executes Python snippets in a temp workspace,
+  parses JSON snippets, applies scenario and benchmark schema checks, and requires explicit
+  host-owned, credentialed, or illustrative skip markers.
+- Added `worldforge.testing` deterministic controls for artifact and report tests:
+  `DeterministicClock`, `DeterministicIdFactory`, `deterministic_run_workspace`,
+  `stable_snapshot`, `stable_path`, and `stable_json_dumps`. Evidence bundle generation, issue
+  bundle tests, release evidence tests, preserved benchmark snapshots, scenario result snapshots,
+  and live-smoke run manifest tests can now pin clocks, IDs, temp paths, volatile fields, and
+  sorted JSON without weakening real runtime timing.
+- Added a generated Provider Configuration Index that derives each catalog provider's required and
+  optional inputs, optional packages, credential gates, prepared-host assets, default request
+  timeouts, first diagnostic command, smoke command, and evidence level from provider metadata and
+  runtime manifests. The provider-docs generator now checks that index alongside the provider
+  catalog tables.
+- Added user-facing error-message regression coverage for CLI world/scenario failures, unsupported
+  capability names, provider budget failures, and secret/path redaction. CLI errors now include a
+  command owner context plus a first triage step while redacting signed URLs, secret assignments,
+  and host-local paths.
+- Added contributor task starter packs for provider, docs-only, demo, artifact/report,
+  evaluation/benchmark, and CLI/operator work, with issue-template links and docs tests guarding
+  required sections, validation commands, evidence artifacts, docs/changelog expectations, and
+  review checklists.
+- Added `scripts/generate_release_notes.py`, a maintainer-editable release notes draft generator
+  that assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
+  validation summaries, docs/public-surface links, caveats, compatibility notes, and host-owned
+  optional runtime evidence without publishing a GitHub release or changing tag/signing workflows.
+- Added `scripts/generate_dependency_audit_evidence.py`, a checkout-safe dependency-audit evidence
+  wrapper that runs the documented locked `uv export` plus `pip-audit` flow through a temporary
+  requirements file and writes JSON/Markdown summaries with tool versions, dependency-set digest,
+  vulnerability summaries, explicit ignore rationales, sanitized command output, and first triage
+  steps.
+- Added `scripts/generate_quality_dashboard.py`, a local quality dashboard generator that reads
+  release evidence, dependency-audit evidence, and core-performance output, then writes JSON and
+  Markdown summaries with normalized pass/fail/warning/skip/not-run statuses, command lines,
+  timestamps, raw failure details, skipped host-owned checks, and the first failed gate.
+- Added a public custom evaluation-suite authoring API: `EvaluationSuite.custom(...)`,
+  process-local `EvaluationSuite.register(...)` / `from_registered(...)`, callable
+  `EvaluationScenario.from_callable(...)`, `EvaluationContext`, and `EvaluationScenarioOutcome`.
+  Custom reports reuse the existing provenance, failure-gallery, artifact, and claim-boundary
+  machinery while rejecting non-JSON metric payloads.
+- Added provider-agnostic action candidate helpers for score and policy+score workflows:
+  `cartesian_offset_candidates(...)`, `object_near_candidates(...)`,
+  `swap_action_candidates(...)`, `bounded_move_grid_candidates(...)`,
+  `normalize_action_candidates(...)`, and `action_candidates_to_score_payload(...)`.
+- Added fixture snapshot governance for source-controlled JSON fixtures. The new
+  `worldforge.testing.fixture_snapshots` helpers and `scripts/manage_fixture_snapshots.py` validate
+  `tests/fixtures/fixture-snapshots.json` against capability fixtures, provider payload fixtures,
+  benchmark inputs, scenario files, and scene artifact fixtures, with review output that separates
+  accidental drift from entries marked `intended-update`.
+- Added a checkout-safe GR00T PolicyClient replay flow in TheWorldHarness. The flow replays a
+  sanitized saved policy response through `GrootPolicyClientProvider`, validates `eef_9d`,
+  `gripper_position`, and `joint_position` tensor shapes, translates the trajectory into
+  WorldForge actions, and preserves a replay artifact without requiring CUDA, checkpoints, raw
+  observations, private endpoints, or GPU logs.
+- Added `docs/src/roadmap-expansion-2.md`, a second 30-issue roadmap expansion across
+  production-grade quality/DevX/docs, demos and end-to-end showcases, and new features. The batch
+  focuses on artifact schema governance, executable docs snippets, optional dependency import
+  boundaries, provider configuration indexing, external-provider demos, capability preflight
+  demos, scenario matrices, runtime asset manifests, report renderer extension points, and composed
+  workflow traces.
+- Added static HTML report export for evaluation reports, benchmark reports,
+  preserved-run comparisons, and issue-ready bundles. `worldforge eval`,
+  `worldforge benchmark`, `worldforge runs compare`, and `worldforge runs
+  bundle` accept `--format html`; `worldforge runs bundle` always also writes
+  `summary.html` and `issue.html` to the bundle directory. The HTML output is
+  self-contained — inline CSS only, no JavaScript, no external assets, no
+  anchor tags. All user-supplied text is escaped via `html.escape`. New public
+  surface: `worldforge.html_report.render_evaluation_html`,
+  `render_benchmark_html`, `render_comparison_html`,
+  `render_evidence_bundle_html`, `render_issue_bundle_html`,
+  `HTML_REPORT_SCHEMA_VERSION`. Documentation lives at
+  `docs/src/html-reports.md`, including when to prefer HTML versus
+  JSON/Markdown.
+- Added JSON-native world state diff and patch artifacts. `worldforge world
+  diff <source> <target>` walks two persisted worlds (default) or two exported
+  JSON files (with `--source-path --target-path`) and emits a
+  schema-versioned diff covering top-level fields (`name`, `provider`,
+  `description`, `step`, `metadata`), scene-object additions/removals/updates
+  with before/after payloads, and a history summary. The companion
+  `WorldPatch.from_diff(diff)` and `apply_patch(state, patch)` helpers apply
+  changes to a base snapshot, validating each operation through `SceneObject`,
+  `Position`, and `BBox` so traversal-shaped IDs, incoherent bounding boxes,
+  malformed pose payloads, or removing missing objects raise `WorldStateError`
+  instead of silently corrupting state. New public surface:
+  `worldforge.world_diff.diff_worlds`, `diff_worlds_from_paths`,
+  `apply_patch`, `WorldDiff`, `WorldPatch`, `ObjectChange`,
+  `WorldFieldChange`, `WORLD_DIFF_SCHEMA_VERSION`. Documentation lives at
+  `docs/src/world-diff.md`.
+- Added a JSON-native scenario definition format and a runner. The new
+  `worldforge.scenarios` module ships `Scenario`, `ScenarioObjectSpec`,
+  `ScenarioAction`, `ScenarioExpectedArtifact`, and `ScenarioResult`. A
+  scenario captures a checkout-safe recipe — provider, initial scene
+  objects, an ordered sequence of typed actions (`move_to`, `spawn_object`,
+  `predict`), and expected artifacts (`object_count`, `step`,
+  `object_position`) — that runs end-to-end through `World.predict` without
+  arbitrary Python execution. `worldforge scenario validate <path>` and
+  `worldforge scenario run <path>` validate and execute scenario files;
+  the run exits non-zero when any expectation fails. New public surface:
+  `load_scenario`, `parse_scenario`, `run_scenario`, `Scenario`,
+  `ScenarioAction`, `ScenarioObjectSpec`, `ScenarioExpectedArtifact`,
+  `ScenarioExpectationCheck`, `ScenarioResult`, `SCENARIO_SCHEMA_VERSION`,
+  `SCENARIO_ACTION_KINDS`. Sample scenarios live under
+  `examples/scenarios/`. Documentation lives at `docs/src/scenarios.md`.
+- Added a local run artifact index. `worldforge runs index --workspace-dir <dir>`
+  walks `<dir>/runs/` read-only and emits a sanitized summary of every preserved
+  run workspace, with optional filters for provider (substring), capability,
+  status, date range, and safe-artifact type. Output is JSON, Markdown, or CSV.
+  Stale or malformed run directories surface as typed issue rows
+  (`manifest-missing`, `manifest-unreadable`, `manifest-invalid-json`,
+  `manifest-not-object`) instead of crashing the walk. New public surface:
+  `worldforge.harness.run_index.build_run_index`, `RunIndex`, `RunIndexIssue`,
+  `RUN_INDEX_SCHEMA_VERSION`. Documentation lives at `docs/src/run-index.md`,
+  including retention/cleanup interaction guidance.
+- Added typed provider routing and fallback policies. The new
+  `worldforge.provider_routing` module ships `ProviderRoutingPolicy`,
+  `RoutingAttempt`, `RoutingResult`, and `route_capability(policy, forge, *,
+  invoke)`. Routing tries a preferred provider followed by an ordered fallback
+  list, validates capability compatibility before invoking each provider, and
+  records every attempt — succeeded, failed, skipped-not-registered, or
+  skipped-incompatible — in the returned result. Failures are captured with the
+  exception class name and `str(exc)` and never silently masked; the underlying
+  observable-capability `ProviderEvent` stream is preserved unchanged. New
+  public surface: `ProviderRoutingPolicy`, `RoutingAttempt`, `RoutingResult`,
+  `ROUTING_ATTEMPT_STATUSES`, `route_capability`. Documentation lives at
+  `docs/src/provider-routing.md`, including guidance on when fallback is and is
+  not appropriate.
+- Added Python entry-point discovery for external provider packages. Third-party adapters can
+  register through the `worldforge.providers` entry-point group; `WorldForge` auto-registers
+  the resulting providers when their `configured()` check passes and records typed skip
+  reasons (missing dependency, duplicate name, non-callable factory, factory raised) on the
+  new `WorldForge.entry_point_discovery()` report. A constructor flag and the
+  `WORLDFORGE_DISABLE_ENTRY_POINTS` environment variable both turn discovery off. New public
+  surface: `discover_entry_point_providers`, `EntryPointDiscoveryReport`, `EntryPointSkip`,
+  `ENTRY_POINT_GROUP`, and `ENTRY_POINT_DISABLE_ENV_VAR`. Documentation lives at
+  `docs/src/external-providers.md`.
+- Added capability negotiation reports through the new `worldforge negotiate` CLI subcommand
+  and `worldforge.capability_negotiation` Python surface. Reports state — before a workflow
+  runs — whether the registered and known providers can satisfy a capability set such as
+  `generate-only`, `score-only`, `policy-plus-score`, `transfer-only`, or one of the
+  evaluation suites' required-capability shapes. For each capability slot the report lists
+  every candidate provider's registration, configuration, health, capability compatibility,
+  readiness state (`ready`, `missing-config`, `missing-dependency`, `unsupported`,
+  `not-registered`), and a typed reason; blocked workflows surface focused recommended
+  actions. Output is JSON + Markdown; the CLI exits non-zero when at least one workflow is
+  blocked, which makes it suitable as a CI guard.
+- Upgraded the release evidence generator into a release-readiness command that writes Markdown and
+  JSON summaries, can execute checkout-safe gates with `--run-gates`, records skipped and failed
+  gate triage steps, and marks optional live-provider evidence as host-owned unless a prepared-host
+  run manifest is linked.
+- Added a public API stability and deprecation policy covering stable, provisional, experimental,
+  and internal surfaces, with migration expectations for provider capabilities and artifact
+  schemas.
+- Added a troubleshooting matrix for public error families, provider contract failures, benchmark
+  budget exits, and docs-build warnings with owner, command, artifact, and first-triage guidance.
+- Added a documented-command drift checker for README, CLI docs, examples, operations, playbooks,
+  and AGENTS command surfaces, and wired it into the release-readiness gate.
+- Added a checkout-safe core performance budget checker for world persistence, benchmark fixture
+  loading, provider diagnostics, evidence-bundle creation, and report rendering, and wired it into
+  release-readiness documentation.
+- Added a contributor bootstrap doctor for Python, uv, docs tooling, GitHub CLI auth, source-tree
+  shape, and optional runtime skip reasons.
+- Added supply-chain and artifact integrity documentation covering current package/evidence gates,
+  hashes, unsafe artifact exclusions, and future SBOM/provenance/attestation boundaries.
+- Added a wrapper portability checker for shell wrappers and optional-runtime smoke commands, and
+  wired it into CI and release-readiness gates.
+- Reworked the public docs information architecture around reader paths for provider authors,
+  operators, evaluators, release maintainers, demos, and roadmap history.
+- Added a checkout-safe demo showcase runner with ten issue-backed workflows covering first-run
+  local worlds, diagnostic issue bundles, robotics replay, remote media dry-runs, adapter authoring,
+  batch eval, stdlib service host, Rerun gallery manifests, failure recovery labs, and cookbook
+  validation, plus public docs and recipes for the preserved artifacts and triage steps.
+- Added a roadmap expansion plan for 30 structured GitHub issues across production-grade
+  quality/DevX/docs, demos and end-to-end showcases, and new features, explicitly excluding the
+  already assigned Nano World Model work.
+- Added contributor triage guidance for roadmap stream, capability, severity, and release-scope
+  labels, and routed provider plus evaluation/benchmark issue templates to provider promotion,
+  evidence, and private-security reporting expectations.
+- Added read-only local state preflight through `worldforge world preflight`. It checks world state
+  directories, file-safe requested IDs, corrupted world JSON, invalid histories, object bounding
+  boxes, preserved run manifests, stale run workspaces, unsafe artifact paths, and retention
+  pressure while returning safe-to-attach diagnostics and explicit quarantine or dry-run recovery
+  commands.
+- Added checkout-safe operator failure drills through `worldforge drills`. The drills cover missing
+  credentials, missing optional dependencies, malformed provider output, benchmark budget
+  violations, corrupted local world state, expired artifacts, and unsafe event metadata while
+  preserving run manifests and optional issue bundles under the requested workspace.
+- Added reference host deployment recipes for the stdlib service, batch evaluation, and robotics
+  operator hosts. The recipes cover env templates, process/readiness/smoke/logging/evidence
+  commands, expected success signals, first triage and rollback steps, and the checkout-safe,
+  prepared-host, credentialed, GPU-bound, and robotics-lab ownership boundaries.
+- Added issue-ready bundles for preserved run workspaces. `worldforge runs bundle <run-id>` now
+  exports one run to `evidence_manifest.json`, `summary.md`, and `issue.md`, prints a short issue
+  template, preserves SHA-256 digests and `safe_to_attach` flags, and marks unsafe or host-local
+  artifacts before attachment.
+- Added preserved-run history actions to TheWorldHarness. The Runs screen and
+  `worldforge harness --runs` can filter run workspaces by provider, capability, status, date, and
+  safe artifact type; rows expose sanitized rerun commands plus issue-bundle and comparison actions,
+  with failed/skipped/cancelled runs surfacing the recovery bundle command first.
+- Provider scaffolding now generates a fuller fail-closed contract pack: an explicit
+  `--implementation-status scaffold` maturity claim, provider/profile tests for disabled
+  capability calls, placeholder fixtures marked as non-evidence, an incomplete `.json.stub`
+  runtime manifest, a workbench checklist, and printed validation commands. Existing scaffold
+  files still require `--force` before overwrite.
+- Added an adapter author workbench flow for provider promotion evidence. The non-Textual
+  workbench now handles catalog providers, scaffold providers, and the direct-construction
+  `jepa-wms` candidate; reports include runtime manifest status, fixture coverage, docs/catalog
+  drift, redaction checks, promotion gaps by target status, safe artifact references, and validation
+  commands, and `worldforge harness --flow workbench` exposes the same logic through TheWorldHarness.
+- Added cross-provider run comparisons for preserved eval and benchmark workspaces. `worldforge
+  runs compare` now exports a shared JSON/Markdown/CSV model with provider rows, capability and
+  operation context, fixture digest, suite version, budget status, event counts, missing evidence,
+  skip reasons, and claim-boundary language while refusing incompatible capability, fixture,
+  budget, operation, or suite-version contexts.
+- Added sanitized evaluation failure galleries. Failed evaluation reports now expose
+  representative fixture-level cases with expected contract notes, observed summaries, metrics
+  previews, and triage steps; `report.artifacts()` also exports `failure_gallery.json` and
+  `failure_gallery.md` for issue attachments.
+- Added benchmark budget calibration artifacts generated from preserved benchmark JSON reports.
+  `scripts/calibrate_benchmark_budgets.py` writes a loadable `candidate-budgets.json`, a full
+  `budget-calibration.json`, and a human-review Markdown report with source report digests,
+  machine context, old thresholds, candidate thresholds, observed baselines, and rationale fields
+  without modifying existing release budget files.
+- Added a claim-to-evidence map for public README-level claims, capability surfaces, runtime
+  boundaries, preserved artifacts, and explicit non-claims.
+- Added a checkout-safe evidence bundle exporter for preserved eval and benchmark runs. The
+  bundle copies safe reports, run manifests, event logs, preset inputs, and budget fixtures,
+  records SHA-256 digests and `safe_to_attach` flags, excludes unsafe or local-only artifacts, and
+  can be linked from release evidence reports.
+- Added five named benchmark presets — `mock-smoke`, `parser-overhead`, `remote-media-dryrun`,
+  `prepared-host`, and `release-evidence` — exposed through new `worldforge benchmark
+  --list-presets`, `--show-preset`, and `--preset` flags. Presets bundle a deterministic input
+  fixture, an optional budget file, and a runtime-profile gate so checkout-safe regression
+  checks, remote-media dry-runs, prepared-host evidence runs, and release gating each have a
+  named entry point. Remote-media and prepared-host presets skip with a typed reason when the
+  required provider environment is missing; checkout-safe and release presets fail non-zero on
+  budget violations. Public surface lives at `worldforge.benchmark_presets` (`BenchmarkPreset`,
+  `list_presets`, `get_preset`, `load_preset_inputs`, `load_preset_budgets`).
+- Added a packaged capability fixture corpus under `worldforge.testing.fixtures` covering the
+  `predict`, `reason`, `embed`, `generate`, `transfer`, `score`, and `policy` capabilities.
+  Each capability ships one valid baseline plus at least two invalid boundary fixtures with
+  distinct error patterns. The new `worldforge.testing.load_capability_fixture`,
+  `iter_capability_fixtures`, `iter_all_fixtures`, `list_fixture_names`, and `CapabilityFixture`
+  helpers let conformance tests, evaluation suites, and provider authors reuse canonical
+  inputs instead of inlining payloads. The `assert_*_conformance()` helpers' keyword arguments
+  match each fixture's `payload` keys so a fixture can be passed straight through.
+- Added a result `provenance` envelope (`schema_version: 2`) to evaluation and benchmark JSON
+  and Markdown reports. The envelope carries WorldForge version, command argv, providers,
+  capabilities, runtime manifest references, input and result digests, budget file summary,
+  emitted `ProviderEvent` count, suite contract version, claim boundary, and metric semantics
+  so a claim can be reproduced and cited without console logs. CSV output, the existing
+  `run_metadata.input_file`, and `run_metadata.budget_file` fields are unchanged for
+  backward compatibility.
+- Added `cosmos-policy` as a host-owned NVIDIA Cosmos-Policy ALOHA `/act` server adapter for the
+  `policy` capability, including a runtime manifest, live-smoke CLI, provider docs, configuration
+  summaries, and policy-plus-score planning coverage without adding CUDA, Docker, torch, or
+  Cosmos-Policy dependencies to the base package.
+- Added an optional OpenTelemetry provider-event sink that maps sanitized provider events to
+  host-owned tracing spans without adding OpenTelemetry to the base dependency set.
+- Added an optional Rerun integration for sanitized `ProviderEvent` streams, world snapshots,
+  plans, benchmark reports, and arbitrary JSON artifacts through `RerunEventSink`,
+  `RerunArtifactLogger`, `RerunSession`, and `RerunRecordingConfig`.
+- Added the `rerun` optional extra and `worldforge-demo-rerun`, a checkout-safe showcase that
+  writes a local `.rrd` recording by default and supports spawned, remote, or in-process gRPC
+  Rerun viewer workflows. The extra accepts the Rerun SDK range needed to coexist with LeRobot
+  runtime environments.
+- Added Rerun visual layers for 3D world object boxes, robotics candidate targets, selected replay
+  paths, score bars, and latency bars. `scripts/robotics-showcase` now writes a Rerun `.rrd`
+  artifact for normal PushT policy+score runs unless `--no-rerun` is passed.
+- Added a roadmap continuation document that defines the next three GitHub issue streams:
+  provider evidence and runtime cohorts, evaluation evidence and claim integrity, and operator
+  workflow plus adapter authoring.
+- Added a provider cohort selection record that scores active and deferred provider candidates,
+  selects the next evidence cohort, and keeps provider catalog claims unchanged until runtime
+  evidence exists.
+- Added a spatial scene artifact boundary record for future 3D scene providers, including
+  candidate decisions, JSON-native artifact shape, asset redaction rules, host-owned
+  responsibilities, and the fixture contract for follow-up validation.
+- Added `validate_scene_artifact` for checkout-safe spatial scene artifact validation, plus tiny
+  valid and malformed fixtures covering transforms, units, non-finite values, unsafe references,
+  and oversized metadata.
+- Added a live-smoke evidence registry with schema validation, first-class missing-runtime and
+  missing-credential skip statuses, docs for safe provider issue attachments, and release-evidence
+  rendering support.
+- Added a JEPA-WMS runtime manifest for prepared-host smoke evidence and a stable `input_digest`
+  field for smoke run manifests with synthetic input summaries.
+- Added an optional live robotics showcase workflow for pull request and main-branch push
+  validation.
+  It runs real LeRobot policy inference plus real LeWorldModel checkpoint scoring in
+  non-interactive JSON mode, validates the resulting provider events and tensor contract, caches
+  Hugging Face/LeWorldModel checkpoint assets with `actions/cache`, and uploads sanitized run
+  evidence artifacts.
+
+### Fixed
+
+- Runway artifact downloads now validate provider-returned URLs before fetching, block local,
+  private, and link-local destinations unless explicitly opted in, and stream downloaded bytes with
+  a hard size cap instead of buffering unbounded response bodies.
+- Preserved LeRobot loader provenance after lazy policy loading so real `from_pretrained` runs no
+  longer report as `injected_policy` in policy result metadata or provider events.
+- Documented first triage commands for Cosmos and Runway media artifacts and added focused
+  provider-level regression tests for failed, malformed, unsupported, expired, and retry-exhausted
+  remote media paths.
+
+## 0.5.0 - 2026-04-24
+
+### Added
+
+- Added a MkDocs Material documentation site, strict docs-build validation, and a GitHub Pages
+  workflow that deploys the site from `main`.
+- Added `SECURITY.md` with the vulnerability-reporting path and supported-version policy.
+- Added public governance and contributor surfaces: code of conduct, support policy, maintainer
+  ownership, citation metadata, issue templates, pull request template, and CODEOWNERS.
+- Added documented `examples/benchmark-inputs.json` and `examples/benchmark-budget.json` fixtures
+  so README and docs benchmark commands are copy-paste runnable.
+- Added explicit claim-boundary and metric-semantics fields to evaluation and benchmark JSON and
+  Markdown reports.
+- Added capability-protocol registration for narrow `Cost`, `Policy`, `Generator`, `Predictor`,
+  `Reasoner`, `Embedder`, and `Transferer` implementations, including diagnostics, planning, and
+  benchmark routing without requiring a full `BaseProvider` subclass.
+- Added an engineering quality standards page that maps WorldForge's Python packaging, testing,
+  linting, typed-distribution, ML reproducibility, and robotics-runtime boundaries to upstream
+  Python and scientific-computing guidance.
+- Exported benchmark budget and fixture-loading helpers from the top-level Python package so
+  provider benchmarking workflows do not need to reach into implementation modules.
+
+### Fixed
+
+- Scene object mutations and prediction actions now validate history payload JSON before committing
+  state changes, so malformed metadata or action payloads cannot leave an in-memory world half
+  mutated.
+- Provider events now sanitize observable request targets and obvious secret-bearing message or
+  metadata fields before logs or in-memory sinks can record them. Signed artifact URLs keep
+  scheme/host/path context but drop query strings, fragments, and userinfo.
+- Cosmos and Runway now strip whitespace and treat blank environment variables as unset, matching
+  the behaviour of every other provider. A blank `COSMOS_BASE_URL`, `NVIDIA_API_KEY`,
+  `RUNWAYML_BASE_URL`, `RUNWAYML_API_SECRET`, or `RUNWAY_API_SECRET` no longer masks as
+  configured.
+- `scripts/test_package.sh` now installs the built wheel generically instead of assuming the old
+  `worldforge-*.whl` filename prefix, so the package contract still works after the
+  `worldforge-ai` rename.
+- `scripts/test_package.sh` now validates wheel and sdist contents before installing the wheel,
+  including capability protocol files, the `py.typed` marker, console scripts, and source-package
+  docs/tests/scripts.
+- Public JSON-carrying models now reject non-JSON-native action parameters, scene metadata,
+  provider-event metadata, score metadata, policy raw actions, and policy metadata at construction
+  time instead of allowing values that fail later during persistence or artifact serialization.
+- `PredictionPayload`, `EvaluationResult`, provider summaries, and `BenchmarkResult` now validate
+  their JSON fields, finite metrics, score ranges, counts, and result coherence at construction
+  time so invalid report artifacts fail before rendering.
+- World import/load validation now requires the persisted schema version, validates embedded scene
+  object payloads, rejects `SceneObjectPatch` misuse, and treats a single provider string in
+  `World.compare(...)` as one provider rather than a sequence of characters.
+- Capability protocol adapters now wrap unexpected runtime exceptions as `ProviderError` after
+  emitting failure events.
+- LeWorldModel direct scoring now validates checkpoint-native candidate shape and requires one
+  returned score per candidate sample before constructing `ActionScoreResult`.
+- Benchmark budget fixtures now reject unknown top-level or budget-entry keys so typoed release
+  thresholds fail closed.
+- The LeWorldModel object-checkpoint builder now supports pinned Hugging Face revisions and loads
+  downloaded weights with `torch.load(..., weights_only=True)` by default. The
+  `--allow-unsafe-pickle` escape hatch is explicit for trusted legacy weights only.
+- `scripts/robotics-showcase --health-only` no longer auto-builds or downloads a missing
+  LeWorldModel object checkpoint; preflight reports checkpoint absence without mutating the cache.
+- Production CLI and LeRobot provider checks now raise explicit WorldForge errors instead of
+  relying on Python `assert` statements that disappear under optimized execution.
+
+### Changed
+
+- CI workflows now run on Python 3.13 only. The multi-version OS/Python test matrix was removed,
+  and Pages, release, and security jobs were aligned to the same interpreter version.
+- Package metadata, docs, optional-runtime wrapper commands, and lint target now declare Python
+  3.13 only so the published support contract matches CI.
+- Package metadata now uses SPDX license metadata and an explicit `uv` package marker, while the
+  Hatch wheel target is restricted to runtime package files.
+- Pytest now runs with importlib import mode and strict xfail handling, while Ruff enforces sorted
+  exports, explicit mutable class metadata annotations, literal exception-match patterns, and
+  clearer pytest imports/assertions.
+- Ruff now also enforces comprehension, simplification, return, performance, pytest-style, and
+  Ruff-native correctness rules across `src`, `tests`, `examples`, and `scripts`.
+- Provider contract helpers now use explicit `AssertionError` checks instead of Python `assert`
+  statements, so reusable adapter validation still runs under optimized Python.
+- Dedupe repeated provider scaffolding into shared `BaseProvider._emit_operation_event` and
+  `BaseProvider._health` helpers, and move `no_grad_context` plus `prepare_model` into
+  `providers/_policy.py`. The cosmos, runway, leworldmodel, lerobot, gr00t, and jepa-wms adapters
+  are unchanged externally but significantly shorter internally.
+- Consolidate the shared `blue_cube` tabletop scenario used by the LeRobot and LeWorldModel demos
+  into `worldforge.demos.make_blue_cube` / `blue_cube_goal` / `make_candidate_plans`.
+- TheWorldHarness no longer eagerly imports `worldforge.demos.*` at module load; demo flow
+  runners import lazily so the harness cold start does not drag the optional-runtime provider
+  classes into memory.
+- The robotics showcase wrapper no longer suppresses LeRobot runtime device fallback warnings, so
+  CUDA-to-MPS or similar execution changes remain visible in the terminal.
+- Documentation now routes release validation through explicit `uv`/`bash` gate commands, keeps
+  robotics preflight commands visible from the README/CLI/examples pages, and splits long optional
+  runtime commands into copy-pasteable blocks.
+- The robotics showcase deep dive now includes end-to-end flow, model payload, inference
+  responsibility, and sequence diagrams that show how LeRobot policy inference, LeWorldModel cost
+  inference, WorldForge planning, mock replay, and the visual report fit together.
+- The README, package metadata, citation metadata, docs site description, and introduction now use
+  a tighter project pitch: testable world-model workflows for physical-AI systems.
+- `save_world` skips a redundant `json.dumps`/`json.loads` round trip; the validation call now
+  runs directly against the serialized dict.
+- Documentation metadata and README links now point at the published GitHub Pages site.
+- Release tags now run the full quality gate before artifacts are built or published: lint,
+  formatting, strict docs, coverage, dependency audit, package contract, and tests.
+- The release gate now includes the lockfile check, coverage gate, package contract, build, and
+  dependency audit using the locked dev environment.
+- JEPA and Genie scaffold providers now advertise no executable capabilities. Their deterministic
+  mock-backed surrogate path remains available only for local adapter tests with
+  `WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES=1`.
+- Mock no longer advertises the provider-level `plan` capability; planning remains a WorldForge
+  facade workflow built from provider-specific `predict`, `score`, and `policy` surfaces.
+- Release publishing now verifies that the pushed tag matches the package version, uses locked
+  `pip-audit`, attaches build provenance attestations, and is configured for PyPI trusted
+  publishing.
+
+### Security
+
+- Hardened `ProviderEvent` serialization so structured provider logs do not leak bearer tokens,
+  API keys, signed URL query strings, or secret-like metadata values.
+- Scaffold provider capability fail-closed behavior prevents deterministic surrogate outputs from
+  being mistaken for real JEPA or Genie provider results in evals, benchmarks, or public reports.
+
+## 0.4.0 - 2026-04-22
+
+### Harness
+
+- Added the M3-M5 TheWorldHarness surfaces: `ProvidersScreen` with a capability matrix and a
+  cancellable real `mock.predict` run; `EvalScreen` and `BenchmarkScreen` with preserved JSON
+  reports; Run Inspector report previews; Home recent worlds/runs; dynamic `Ctrl+P` entries for
+  worlds, providers, and saved reports.
+- Added the `worldforge-high-contrast` theme to the existing theme cycle and documented the three
+  shipped themes.
+- Added local harness guard scripts that reject raw hex literals in widget CSS and network-egress
+  calls under `src/worldforge/harness/`.
+- Added a Textual screenshot export matrix for the main harness screens at `100x30`, `120x40`,
+  and `160x50`, plus a deterministic README screenshot regeneration script.
+- Reskinned TheWorldHarness with registered `worldforge-dark` and `worldforge-light` themes,
+  retiring the hard-coded hex literals in `src/worldforge/harness/tui.py` in favour of semantic
+  tokens (`$accent`, `$success`, `$warning`, `$error`, `$panel`, `$boost`, `$surface`, plus the
+  custom `$muted` variable) so the harness reads as a polished workspace on light terminals.
+- Added a header chrome strip with a `worldforge > <flow>` breadcrumb and a
+  `<provider> . <capability>` status pill that update reactively when the selected flow changes.
+- Added a hidden `Ctrl+T` binding that cycles between the two registered themes without
+  restarting the harness.
+- Split TheWorldHarness into a screen stack: a `HomeScreen` landing page with three jump cards
+  (`n` create a world, `p` run a provider, `e` run an eval), a `RunInspectorScreen` that owns
+  the existing flow visualisation, plus modal `HelpScreen` and `PlaceholderScreen` overlays.
+  `worldforge-harness` opens on Home by default and on the Run Inspector when `--flow` is
+  passed.
+- Added the static command palette layer via `App.get_system_commands` (`Ctrl+P`): "Jump:
+  Home", "Jump: Run Inspector", "Open Help", one "Run flow: <title>" entry per registered
+  flow, "Switch theme", and the stock Quit. Dynamic entries now index worlds, providers, and
+  recent runs.
+- Added `?` to open a modal `HelpScreen` that lists every binding declared on the screen below
+  it, plus chord bindings `g h` / `g r` for jump-to-Home and jump-to-Run-Inspector.
+- Updated the `Header` breadcrumb to reflect the active screen, deepening to the selected flow
+  on the Run Inspector (`worldforge › run-inspector › <flow>`).
+- Added a standalone Textual report for `scripts/robotics-showcase` that renders the real
+  LeRobot-plus-LeWorldModel run as a pipeline trace with metric bars, candidate ranking, provider
+  events, and a fixed tabletop replay.
+- Improved the robotics showcase report layout into a vertical, scrollable story with full-width
+  candidate ranking, full-width tabletop replay, staged reveal delays, and an illustrative animated
+  robot-arm replay.
+- Added an in-report reading guide for runtime, tensor, and candidate-ranking panes plus a `?`
+  tabletop-replay help overlay for the real robotics showcase TUI.
+
+### Added
+
+- Added `lewm-real`, a short `uv run` alias for real LeWorldModel checkpoint inference. The command
+  now accepts `--checkpoint`, prints a staged pipeline log by default, and preserves machine-readable
+  output with `--json-only`.
+- Added `lewm-lerobot-real` and `worldforge-smoke-lerobot-leworldmodel`, a host-owned real
+  robotics smoke/showcase that composes LeRobot policy inference with LeWorldModel checkpoint
+  scoring through WorldForge policy-plus-score planning, including visual logs and JSON output.
+- Added `scripts/robotics-showcase` and `worldforge-robotics-showcase`, a one-command PushT real
+  robotics entrypoint that packages the LeRobot observation, LeWorldModel score tensor, translator,
+  and action-candidate bridge defaults for the LeRobot + LeWorldModel showcase.
+- Expanded the real robotics showcase output with an ASCII pipeline map, runtime bars, score
+  summary, candidate target table, and tabletop replay diagram while keeping the machine-readable
+  JSON path available.
+- Made `scripts/robotics-showcase` launch the Textual visual report by default while preserving
+  `--no-tui`, `--json-only`, and `--health-only` for plain terminal, automation, and preflight
+  runs.
+- Added `--tui-stage-delay` and `--no-tui-animation` to control the robotics showcase reveal pace
+  and animation.
+- Added the `worldforge world` CLI command group for local JSON persistence workflows, including
+  create, list, show, history, export, import, and fork commands backed by the existing validated
+  `WorldForge` persistence API.
+- Added persisted-world mutation and prediction commands:
+  `worldforge world objects`, `add-object`, `update-object`, `remove-object`, and `predict`.
+  These commands load local JSON worlds, apply typed scene/action values, and save through
+  `WorldForge.save_world(...)`; `world predict --dry-run` previews provider output without
+  replacing the saved file.
+- Added `WorldForge.delete_world(...)` and `worldforge world delete` so local JSON world removal
+  uses the same validated persistence boundary as save/load/import/fork. TheWorldHarness now calls
+  this public API instead of unlinking world files directly.
+- Added persisted history entries for scene object add/update/remove mutations, including typed
+  `Action` payloads and snapshots that can be restored or forked. Object position patches now
+  translate bounding boxes with the pose to keep local scene state coherent.
+- Added `worldforge examples` with Markdown and JSON output so CLI users can discover checkout
+  scripts, packaged demos, and optional smoke commands without scanning repository docs.
+- Added the `worldforge-demo-lerobot` console command and packaged the LeRobot policy-plus-score
+  planning walkthrough under `src/worldforge/demos/lerobot_e2e.py`, keeping
+  `examples/lerobot_e2e_demo.py` as a compatibility wrapper.
+- Added `examples/README.md` as a short command index for the checkout scripts and packaged demos.
+- Added CLI help snapshot tests for the primary `worldforge` command surface.
+- Added `scripts/generate_provider_docs.py` so the provider catalog table can be refreshed and
+  checked from `src/worldforge/providers/catalog.py`.
+- Added `worldforge provider docs` so users can discover provider documentation paths from the CLI.
+- Added TheWorldHarness as an optional Textual TUI (`worldforge-harness` and `worldforge harness`)
+  for visually running and inspecting packaged E2E demos.
+- Added a TheWorldHarness diagnostics flow for provider catalog inspection and mock benchmark
+  comparison across predict, reason, generate, and transfer.
+- Added benchmark budget gates for release and claim-oriented checks. `worldforge benchmark` can
+  load a JSON budget file, print gate violations, and exit non-zero when success-rate,
+  error-count, retry-count, latency, throughput, or unmatched-budget checks fail.
+- Added benchmark input fixtures. `worldforge benchmark --input-file benchmark-inputs.json` now
+  loads deterministic JSON inputs for prediction, generation, transfer, embedding, score, and
+  policy runs; transfer clips can point at files relative to the input JSON or inline base64
+  frames.
+- Added `.env.example` documenting every provider environment variable recognized by
+  WorldForge (`COSMOS_BASE_URL`, `NVIDIA_API_KEY`, `RUNWAYML_API_SECRET` and the legacy
+  `RUNWAY_API_SECRET` alias, `RUNWAYML_BASE_URL`, `LEWORLDMODEL_POLICY` and the legacy
+  `LEWM_POLICY` alias, `LEWORLDMODEL_CACHE_DIR`, `LEWORLDMODEL_DEVICE`, the full
+  `GROOT_POLICY_*` and `GROOT_EMBODIMENT_TAG` set, the full `LEROBOT_*` set including the
+  legacy `LEROBOT_POLICY` alias, the `JEPA_WMS_*` candidate variables, and the scaffold
+  `JEPA_MODEL_PATH` and `GENIE_API_KEY`).
+- Added `lerobot` as a first-class optional policy provider for Hugging Face LeRobot
+  pretrained policies. The adapter lazily imports LeRobot, supports injectable policies and
+  policy loaders for offline testing, validates observation payloads, preserves raw policy
+  tensors, and requires a host-owned action translator before returning executable WorldForge
+  actions.
+- Added `leworldmodel` as a first-class optional score provider for LeWorldModel JEPA cost
+  models, including `ActionScoreResult`, `WorldForge.score_actions(...)`, score-output
+  validation, provider profile metadata, and fixture-driven tests.
+- Added score-based planning, the `policy` capability, `ActionPolicyResult`,
+  `WorldForge.select_actions(...)`, policy-only planning, and policy-plus-score planning.
+- Added experimental host-owned `gr00t` PolicyClient support, a `jepa-wms` direct-construction
+  score-provider candidate scaffold, and `scripts/scaffold_provider.py` for safe provider
+  scaffolding.
+- Added checkout-safe LeWorldModel and LeRobot demos plus optional LeWorldModel/GR00T/LeRobot
+  smoke entry points for host-owned runtimes.
+
+### Changed
+
+- Bumped project metadata and public citation references to `0.4.0`.
+- Validated provider capability names across public capability checks and CLI provider filters,
+  so typos such as `generation` fail explicitly instead of being treated as unsupported.
+- Changed `ProviderCapabilities()` to advertise no operations by default. Providers must opt into
+  every capability explicitly, and unsupported `predict()` calls now fail with `ProviderError`
+  instead of `NotImplementedError`.
+- Centralized in-repo provider discovery in `src/worldforge/providers/catalog.py`, including the
+  provider factory list and explicit always-register policy for `mock`. `WorldForge` now uses the
+  catalog instead of relying on constructor ordering in `_known_providers()`.
+- Extended the provider catalog with documentation-page and runtime-ownership metadata used by the
+  generated provider docs table.
+- Moved the README provider surface table onto the same generated catalog source as the provider
+  docs index.
+- Grouped `worldforge examples`, `docs/src/examples.md`, and `examples/README.md` by task so
+  prediction, comparison, score planning, policy planning, and optional smoke paths are easier to
+  scan.
+- Reworked the README, introduction, architecture, provider, and operations docs around the
+  capability contract: predictive models, score providers, policy providers, media adapters,
+  host-owned optional runtimes, and explicit persistence/evaluation boundaries.
+- Added dedicated provider pages for Cosmos, Runway, and LeWorldModel, and normalized the GR00T,
+  LeRobot, and JEPA-WMS pages around capability surface, runtime ownership, input/output
+  contracts, failure modes, and validation coverage.
+- Updated package metadata around WorldForge's physical-AI world-model integration layer, removed
+  the development-status classifier, and pointed documentation metadata at repository docs instead
+  of a standalone project domain.
+- Aligned documented Ruff commands with CI, `README.md`, and `AGENTS.md` by keeping `scripts/` in
+  both `ruff check` and `ruff format` targets.
+
+### Fixed
+
+- Rejected non-file-safe world IDs before local persistence reads and writes, preventing traversal
+  through imported or caller-supplied world identifiers.
+- Validated persisted world history entries end to end, including non-negative entry steps,
+  historical snapshot states, non-empty summaries, serialized action payloads, and the invariant
+  that history entry steps cannot exceed the current world step.
+- Wrote saved worlds through validated same-directory temporary files before atomically replacing
+  the destination JSON file.
+- Rejected stringly-typed booleans for scene object graspability, provider capabilities, and the
+  JEPA-WMS `actions_are_normalized` option instead of silently coercing values such as `"false"`
+  to `True`.
+- Tracked `.env.example` in the repository by adding an explicit `!.env.example` exception
+  to `.gitignore`; the general `.env.*` glob was silently excluding the onboarding template.
+- Rejected non-finite public numeric inputs for positions, rotations, request policies, provider
+  events, video clips, reasoning confidence, embedding vectors, generation FPS, and prediction
+  payload metrics.
+- Rejected duplicate scene object IDs when adding objects to a world.
+- Rejected persisted/provider-supplied world state whose scene-object map key disagrees with the
+  object's embedded `id`.
+- Made the coverage gate invoke pytest with the `harness` extra so optional Textual TUI tests are
+  available during coverage runs while the base package and matrix tests remain free of Textual.
+- Validated Runway ratio parsing before constructing returned clip metadata.
+- Validated Cosmos health and generation response payloads before decoding returned videos.
+- Validated Runway organization, task creation, task polling, task output, artifact content type,
+  expired artifact, and empty artifact responses before returning clips.
+- Corrected the LeWorldModel smoke task to require an existing upstream object checkpoint instead
+  of relying on a nonexistent PyPI checkpoint-preparation helper.
+- Updated the real LeWorldModel smoke instructions to use the GitHub `stable-worldmodel` source
+  package and `datasets>=2.21`, matching the runtime that can load supported LeWM checkpoints.
+- Rejected score-based plans when the score provider returns a different number of scores than
+  executable candidate action plans, preventing provider-native score tensors from drifting away
+  from the actions WorldForge can execute or report.
+
+### Security
+
+- Hardened local JSON persistence against path traversal by validating world IDs before resolving
+  storage paths.
+- Raised the development dependency floor to `pytest>=9.0.3` and refreshed `uv.lock` to remove
+  the locked `pytest 9.0.2` vulnerability reported as `CVE-2025-71176`.
+
+### Documentation
+
+- Added `AGENTS.md` with repository identity, architecture, commands, conventions, constraints,
+  and gotchas for contributors.
+- Promoted the real LeRobot-plus-LeWorldModel robotics showcase to the top of the README with
+  screenshots, a one-command entrypoint, and a dedicated walkthrough covering the pipeline,
+  runtime boundaries, artifacts, and customization path.
+- Added a dedicated CLI reference and reduced duplicate README/provider demo prose so the public
+  front face points to one command map instead of repeating optional-runtime narratives.
+- Added user and operator playbooks for checkout validation, provider capability selection,
+  provider diagnostics, adapter promotion, local persistence recovery, remote artifacts, optional
+  runtime smokes, benchmarks, incident triage, and release gates.
+- Added this changelog and linked it from the README.
+- Documented host-owned persistence, provider limits, and provider workflow failure modes.
+- Added a world-model taxonomy document, plus expanded architecture docs with text and
+  Mermaid diagrams for provider injection, predictive planning, score-based planning, observability,
+  and the LeWorldModel-shaped runtime pipeline.
+- Added a provider authoring guide that turns the taxonomy into capability, validation, testing,
+  observability, and documentation checklists for new adapters.
+- Documented GR00T live-smoke requirements for Isaac-GR00T's CUDA/TensorRT runtime and the remote
+  policy-server path for unsupported hosts.
+
+## 0.3.0 - 2026-04-08
+
+### Added
+
+- Typed planning goals for `object_at`, `object_near`, `spawn_object`, and `swap_objects`.
+- Built-in evaluation suites for generation, physics, planning, reasoning, and transfer.
+- Provider benchmark harness with latency, retry, throughput, JSON, Markdown, and CSV reporting.
+- Provider observability through `ProviderEvent`, JSON logging, in-memory recording, and metrics
+  aggregation sinks.
+- HTTP-backed Cosmos and Runway beta adapters with typed request policy and retry behavior.
+- Reusable provider contract checks under `worldforge.testing`.
+
+### Notes
+
+Constraints carried forward from this release; see the docs site for the current status of each:
+
+- JEPA and Genie remain scaffold adapters backed by deterministic mock behavior after credential
+  checks.
+- Evaluation scores are deterministic adapter contract signals, not physical fidelity or media
+  quality guarantees.
+- World persistence is local JSON and is not safe as a concurrent multi-writer store.

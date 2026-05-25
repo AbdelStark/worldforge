@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "predict.invalid_action_steps_zero",
+  "capability": "predict",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "steps",
+  "description": "Predict requires a positive step count; zero is rejected before the provider is invoked.",
+  "payload": {
+    "world_state": {
+      "schema_version": 1,
+      "id": "world_fixture_predict_invalid_steps",
+      "name": "fixture-world",
+      "provider": "fixture",
+      "step": 0,
+      "scene": {"objects": {}},
+      "metadata": {}
+    },
+    "action": {
+      "type": "move_to",
+      "parameters": {
+        "target": {"x": 0.25, "y": 0.5, "z": 0.0},
+        "speed": 1.0
+      }
+    },
+    "steps": 0
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "embed.valid_baseline",
+  "capability": "embed",
+  "data_class": "synthetic",
+  "expected": "valid",
+  "expected_error_pattern": null,
+  "description": "Short single-sentence text suitable for any embed provider's contract check.",
+  "payload": {
+    "text": "fixture corpus baseline embedding text"
+  }
+}

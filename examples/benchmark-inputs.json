@@ -1,0 +1,111 @@
+{
+  "metadata": {
+    "purpose": "documented deterministic benchmark inputs",
+    "runtime": "mock provider for predict/generate/transfer/embed; score and policy fields require a provider that advertises those capabilities",
+    "checkout_safe_operations": [
+      "predict",
+      "generate",
+      "transfer",
+      "embed"
+    ]
+  },
+  "inputs": {
+    "prediction_action": {
+      "type": "move_to",
+      "parameters": {
+        "target": {
+          "x": 0.25,
+          "y": 0.5,
+          "z": 0.0
+        },
+        "speed": 1.0
+      }
+    },
+    "prediction_steps": 2,
+    "reason_query": "How many objects are tracked?",
+    "generation_prompt": "benchmark orbiting cube",
+    "generation_duration_seconds": 1.0,
+    "transfer_prompt": "benchmark transfer rerender",
+    "transfer_width": 320,
+    "transfer_height": 180,
+    "transfer_fps": 12.0,
+    "transfer_clip": {
+      "frames_base64": [
+        "d29ybGRmb3JnZS1iZW5jaG1hcmstZnJhbWU="
+      ],
+      "fps": 8.0,
+      "resolution": [
+        160,
+        90
+      ],
+      "duration_seconds": 1.0,
+      "metadata": {
+        "content_type": "application/octet-stream",
+        "mode": "documented-benchmark-seed"
+      }
+    },
+    "embedding_text": "benchmark cube state",
+    "score_info": {
+      "pixels": [
+        [
+          [
+            [
+              0.0
+            ]
+          ]
+        ]
+      ],
+      "goal": [
+        [
+          [
+            0.3,
+            0.5,
+            0.0
+          ]
+        ]
+      ],
+      "action": [
+        [
+          [
+            0.0,
+            0.5,
+            0.0
+          ]
+        ]
+      ]
+    },
+    "score_action_candidates": [
+      [
+        [
+          [
+            0.0,
+            0.5,
+            0.0
+          ]
+        ],
+        [
+          [
+            0.3,
+            0.5,
+            0.0
+          ]
+        ]
+      ]
+    ],
+    "policy_info": {
+      "observation": {
+        "state": {
+          "cube": [
+            0.0,
+            0.5,
+            0.0
+          ]
+        },
+        "language": "move the cube"
+      },
+      "mode": "select_action",
+      "action_horizon": 1,
+      "embodiment_tag": "benchmark"
+    }
+  }
+}

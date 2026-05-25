@@ -1,0 +1,31 @@
+{
+  "metadata": {
+    "purpose": "score and policy info shaped to satisfy any prepared-host runtime that advertises those capabilities. Reuses the synthetic shape from the capability fixture corpus.",
+    "runtime": "requires a prepared-host runtime (leworldmodel for score; lerobot or gr00t for policy). The CLI skips with a typed reason when env is missing.",
+    "presets": ["prepared-host"]
+  },
+  "inputs": {
+    "score_info": {
+      "pixels": [[[[0.0], [0.1]], [[0.2], [0.3]]]],
+      "goal": [[[0.3, 0.5, 0.0]]],
+      "action": [[[0.0, 0.5, 0.0]]],
+      "metadata": {"mode": "preset-prepared-host"}
+    },
+    "score_action_candidates": [
+      [
+        [[0.0, 0.5, 0.0], [0.1, 0.5, 0.0]],
+        [[0.0, 0.5, 0.0], [0.3, 0.5, 0.0]]
+      ]
+    ],
+    "policy_info": {
+      "observation": {
+        "video": {"front": [[[[[0, 0, 0]]]]]},
+        "state": {"eef": [[[0.0, 0.5, 0.0]]]},
+        "language": {"task": [["move the object"]]}
+      },
+      "action_horizon": 1,
+      "embodiment_tag": "preset",
+      "mode": "select_action"
+    }
+  }
+}

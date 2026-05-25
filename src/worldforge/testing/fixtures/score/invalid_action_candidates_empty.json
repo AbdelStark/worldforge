@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "score.invalid_action_candidates_empty",
+  "capability": "score",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "action_candidates",
+  "description": "Score rejects an empty action_candidates list: there is nothing to rank.",
+  "payload": {
+    "info": {
+      "pixels": [[[[0.0]]]],
+      "goal": [[[0.3, 0.5, 0.0]]],
+      "action": [[[0.0, 0.5, 0.0]]]
+    },
+    "action_candidates": []
+  }
+}

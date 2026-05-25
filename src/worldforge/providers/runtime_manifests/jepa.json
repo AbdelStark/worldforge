@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "provider": "jepa",
+  "capabilities": ["score"],
+  "optional_dependencies": ["torch"],
+  "required_env_vars": ["JEPA_MODEL_NAME"],
+  "optional_env_vars": ["JEPA_DEVICE", "JEPA_MODEL_PATH"],
+  "default_model": "jepa_wm_pusht",
+  "device_support": ["cpu", "cuda", "mps"],
+  "host_owned_artifacts": [
+    "JEPA-WMS checkpoint",
+    "torch-hub cache",
+    "task-shaped observation, goal, and action tensors"
+  ],
+  "minimum_smoke_command": "uv run --with torch worldforge-smoke-jepa-wms --model-name jepa_wm_pusht --device cpu",
+  "expected_success_signal": "score_actions() returns finite lower-is-better candidate costs and a sanitized run manifest",
+  "setup_hint": "install torch and the upstream facebookresearch/jepa-wms runtime in the host environment",
+  "docs_path": "docs/src/providers/jepa.md"
+}

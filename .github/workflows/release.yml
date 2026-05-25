@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_LOCKED: "true"
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  build-distributions:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.18"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Install development environment
+        run: uv sync --group dev
+
+      - name: Verify release tag matches package version
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          expected = f"v{version}"
+          if tag != expected:
+              raise SystemExit(f"release tag {tag!r} does not match package version {expected!r}")
+          PY
+
+      - name: Lint
+        run: uv run ruff check src tests examples scripts
+
+      - name: Check formatting
+        run: uv run ruff format --check src tests examples scripts
+
+      - name: Check docs
+        run: |
+          uv run python scripts/generate_provider_docs.py --check
+          uv run python scripts/check_docs_commands.py
+          uv run python scripts/check_wrapper_portability.py
+          uv run python scripts/check_core_performance.py
+          uv run mkdocs build --strict
+
+      - name: Run tests with coverage
+        run: uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90
+
+      - name: Audit dependencies
+        run: |
+          uv export --all-groups --no-emit-project --no-hashes -o requirements-ci.txt
+          uv run pip-audit -r requirements-ci.txt --no-deps --disable-pip --progress-spinner off
+
+      - name: Validate package contract
+        run: bash scripts/test_package.sh
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Build distributions
+        run: uv build --out-dir dist --no-build-logs
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/*
+
+  github-release:
+    name: GitHub release
+    needs: [build-distributions, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build-distributions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: pypi
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.18"
+
+      - name: Publish distributions
+        run: uv publish dist/*

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "score.valid_baseline",
+  "capability": "score",
+  "data_class": "synthetic",
+  "expected": "valid",
+  "expected_error_pattern": null,
+  "description": "Minimal observation/goal/action info paired with two distinct action candidates suitable for any score provider.",
+  "payload": {
+    "info": {
+      "pixels": [[[[0.0], [0.1]], [[0.2], [0.3]]]],
+      "goal": [[[0.3, 0.5, 0.0]]],
+      "action": [[[0.0, 0.5, 0.0]]],
+      "metadata": {"mode": "fixture-score"}
+    },
+    "action_candidates": [
+      [
+        [[0.0, 0.5, 0.0], [0.1, 0.5, 0.0]],
+        [[0.0, 0.5, 0.0], [0.3, 0.5, 0.0]]
+      ]
+    ]
+  }
+}

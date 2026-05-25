@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "predict.invalid_world_state_missing_schema",
+  "capability": "predict",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "schema_version",
+  "description": "World state without schema_version is rejected by predict input validation before any provider is reached.",
+  "payload": {
+    "world_state": {
+      "id": "world_fixture_predict_invalid",
+      "name": "fixture-world",
+      "provider": "fixture",
+      "step": 0,
+      "scene": {"objects": {}}
+    },
+    "action": {
+      "type": "move_to",
+      "parameters": {
+        "target": {"x": 0.25, "y": 0.5, "z": 0.0},
+        "speed": 1.0
+      }
+    },
+    "steps": 2
+  }
+}

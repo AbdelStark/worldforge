@@ -1,0 +1,29 @@
+{
+  "action_candidates": [
+    [
+      [
+        0.0,
+        0.1
+      ]
+    ]
+  ],
+  "info": {
+    "goal": [
+      [
+        1.0,
+        0.0
+      ]
+    ],
+    "observation": [
+      [
+        0.0,
+        1.0
+      ]
+    ]
+  },
+  "runtime_response": {
+    "scores": [
+      0.2
+    ]
+  }
+}

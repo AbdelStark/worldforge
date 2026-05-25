@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "purpose": "minimal generation prompt for remote media providers (cosmos, runway). Single iteration keeps live-call cost bounded.",
+    "runtime": "requires the target remote provider's environment to be configured. The CLI skips with a typed reason when env is missing.",
+    "presets": ["remote-media-dryrun"]
+  },
+  "inputs": {
+    "generation_prompt": "preset remote-media dryrun: orbiting cube",
+    "generation_duration_seconds": 1.0,
+    "transfer_prompt": "preset remote-media dryrun: rerender",
+    "transfer_width": 256,
+    "transfer_height": 144,
+    "transfer_fps": 8.0,
+    "transfer_clip": {
+      "frames_base64": ["d29ybGRmb3JnZS1yZW1vdGUtbWVkaWEtcHJlc2V0LWZyYW1l"],
+      "fps": 8.0,
+      "resolution": [160, 90],
+      "duration_seconds": 1.0,
+      "metadata": {
+        "content_type": "application/octet-stream",
+        "mode": "preset-remote-media-dryrun"
+      }
+    }
+  }
+}

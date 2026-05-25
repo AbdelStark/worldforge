@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If WorldForge helps your research or open-source work, please cite it with this metadata."
+title: "WorldForge"
+version: "0.5.0"
+date-released: "2026-04-24"
+abstract: "A Python integration layer for testable physical-AI world-model workflows: provider capability contracts, planning, evaluation, benchmarking, diagnostics, local state, and host-owned optional runtimes."
+authors:
+  - name: "WorldForge contributors"
+repository-code: "https://github.com/AbdelStark/worldforge"
+url: "https://abdelstark.github.io/worldforge/"
+license: "MIT"
+keywords:
+  - world-models
+  - physical-ai
+  - robotics
+  - planning
+  - evaluation

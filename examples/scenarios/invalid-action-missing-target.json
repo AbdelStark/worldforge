@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "invalid-action-missing-target",
+  "name": "Invalid action with missing target coordinate",
+  "description": "Validate the JSON shape, then fail at run time because the predict action omits z.",
+  "provider": "mock",
+  "world": {
+    "name": "invalid-action-missing-target-world",
+    "objects": [
+      {
+        "id": "invalid-action-cube",
+        "name": "cube",
+        "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+          "max": {"x": 0.05, "y": 0.55, "z": 0.05}
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "kind": "predict",
+      "parameters": {"x": 0.2, "y": 0.5, "steps": 1}
+    }
+  ],
+  "expected_artifacts": [
+    {"label": "not_reached", "kind": "step", "value": 1}
+  ],
+  "metadata": {
+    "expected_cli_error": true,
+    "expected_error_contains": "Scenario action parameter 'z' is required.",
+    "gallery_intent": "invalid action",
+    "first_triage_step": "Run scenario validate first, then inspect actions[0].parameters for the missing coordinate."
+  }
+}

@@ -1,0 +1,55 @@
+[github_app]
+pr_commands = [
+  "/agentic_describe",
+  "/agentic_review",
+]
+handle_push_trigger = true
+push_commands = [
+  "/agentic_review",
+]
+
+[review_agent]
+demand_self_review = true
+approve_pr_on_self_review = false
+issues_user_guidelines = """
+Review WorldForge as a Python integration layer for physical-AI workflows, not as a generic app.
+Prioritize concrete correctness, security, reliability, and contract drift findings over style.
+
+High-signal issue areas:
+- Provider boundaries: SSRF, private-network egress, unsafe redirects, missing timeouts, unbounded downloads, malformed upstream responses, and raw third-party exceptions.
+- Optional runtime boundaries: unsafe deserialization, Hydra/object instantiation from untrusted configs, unpinned checkpoint revisions, dynamic imports, and misleading safety messaging.
+- Secret handling: credentials, bearer tokens, API keys, signed URLs, and secret-like metadata must not reach provider events, logs, exceptions, transcripts, persisted worlds, or returned result metadata.
+- Capability truthfulness: providers must advertise only capabilities implemented end to end. Do not let score, policy, predict, generate, reason, embed, transfer, and plan become interchangeable labels.
+- Public contracts: JSON-native validation, finite numeric values, typed errors, stable serialization, and regression tests for every bug fix or documented failure mode.
+"""
+compliance_user_guidelines = """
+Use AGENTS.md, best_practices.md, and pr_compliance_checklist.yaml as repository-specific review standards.
+Treat checklist failures as real findings when the PR changes provider I/O, optional-runtime loading, persistence, planning, event logging, CI, packaging, or public documentation.
+Do not block on cosmetic preferences unless they hide a correctness, security, or maintenance risk.
+"""
+
+[review_agent_ux]
+expand_description = true
+expand_code = true
+expand_relevance = true
+expand_evidence = true
+expand_prompt = false
+resolved_overflow_count = "3"
+
+[pr_code_suggestions]
+enable_chat_in_code_suggestions = true
+
+[checks]
+enable_auto_checks_feedback = true
+persistent_comment = true
+enable_help_text = true
+final_update_message = true
+
+[config]
+ignore_pr_title = [
+  "^WIP\\b",
+  "^Draft\\b",
+]
+ignore_pr_source_branches = [
+  "^dependabot/",
+]
