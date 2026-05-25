@@ -79,6 +79,7 @@ tensorboard = [
 [dependency-groups]
 dev = [
     "mkdocs-material>=9.6,<10",
+    "mkdocs-static-i18n>=1.2,<2",
     "pip-audit>=2.9,<3",
     "pytest>=9.0.3",
     "pytest-cov>=7.0",

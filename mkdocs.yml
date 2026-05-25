@@ -38,7 +38,92 @@ theme:
         icon: material/weather-sunny
         name: Switch to light mode
 
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh
+          name: 简体中文
+          build: true
+          site_name: WorldForge 中文文档
+          site_description: 面向物理 AI 系统的可测试世界模型工作流。
+          nav_translations:
+            Home: 首页
+            Introduction: 简介
+            Documentation Map: 文档导航
+            Getting Started: 快速上手
+            Quick Start: 快速开始
+            CLI Reference: CLI 参考
+            Examples And CLI Commands: 示例与 CLI 命令
+            Showcases: 案例展示
+            Demo Showcase Workflows: 演示案例工作流
+            Use Case Cookbook: 用例手册
+            Robotics Replay Showcase: 机器人回放案例
+            Robotics Showcase Deep Dive: 机器人案例深入解析
+            Rerun Integration: Rerun 集成
+            System Model: 系统模型
+            World Model Taxonomy: 世界模型分类法
+            Architecture: 架构
+            Decisions: 决策记录
+            Persistence Adapter Boundary: 持久化适配器边界
+            Providers: 提供方
+            Overview: 概览
+            Provider Configuration Index: 提供方配置索引
+            Provider Failure Mode Gallery: 提供方故障模式图鉴
+            Authoring And API: 编写与 API
+            Provider Authoring Guide: 提供方编写指南
+            External Provider Packages: 外部提供方包
+            Adoption Case Studies: 采用案例研究
+            Adoption Case Study Template: 采用案例研究模板
+            Scenario Definition Format: 场景定义格式
+            Provider Routing And Fallback: 提供方路由与回退
+            Python API: Python API
+            Public API Stability: 公共 API 稳定性
+            Capability Fixture Corpus: 能力夹具语料库
+            Capability Negotiation: 能力协商
+            Capability Protocols Quickstart: 能力协议快速上手
+            Evidence And Evaluation: 证据与评估
+            Evaluation: 评估
+            Benchmarking: 基准测试
+            Live Smoke Evidence Registry: 在线冒烟证据登记
+            Claim-To-Evidence Map: 主张到证据映射
+            Artifact Schemas: 工件结构定义
+            Artifact Integrity: 工件完整性
+            Operations And Quality: 运维与质量
+            User And Operator Playbooks: 用户与运维手册
+            Run Artifact Index: 运行工件索引
+            Static HTML Reports: 静态 HTML 报告
+            World State Diff And Patch: 世界状态差异与补丁
+            Engineering Quality: 工程质量
+            Operations: 运维
+            Security: 安全
+            Support: 支持
+            Contributing: 贡献指南
+            Contributor Task Starters: 贡献者任务起步
+            Planning Records: 规划记录
+            Roadmap: 路线图
+            Roadmap Expansion 3: 路线图扩展 3
+            Roadmap Expansion 2: 路线图扩展 2
+            Roadmap Expansion: 路线图扩展
+            Roadmap Continuation: 路线图延续
+            Provider And Platform Roadmap: 提供方与平台路线图
+            Next Provider Selection RFC: 下一个提供方选型 RFC
+            Provider Cohort Selection Record: 提供方批次选型记录
+            Spatial Scene Artifact Boundary: 空间场景工件边界
+            Project Metadata: 项目元信息
+            Changelog: 更新日志
+            Citation: 引用
+
 nav:
+  - Home: index.md
   - Introduction: introduction.md
   - Documentation Map: docs-map.md
   - Getting Started:

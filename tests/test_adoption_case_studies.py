@@ -19,7 +19,9 @@ REQUIRED_TEMPLATE_SECTIONS = (
 
 def _case_study_files() -> list[Path]:
     return sorted(
-        path for path in CASE_STUDIES.glob("*.md") if path.name not in {"README.md", "_template.md"}
+        path
+        for path in CASE_STUDIES.glob("*.md")
+        if not path.name.endswith(".zh.md") and path.name not in {"README.md", "_template.md"}
     )
 
 
