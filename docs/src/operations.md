@@ -769,8 +769,10 @@ The dashboard defaults to `.worldforge/quality-dashboard/quality-dashboard.json`
 dependency-audit evidence, and core-performance JSON; it does not execute gates. Status rows use
 `passed`, `failed`, `warning`, `skipped`, and `not-run`, preserve raw failure output tails, list
 skipped host-owned provider checks, and name the first failed gate. Use it as a local quality
-index. Release evidence remains the artifact for release claims, artifact hashes, linked
-`run_manifest.json` files, and known limitations.
+index. Core-performance status is derived from both the top-level artifact status and row-level
+budget results, so a stale `passed: true` flag cannot hide failed budget rows. Release evidence remains
+the artifact for release claims, artifact hashes, linked `run_manifest.json` files, and known
+limitations.
 
 After evidence exists, draft release notes for maintainer editing:
 

@@ -184,6 +184,102 @@ def test_quality_dashboard_marks_missing_sources_not_run(tmp_path: Path) -> None
     assert dashboard["summary"]["not-run"] >= 8
 
 
+def test_quality_dashboard_rejects_incoherent_core_performance_artifact(tmp_path: Path) -> None:
+    release_evidence = tmp_path / "release-evidence.json"
+    dependency_audit = tmp_path / "dependency-audit.json"
+    core_performance = tmp_path / "core-performance.json"
+    release_evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "validation_gates": [
+                    {
+                        "name": gate.name,
+                        "command": gate.command,
+                        "status": "passed",
+                        "exit_code": 0,
+                        "triage_step": gate.triage_step,
+                    }
+                    for gate in generate_quality_dashboard.CHECKOUT_SAFE_GATES
+                ],
+                "live_provider_evidence": [],
+                "extra_live_provider_evidence": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    dependency_audit.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "generated_at": "2026-01-01T00:00:00+00:00",
+                "status": "passed",
+                "vulnerability_summary": {"vulnerability_count": 0},
+                "vulnerabilities": [],
+                "commands": {},
+                "ignored_advisories": [],
+                "first_triage_step": "Attach evidence.",
+            }
+        ),
+        encoding="utf-8",
+    )
+    core_performance.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "passed": True,
+                "results": [
+                    {
+                        "name": "world_persistence",
+                        "duration_ms": 400.0,
+                        "budget_ms": 250.0,
+                        "passed": False,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dashboard = build_quality_dashboard(
+        release_evidence=release_evidence,
+        dependency_audit=dependency_audit,
+        core_performance=core_performance,
+        now_utc=lambda: datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    gate = {item["name"]: item for item in dashboard["gates"]}["Core performance artifact"]
+    assert dashboard["status"] == "failed"
+    assert gate["status"] == "failed"
+    assert "contradicted" in gate["summary"]
+    assert gate["raw_details"]["incoherent_pass"] is True
+    assert gate["raw_details"]["failed_results"][0]["name"] == "world_persistence"
+
+
+def test_quality_dashboard_warns_on_malformed_core_performance_artifact(tmp_path: Path) -> None:
+    dashboard = build_quality_dashboard(
+        release_evidence=tmp_path / "missing-release-evidence.json",
+        dependency_audit=tmp_path / "missing-dependency-audit.json",
+        core_performance=tmp_path / "core-performance.json",
+        now_utc=lambda: datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    assert dashboard["summary"]["warning"] == 0
+
+    core_performance = tmp_path / "core-performance.json"
+    core_performance.write_text(json.dumps({"schema_version": 1, "results": []}), encoding="utf-8")
+
+    dashboard = build_quality_dashboard(
+        release_evidence=tmp_path / "missing-release-evidence.json",
+        dependency_audit=tmp_path / "missing-dependency-audit.json",
+        core_performance=core_performance,
+        now_utc=lambda: datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    gate = {item["name"]: item for item in dashboard["gates"]}["Core performance artifact"]
+    assert gate["status"] == "warning"
+    assert gate["raw_details"]["reason"] == "invalid-shape"
+
+
 def test_quality_dashboard_main_writes_json_and_markdown(tmp_path: Path) -> None:
     release_evidence = tmp_path / "release-evidence.json"
     dependency_audit = tmp_path / "dependency-audit.json"

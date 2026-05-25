@@ -43,6 +43,10 @@ releases may still include breaking changes when the public API needs to tighten
   passed/failed rows must link sanitized evidence and cannot carry a
   `skip_reason`, while skipped/not-run rows must carry a `skip_reason` and
   cannot link an `artifact_path`.
+- The quality dashboard now treats row-level core-performance budget failures
+  as failed even when a stale top-level `passed: true` flag is present, and
+  marks malformed core-performance artifacts as warnings instead of reporting
+  that all recorded rows passed.
 - Live-smoke `run_manifest.json` artifact references no longer preserve
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that
