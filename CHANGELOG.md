@@ -34,6 +34,10 @@ releases may still include breaking changes when the public API needs to tighten
   cost heuristic, bounded higher-is-better utility scores use the best utility
   value, and unbounded utility scores fall back to a neutral probability rather
   than pretending a raw utility is a calibrated probability.
+- `worldforge.testing.assert_score_conformance(...)` now rejects score results
+  whose `best_index` contradicts `lower_is_better`, so adapter contract tests
+  cannot pass while selecting the wrong candidate for the declared score
+  direction.
 - The `t` shortcut in `RoboticsShowcaseApp` no longer fails silently because
   TensorBoard cannot import `pkg_resources`. The launched `uvx` command now
   pins `--with "setuptools<81"` so `pkg_resources` is available (setuptools

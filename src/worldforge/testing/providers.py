@@ -202,6 +202,11 @@ def _validate_action_scores(provider: str, result: ActionScoreResult) -> None:
         "score best_score must match scores[best_index].",
     )
     _contract_check(isinstance(result.lower_is_better, bool), "score direction flag must be bool.")
+    expected_best_score = min(result.scores) if result.lower_is_better else max(result.scores)
+    _contract_check(
+        result.best_score == expected_best_score,
+        "score best_index must match lower_is_better direction.",
+    )
     _contract_check(isinstance(result.metadata, dict), "score metadata must be a JSON object.")
 
 

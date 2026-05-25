@@ -97,7 +97,13 @@ def test_provider_contract_uses_explicit_failure_for_invalid_prediction_state() 
 
 
 class FakeScoreProvider(BaseProvider):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        scores: list[float] | None = None,
+        best_index: int = 1,
+        lower_is_better: bool = True,
+    ) -> None:
         super().__init__(
             name="fake-score",
             capabilities=ProviderCapabilities(score=True),
@@ -108,6 +114,9 @@ class FakeScoreProvider(BaseProvider):
                 requires_credentials=False,
             ),
         )
+        self._scores = scores or [0.4, 0.1]
+        self._best_index = best_index
+        self._lower_is_better = lower_is_better
 
     def health(self) -> ProviderHealth:
         return ProviderHealth(name=self.name, healthy=True, latency_ms=0.1, details="configured")
@@ -115,8 +124,9 @@ class FakeScoreProvider(BaseProvider):
     def score_actions(self, *, info, action_candidates) -> ActionScoreResult:
         return ActionScoreResult(
             provider=self.name,
-            scores=[0.4, 0.1],
-            best_index=1,
+            scores=list(self._scores),
+            best_index=self._best_index,
+            lower_is_better=self._lower_is_better,
             metadata={"fixture": info["fixture"], "candidates": len(action_candidates)},
         )
 
@@ -208,6 +218,44 @@ def test_capability_specific_score_and_policy_helpers() -> None:
 
     assert score.best_score == 0.1
     assert policy.actions == [Action.move_to(0.1, 0.2, 0.3)]
+
+
+@pytest.mark.parametrize(
+    ("provider", "expected_best_score"),
+    [
+        (FakeScoreProvider(scores=[0.4, 0.1], best_index=1, lower_is_better=True), 0.1),
+        (FakeScoreProvider(scores=[0.4, 0.1], best_index=0, lower_is_better=False), 0.4),
+    ],
+)
+def test_score_conformance_accepts_best_index_that_matches_direction(
+    provider: FakeScoreProvider,
+    expected_best_score: float,
+) -> None:
+    score = assert_score_conformance(
+        provider,
+        info={"fixture": "score"},
+        action_candidates=[["a"], ["b"]],
+    )
+
+    assert score.best_score == expected_best_score
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        FakeScoreProvider(scores=[0.4, 0.1], best_index=0, lower_is_better=True),
+        FakeScoreProvider(scores=[0.4, 0.1], best_index=1, lower_is_better=False),
+    ],
+)
+def test_score_conformance_rejects_best_index_that_contradicts_direction(
+    provider: FakeScoreProvider,
+) -> None:
+    with pytest.raises(AssertionError, match="lower_is_better direction"):
+        assert_score_conformance(
+            provider,
+            info={"fixture": "score"},
+            action_candidates=[["a"], ["b"]],
+        )
 
 
 def test_corpus_valid_baselines_pass_mock_provider_conformance() -> None:
