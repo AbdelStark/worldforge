@@ -7,8 +7,29 @@ releases may still include breaking changes when the public API needs to tighten
 
 ## Unreleased
 
+### Added
+
+- Added a non-interactive TensorBoard launcher CLI:
+  `worldforge-open-tensorboard --logdir <path> [--probe] [--no-browser]
+  [--keep-running] [--ready-timeout 60] [--poll-interval 0.5]`. Wraps the
+  same launch / poll / probe flow the TUI uses behind a single shell
+  command; `--probe` fetches the index page and asserts it contains the
+  `TensorBoard` marker so wiring changes can be validated end-to-end from
+  a script. Exit codes are `0` on success, `1` on ready timeout / probe
+  failure, `2` on bad input. The new `worldforge.harness.tensorboard_launcher`
+  module owns the shared helpers (`viewer_command`, `port_open`,
+  `wait_until_ready`, `probe_html`, `launch`); the TUI now imports them so
+  both surfaces stay in sync. Issue #310.
+
 ### Fixed
 
+- The `t` shortcut in `RoboticsShowcaseApp` no longer fails silently because
+  TensorBoard cannot import `pkg_resources`. The launched `uvx` command now
+  pins `--with "setuptools<81"` so `pkg_resources` is available (setuptools
+  81+ removed it; TensorBoard still imports it at startup). Captured
+  `tensorboard.stderr.log` files for previous-version runs showed the
+  `ModuleNotFoundError`; the new command resolves a working environment.
+  Issue #310.
 - The `t` shortcut in `RoboticsShowcaseApp` no longer opens the browser
   before TensorBoard has bound the port (causing a blank page on first-run
   `uvx` resolves). The fixed `set_timer(2.5, ...)` is replaced with a

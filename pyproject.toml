@@ -47,6 +47,7 @@ Changelog = "https://github.com/AbdelStark/worldforge/blob/main/CHANGELOG.md"
 [project.scripts]
 worldforge = "worldforge.cli:main"
 worldforge-harness = "worldforge.harness.cli:main"
+worldforge-open-tensorboard = "worldforge.harness.tensorboard_launcher:main"
 worldforge-demo-leworldmodel = "worldforge.demos.leworldmodel_e2e:main"
 worldforge-demo-lerobot = "worldforge.demos.lerobot_e2e:main"
 worldforge-demo-rerun = "worldforge.demos.rerun_showcase:main"
