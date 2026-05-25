@@ -61,6 +61,9 @@ checkout-safe summaries it links. Do not attach:
 - host-local absolute paths unless the issue is explicitly documenting local-only evidence;
 - claims that a live smoke is a benchmark or a physical-fidelity proof.
 
+Live-smoke run manifests store local artifact references relative to the manifest directory.
+Absolute host paths outside that directory are rejected instead of serialized.
+
 If a smoke is skipped, attach the registry row or paste the provider, status, command, skip reason,
 and known limitations. That is enough to show whether the blocker is missing credentials, missing
 optional runtime, or an intentional release choice.

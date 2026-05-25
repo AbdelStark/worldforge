@@ -565,6 +565,7 @@ def main() -> int:
                     artifact_paths=(
                         {"summary_json": args.json_output} if args.json_output is not None else {}
                     ),
+                    artifact_root=args.run_manifest.parent,
                 ),
             )
         if args.json_only:
@@ -691,6 +692,7 @@ def main() -> int:
                 artifact_paths=(
                     {"summary_json": json_output_path} if json_output_path is not None else {}
                 ),
+                artifact_root=args.run_manifest.parent,
             ),
         )
     if args.json_only:

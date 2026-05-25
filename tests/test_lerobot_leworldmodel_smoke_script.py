@@ -513,7 +513,7 @@ def test_main_runs_policy_score_plan_with_fake_real_runtimes(
     assert manifest["event_count"] == len(payload["provider_events"])
     assert manifest["input_fixture_digest"].startswith("sha256:")
     assert manifest["input_summary"]["score_shapes"]["action_candidates"] == [1, 2, 2, 2]
-    assert set(manifest["artifact_paths"]) == {"worldforge_state"}
+    assert manifest["artifact_paths"] == {}
 
 
 def test_main_json_flow_can_write_rerun_recording(
@@ -626,10 +626,9 @@ def test_main_visual_static_candidate_path_skips_execution(
     assert payload["visualization"]["candidate_targets"][0]["index"] == 0
     manifest = json.loads(run_manifest.read_text())
     assert manifest["artifact_paths"] == {
-        "policy_summary": str(json_output),
-        "score_summary": str(json_output),
-        "report_summary": str(json_output),
-        "worldforge_state": payload["state_dir"],
+        "policy_summary": "summary.json",
+        "score_summary": "summary.json",
+        "report_summary": "summary.json",
     }
 
 

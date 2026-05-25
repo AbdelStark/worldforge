@@ -57,6 +57,7 @@ def test_cosmos_smoke_writes_artifact_summary_and_manifest(
     assert manifest["capability"] == "generate"
     assert manifest["status"] == "passed"
     assert manifest["event_count"] == 2
+    assert manifest["artifact_paths"]["video"] == "artifacts/cosmos.mp4"
     assert manifest["env_summary"][0] == {
         "name": "COSMOS_BASE_URL",
         "present": True,
@@ -126,6 +127,7 @@ def test_runway_smoke_writes_sanitized_artifact_summary_and_manifest(
     assert manifest["artifact_paths"]["runway_artifact_url"] == (
         "https://downloads.example.com/generated.mp4"
     )
+    assert manifest["artifact_paths"]["video"] == "artifacts/runway.mp4"
     assert manifest["provider_profile"] == "runway"
     assert manifest["capability"] == "generate"
     assert manifest["status"] == "passed"

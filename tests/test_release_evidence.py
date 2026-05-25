@@ -90,6 +90,7 @@ def test_release_evidence_links_live_manifest_and_artifact(tmp_path: Path) -> No
         command_argv=("worldforge-smoke-runway",),
         event_count=3,
         artifact_paths={"video": video_path},
+        artifact_root=manifest_path.parent,
         created_at="2026-01-01T00:00:00+00:00",
     )
     write_run_manifest(manifest_path, manifest)

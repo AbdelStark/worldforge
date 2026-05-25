@@ -923,7 +923,7 @@ def test_jepa_wms_prepared_host_smoke_writes_runtime_manifest(
     assert manifest["input_summary"]["inputs"]["shapes"]["action_candidates"] == [1, 3, 4, 10]
     assert manifest["input_summary"]["runtime_version"]["torch"] == "2.9.0-test"
     assert manifest["input_summary"]["score_summary"]["best_score"] == 0.1
-    assert manifest["artifact_paths"]["summary_json"] == str(summary_path)
+    assert manifest["artifact_paths"]["summary_json"] == "results/summary.json"
 
 
 def test_jepa_wms_prepared_host_smoke_records_failed_manifest(

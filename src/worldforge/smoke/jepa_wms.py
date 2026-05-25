@@ -309,6 +309,7 @@ def main() -> int:
                 artifact_paths=(
                     {"summary_json": json_output_path} if json_output_path is not None else {}
                 ),
+                artifact_root=args.run_manifest.parent,
             ),
         )
 

@@ -162,6 +162,7 @@ def _write_manifest(
             },
             result=result,
             artifact_paths=artifact_paths,
+            artifact_root=args.run_manifest.parent,
         ),
     )
 

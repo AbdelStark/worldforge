@@ -23,6 +23,10 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Fixed
 
+- Live-smoke `run_manifest.json` artifact references no longer preserve
+  host-local absolute paths. Manifest builders now serialize local artifacts
+  under the run directory as relative paths, reject absolute paths outside that
+  directory, and continue stripping query strings from remote artifact URLs.
 - The `t` shortcut in `RoboticsShowcaseApp` no longer fails silently because
   TensorBoard cannot import `pkg_resources`. The launched `uvx` command now
   pins `--with "setuptools<81"` so `pkg_resources` is available (setuptools

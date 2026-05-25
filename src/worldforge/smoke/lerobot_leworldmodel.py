@@ -478,6 +478,14 @@ def _recording_file_status(path: Path | None) -> tuple[bool | None, int | None]:
     return True, resolved.stat().st_size
 
 
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.expanduser().resolve().relative_to(root.expanduser().resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def _create_rerun_loggers(args: argparse.Namespace) -> tuple[object, object, object] | None:
     if not _has_rerun_sink(args):
         return None
@@ -1362,6 +1370,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     result=payload,
                     runtime_assets=runtime_assets,
                     artifact_paths=json_artifacts,
+                    artifact_root=args.run_manifest.parent,
                 ),
             )
         if args.json_only:
@@ -1596,7 +1605,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     json_output_path = _write_json_output(args.json_output, payload) if args.json_output else None
     run_manifest_path = None
     if args.run_manifest is not None:
-        artifact_paths: dict[str, Path | str] = {"worldforge_state": state_dir}
+        artifact_paths: dict[str, Path | str] = {}
+        if _is_relative_to(state_dir, args.run_manifest.parent):
+            artifact_paths["worldforge_state"] = state_dir
         if json_output_path is not None:
             artifact_paths.update(
                 {
@@ -1639,6 +1650,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result=payload,
                 runtime_assets=runtime_assets,
                 artifact_paths=artifact_paths,
+                artifact_root=args.run_manifest.parent,
             ),
         )
     if args.json_only:
