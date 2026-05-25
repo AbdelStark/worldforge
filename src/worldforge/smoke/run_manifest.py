@@ -30,6 +30,7 @@ from worldforge.providers.runtime_manifest import (
 )
 
 RUN_MANIFEST_SCHEMA_VERSION = 1
+_RUN_MANIFEST_STATUSES = ("passed", "failed", "skipped")
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,8 +66,7 @@ class LiveSmokeRunManifest:
             raise WorldForgeError("Run manifest provider_profile must be a non-empty string.")
         if not self.capability.strip():
             raise WorldForgeError("Run manifest capability must be a non-empty string.")
-        if self.status not in {"passed", "failed", "skipped"}:
-            raise WorldForgeError("Run manifest status must be passed, failed, or skipped.")
+        _require_run_manifest_status(self.status)
         require_non_negative_int(self.event_count, name="Run manifest event_count")
 
     def to_dict(self) -> JSONDict:
@@ -240,6 +240,7 @@ def validate_run_manifest(payload: Mapping[str, Any]) -> JSONDict:
         "status",
     ):
         _require_non_empty_str(manifest.get(field_name), field_name)
+    manifest["status"] = _require_run_manifest_status(manifest["status"])
     argv = manifest.get("command_argv")
     if (
         not isinstance(argv, list)
@@ -425,6 +426,12 @@ def _json_native(value: object) -> Any:
 def _require_non_empty_str(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise WorldForgeError(f"Run manifest {field_name} must be a non-empty string.")
+    return value
+
+
+def _require_run_manifest_status(value: object) -> str:
+    if not isinstance(value, str) or value not in _RUN_MANIFEST_STATUSES:
+        raise WorldForgeError("Run manifest status must be passed, failed, or skipped.")
     return value
 
 

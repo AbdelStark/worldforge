@@ -36,6 +36,9 @@ releases may still include breaking changes when the public API needs to tighten
   contradicts the derived step status, so attachable trace artifacts cannot
   report `success` while containing failed, running, pending, or skipped-only
   step state.
+- Raw `run_manifest.json` validation now enforces the same status enum as
+  `LiveSmokeRunManifest` construction, rejecting externally supplied manifests
+  whose status is not `passed`, `failed`, or `skipped`.
 - Live-smoke `run_manifest.json` artifact references no longer preserve
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that

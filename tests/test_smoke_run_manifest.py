@@ -80,6 +80,20 @@ def test_write_run_manifest_validates_before_writing(tmp_path: Path) -> None:
     assert json.loads(path.read_text(encoding="utf-8"))["provider_profile"] == "cosmos"
 
 
+def test_validate_run_manifest_rejects_unknown_status() -> None:
+    manifest = build_run_manifest(
+        run_id="run-1",
+        provider_profile="cosmos",
+        capability="generate",
+        status="passed",
+        env_vars=("COSMOS_BASE_URL",),
+        command_argv=("smoke",),
+    ).to_dict()
+
+    with pytest.raises(WorldForgeError, match="status must be passed"):
+        validate_run_manifest({**manifest, "status": "success"})
+
+
 def test_run_manifest_preserves_safe_input_summary() -> None:
     input_summary = {
         "bridge": "pusht",

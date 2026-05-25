@@ -503,8 +503,9 @@ scripts/robotics-showcase \
 
 The manifest records command argv, package version, provider profile, capability, value-free
 environment presence, runtime manifest id when available, input fixture digest, event count, result
-digest, and artifact paths. Validation rejects raw secret-like fields and unsanitized signed URLs;
-artifact URLs are stored without query strings or fragments.
+digest, status (`passed`, `failed`, or `skipped`), and artifact paths. Validation rejects unknown
+statuses, raw secret-like fields, and unsanitized signed URLs; artifact URLs are stored without
+query strings or fragments.
 
 For local run inspection, install the optional `rerun` extra and stream events plus artifacts into
 a Rerun recording:
