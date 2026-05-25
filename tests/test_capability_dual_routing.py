@@ -30,6 +30,22 @@ class _FakeCost:
         return ActionScoreResult(provider=self.name, scores=[0.25], best_index=0)
 
 
+class _FakeUtilityCost:
+    name = "fake_utility_cost"
+    profile = ProviderProfileSpec(description="fake utility")
+
+    def __init__(self, *, scores: list[float] | None = None) -> None:
+        self._scores = scores or [0.2, 0.9]
+
+    def score_actions(self, *, info: JSONDict, action_candidates: object) -> ActionScoreResult:
+        return ActionScoreResult(
+            provider=self.name,
+            scores=list(self._scores),
+            best_index=1,
+            lower_is_better=False,
+        )
+
+
 class _FakePolicy:
     name = "fake_policy"
     profile = None
@@ -38,6 +54,22 @@ class _FakePolicy:
         return ActionPolicyResult(
             provider=self.name,
             actions=[Action(kind="noop", parameters={})],
+        )
+
+
+class _FakeCandidatePolicy:
+    name = "fake_candidate_policy"
+    profile = None
+
+    def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
+        candidates = [
+            [Action(kind="noop", parameters={"candidate": 0})],
+            [Action(kind="noop", parameters={"candidate": 1})],
+        ]
+        return ActionPolicyResult(
+            provider=self.name,
+            actions=list(candidates[0]),
+            action_candidates=candidates,
         )
 
 
@@ -252,6 +284,69 @@ def test_world_predict_and_plan_use_registered_protocols(tmp_path: Path):
     assert plan.metadata["planning_mode"] == "policy+score"
     assert plan.metadata["policy_provider"] == "fake_policy"
     assert plan.metadata["score_provider"] == "fake_cost"
+
+
+def test_score_planning_uses_direction_aware_success_probability(tmp_path: Path):
+    forge = _isolated_forge(tmp_path)
+    forge.register_cost(_FakeUtilityCost())
+    world = forge.create_world("utility-world", "mock")
+    candidates = [
+        [Action(kind="noop", parameters={"candidate": 0})],
+        [Action(kind="noop", parameters={"candidate": 1})],
+    ]
+
+    plan = world.plan(
+        goal="choose the highest utility action",
+        provider="fake_utility_cost",
+        candidate_actions=candidates,
+        score_info={"objective": "maximize utility"},
+    )
+
+    assert plan.actions == candidates[1]
+    assert plan.success_probability == 0.9
+    assert plan.metadata["score_result"]["lower_is_better"] is False
+    assert plan.metadata["success_probability_source"] == "bounded_best_utility_heuristic"
+
+
+def test_score_planning_does_not_invent_probability_for_unbounded_utility(
+    tmp_path: Path,
+):
+    forge = _isolated_forge(tmp_path)
+    forge.register_cost(_FakeUtilityCost(scores=[2.0, 10.0]))
+    world = forge.create_world("utility-world", "mock")
+
+    plan = world.plan(
+        goal="choose the highest utility action",
+        provider="fake_utility_cost",
+        candidate_actions=[
+            [Action(kind="noop", parameters={"candidate": 0})],
+            [Action(kind="noop", parameters={"candidate": 1})],
+        ],
+        score_info={"objective": "maximize utility"},
+    )
+
+    assert plan.success_probability == 0.5
+    assert plan.metadata["success_probability_source"] == "unbounded_best_utility_no_probability"
+
+
+def test_policy_score_planning_uses_direction_aware_success_probability(tmp_path: Path):
+    forge = _isolated_forge(tmp_path)
+    forge.register_policy(_FakeCandidatePolicy())
+    forge.register_cost(_FakeUtilityCost())
+    world = forge.create_world("utility-policy-world", "mock")
+
+    plan = world.plan(
+        goal="choose the best policy candidate",
+        policy_provider="fake_candidate_policy",
+        policy_info={"mode": "test"},
+        score_provider="fake_utility_cost",
+        score_info={"objective": "maximize utility"},
+    )
+
+    assert plan.metadata["planning_mode"] == "policy+score"
+    assert plan.actions == [Action(kind="noop", parameters={"candidate": 1})]
+    assert plan.success_probability == 0.9
+    assert plan.metadata["success_probability_source"] == "bounded_best_utility_heuristic"
 
 
 def test_capability_legacy_string_falls_back_to_provider_registry(tmp_path: Path):

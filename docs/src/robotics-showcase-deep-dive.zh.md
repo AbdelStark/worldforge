@@ -565,13 +565,16 @@ selected_actions = candidate_action_plans[score_result.best_index]
 - 序列化的 `score_result`；
 - `candidate_count`；
 - `execution_provider = "mock"`；
-- `success_probability_source = "inverse_best_cost_heuristic"`。
+- `success_probability_source`，由分数方向决定。
 
-成功概率为展示性启发：
+成功概率只是展示性启发。lower-is-better 成本模型使用：
 
 ```python
 1.0 / (1.0 + max(0.0, best_score))
 ```
+
+Higher-is-better utility 模型只有在最佳分数已经位于 `[0, 1]` 时才直接使用该分数。
+无界 utility 分数会退回到中性的 `0.5`，避免把原始 utility 伪装成校准概率。
 
 这不是经过校准的任务成功估计值。
 

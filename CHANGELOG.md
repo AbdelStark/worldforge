@@ -27,6 +27,13 @@ releases may still include breaking changes when the public API needs to tighten
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that
   directory, and continue stripping query strings from remote artifact URLs.
+- `WorldForge.reason()` and `WorldForge.embed()` now reject empty or
+  whitespace-only text before provider dispatch, matching the capability
+  fixture contract. Score and policy+score planning now choose a
+  direction-aware success heuristic: lower-is-better scores keep the inverse
+  cost heuristic, bounded higher-is-better utility scores use the best utility
+  value, and unbounded utility scores fall back to a neutral probability rather
+  than pretending a raw utility is a calibrated probability.
 - The `t` shortcut in `RoboticsShowcaseApp` no longer fails silently because
   TensorBoard cannot import `pkg_resources`. The launched `uvx` command now
   pins `--with "setuptools<81"` so `pkg_resources` is available (setuptools

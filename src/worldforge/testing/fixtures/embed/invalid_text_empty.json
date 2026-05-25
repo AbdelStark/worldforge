@@ -5,7 +5,7 @@
   "data_class": "synthetic",
   "expected": "invalid",
   "expected_error_pattern": "non-empty",
-  "description": "Empty text is documented as invalid for embed: providers must receive at least one character to produce a meaningful vector. The framework does not reject this today; the fixture pins the contract for future input validation.",
+  "description": "Empty text is invalid for embed: providers must receive at least one character to produce a meaningful vector, and the facade rejects the request before provider dispatch.",
   "payload": {
     "text": ""
   }

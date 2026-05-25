@@ -134,10 +134,15 @@ def test_reason_invalid_world_state_is_rejected(tmp_path) -> None:
     assert pattern.search(str(excinfo.value))
 
 
-def test_reason_invalid_query_documents_contract_claim() -> None:
+def test_reason_invalid_query_is_rejected_by_facade(tmp_path) -> None:
     fixture = load_capability_fixture("reason", "invalid_query_empty")
-    assert fixture.expected == "invalid"
-    assert fixture.payload["query"] == ""
+    forge = WorldForge(state_dir=tmp_path)
+    world = World.from_state(forge, fixture.payload["world_state"])
+    pattern = re.compile(fixture.expected_error_pattern or ".*", re.IGNORECASE)
+
+    with pytest.raises(WorldForgeError) as excinfo:
+        forge.reason("mock", fixture.payload["query"], world=world)
+    assert pattern.search(str(excinfo.value))
 
 
 def test_embed_valid_baseline_runs_through_facade(tmp_path) -> None:
@@ -148,12 +153,16 @@ def test_embed_valid_baseline_runs_through_facade(tmp_path) -> None:
     assert result.vector
 
 
-def test_embed_invalid_fixtures_document_contract_claims() -> None:
+def test_embed_invalid_fixtures_are_rejected_by_facade(tmp_path) -> None:
     empty = load_capability_fixture("embed", "invalid_text_empty")
     whitespace = load_capability_fixture("embed", "invalid_text_whitespace")
-    assert empty.payload["text"] == ""
-    assert whitespace.payload["text"].strip() == ""
-    assert empty.expected_error_pattern != whitespace.expected_error_pattern
+    forge = WorldForge(state_dir=tmp_path)
+
+    for fixture in (empty, whitespace):
+        pattern = re.compile(fixture.expected_error_pattern or ".*", re.IGNORECASE)
+        with pytest.raises(WorldForgeError) as excinfo:
+            forge.embed("mock", text=fixture.payload["text"])
+        assert pattern.search(str(excinfo.value))
 
 
 def test_generate_valid_baseline_runs_through_facade(tmp_path) -> None:

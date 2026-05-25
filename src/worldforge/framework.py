@@ -185,6 +185,18 @@ def _require_score_count_matches_candidates(
         )
 
 
+def _score_plan_success_probability(score_result: ActionScoreResult) -> tuple[float, str]:
+    """Return a conservative plan probability heuristic for provider-defined scores."""
+
+    best_score = score_result.best_score
+    if score_result.lower_is_better:
+        best_cost = max(0.0, best_score)
+        return 1.0 / (1.0 + best_cost), "inverse_best_cost_heuristic"
+    if 0.0 <= best_score <= 1.0:
+        return best_score, "bounded_best_utility_heuristic"
+    return 0.5, "unbounded_best_utility_no_probability"
+
+
 def _plan_workflow_trace(
     *,
     mode: str,
@@ -1256,8 +1268,9 @@ class World:
                         f"{len(candidate_action_plans)} candidate action plan(s)."
                     )
                 selected_actions = candidate_action_plans[score_result.best_index]
-                best_score = max(0.0, score_result.best_score)
-                success_probability = 1.0 / (1.0 + best_score)
+                success_probability, success_probability_source = _score_plan_success_probability(
+                    score_result
+                )
                 metadata = {
                     "planning_mode": "policy+score",
                     "policy_provider": selected_policy_provider,
@@ -1265,7 +1278,7 @@ class World:
                     "policy_result": policy_result.to_dict(),
                     "score_result": score_result.to_dict(),
                     "candidate_count": len(candidate_action_plans),
-                    "success_probability_source": "inverse_best_cost_heuristic",
+                    "success_probability_source": success_probability_source,
                 }
                 metadata["workflow_trace"] = _plan_workflow_trace(
                     mode="policy+score",
@@ -1347,13 +1360,14 @@ class World:
                     "candidate action plan(s) were provided."
                 )
             selected_actions = candidate_action_plans[score_result.best_index][:max_steps]
-            best_score = max(0.0, score_result.best_score)
-            success_probability = 1.0 / (1.0 + best_score)
+            success_probability, success_probability_source = _score_plan_success_probability(
+                score_result
+            )
             metadata: JSONDict = {
                 "planning_mode": "score",
                 "score_result": score_result.to_dict(),
                 "candidate_count": len(candidate_action_plans),
-                "success_probability_source": "inverse_best_cost_heuristic",
+                "success_probability_source": success_probability_source,
             }
             metadata["workflow_trace"] = _plan_workflow_trace(
                 mode="score",
@@ -2386,6 +2400,7 @@ class WorldForge:
     ) -> ReasoningResult:
         if query is None:
             raise WorldForgeError("reason() requires a query.")
+        query = _require_non_empty_text(query, name="reason() query")
         world_state = world._snapshot() if world else None
         target = self._select_capability_target(
             provider,
@@ -2413,6 +2428,11 @@ class WorldForge:
         embedder: str | Embedder | BaseProvider | None = None,
         text: str,
     ) -> EmbeddingResult:
+        text = _require_non_empty_text(
+            text,
+            name="embed() text",
+            message="embed() text must be a non-empty string and not whitespace.",
+        )
         target = self._select_capability_target(
             provider,
             embedder,
