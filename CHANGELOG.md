@@ -32,6 +32,10 @@ releases may still include breaking changes when the public API needs to tighten
   must include a matching final succeeded attempt, chosen provider, and value;
   failed results cannot carry stale values or succeeded attempts; and attempt
   capabilities must match the result capability.
+- `WorkflowTrace` now rejects a manually supplied top-level status that
+  contradicts the derived step status, so attachable trace artifacts cannot
+  report `success` while containing failed, running, pending, or skipped-only
+  step state.
 - Live-smoke `run_manifest.json` artifact references no longer preserve
   host-local absolute paths. Manifest builders now serialize local artifacts
   under the run directory as relative paths, reject absolute paths outside that

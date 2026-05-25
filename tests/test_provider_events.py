@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from worldforge import Action, ProviderEvent, VideoClip, WorldForge
+from worldforge.models import WorldForgeError
 from worldforge.providers import GenieProvider, MockProvider
 from worldforge.workflow_trace import (
     WorkflowArtifactRef,
@@ -167,6 +170,23 @@ def test_workflow_trace_validates_skipped_failed_and_nested_steps() -> None:
     assert payload["status"] == "failed"
     assert payload["status_counts"]["skipped"] == 1
     assert payload["steps"][3]["parent_id"] == "provider"
+
+
+def test_workflow_trace_rejects_status_that_contradicts_steps() -> None:
+    with pytest.raises(WorldForgeError, match="status must match"):
+        WorkflowTrace(
+            workflow_id="contradictory-trace",
+            name="Contradictory trace",
+            status="success",
+            steps=[
+                WorkflowTraceStep(
+                    step_id="provider",
+                    operation="provider run",
+                    status="failed",
+                    error_summary="Provider failed.",
+                )
+            ],
+        )
 
 
 def test_workflow_trace_marks_local_only_artifacts_not_safe_to_attach() -> None:

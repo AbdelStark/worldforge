@@ -368,7 +368,8 @@ metadata.
 Composed workflows can also emit `WorkflowTrace` artifacts. A trace is JSON-native,
 schema-versioned, and safe to attach by default; it records step IDs, operations,
 provider/capability slots, input/output artifact references, status, optional duration, sanitized
-error summaries, and parent-child relationships. Planning stores a trace under
+error summaries, and parent-child relationships. The top-level trace status is derived from the
+step statuses and cannot contradict failed, running, pending, or skipped steps. Planning stores a trace under
 `Plan.metadata["workflow_trace"]`; evaluation reports export `workflow_trace.json` and
 `workflow_trace.md`; `RerunArtifactLogger.log_workflow_trace(...)` can add the same trace to an
 optional Rerun recording. Traces do not capture raw prompts, tensors, credentials, controller
