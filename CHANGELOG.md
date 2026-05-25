@@ -51,6 +51,10 @@ releases may still include breaking changes when the public API needs to tighten
   before writing JSON or Markdown, preserving colliding redacted keys with
   deterministic suffixes so hostile artifact metadata cannot leak host-local
   paths, signed URLs, or secret-shaped key names.
+- Dependency-audit evidence now sanitizes raw-detail object keys as well as
+  values before writing safe-to-attach JSON or Markdown, preserving colliding
+  redacted keys with deterministic suffixes so direct API callers cannot leak
+  host-local paths, signed URLs, or secret-shaped key names.
 - Release notes drafts now derive `needs-validation-review` from failed
   `validation_gates` rows as well as `validation_summary.failed`, so stale
   release-evidence summaries cannot mark a draft ready while an individual

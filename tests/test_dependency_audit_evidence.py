@@ -125,6 +125,36 @@ def test_dependency_audit_evidence_preserves_findings_and_ignore_rationales() ->
     assert "Accepted until upstream releases a fix." in evidence.markdown
 
 
+def test_dependency_audit_evidence_sanitizes_raw_detail_keys_without_dropping_collisions() -> None:
+    evidence = generate_dependency_audit_evidence(
+        ignored_advisories=(
+            {
+                "id": "PYSEC-2026-1",
+                "rationale": "Audited test advisory.",
+                "/Users/alice/private/token=alpha": "first",
+                "/private/tmp/token=beta": "second",
+                "https://example.test/a?token=gamma": "third",
+            },
+        ),
+        runner=_fake_runner(audit_returncode=0, audit_payload={"dependencies": []}),
+    )
+
+    payload_text = json.dumps(evidence.payload, sort_keys=True)
+    assert evidence.status == "passed"
+    assert "/Users/alice" not in payload_text
+    assert "/private/tmp" not in payload_text
+    assert "alpha" not in payload_text
+    assert "beta" not in payload_text
+    assert "gamma" not in payload_text
+    assert "https://example.test/a?token=gamma" not in payload_text
+    assert "<host-local-path>" in payload_text
+    assert "<host-local-path>#2" in payload_text
+    assert "[redacted-url]" in payload_text
+    assert "first" in payload_text
+    assert "second" in payload_text
+    assert "third" in payload_text
+
+
 def test_dependency_audit_evidence_records_tool_unavailable() -> None:
     def runner(command: tuple[str, ...], **_kwargs: Any) -> CompletedProcess[str]:
         if command == ("uv", "--version"):

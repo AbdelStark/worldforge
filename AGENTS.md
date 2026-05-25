@@ -73,7 +73,7 @@ evaluation harnesses, and testable prototypes.
   known limitations, and claim boundaries without publishing, tagging, or signing.
 - `scripts/generate_dependency_audit_evidence.py`: checkout-safe dependency-audit evidence wrapper
   around the documented `uv export` plus `pip-audit` flow; writes JSON and Markdown summaries
-  without preserving the temporary requirements file.
+  with sanitized raw details and without preserving the temporary requirements file.
 - `scripts/generate_quality_dashboard.py`: local quality dashboard generator that reads release
   evidence, dependency-audit evidence, and core-performance output and emits JSON/Markdown status
   summaries with sanitized raw details and deterministic redacted-key collision handling, without
@@ -520,7 +520,8 @@ release scripts, and generated documentation surfaces.
   budgets, and the MkDocs Material site. A warning in the published docs build is a release
   blocker.
 - `uv run python scripts/generate_dependency_audit_evidence.py` preserves dependency-audit JSON and
-  Markdown evidence for release review without keeping the temporary requirements file.
+  Markdown evidence for release review with sanitized raw detail keys/values and without keeping
+  the temporary requirements file.
 - `uv run python scripts/generate_quality_dashboard.py` reads existing quality artifacts and writes
   `.worldforge/quality-dashboard/quality-dashboard.json` plus Markdown with first failed gate,
   sanitized raw failure details, skipped host-owned checks, warnings, and not-run rows.

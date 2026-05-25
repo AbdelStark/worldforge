@@ -43,13 +43,15 @@ uv run python scripts/generate_quality_dashboard.py
 
 The dependency-audit wrapper uses `uv export --frozen --all-groups --no-emit-project --no-hashes`
 plus `uvx --from pip-audit pip-audit ... --format json` with a temporary requirements file that is
-removed after the audit. The release evidence JSON records repo-relative artifact paths or redacted
-`<host-local-path>/<name>` labels plus SHA-256 digests for linked artifacts; it does not preserve
-absolute paths outside the checkout. Failed validation gate stdout/stderr tails, skipped-gate
-reasons, and known limitations are sanitized before JSON or Markdown rendering, so bearer tokens,
-signed URLs, secret-shaped assignments, and host-local paths do not leak into attachable release
-evidence. Evidence bundles, dependency-audit evidence, run manifests, benchmark reports, and
-live-smoke manifests should be linked from release notes instead of copied by hand. Use
+removed after the audit. Dependency-audit raw-detail keys and values are sanitized before JSON or
+Markdown rendering, with deterministic suffixes for redacted-key collisions. The release evidence
+JSON records repo-relative artifact paths or redacted `<host-local-path>/<name>` labels plus
+SHA-256 digests for linked artifacts; it does not preserve absolute paths outside the checkout.
+Failed validation gate stdout/stderr tails, skipped-gate reasons, and known limitations are
+sanitized before JSON or Markdown rendering, so bearer tokens, signed URLs, secret-shaped
+assignments, and host-local paths do not leak into attachable release evidence. Evidence bundles,
+dependency-audit evidence, run manifests, benchmark reports, and live-smoke manifests should be
+linked from release notes instead of copied by hand. Use
 [Artifact Schemas](./artifact-schemas.md) to identify the owning module, version field, migration
 rule, and validation surface before changing a public artifact contract.
 

@@ -770,7 +770,7 @@ uv run python scripts/check_optional_import_boundaries.py
 uv run python scripts/generate_dependency_audit_evidence.py
 ```
 
-成功信号：`.worldforge/dependency-audit/dependency-audit.json` 和 `.worldforge/dependency-audit/dependency-audit.md` 存在，状态为 `passed`，且需求摘要说明临时需求文件未被保留。包装器使用 `uv export --frozen --all-groups --no-emit-project --no-hashes` 加上 `uvx --from pip-audit pip-audit ... --format json`；仅对经明确发布审查的例外情况使用 `--ignore-advisory ADVISORY=RATIONALE`。遇到 `findings` 时的首要排查步骤：检查 Markdown 建议表，升级或记录依赖决策，然后重新运行。
+成功信号：`.worldforge/dependency-audit/dependency-audit.json` 和 `.worldforge/dependency-audit/dependency-audit.md` 存在，状态为 `passed`，且需求摘要说明临时需求文件未被保留。包装器使用 `uv export --frozen --all-groups --no-emit-project --no-hashes` 加上 `uvx --from pip-audit pip-audit ... --format json`；仅对经明确发布审查的例外情况使用 `--ignore-advisory ADVISORY=RATIONALE`。原始详情的键和值会在写入 JSON 或 Markdown 前被清理。遇到 `findings` 时的首要排查步骤：检查 Markdown 建议表，升级或记录依赖决策，然后重新运行。
 
 最后生成发布就绪证据。该命令写入 `.worldforge/release-evidence/release-evidence.md` 和 `.worldforge/release-evidence/release-evidence.json`；当证据运行本身应执行检出安全门控时，添加 `--run-gates`。
 

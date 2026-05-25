@@ -950,8 +950,9 @@ Success signal: `.worldforge/dependency-audit/dependency-audit.json` and
 requirements summary states that the temporary requirements file was not preserved. The wrapper
 uses `uv export --frozen --all-groups --no-emit-project --no-hashes` plus
 `uvx --from pip-audit pip-audit ... --format json`; use `--ignore-advisory ADVISORY=RATIONALE`
-only for explicit release-reviewed exceptions. First triage step for `findings`: inspect the
-Markdown advisory table, upgrade or document the dependency decision, then rerun.
+only for explicit release-reviewed exceptions. Raw-detail keys and values are sanitized before JSON
+or Markdown rendering. First triage step for `findings`: inspect the Markdown advisory table,
+upgrade or document the dependency decision, then rerun.
 
 Finally generate the release-readiness evidence. This command writes
 `.worldforge/release-evidence/release-evidence.md` and

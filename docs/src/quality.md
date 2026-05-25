@@ -144,7 +144,7 @@ uv run python scripts/generate_dependency_audit_evidence.py
 
 For release hardening, use the dependency-audit evidence workflow in
 [Operations](./operations.md). It preserves JSON and Markdown summaries without keeping the
-temporary requirements file.
+temporary requirements file, and it sanitizes raw-detail keys and values before output.
 
 To rehearse release readiness without publishing, run:
 

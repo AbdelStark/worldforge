@@ -87,7 +87,7 @@ uv build --out-dir dist --clear --no-build-logs
 uv run python scripts/generate_dependency_audit_evidence.py
 ```
 
-发布加固时，请使用 [运维](./operations.md) 中描述的依赖审计证据工作流。该工作流保留 JSON 和 Markdown 摘要，但不保留临时需求文件。
+发布加固时，请使用 [运维](./operations.md) 中描述的依赖审计证据工作流。该工作流保留 JSON 和 Markdown 摘要，但不保留临时需求文件，并会在输出前清理原始详情的键和值。
 
 如需在不发布的情况下预演发布准备情况，请运行：
 

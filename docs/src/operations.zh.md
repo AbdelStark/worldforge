@@ -484,7 +484,7 @@ shasum -a 256 dist/worldforge_ai-*.whl dist/worldforge_ai-*.tar.gz
 uv run python scripts/generate_dependency_audit_evidence.py
 ```
 
-该包装器运行已记录的 `uv export --frozen --all-groups --no-emit-project --no-hashes` 加 `uvx --from pip-audit pip-audit ... --format json` 流程，使用审计后删除的临时需求文件。它写入 `.worldforge/dependency-audit/dependency-audit.json` 和 `.worldforge/dependency-audit/dependency-audit.md`，记录工具版本、依赖集摘要、漏洞概要、显式的 `--ignore-advisory ADVISORY=RATIONALE` 行、命令输出尾部和首要排查步骤。成功信号：状态为 `passed`；发现、工具不可用和失败状态仍会留下可安全附加的证据。发现时的首要排查步骤：检查 Markdown 安全公告行，升级或记录依赖决策，然后重新运行审计。
+该包装器运行已记录的 `uv export --frozen --all-groups --no-emit-project --no-hashes` 加 `uvx --from pip-audit pip-audit ... --format json` 流程，使用审计后删除的临时需求文件。它写入 `.worldforge/dependency-audit/dependency-audit.json` 和 `.worldforge/dependency-audit/dependency-audit.md`，记录工具版本、依赖集摘要、漏洞概要、显式的 `--ignore-advisory ADVISORY=RATIONALE` 行、命令输出尾部和首要排查步骤。原始详情的键和值会在写入 JSON 或 Markdown 前被清理；被隐去后发生冲突的键会保留确定性后缀。成功信号：状态为 `passed`；发现、工具不可用和失败状态仍会留下可安全附加的证据。发现时的首要排查步骤：检查 Markdown 安全公告行，升级或记录依赖决策，然后重新运行审计。
 
 本地门禁和可选冒烟测试完成后，生成发布就绪证据。该命令默认同时写入 Markdown 和 JSON 摘要；使用 `--run-gates` 时，证据运行本身会执行检出安全门禁，而非将其记录为跳过。
 

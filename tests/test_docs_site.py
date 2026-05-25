@@ -2164,6 +2164,7 @@ def test_dependency_audit_evidence_docs_cover_issue_235_contract() -> None:
         "tool-unavailable",
         "findings",
         "uvx --from pip-audit pip-audit",
+        "Raw-detail keys and values are sanitized",
     ):
         assert (
             signal in operations or signal in playbooks or signal in integrity or signal in quality
@@ -2178,12 +2179,14 @@ def test_dependency_audit_evidence_docs_cover_issue_235_contract() -> None:
         "ignored_advisories",
         "tool-unavailable",
         "safe_to_attach",
+        "_sanitize_json",
     ):
         assert implementation_signal in audit_script
 
     for test_signal in (
         "test_dependency_audit_evidence_records_clean_run",
         "test_dependency_audit_evidence_preserves_findings_and_ignore_rationales",
+        "test_dependency_audit_evidence_sanitizes_raw_detail_keys_without_dropping_collisions",
         "test_dependency_audit_evidence_records_tool_unavailable",
     ):
         assert test_signal in audit_tests
