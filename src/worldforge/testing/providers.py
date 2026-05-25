@@ -338,7 +338,10 @@ def assert_score_conformance(
 
     if not provider.profile().capabilities.score:
         raise AssertionError("Provider does not declare the score capability.")
-    result = provider.score_actions(info=info, action_candidates=action_candidates)
+    try:
+        result = provider.score_actions(info=info, action_candidates=action_candidates)
+    except WorldForgeError as exc:
+        raise AssertionError(f"score must return a valid ActionScoreResult: {exc}") from exc
     _validate_action_scores(provider.name, result)
     return result
 

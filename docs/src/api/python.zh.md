@@ -226,7 +226,7 @@ print(result.best_index, result.best_score)
 ```
 
 `ActionScoreResult` 验证分数是否有限，暴露 `best_index` 和 `best_score`，
-并包含 `lower_is_better` 字段，使调用方无需从提供方专属文档中推断分数方向。
+并要求 `best_index` 与 `lower_is_better` 匹配，使调用方无需从提供方专属文档中推断分数方向。
 元数据必须为 JSON 原生类型：字典键为字符串，数值为有限数，对象实例或元组
 将被拒绝而不会被静默强制转换。
 

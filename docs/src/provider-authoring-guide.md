@@ -220,7 +220,7 @@ Rules:
 - [ ] Do not set `predict=True` unless the adapter returns a validated `PredictionPayload`.
 - [ ] Do not set `generate=True` unless the adapter returns a validated `VideoClip`.
 - [ ] Do not set `score=True` unless the adapter returns `ActionScoreResult` with finite scores
-      and a valid `best_index`.
+      and a `best_index` that matches `lower_is_better`.
 - [ ] Do not set `policy=True` unless the adapter returns `ActionPolicyResult` with at least one
       executable WorldForge `Action`.
 - [ ] Do not set `reason=True` for models that only return unstructured logs, captions, or

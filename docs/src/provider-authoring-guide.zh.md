@@ -182,7 +182,8 @@ capabilities.plan     -> 当前为直接实现规划的提供方保留
 
 - [ ] 除非适配器返回经验证的 `PredictionPayload`，否则不设置 `predict=True`。
 - [ ] 除非适配器返回经验证的 `VideoClip`，否则不设置 `generate=True`。
-- [ ] 除非适配器返回具有有限分数和有效 `best_index` 的 `ActionScoreResult`，否则不设置 `score=True`。
+- [ ] 除非适配器返回具有有限分数且 `best_index` 与 `lower_is_better` 匹配的
+      `ActionScoreResult`，否则不设置 `score=True`。
 - [ ] 除非适配器返回含有至少一个可执行 WorldForge `Action` 的 `ActionPolicyResult`，否则不设置 `policy=True`。
 - [ ] 对于仅返回非结构化日志、字幕或提供方诊断信息的模型，不设置 `reason=True`。
 - [ ] 仅因为提供方能对候选方案打分，不设置 `plan=True`。基于打分的规划应以 `score=True` 加 `World.plan(...)` 表示。

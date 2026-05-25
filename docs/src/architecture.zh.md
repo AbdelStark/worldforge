@@ -153,7 +153,7 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 
 - 用于 `stable_worldmodel.policy.AutoCostModel` 的可选本地适配器。
 - 仅暴露 `score=True`。
-- 验证 `pixels`、`goal`、`action`、四维动作候选集、有限代价输出和 `best_index`。
+- 验证 `pixels`、`goal`、`action`、四维动作候选集、有限代价输出和方向一致的 `best_index`。
 
 `providers/cosmos.py` 和 `providers/runway.py`
 
@@ -224,7 +224,7 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 5. 结果边界
    - PredictionPayload 仅在验证后才更新世界状态
    - VideoClip 验证媒体元数据及字节/源路径
-   - ActionScoreResult 验证有限分数和范围内的 best_index
+   - ActionScoreResult 验证有限分数和方向一致的 best_index
    - ActionPolicyResult 验证可执行动作和 JSON 兼容的原始动作
    - ProviderError 附带上下文地暴露提供方/运行时失败
    - 意外的协议异常在发射失败事件后被包装为 ProviderError
@@ -547,7 +547,7 @@ PredictionPayload
 ActionScoreResult
   provider: 非空字符串
   scores: 非空的有限数字列表
-  best_index: scores 的索引
+  best_index: scores 中方向一致的索引
   best_score: scores[best_index]
   lower_is_better: bool
   metadata: JSON 对象
@@ -583,7 +583,7 @@ Plan
 - 历史记录条目的步数不能超过当前世界步数
 - 提供方能力名称是封闭集合；未知的能力过滤器会显式失败，而不是静默排除所有提供方
 - 无效的公共输入会显式失败，而不是被静默强制转换
-- 打分提供方返回有限的分数和范围内的 `best_index`
+- 打分提供方返回有限的分数和与 `lower_is_better` 匹配的 `best_index`
 - 策略提供方返回可执行动作并保留提供方原始动作
 - 远程媒体工件在返回 `VideoClip` 前拒绝不支持的内容类型
 - 提供方事件在事件数据汇记录前，对面向日志的目标、消息和元数据进行净化；签名 URL 查询字符串和明显的凭据字段会被脱敏
@@ -612,7 +612,7 @@ ProviderError
 提供方/运行时错误  -> 附带提供方特定上下文的 ProviderError
 状态变更           -> 仅在提供方输出验证后进行
 远程工件           -> 在返回 VideoClip 前验证内容类型和主体
-打分输出           -> 在返回 Plan 前验证有限分数和合法的 best_index
+打分输出           -> 在返回 Plan 前验证有限分数和方向一致的 best_index
 ```
 
 ## 可观测性
