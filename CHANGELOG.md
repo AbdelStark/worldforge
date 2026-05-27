@@ -9,6 +9,143 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a non-interactive TensorBoard launcher CLI:
+  `worldforge-open-tensorboard --logdir <path> [--probe] [--no-browser]
+  [--keep-running] [--ready-timeout 60] [--poll-interval 0.5]`. Wraps the
+  same launch / poll / probe flow the TUI uses behind a single shell
+  command; `--probe` fetches the index page and asserts it contains the
+  `TensorBoard` marker so wiring changes can be validated end-to-end from
+  a script. Exit codes are `0` on success, `1` on ready timeout / probe
+  failure, `2` on bad input. The new `worldforge.harness.tensorboard_launcher`
+  module owns the shared helpers (`viewer_command`, `port_open`,
+  `wait_until_ready`, `probe_html`, `launch`); the TUI now imports them so
+  both surfaces stay in sync. Issue #310.
+
+### Fixed
+
+- Provider routing failed-attempt records now redact exception messages before
+  serialization. `RoutingAttempt` validates optional reason/error text and
+  `route_capability(...)` stores a sanitized `str(exc)` so bearer tokens, API
+  key assignments, and signed artifact URL query strings do not leak through
+  routing result artifacts even when an adapter raises a raw exception.
+- `RoutingResult` now rejects incoherent public artifacts: succeeded results
+  must include a matching final succeeded attempt, chosen provider, and value;
+  failed results cannot carry stale values or succeeded attempts; and attempt
+  capabilities must match the result capability.
+- `WorkflowTrace` now rejects a manually supplied top-level status that
+  contradicts the derived step status, so attachable trace artifacts cannot
+  report `success` while containing failed, running, pending, or skipped-only
+  step state.
+- Raw `run_manifest.json` validation now enforces the same status enum as
+  `LiveSmokeRunManifest` construction, rejecting externally supplied manifests
+  whose status is not `passed`, `failed`, or `skipped`.
+- Live-smoke evidence registry validation now rejects stale mixed state:
+  passed/failed rows must link sanitized evidence and cannot carry a
+  `skip_reason`, while skipped/not-run rows must carry a `skip_reason` and
+  cannot link an `artifact_path`.
+- The quality dashboard now treats row-level core-performance budget failures
+  as failed even when a stale top-level `passed: true` flag is present, and
+  marks malformed core-performance artifacts as warnings instead of reporting
+  that all recorded rows passed.
+- The quality dashboard now sanitizes raw-detail object keys as well as values
+  before writing JSON or Markdown, preserving colliding redacted keys with
+  deterministic suffixes so hostile artifact metadata cannot leak host-local
+  paths, signed URLs, or secret-shaped key names.
+- Dependency-audit evidence now sanitizes raw-detail object keys as well as
+  values before writing safe-to-attach JSON or Markdown, preserving colliding
+  redacted keys with deterministic suffixes so direct API callers cannot leak
+  host-local paths, signed URLs, or secret-shaped key names.
+- Release notes drafts now sanitize changelog entries, closed issue metadata,
+  release-evidence text, and maintainer caveats with the shared observable-text
+  redactor, so token assignments, bearer headers, signed URLs, and host-local
+  paths do not leak into draft Markdown.
+- `scripts/smoke_gr00t_policy.py --start-server` now redacts forwarded
+  secret-shaped server arguments and host-local paths from its startup command
+  line before writing stderr, while still launching the raw host-owned command.
+- Release notes drafts now derive `needs-validation-review` from failed
+  `validation_gates` rows as well as `validation_summary.failed`, so stale
+  release-evidence summaries cannot mark a draft ready while an individual
+  gate records failure.
+- Release evidence reports now redact host-local paths for externally supplied
+  artifacts and manifests. Repo-relative artifacts remain linkable, while
+  outside-checkout artifacts are recorded as `<host-local-path>/<name>` with
+  their hashes and sizes instead of leaking `/Users`, `/private`, or temporary
+  workspace paths into attachable JSON or Markdown.
+- Release evidence validation gate records now sanitize command output tails,
+  skipped-gate reasons, and known limitations before writing JSON or Markdown,
+  so failed gate logs cannot leak bearer tokens, signed URLs, secret-shaped
+  assignments, or host-local paths into attachable release artifacts.
+- Live-smoke `run_manifest.json` artifact references no longer preserve
+  host-local absolute paths. Manifest builders now serialize local artifacts
+  under the run directory as relative paths, reject absolute paths outside that
+  directory, and continue stripping query strings from remote artifact URLs.
+- `WorldForge.reason()` and `WorldForge.embed()` now reject empty or
+  whitespace-only text before provider dispatch, matching the capability
+  fixture contract. Score and policy+score planning now choose a
+  direction-aware success heuristic: lower-is-better scores keep the inverse
+  cost heuristic, bounded higher-is-better utility scores use the best utility
+  value, and unbounded utility scores fall back to a neutral probability rather
+  than pretending a raw utility is a calibrated probability.
+- `ActionScoreResult` and `worldforge.testing.assert_score_conformance(...)`
+  now reject score results whose `best_index` contradicts `lower_is_better`,
+  so planners and adapter contract tests cannot accept the wrong candidate for
+  the declared score direction.
+- Capability-specific provider conformance helpers now normalize
+  `WorldForgeError` validation failures from invalid public result construction
+  and configured-provider `ProviderError`s into explicit `AssertionError`
+  contract failures for predict, reason, embed, generate, transfer, score, and
+  policy checks. The helpers also revalidate returned mutable result objects
+  for finite numeric fields and JSON-native score/policy payloads before
+  accepting provider output.
+- The `t` shortcut in `RoboticsShowcaseApp` no longer fails silently because
+  TensorBoard cannot import `pkg_resources`. The launched `uvx` command now
+  pins `--with "setuptools<81"` so `pkg_resources` is available (setuptools
+  81+ removed it; TensorBoard still imports it at startup). Captured
+  `tensorboard.stderr.log` files for previous-version runs showed the
+  `ModuleNotFoundError`; the new command resolves a working environment.
+  Issue #310.
+- The `t` shortcut in `RoboticsShowcaseApp` no longer opens the browser
+  before TensorBoard has bound the port (causing a blank page on first-run
+  `uvx` resolves). The fixed `set_timer(2.5, ...)` is replaced with a
+  Textual background worker that polls `localhost:6006` every ~0.5 s for
+  up to ~60 s and only calls `webbrowser.open` once the port responds.
+  The action also stops swallowing the TensorBoard subprocess's output:
+  stdout/stderr are now captured to `tensorboard.stdout.log` and
+  `tensorboard.stderr.log` inside the run's log directory. Timeouts now
+  emit an error notification pointing at the stderr log path. Issue #308.
+- The `t` shortcut in `RoboticsShowcaseApp` now actually shows TensorBoard.
+  The launched command pins `--port 6006`, and the action additionally
+  schedules a `webbrowser.open("http://localhost:6006/")` via a Textual timer
+  (~2.5 s after launch) so the run becomes visible without manual browser
+  navigation - parity with the desktop Rerun viewer. The URL is also
+  surfaced in `RoboticsTensorBoardPane` and in the action notification so
+  headless / remote users can copy-paste it; a fallback warning is emitted
+  when `webbrowser.open` returns false. Issue #306.
+
+### Added
+
+- Added a `t` keybinding to `RoboticsShowcaseApp` that launches the run's
+  TensorBoard log directory via
+  `uvx --from "tensorboard>=2.16,<3" tensorboard --logdir <path>` in a
+  detached subprocess, mirroring the existing `o` shortcut for Rerun. A new
+  `RoboticsTensorBoardPane` surfaces the resolved log directory, run name,
+  `events_written` status, the viewer command, and the shortcut hint. The
+  pane and binding gracefully degrade when the run summary has no
+  `"tensorboard"` block. Issue #304.
+- Added an optional TensorBoard bridge for inspecting the LeWorldModel
+  checkpoint used during local inference in the robotics showcase. The new
+  `worldforge.tensorboard` module exposes `TensorBoardLogConfig`,
+  `TensorBoardSession`, `TensorBoardCheckpointInspector`, and a
+  `create_tensorboard_inspector` helper. It writes sanitized provenance text,
+  per-candidate cost scalars and a histogram, latency metrics, and a
+  per-provider-event text feed to a local `tfevents` directory.
+  `scripts/robotics-showcase` enables the writer by default (unless
+  `--no-tensorboard`, `--health-only`, or `--json-only` is passed) and gains
+  `--tensorboard`, `--tensorboard-logdir`, `--tensorboard-run-name`,
+  `--tensorboard-flush-secs`, and `--no-tensorboard` flags. Install with
+  `uv add "worldforge-ai[tensorboard]"`. Base WorldForge still depends only on
+  `httpx`. See `docs/src/tensorboard.md` for the tag layout and programmatic
+  API. Issue #302.
 - Added a public-API snapshot test. `tests/fixtures/public_api/exports.json`
   records the current export set for `worldforge`, `worldforge.testing`,
   `worldforge.observability`, `worldforge.providers`, and
@@ -18,6 +155,31 @@ releases may still include breaking changes when the public API needs to tighten
   `uv run python scripts/update_public_api_snapshot.py` or by setting
   `WORLDFORGE_UPDATE_PUBLIC_API_SNAPSHOT=1`. `docs/src/api-stability.md`
   now points at the snapshot as the authoritative Stable surface.
+- Added scenario inheritance via the new optional `extends` field (schema version 2). A child
+  scenario can name a single relative parent path; resolution merges top-level keys with the child
+  winning, detects cycles, rejects absolute paths, bounds chain depth, and is validated end-to-end
+  through new fixtures under `examples/scenarios/inheritance/` plus tests in
+  `tests/test_scenario_inheritance.py`. Schema version 1 scenarios continue to validate without
+  changes.
+- Added a typed retention policy and `worldforge runs prune` subcommand. The
+  new `worldforge.runs_prune` module ships `RunsRetentionPolicy`,
+  `PruneCandidate`, `PruneReport`, `plan_prune`, `apply_prune`, and
+  `parse_runs_retention`. Default behavior is dry-run; `--apply` actually
+  removes selected directories. `--max-age-days`, `--keep-latest`, and
+  repeatable `--family <kind>` control the policy; a 24-hour safety window
+  blocks deletion of fresh runs unless `--max-age-days=0` is passed. The
+  delete path checks `target.is_relative_to(<workspace>/runs)` on the
+  fully-resolved paths so symlinked or crafted run paths cannot escape the
+  workspace. `keep_latest` is scoped to the family filter so a non-matching
+  newer run cannot consume a keep slot when `--family` is set. CLI flags
+  passed in either argparse form (`--max-age-days 7` or `--max-age-days=7`)
+  override the profile. Config profiles can carry a `runs_retention` block
+  consumed via `--retention-profile <path>` with explicit CLI flags still
+  overriding. Invalid retention profile shapes raise typed `WorldForgeError`
+  rather than leaking `ValueError`/`AttributeError`, and `shutil.rmtree`
+  failures during `--apply` are wrapped as `WorldForgeError` for a stable
+  CLI envelope. Documentation lives in `docs/src/run-index.md` under the
+  retention section.
 - Added an adoption case-study gallery, reusable case-study template, Adoption Story issue
   template, and smoke tests for future submitted adoption stories.
 - Added a runnable capability protocol mini-demo with docs and tests for in-process predictor,

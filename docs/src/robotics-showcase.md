@@ -48,7 +48,10 @@ By default, the script:
 - opens a staged Textual report with the pipeline trace, metric bars, tensor contract, candidate
   ranking, provider event log, robot-arm illustration, tabletop replay, and Rerun open shortcut;
 - writes a JSON summary to `/tmp/worldforge-robotics-showcase/real-run.json`;
-- writes a visual Rerun recording to `/tmp/worldforge-robotics-showcase/real-run.rrd`.
+- writes a visual Rerun recording to `/tmp/worldforge-robotics-showcase/real-run.rrd`;
+- writes TensorBoard ``tfevents`` logs under `.worldforge/tensorboard/` for
+  LeWorldModel checkpoint inspection (provenance, score distribution, latency,
+  provider events).
 
 Useful flags:
 
@@ -58,6 +61,8 @@ scripts/robotics-showcase --no-tui            # plain terminal report
 scripts/robotics-showcase --json-only         # machine-readable summary only
 scripts/robotics-showcase --no-rerun          # skip the default Rerun .rrd artifact
 scripts/robotics-showcase --rerun-output /tmp/pusht.rrd
+scripts/robotics-showcase --no-tensorboard    # skip the default TensorBoard tfevents
+scripts/robotics-showcase --tensorboard-logdir .worldforge/tensorboard/pusht
 scripts/robotics-showcase --tui-stage-delay 0.1
 scripts/robotics-showcase --no-tui-animation
 scripts/robotics-showcase --lewm-asset-cache-dir ~/.cache/worldforge/leworldmodel
@@ -69,6 +74,15 @@ Open the Rerun artifact from the TUI with `o`, or from the shell with:
 ```bash
 uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 ```
+
+Open the TensorBoard logs from the TUI with `t`, or from the shell with:
+
+```bash
+uvx --from "tensorboard>=2.16,<3" tensorboard --logdir .worldforge/tensorboard
+```
+
+See [TensorBoard Integration](./tensorboard.md) for the tag layout and
+programmatic API.
 
 ## CI Smoke Strategy
 

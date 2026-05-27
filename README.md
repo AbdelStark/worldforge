@@ -1,6 +1,16 @@
+# WorldForge
+
+<p align="center">
+  <img
+    alt="WorldForge banner with two robot mascots under a violet night sky"
+    src="./docs/src/assets/img/worldforge-readme-banner.png"
+    width="100%"
+  />
+</p>
+
 <div align="center">
 
-# WorldForge
+### 🌐 &nbsp; **English** &nbsp; · &nbsp; [简体中文](./README.zh-CN.md)
 
 **Testable world-model workflows for physical-AI systems.**
 
@@ -39,6 +49,33 @@ controllers, and deployment host-owned.
 [**Security**](./SECURITY.md)
 
 </div>
+
+## What WorldForge Does
+
+WorldForge makes mixed physical-AI workflows explicit and inspectable.
+
+- **Policy providers propose action chunks** from robot observations or task instructions.
+- **Score and world-model providers rank candidate futures** instead of pretending every model has
+  the same interface.
+- **WorldForge validates, records, replays, and compares runs** through typed provider contracts.
+- **TheWorldHarness and Rerun make the loop visible** before a host connects real robot hardware.
+
+## First Run
+
+Install the package, then open the checkout-safe robotics comparison flow:
+
+```bash
+uv add "worldforge-ai[harness]"
+uv run worldforge-harness --flow robotics-compare
+```
+
+The flow compares LeRobot, Cosmos-Policy, and GR00T policy surfaces from sanitized replay artifacts,
+so it does not need credentials, checkpoints, a GPU, or a robot.
+
+Success looks like the TUI opening on **Robotics Policy Replay Comparison** with successful provider
+events and `gpu_required=false`. If it fails, first rerun
+`uv run worldforge-harness --flow robotics-compare --no-animation` to remove reveal delays and make
+the failed step or traceback appear immediately in the TUI.
 
 ## Robotics Showcase: LeRobot + LeWorldModel
 
@@ -233,6 +270,13 @@ If you want Rerun-backed event and artifact recording:
 uv add "worldforge-ai[rerun]"
 ```
 
+If you want TensorBoard inspection of the LeWorldModel checkpoint used during
+the robotics showcase:
+
+```bash
+uv add "worldforge-ai[tensorboard]"
+```
+
 ### From source (bleeding edge)
 
 ```bash
@@ -253,6 +297,7 @@ Optional extras:
 ```bash
 uv sync --group dev --extra harness   # TheWorldHarness Textual TUI
 uv sync --group dev --extra rerun     # Rerun event and artifact recording
+uv sync --group dev --extra tensorboard  # TensorBoard LeWorldModel checkpoint inspection
 ```
 
 Python 3.13 only. Base install depends only on `httpx`. Optional runtimes are host-owned.
@@ -446,7 +491,10 @@ bash scripts/test_package.sh
 uv build --out-dir dist --clear --no-build-logs
 ```
 
-Before a tag, also run the locked dependency audit. The expanded gate and triage steps live in the
+Before a tag, also run the locked dependency audit and generate the release evidence, release notes
+draft, and quality dashboard artifacts. Dependency-audit, release-notes, and dashboard raw details
+are sanitized before JSON or Markdown rendering so host-local paths, signed URLs, and secret-shaped
+keys or text stay out of attachable review output. The expanded gate and triage steps live in the
 [operator playbooks](https://abdelstark.github.io/worldforge/playbooks/#9-prepare-a-release-or-public-branch).
 If local setup fails before the gate starts, run
 `uv run python scripts/contributor_doctor.py --format markdown` for a safe-to-attach diagnosis.
@@ -491,13 +539,17 @@ integration stories through the
 
 WorldForge is released under the [MIT License](./LICENSE).
 
-## Links
+## Resources
 
 - Documentation: <https://abdelstark.github.io/worldforge/>
 - Quickstart: <https://abdelstark.github.io/worldforge/quickstart/>
+- TheWorldHarness: <https://abdelstark.github.io/worldforge/theworldharness/>
+- Provider authoring guide: <https://abdelstark.github.io/worldforge/provider-authoring-guide/>
+- Rerun integration: <https://abdelstark.github.io/worldforge/rerun/>
 - Playbooks: <https://abdelstark.github.io/worldforge/playbooks/>
 - Architecture: <https://abdelstark.github.io/worldforge/architecture/>
 - World-model taxonomy: <https://abdelstark.github.io/worldforge/world-model-taxonomy/>
+- Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
 - Security policy: [SECURITY.md](./SECURITY.md)
 - Repository: <https://github.com/AbdelStark/worldforge>
 - Issues: <https://github.com/AbdelStark/worldforge/issues>

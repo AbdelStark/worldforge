@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -32,6 +33,9 @@ _SECRET_ARG_FLAGS = {"--api-token"}
 _SECRET_ARG_NAME_PATTERN = re.compile(
     r"(api[-_]?key|authorization|credential|password|secret|token)",
     re.IGNORECASE,
+)
+_HOST_LOCAL_PATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes|var/folders|tmp)/[^\s)`|]+"
 )
 _MANIFEST_ENV_VARS = (
     "GROOT_POLICY_HOST",
@@ -248,7 +252,7 @@ def _start_server(args: argparse.Namespace) -> subprocess.Popen[bytes] | None:
     if not args.start_server:
         return None
     command, cwd = _server_command(args)
-    print("Starting GR00T policy server:", " ".join(command), file=sys.stderr)
+    print("Starting GR00T policy server:", _sanitized_command_display(command), file=sys.stderr)
     return subprocess.Popen(command, cwd=str(cwd) if cwd is not None else None)
 
 
@@ -417,6 +421,14 @@ def _sanitized_command_argv(command_argv: Sequence[str]) -> tuple[str, ...]:
         if _looks_secret_arg_flag(arg):
             redact_next = True
     return tuple(redacted)
+
+
+def _sanitized_command_display(command_argv: Sequence[str]) -> str:
+    return shlex.join(_sanitize_display_arg(arg) for arg in _sanitized_command_argv(command_argv))
+
+
+def _sanitize_display_arg(value: str) -> str:
+    return _HOST_LOCAL_PATH_PATTERN.sub("<host-local-path>", value)
 
 
 def _looks_secret_arg_flag(arg: str) -> bool:

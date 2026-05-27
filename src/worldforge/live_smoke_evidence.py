@@ -86,7 +86,11 @@ def validate_live_smoke_entry(
     if status in {"passed", "failed"} and artifact_path is None:
         raise WorldForgeError(f"{name}.artifact_path is required for {status} evidence.")
     skip_reason = entry.get("skip_reason")
-    if status in _SKIP_STATUSES or skip_reason is not None:
+    if status in {"passed", "failed"} and skip_reason is not None:
+        raise WorldForgeError(f"{name}.skip_reason must be null for {status} evidence.")
+    if status in _SKIP_STATUSES and artifact_path is not None:
+        raise WorldForgeError(f"{name}.artifact_path must be null for skipped evidence.")
+    if status in _SKIP_STATUSES:
         _require_non_empty_string(skip_reason, name=f"{name}.skip_reason")
     limitations = entry.get("known_limitations")
     if not isinstance(limitations, list):

@@ -220,7 +220,7 @@ Rules:
 - [ ] Do not set `predict=True` unless the adapter returns a validated `PredictionPayload`.
 - [ ] Do not set `generate=True` unless the adapter returns a validated `VideoClip`.
 - [ ] Do not set `score=True` unless the adapter returns `ActionScoreResult` with finite scores
-      and a valid `best_index`.
+      and a `best_index` that matches `lower_is_better`.
 - [ ] Do not set `policy=True` unless the adapter returns `ActionPolicyResult` with at least one
       executable WorldForge `Action`.
 - [ ] Do not set `reason=True` for models that only return unstructured logs, captions, or
@@ -615,6 +615,11 @@ Reusable conformance helpers are available for narrow provider tests:
 | `assert_score_conformance(...)` | `score_actions -> ActionScoreResult` |
 | `assert_policy_conformance(...)` | `select_actions -> ActionPolicyResult` |
 | `assert_provider_events_conform(...)` | JSON-native, redaction-safe provider events |
+
+Capability helpers raise `AssertionError` for contract failures, including invalid public result
+models that fail `WorldForgeError` validation while the provider constructs them and
+configured-provider `ProviderError`s raised where a valid result was expected. They also revalidate
+returned mutable result objects for finite numeric fields and JSON-native score/policy payloads.
 
 Use the capability-specific helper when a fixture or injected runtime exercises one operation.
 Use `assert_provider_contract(...)` when the test can safely exercise every declared capability for

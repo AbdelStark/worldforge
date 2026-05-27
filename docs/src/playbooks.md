@@ -950,8 +950,9 @@ Success signal: `.worldforge/dependency-audit/dependency-audit.json` and
 requirements summary states that the temporary requirements file was not preserved. The wrapper
 uses `uv export --frozen --all-groups --no-emit-project --no-hashes` plus
 `uvx --from pip-audit pip-audit ... --format json`; use `--ignore-advisory ADVISORY=RATIONALE`
-only for explicit release-reviewed exceptions. First triage step for `findings`: inspect the
-Markdown advisory table, upgrade or document the dependency decision, then rerun.
+only for explicit release-reviewed exceptions. Raw-detail keys and values are sanitized before JSON
+or Markdown rendering. First triage step for `findings`: inspect the Markdown advisory table,
+upgrade or document the dependency decision, then rerun.
 
 Finally generate the release-readiness evidence. This command writes
 `.worldforge/release-evidence/release-evidence.md` and
@@ -987,8 +988,9 @@ uv run python scripts/generate_quality_dashboard.py
 
 Success signal: `.worldforge/quality-dashboard/quality-dashboard.json` and
 `.worldforge/quality-dashboard/quality-dashboard.md` exist, the table distinguishes `failed`,
-`warning`, `skipped`, and `not-run` rows, and the first failed gate points back to the underlying
-raw output. The dashboard reads existing gate outputs rather than running them. It is an
+`warning`, `skipped`, and `not-run` rows, and the first failed gate points back to sanitized raw
+details for the underlying output. The dashboard reads existing gate outputs rather than running
+them, and it sanitizes both raw-detail keys and values before JSON or Markdown rendering. It is an
 at-a-glance local review index; release evidence remains the release artifact for hashes, linked
 run manifests, optional runtime claim boundaries, and known limitations.
 
@@ -1009,10 +1011,14 @@ uv run python scripts/generate_release_notes.py \
 Success signal: `.worldforge/release-notes/release-notes-draft.md` includes `Added`, `Changed`,
 `Fixed`, `Docs`, `Validation`, `Compatibility Notes`, `Known Caveats`, and `Host-Owned Optional
 Runtime Evidence` sections. The draft is source material for release editing, not a publish step:
-it never creates a GitHub release or tag, signs artifacts, or edits trusted publishing. If the
+it never creates a GitHub release or tag, signs artifacts, or edits trusted publishing. Its status
+checks both `validation_summary` and individual `validation_gates`, so a failed gate row keeps the
+draft in `needs-validation-review` until release evidence is regenerated from passing gates. If the
 draft says validation evidence is missing, run
 `uv run python scripts/generate_release_evidence.py --run-gates` first. Use
-`--require-validation-evidence` when release automation should fail on missing evidence.
+`--require-validation-evidence` when release automation should fail on missing evidence. The draft
+sanitizes changelog text, closed issue metadata, release-evidence text, and `--known-caveat`
+values before Markdown rendering.
 
 Success signal:
 

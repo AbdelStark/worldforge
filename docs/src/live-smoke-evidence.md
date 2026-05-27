@@ -21,8 +21,8 @@ Each entry records:
 | `date` | Registry decision date as `YYYY-MM-DD`. |
 | `version` | WorldForge package version used for the registry row. |
 | `status` | `passed`, `failed`, `not_run`, `skipped_missing_runtime`, `skipped_missing_credentials`, or `skipped_not_configured`. |
-| `artifact_path` | Sanitized `run_manifest.json` or artifact path for passed/failed evidence, otherwise `null`. |
-| `skip_reason` | Required for skipped or not-run entries. |
+| `artifact_path` | Sanitized `run_manifest.json` or artifact path for passed/failed evidence; must be `null` for skipped or not-run entries. |
+| `skip_reason` | Required for skipped or not-run entries; must be `null` for passed or failed entries. |
 | `known_limitations` | List of explicit caveats and host-owned responsibilities. |
 
 Validate the registry in tests or release tooling:
@@ -34,8 +34,9 @@ registry = validate_live_smoke_registry(payload)
 ```
 
 The validator rejects signed URLs, URL query strings, fragments, obvious secret material,
-secret-like metadata keys, duplicate provider/capability rows, missing skip reasons, and missing
-artifact paths for passed or failed evidence.
+secret-like metadata keys, duplicate provider/capability rows, missing skip reasons, stale
+artifact paths on skipped rows, stale skip reasons on passed or failed rows, and missing artifact
+paths for passed or failed evidence.
 
 ## Status Semantics
 
@@ -60,6 +61,9 @@ checkout-safe summaries it links. Do not attach:
 - raw tensors, media blobs, checkpoints, model weights, or robot-controller logs;
 - host-local absolute paths unless the issue is explicitly documenting local-only evidence;
 - claims that a live smoke is a benchmark or a physical-fidelity proof.
+
+Live-smoke run manifests store local artifact references relative to the manifest directory.
+Absolute host paths outside that directory are rejected instead of serialized.
 
 If a smoke is skipped, attach the registry row or paste the provider, status, command, skip reason,
 and known limitations. That is enough to show whether the blocker is missing credentials, missing

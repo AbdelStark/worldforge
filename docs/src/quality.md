@@ -144,7 +144,7 @@ uv run python scripts/generate_dependency_audit_evidence.py
 
 For release hardening, use the dependency-audit evidence workflow in
 [Operations](./operations.md). It preserves JSON and Markdown summaries without keeping the
-temporary requirements file.
+temporary requirements file, and it sanitizes raw-detail keys and values before output.
 
 To rehearse release readiness without publishing, run:
 
@@ -167,9 +167,11 @@ uv run python scripts/generate_quality_dashboard.py
 The dashboard writes `.worldforge/quality-dashboard/quality-dashboard.json` and
 `.worldforge/quality-dashboard/quality-dashboard.md`. It reads existing outputs and normalizes the
 status vocabulary to `passed`, `failed`, `warning`, `skipped`, and `not-run`; it does not execute
-gates or replace the raw artifacts. Use release evidence for release claims and artifact hashes,
-and use the dashboard for branch-level triage across docs, tests, coverage, package checks,
-dependency audit, core performance, and host-owned optional skips.
+gates or replace the raw artifacts. Raw-detail keys and values are sanitized before output, and
+redacted-key collisions are preserved with deterministic suffixes. Use release evidence for
+release claims and artifact hashes, and use the dashboard for branch-level triage across docs,
+tests, coverage, package checks, dependency audit, core performance, and host-owned optional
+skips.
 
 ## Optional Live Robotics CI
 

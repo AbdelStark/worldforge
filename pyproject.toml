@@ -47,6 +47,7 @@ Changelog = "https://github.com/AbdelStark/worldforge/blob/main/CHANGELOG.md"
 [project.scripts]
 worldforge = "worldforge.cli:main"
 worldforge-harness = "worldforge.harness.cli:main"
+worldforge-open-tensorboard = "worldforge.harness.tensorboard_launcher:main"
 worldforge-demo-leworldmodel = "worldforge.demos.leworldmodel_e2e:main"
 worldforge-demo-lerobot = "worldforge.demos.lerobot_e2e:main"
 worldforge-demo-rerun = "worldforge.demos.rerun_showcase:main"
@@ -71,10 +72,14 @@ harness = [
 rerun = [
     "rerun-sdk>=0.24,<0.32",
 ]
+tensorboard = [
+    "tensorboard>=2.16,<3",
+]
 
 [dependency-groups]
 dev = [
     "mkdocs-material>=9.6,<10",
+    "mkdocs-static-i18n>=1.2,<2",
     "pip-audit>=2.9,<3",
     "pytest>=9.0.3",
     "pytest-cov>=7.0",

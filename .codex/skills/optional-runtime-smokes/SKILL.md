@@ -12,6 +12,8 @@ description: "Use for LeWorldModel, GR00T, LeRobot, PushT robotics showcase, rea
 - Keep `stable_worldmodel`, torch, LeRobot, Isaac GR00T, CUDA, TensorRT, datasets, checkpoints, and robot packages out of `project.dependencies`.
 - Never commit downloaded assets, checkpoints, datasets, cache directories, or runtime-specific credentials.
 - Do not pad, project, or reinterpret mismatched action spaces inside WorldForge.
+- Keep smoke output safe to attach unless it is explicitly local-only; redact cache roots, signed
+  URLs, tokens, controller telemetry, and checkpoint bytes.
 
 ## Command Selection
 
@@ -30,6 +32,13 @@ description: "Use for LeWorldModel, GR00T, LeRobot, PushT robotics showcase, rea
 - Use `--revision` or `LEWORLDMODEL_REVISION` to pin Hugging Face asset resolution.
 - Keep `torch.load(..., weights_only=True)` unless a trusted legacy artifact explicitly requires `--allow-unsafe-pickle`.
 - Keep warning filters narrow. Use `WORLDFORGE_SHOW_RUNTIME_WARNINGS=1` when raw third-party stderr is needed.
+
+## Definition Of Done
+
+- The selected command matches the user's intent: injected adapter story, health-only preflight, or live host-owned runtime.
+- Missing host dependencies fail as explicit skipped/preflight evidence, not package installs in base WorldForge.
+- Any docs or manifests state the command, success signal, first triage step, and local-only caveats.
+- Validation includes focused smoke tests or health-only output inspection plus optional-import boundary checks when imports changed.
 
 ## Sharp Edges
 

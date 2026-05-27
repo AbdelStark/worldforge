@@ -485,21 +485,64 @@ def _core_performance_record(path: Path, payload: dict[str, Any] | None) -> Gate
             category="performance",
             raw_details={"source_path": _display_path(path), "reason": "missing-artifact"},
         )
-    passed = bool(payload.get("passed"))
     results = payload.get("results", [])
-    failed_results = (
-        [result for result in results if isinstance(result, dict) and result.get("passed") is False]
-        if isinstance(results, list)
-        else []
-    )
-    summary = (
-        f"{len(failed_results)} performance budget rows failed"
-        if failed_results
-        else "all recorded core performance rows passed"
-    )
+    if payload.get("status") == "invalid-json" or not isinstance(payload.get("passed"), bool):
+        return GateRecord(
+            name="Core performance artifact",
+            status="warning",
+            command=command,
+            source=_display_path(path),
+            summary="Core performance JSON is missing a boolean passed field.",
+            first_triage_step=(
+                "Regenerate the artifact with `uv run python scripts/check_core_performance.py "
+                "--output <path>`."
+            ),
+            category="performance",
+            raw_details={
+                "source_path": _display_path(path),
+                "reason": "invalid-shape",
+                "error": payload.get("error"),
+                "passed": payload.get("passed"),
+            },
+        )
+    if not isinstance(results, list):
+        return GateRecord(
+            name="Core performance artifact",
+            status="warning",
+            command=command,
+            source=_display_path(path),
+            summary="Core performance JSON is missing a results list.",
+            first_triage_step=(
+                "Regenerate the artifact with `uv run python scripts/check_core_performance.py "
+                "--output <path>`."
+            ),
+            category="performance",
+            raw_details={
+                "source_path": _display_path(path),
+                "reason": "invalid-shape",
+                "results_type": type(results).__name__,
+            },
+        )
+    passed = payload["passed"]
+    failed_results = [
+        result for result in results if isinstance(result, dict) and result.get("passed") is False
+    ]
+    incoherent_pass = passed and bool(failed_results)
+    incoherent_failure = not passed and not failed_results
+    if incoherent_pass:
+        summary = (
+            f"top-level passed=true contradicted by {len(failed_results)} failed performance "
+            "budget rows"
+        )
+    elif failed_results:
+        summary = f"{len(failed_results)} performance budget rows failed"
+    elif incoherent_failure:
+        summary = "top-level passed=false without failed performance budget rows"
+    else:
+        summary = "all recorded core performance rows passed"
     return GateRecord(
         name="Core performance artifact",
-        status="passed" if passed else "failed",
+        status="failed" if failed_results or not passed else "passed",
         command=command,
         source=_display_path(path),
         summary=summary,
@@ -510,6 +553,8 @@ def _core_performance_record(path: Path, payload: dict[str, Any] | None) -> Gate
             "passed": passed,
             "failed_results": failed_results,
             "results": results,
+            "incoherent_pass": incoherent_pass,
+            "incoherent_failure": incoherent_failure,
             "preserved_workspace": payload.get("preserved_workspace"),
         },
     )
@@ -602,7 +647,16 @@ def _sanitize_json(value: Any) -> Any:
     if isinstance(value, list):
         return [_sanitize_json(item) for item in value]
     if isinstance(value, dict):
-        return {str(key): _sanitize_json(item) for key, item in value.items()}
+        sanitized: dict[str, Any] = {}
+        for key, item in value.items():
+            sanitized_key = _sanitize_text(str(key))
+            unique_key = sanitized_key
+            suffix = 2
+            while unique_key in sanitized:
+                unique_key = f"{sanitized_key}#{suffix}"
+                suffix += 1
+            sanitized[unique_key] = _sanitize_json(item)
+        return sanitized
     return value
 
 

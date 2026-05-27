@@ -8,8 +8,9 @@ import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
+from urllib.parse import urlsplit
 
 import worldforge
 from worldforge.config_profiles import validate_config_profile_provenance
@@ -29,6 +30,7 @@ from worldforge.providers.runtime_manifest import (
 )
 
 RUN_MANIFEST_SCHEMA_VERSION = 1
+_RUN_MANIFEST_STATUSES = ("passed", "failed", "skipped")
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +66,7 @@ class LiveSmokeRunManifest:
             raise WorldForgeError("Run manifest provider_profile must be a non-empty string.")
         if not self.capability.strip():
             raise WorldForgeError("Run manifest capability must be a non-empty string.")
-        if self.status not in {"passed", "failed", "skipped"}:
-            raise WorldForgeError("Run manifest status must be passed, failed, or skipped.")
+        _require_run_manifest_status(self.status)
         require_non_negative_int(self.event_count, name="Run manifest event_count")
 
     def to_dict(self) -> JSONDict:
@@ -100,6 +101,7 @@ def build_run_manifest(
     status: str,
     env_vars: Sequence[str],
     artifact_paths: Mapping[str, Path | str] | None = None,
+    artifact_root: Path | str | None = None,
     command_argv: Sequence[str] | None = None,
     event_count: int = 0,
     input_summary: Mapping[str, Any] | None = None,
@@ -112,7 +114,11 @@ def build_run_manifest(
     environ: Mapping[str, str] | None = None,
     created_at: str | None = None,
 ) -> LiveSmokeRunManifest:
-    """Build a validated live smoke run manifest without exposing secrets."""
+    """Build a validated live smoke run manifest without exposing secrets.
+
+    ``artifact_root`` is the local run directory used to turn host-local artifact
+    paths into manifest-relative references before serialization.
+    """
 
     runtime_manifest_id = None
     try:
@@ -156,7 +162,10 @@ def build_run_manifest(
         "input_fixture_digest": resolved_input_fixture_digest,
         "event_count": event_count,
         "result_digest": resolved_result_digest,
-        "artifact_paths": _artifact_path_summary(artifact_paths or {}),
+        "artifact_paths": _artifact_path_summary(
+            artifact_paths or {},
+            artifact_root=artifact_root,
+        ),
     }
     if created_at is not None:
         manifest_kwargs["created_at"] = created_at
@@ -231,6 +240,7 @@ def validate_run_manifest(payload: Mapping[str, Any]) -> JSONDict:
         "status",
     ):
         _require_non_empty_str(manifest.get(field_name), field_name)
+    manifest["status"] = _require_run_manifest_status(manifest["status"])
     argv = manifest.get("command_argv")
     if (
         not isinstance(argv, list)
@@ -243,6 +253,7 @@ def validate_run_manifest(payload: Mapping[str, Any]) -> JSONDict:
         raise WorldForgeError("Run manifest env_summary must be a list.")
     if not isinstance(manifest.get("artifact_paths"), dict):
         raise WorldForgeError("Run manifest artifact_paths must be an object.")
+    manifest["artifact_paths"] = _validate_artifact_path_references(manifest["artifact_paths"])
     manifest.setdefault("runtime_assets", [])
     if not isinstance(manifest.get("runtime_assets"), list):
         raise WorldForgeError("Run manifest runtime_assets must be a list.")
@@ -264,12 +275,33 @@ def validate_run_manifest(payload: Mapping[str, Any]) -> JSONDict:
     return manifest
 
 
-def _artifact_path_summary(paths: Mapping[str, Path | str]) -> JSONDict:
+def _artifact_path_summary(
+    paths: Mapping[str, Path | str],
+    *,
+    artifact_root: Path | str | None = None,
+) -> JSONDict:
+    root = Path(artifact_root).expanduser().resolve() if artifact_root is not None else None
     artifacts: JSONDict = {}
     for name, raw_path in paths.items():
         if not isinstance(name, str) or not name.strip():
             raise WorldForgeError("Run manifest artifact names must be non-empty strings.")
-        artifacts[name] = _sanitize_path_or_url(str(raw_path))
+        artifacts[name] = _sanitize_path_or_url(raw_path, artifact_root=root)
+    return artifacts
+
+
+def _validate_artifact_path_references(paths: Mapping[str, Any]) -> JSONDict:
+    artifacts: JSONDict = {}
+    for name, raw_path in paths.items():
+        if not isinstance(name, str) or not name.strip():
+            raise WorldForgeError("Run manifest artifact names must be non-empty strings.")
+        if not isinstance(raw_path, str):
+            raise WorldForgeError("Run manifest artifact paths must be strings.")
+        sanitized = _sanitize_path_or_url(raw_path)
+        if sanitized != raw_path:
+            raise WorldForgeError(
+                "Run manifest artifact paths must already be normalized safe references."
+            )
+        artifacts[name] = sanitized
     return artifacts
 
 
@@ -291,11 +323,60 @@ def _runtime_asset_summary(
     return summaries
 
 
-def _sanitize_path_or_url(value: str) -> str:
-    sanitized = _sanitize_observable_target(value)
+def _sanitize_path_or_url(value: Path | str, *, artifact_root: Path | None = None) -> str:
+    text = str(value).strip()
+    if not text:
+        raise WorldForgeError("Run manifest artifact path must be non-empty.")
+    parts = urlsplit(text)
+    if parts.scheme or parts.netloc:
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise WorldForgeError(
+                "Run manifest artifact paths must be relative paths or sanitized HTTP(S) URLs."
+            )
+        sanitized = _sanitize_observable_target(text)
+        if sanitized is None:
+            raise WorldForgeError("Run manifest artifact path must be non-empty.")
+        return sanitized
+    if parts.query or parts.fragment:
+        raise WorldForgeError("Run manifest artifact paths must not contain query strings.")
+    if text.startswith(("$", "%")):
+        raise WorldForgeError("Run manifest artifact paths must not use environment expansion.")
+    candidate = Path(text).expanduser()
+    if artifact_root is not None:
+        try:
+            return _relative_artifact_path(candidate.resolve(), root=artifact_root)
+        except ValueError:
+            if isinstance(value, Path) or candidate.is_absolute() or text.startswith("~"):
+                raise WorldForgeError(
+                    "Run manifest artifact paths must not reference host-local paths "
+                    "outside the run directory."
+                ) from None
+    if candidate.is_absolute() or text.startswith("~"):
+        raise WorldForgeError("Run manifest artifact paths must not be absolute host paths.")
+    if PureWindowsPath(text).drive:
+        raise WorldForgeError("Run manifest artifact paths must not include Windows drive names.")
+    sanitized = _safe_relative_artifact_path(text)
     if sanitized is None:
         raise WorldForgeError("Run manifest artifact path must be non-empty.")
     return sanitized
+
+
+def _relative_artifact_path(path: Path, *, root: Path) -> str:
+    relative = path.relative_to(root)
+    return _safe_relative_artifact_path(relative.as_posix())
+
+
+def _safe_relative_artifact_path(value: str) -> str:
+    path = PurePosixPath(value.replace("\\", "/"))
+    if str(path) == "." or not path.parts:
+        raise WorldForgeError("Run manifest artifact path must be non-empty.")
+    if path.is_absolute():
+        raise WorldForgeError("Run manifest artifact paths must not be absolute host paths.")
+    if ".." in path.parts:
+        raise WorldForgeError("Run manifest artifact paths must not contain traversal.")
+    if PureWindowsPath(value).drive:
+        raise WorldForgeError("Run manifest artifact paths must not include Windows drive names.")
+    return path.as_posix()
 
 
 def _reject_unsafe_strings(value: object, *, path: str = "manifest") -> None:
@@ -345,6 +426,12 @@ def _json_native(value: object) -> Any:
 def _require_non_empty_str(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise WorldForgeError(f"Run manifest {field_name} must be a non-empty string.")
+    return value
+
+
+def _require_run_manifest_status(value: object) -> str:
+    if not isinstance(value, str) or value not in _RUN_MANIFEST_STATUSES:
+        raise WorldForgeError("Run manifest status must be passed, failed, or skipped.")
     return value
 
 

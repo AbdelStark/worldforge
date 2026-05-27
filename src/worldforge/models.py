@@ -1887,6 +1887,11 @@ class ActionScoreResult:
             raise WorldForgeError("ActionScoreResult best_index is out of range.")
         if not isinstance(self.lower_is_better, bool):
             raise WorldForgeError("ActionScoreResult lower_is_better must be a boolean.")
+        expected_best_score = min(self.scores) if self.lower_is_better else max(self.scores)
+        if self.scores[self.best_index] != expected_best_score:
+            raise WorldForgeError(
+                "ActionScoreResult best_index must match lower_is_better direction."
+            )
         if not isinstance(self.metadata, dict):
             raise WorldForgeError("ActionScoreResult metadata must be a JSON object.")
         self.provider = self.provider.strip()

@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "extends": "./base.json",
+  "id": "lab-setup-child-a",
+  "name": "Lab setup child A: extend by two steps",
+  "description": "Inherits the lab base setup and runs an extra predict step so the world advances twice. Overrides only the action list and step expectation.",
+  "actions": [
+    {
+      "kind": "predict",
+      "parameters": {"x": 0.25, "y": 0.5, "z": 0.0, "steps": 2}
+    }
+  ],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 1},
+    {"label": "step_count", "kind": "step", "value": 2}
+  ],
+  "metadata": {
+    "gallery_intent": "inheritance child overriding actions and step expectation",
+    "first_triage_step": "If this fails after the base scenario passes, suspect the overridden action parameters before suspecting inheritance."
+  }
+}

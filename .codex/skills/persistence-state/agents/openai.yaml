@@ -1,0 +1,4 @@
+interface:
+  display_name: "Persistence State"
+  short_description: "WorldForge local state workflow"
+  default_prompt: "Use $persistence-state to change WorldForge local JSON world persistence safely."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "TUI Development"
+  short_description: "TheWorldHarness TUI workflow"
+  default_prompt: "Use $tui-development to update TheWorldHarness while preserving the optional Textual boundary."

@@ -17,7 +17,9 @@ uv run python scripts/generate_release_notes.py \
 
 The draft is maintainer-editable source material. Review and edit it before publishing a GitHub
 release, and do not treat missing validation evidence, host-owned optional runtime rows, or
-generated wording as final release approval.
+generated wording as final release approval. Draft inputs are sanitized before Markdown rendering
+so token assignments, bearer headers, signed URLs, and host-local paths do not leak into release
+notes.
 
 When changing release-process text in the changelog, rehearse the evidence path before drafting
 notes:

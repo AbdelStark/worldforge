@@ -490,7 +490,16 @@ def _sanitize_json(value: Any) -> Any:
     if isinstance(value, list):
         return [_sanitize_json(item) for item in value]
     if isinstance(value, dict):
-        return {str(key): _sanitize_json(item) for key, item in value.items()}
+        sanitized: dict[str, Any] = {}
+        for key, item in value.items():
+            sanitized_key = _sanitize_text(str(key))
+            unique_key = sanitized_key
+            suffix = 2
+            while unique_key in sanitized:
+                unique_key = f"{sanitized_key}#{suffix}"
+                suffix += 1
+            sanitized[unique_key] = _sanitize_json(item)
+        return sanitized
     return value
 
 

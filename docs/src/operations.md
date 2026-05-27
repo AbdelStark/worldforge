@@ -368,7 +368,8 @@ metadata.
 Composed workflows can also emit `WorkflowTrace` artifacts. A trace is JSON-native,
 schema-versioned, and safe to attach by default; it records step IDs, operations,
 provider/capability slots, input/output artifact references, status, optional duration, sanitized
-error summaries, and parent-child relationships. Planning stores a trace under
+error summaries, and parent-child relationships. The top-level trace status is derived from the
+step statuses and cannot contradict failed, running, pending, or skipped steps. Planning stores a trace under
 `Plan.metadata["workflow_trace"]`; evaluation reports export `workflow_trace.json` and
 `workflow_trace.md`; `RerunArtifactLogger.log_workflow_trace(...)` can add the same trace to an
 optional Rerun recording. Traces do not capture raw prompts, tensors, credentials, controller
@@ -502,8 +503,9 @@ scripts/robotics-showcase \
 
 The manifest records command argv, package version, provider profile, capability, value-free
 environment presence, runtime manifest id when available, input fixture digest, event count, result
-digest, and artifact paths. Validation rejects raw secret-like fields and unsanitized signed URLs;
-artifact URLs are stored without query strings or fragments.
+digest, status (`passed`, `failed`, or `skipped`), and artifact paths. Validation rejects unknown
+statuses, raw secret-like fields, and unsanitized signed URLs; artifact URLs are stored without
+query strings or fragments.
 
 For local run inspection, install the optional `rerun` extra and stream events plus artifacts into
 a Rerun recording:
@@ -716,10 +718,11 @@ plus `uvx --from pip-audit pip-audit ... --format json` flow using a temporary r
 that is removed after the audit. It writes `.worldforge/dependency-audit/dependency-audit.json`
 and `.worldforge/dependency-audit/dependency-audit.md`, records tool versions, dependency-set
 digest, vulnerability summary, explicit `--ignore-advisory ADVISORY=RATIONALE` rows, command
-output tails, and a first triage step. Success signal: status is `passed`; findings,
-tool-unavailable, and failed states still leave safe-to-attach evidence. First triage step for
-findings: inspect the Markdown advisory row, upgrade or document the dependency decision, then
-rerun the audit.
+output tails, and a first triage step. Raw-detail keys and values are sanitized before JSON or
+Markdown rendering, with deterministic suffixes for redacted-key collisions. Success signal:
+status is `passed`; findings, tool-unavailable, and failed states still leave safe-to-attach
+evidence. First triage step for findings: inspect the Markdown advisory row, upgrade or document
+the dependency decision, then rerun the audit.
 
 Generate the release-readiness evidence after local gates and optional smokes finish. The command
 writes both Markdown and JSON summaries by default; use `--run-gates` when the evidence run itself
@@ -765,10 +768,13 @@ uv run python scripts/generate_quality_dashboard.py
 The dashboard defaults to `.worldforge/quality-dashboard/quality-dashboard.json` and
 `.worldforge/quality-dashboard/quality-dashboard.md`. It reads existing release evidence,
 dependency-audit evidence, and core-performance JSON; it does not execute gates. Status rows use
-`passed`, `failed`, `warning`, `skipped`, and `not-run`, preserve raw failure output tails, list
-skipped host-owned provider checks, and name the first failed gate. Use it as a local quality
-index. Release evidence remains the artifact for release claims, artifact hashes, linked
-`run_manifest.json` files, and known limitations.
+`passed`, `failed`, `warning`, `skipped`, and `not-run`, preserve sanitized raw failure output
+tails, list skipped host-owned provider checks, and name the first failed gate. Use it as a local
+quality index. Raw-detail keys and values are sanitized before JSON or Markdown rendering, and
+colliding redacted keys keep deterministic suffixes instead of dropping entries. Core-performance
+status is derived from both the top-level artifact status and row-level budget results, so a stale
+`passed: true` flag cannot hide failed budget rows. Release evidence remains the artifact for
+release claims, artifact hashes, linked `run_manifest.json` files, and known limitations.
 
 After evidence exists, draft release notes for maintainer editing:
 
@@ -787,10 +793,14 @@ The release-notes command writes `.worldforge/release-notes/release-notes-draft.
 artifact only: maintainers must edit it before publishing, and the command never creates a tag,
 GitHub release, signature, or trusted-publishing artifact. Success signal: the draft contains
 added, changed, fixed, docs, validation, compatibility, caveat, and host-owned optional-runtime
-sections. First triage step when validation is missing: run
+sections. Draft status is derived from both `validation_summary` and row-level
+`validation_gates`; any failed gate row keeps the draft at `needs-validation-review` even if a
+stale summary reports zero failures. First triage step when validation is missing: run
 `uv run python scripts/generate_release_evidence.py --run-gates` and regenerate the draft. Use
 `--require-validation-evidence` in release scripts when a missing or invalid evidence JSON should
-fail the command.
+fail the command. Changelog entries, closed issue metadata, release-evidence text, and
+`--known-caveat` values are sanitized before Markdown rendering so token assignments, bearer
+headers, signed URLs, and host-local paths stay out of draft release notes.
 
 `uv run python scripts/check_core_performance.py` writes a checkout-safe JSON report for world
 persistence, benchmark fixture loading, provider diagnostics, evidence-bundle creation, and report

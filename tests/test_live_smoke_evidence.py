@@ -100,6 +100,33 @@ def test_live_smoke_registry_requires_skip_reasons_and_artifacts() -> None:
         validate_live_smoke_entry(passed)
 
 
+def test_live_smoke_registry_rejects_stale_skip_or_artifact_state() -> None:
+    skipped = {
+        "provider": "cosmos",
+        "capability": "generate",
+        "command": "uv run worldforge-smoke-cosmos",
+        "runtime_manifest": "cosmos:schema-1",
+        "date": "2026-05-05",
+        "version": "0.5.0",
+        "status": "skipped_missing_runtime",
+        "artifact_path": ".worldforge/runs/cosmos/run_manifest.json",
+        "skip_reason": "requires a prepared Cosmos endpoint",
+        "known_limitations": ["host-owned runtime"],
+    }
+
+    with pytest.raises(WorldForgeError, match="artifact_path must be null"):
+        validate_live_smoke_entry(skipped)
+
+    passed = {
+        **skipped,
+        "status": "passed",
+        "skip_reason": "stale blocker from a previous release",
+    }
+
+    with pytest.raises(WorldForgeError, match="skip_reason must be null"):
+        validate_live_smoke_entry(passed)
+
+
 def test_release_evidence_can_include_registry_without_manual_copy_paste(tmp_path: Path) -> None:
     registry = validate_live_smoke_registry(_registry())
     report = generate_release_evidence.render_release_evidence(

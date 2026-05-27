@@ -11,6 +11,8 @@ description: "Use for WorldForge README, docs, changelog, generated provider doc
 - No hype, no tool branding, no inflated physical-fidelity claims.
 - Use "integration layer" for the project frame. Treat "typed" and "local JSON" as supporting details, not the headline.
 - README stays concise; route operational depth to `docs/src/playbooks.md`.
+- Public docs should help a maintainer reproduce evidence. Avoid narrative process notes and
+  personal collaboration context.
 
 ## Synchronization Rules
 
@@ -39,6 +41,13 @@ Every new runtime, provider, persistence, benchmark, or release workflow should 
 1. Command to run.
 2. Expected success signal.
 3. First triage step when it fails.
+
+## Definition Of Done
+
+- Source docs, generated docs, README tables, changelog, and navigation are synchronized for the changed public behavior.
+- Generated provider catalog blocks were regenerated from metadata instead of hand-edited.
+- Commands in docs are still executable or explicitly marked host-owned/credentialed/illustrative.
+- `mkdocs build --strict` and the relevant docs drift checks pass, or any skipped gate has a concrete blocker.
 
 ## Sharp Edges
 

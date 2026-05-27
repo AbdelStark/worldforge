@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from worldforge import (
@@ -96,10 +98,47 @@ def test_routing_attempt_validates_status() -> None:
         RoutingAttempt(provider="mock", capability="predict", status="weird")
 
 
+def test_routing_attempt_redacts_artifact_facing_text() -> None:
+    attempt = RoutingAttempt(
+        provider="mock",
+        capability="predict",
+        status="failed",
+        reason="retrying Authorization=wf-routing-auth-secret",
+        error_type="ProviderError",
+        error_message=(
+            "failed Bearer wf-routing-bearer-secret "
+            "https://example.test/artifact.bin?X-Amz-Signature=wf-routing-signature "
+            "token=wf-routing-token"
+        ),
+    )
+
+    payload = json.dumps(attempt.to_dict(), sort_keys=True)
+
+    assert "wf-routing-auth-secret" not in payload
+    assert "wf-routing-bearer-secret" not in payload
+    assert "wf-routing-signature" not in payload
+    assert "wf-routing-token" not in payload
+    assert "https://example.test/artifact.bin" in payload
+    assert "[redacted]" in payload
+
+
+@pytest.mark.parametrize("field", ["reason", "error_type", "error_message"])
+def test_routing_attempt_rejects_non_string_optional_text(field: str) -> None:
+    kwargs = {
+        "provider": "mock",
+        "capability": "predict",
+        "status": "failed",
+        field: object(),
+    }
+
+    with pytest.raises(WorldForgeError, match=rf"RoutingAttempt {field} must be a string"):
+        RoutingAttempt(**kwargs)  # type: ignore[arg-type]
+
+
 def test_routing_result_to_dict_includes_attempts() -> None:
     result = RoutingResult(
         capability="predict",
-        chosen="mock",
+        chosen=" mock ",
         succeeded=True,
         attempts=(RoutingAttempt(provider="mock", capability="predict", status="succeeded"),),
         value={"answer": 42},
@@ -109,6 +148,96 @@ def test_routing_result_to_dict_includes_attempts() -> None:
     assert payload["chosen"] == "mock"
     assert payload["succeeded"] is True
     assert payload["attempts"][0]["status"] == "succeeded"
+
+
+def test_routing_result_rejects_incoherent_success() -> None:
+    succeeded = RoutingAttempt(provider="mock", capability="predict", status="succeeded")
+    failed = RoutingAttempt(provider="alt", capability="predict", status="failed")
+
+    with pytest.raises(WorldForgeError, match="require a chosen provider"):
+        RoutingResult(
+            capability="predict",
+            chosen=None,
+            succeeded=True,
+            attempts=(succeeded,),
+            value="ok",
+        )
+
+    with pytest.raises(WorldForgeError, match="require a value"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=True,
+            attempts=(succeeded,),
+            value=None,
+        )
+
+    with pytest.raises(WorldForgeError, match="exactly one succeeded attempt"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=True,
+            attempts=(failed,),
+            value="ok",
+        )
+
+    with pytest.raises(WorldForgeError, match="chosen provider must match"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=True,
+            attempts=(RoutingAttempt(provider="alt", capability="predict", status="succeeded"),),
+            value="ok",
+        )
+
+    with pytest.raises(WorldForgeError, match="final routing attempt"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=True,
+            attempts=(succeeded, failed),
+            value="ok",
+        )
+
+
+def test_routing_result_rejects_incoherent_failure() -> None:
+    succeeded = RoutingAttempt(provider="mock", capability="predict", status="succeeded")
+    failed = RoutingAttempt(provider="mock", capability="predict", status="failed")
+
+    with pytest.raises(WorldForgeError, match="must not choose"):
+        RoutingResult(
+            capability="predict",
+            chosen="mock",
+            succeeded=False,
+            attempts=(failed,),
+        )
+
+    with pytest.raises(WorldForgeError, match="must not carry a value"):
+        RoutingResult(
+            capability="predict",
+            chosen=None,
+            succeeded=False,
+            attempts=(failed,),
+            value="stale",
+        )
+
+    with pytest.raises(WorldForgeError, match="must not include succeeded attempts"):
+        RoutingResult(
+            capability="predict",
+            chosen=None,
+            succeeded=False,
+            attempts=(succeeded,),
+        )
+
+
+def test_routing_result_requires_attempt_capabilities_to_match_result() -> None:
+    with pytest.raises(WorldForgeError, match="attempt capabilities"):
+        RoutingResult(
+            capability="predict",
+            chosen=None,
+            succeeded=False,
+            attempts=(RoutingAttempt(provider="mock", capability="generate", status="failed"),),
+        )
 
 
 def test_route_capability_returns_first_success(tmp_path) -> None:
@@ -355,6 +484,35 @@ def test_route_capability_records_unexpected_exceptions_as_failed(tmp_path) -> N
     failed = result.failed_attempts()[0]
     assert failed.provider == "primary"
     assert failed.error_type == "RuntimeError"
+
+
+def test_route_capability_redacts_failed_exception_messages(tmp_path) -> None:
+    forge = _make_forge(tmp_path)
+    forge.register_provider(MockProvider(name="primary"))
+    forge.register_provider(MockProvider(name="alt"))
+
+    def invoke(name: str) -> str:
+        if name == "primary":
+            raise ProviderError(
+                "download failed for "
+                "https://example.test/result.mp4?token=wf-route-token-secret "
+                "with api_key=wf-route-key-secret"
+            )
+        return "ok"
+
+    policy = ProviderRoutingPolicy(
+        capability="predict",
+        preferred="primary",
+        fallbacks=("alt",),
+    )
+    result = route_capability(policy, forge, invoke=invoke)
+
+    assert result.succeeded is True
+    payload = json.dumps(result.to_dict(), sort_keys=True)
+    assert "wf-route-token-secret" not in payload
+    assert "wf-route-key-secret" not in payload
+    assert "https://example.test/result.mp4" in payload
+    assert "[redacted]" in payload
 
 
 def test_policy_rejects_non_sequence_fallbacks() -> None:

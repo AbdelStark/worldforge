@@ -13,6 +13,7 @@ description: "Use when selecting, running, or fixing WorldForge validation: pyte
 | Provider behavior | provider-focused pytest, fixtures, contract helper, provider-doc check |
 | CLI help/output | targeted CLI tests and help snapshots |
 | Docs/provider catalog | provider-doc check and `uv run mkdocs build --strict` |
+| Agent context/skills | skill `quick_validate.py`, symlink check, and `git diff --check` |
 | Public API/package surface | full public gate below |
 | TUI/harness | focused harness tests plus `--extra harness` coverage when relevant |
 
@@ -64,6 +65,15 @@ rm -f "$tmp_req"
 - Keep `--cov-fail-under=90`; add tests instead of lowering it.
 - Do not replace deterministic tests with live-service requirements.
 - Report skipped gates with the concrete blocker.
+- Match the gate to the claim: a narrow passing test never proves a broad public-release or
+  agentic-context quality claim.
+
+## Definition Of Done
+
+- The final report names exact commands, pass/fail status, and any unverified surfaces.
+- Validation covers the files actually changed and the public contract they affect.
+- Skill changes pass `quick_validate.py` for every edited skill and preserve `.agents/skills` plus `.claude/skills` symlinks.
+- Broad gates are escalated when behavior, packaging, docs navigation, or release evidence changes.
 
 ## Sharp Edges
 

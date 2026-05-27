@@ -5,7 +5,7 @@
   "data_class": "synthetic",
   "expected": "invalid",
   "expected_error_pattern": "whitespace",
-  "description": "Whitespace-only text is documented as invalid for embed: it carries no signal to embed and providers should reject it. The framework does not reject this today; the fixture pins the contract for future input validation.",
+  "description": "Whitespace-only text is invalid for embed: it carries no signal to embed, and the facade rejects the request before provider dispatch.",
   "payload": {
     "text": "   "
   }

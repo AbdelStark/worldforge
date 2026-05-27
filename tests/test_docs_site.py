@@ -448,6 +448,8 @@ def test_gr00t_live_smoke_docs_cover_remote_policy_contract() -> None:
         "ssh -N -L 5555:127.0.0.1:5555",
         "uv run worldforge provider health gr00t",
         "Hibernate or terminate",
+        "sanitized startup command line",
+        "forwarded secret-shaped server args",
     ):
         assert signal in provider_doc or signal in operations or signal in playbooks
 
@@ -1979,7 +1981,10 @@ def test_contributor_task_starters_cover_issue_233_contract() -> None:
 def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
+    integrity = (ROOT / "docs/src/artifact-integrity.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     release_script = (ROOT / "scripts/generate_release_evidence.py").read_text(encoding="utf-8")
+    release_tests = (ROOT / "tests/test_release_evidence.py").read_text(encoding="utf-8")
 
     for signal in (
         "--run-gates",
@@ -1988,8 +1993,12 @@ def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
         "`passed`, `failed`, or `skipped`",
         "first triage step",
         "`host-owned`",
+        "`<host-local-path>/<name>`",
+        "sanitized command output",
     ):
-        assert signal in operations or signal in playbooks
+        assert (
+            signal in operations or signal in playbooks or signal in integrity or signal in agents
+        )
 
     for implementation_signal in (
         "class ReleaseGateResult",
@@ -1997,8 +2006,13 @@ def test_release_readiness_evidence_docs_cover_issue_179_contract() -> None:
         "validation_summary",
         "stdout_tail",
         "stderr_tail",
+        "_is_repo_relative",
+        "_sanitize_text",
     ):
         assert implementation_signal in release_script
+
+    assert "test_release_evidence_redacts_host_local_artifact_paths" in release_tests
+    assert "test_release_evidence_gate_runner_redacts_output_and_reasons" in release_tests
 
 
 def test_release_notes_draft_docs_cover_issue_234_contract() -> None:
@@ -2023,7 +2037,11 @@ def test_release_notes_draft_docs_cover_issue_234_contract() -> None:
         "maintainer-editable",
         "never creates a GitHub release",
         "validation evidence is missing",
+        "failed gate row",
+        "needs-validation-review",
         "host-owned optional-runtime",
+        "sanitizes changelog text",
+        "token assignments",
     ):
         assert (
             signal in operations
@@ -2041,11 +2059,16 @@ def test_release_notes_draft_docs_cover_issue_234_contract() -> None:
         "Host-Owned Optional Runtime Evidence",
         "Missing changelog",
         "Validation evidence missing",
+        "_failed_validation_gate_count",
+        "_redact_observable_text",
+        "HOST_PATH_PATTERN",
     ):
         assert implementation_signal in release_notes_script
 
     for test_signal in (
         "test_release_notes_draft_collects_changelog_issues_and_evidence",
+        "test_release_notes_draft_uses_failed_gate_rows_for_status",
+        "test_release_notes_draft_redacts_secret_shapes_from_all_user_inputs",
         "test_release_notes_main_reports_missing_validation_evidence",
         "test_release_notes_main_reports_missing_changelog",
     ):
@@ -2148,6 +2171,7 @@ def test_dependency_audit_evidence_docs_cover_issue_235_contract() -> None:
         "tool-unavailable",
         "findings",
         "uvx --from pip-audit pip-audit",
+        "Raw-detail keys and values are sanitized",
     ):
         assert (
             signal in operations or signal in playbooks or signal in integrity or signal in quality
@@ -2162,12 +2186,14 @@ def test_dependency_audit_evidence_docs_cover_issue_235_contract() -> None:
         "ignored_advisories",
         "tool-unavailable",
         "safe_to_attach",
+        "_sanitize_json",
     ):
         assert implementation_signal in audit_script
 
     for test_signal in (
         "test_dependency_audit_evidence_records_clean_run",
         "test_dependency_audit_evidence_preserves_findings_and_ignore_rationales",
+        "test_dependency_audit_evidence_sanitizes_raw_detail_keys_without_dropping_collisions",
         "test_dependency_audit_evidence_records_tool_unavailable",
     ):
         assert test_signal in audit_tests

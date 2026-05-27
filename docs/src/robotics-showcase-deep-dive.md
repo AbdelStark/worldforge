@@ -631,13 +631,17 @@ The plan metadata records:
 - serialized `score_result`;
 - `candidate_count`;
 - `execution_provider = "mock"`;
-- `success_probability_source = "inverse_best_cost_heuristic"`.
+- `success_probability_source`, selected from the score direction.
 
-The success probability is a display heuristic:
+The success probability is a display heuristic. Lower-is-better cost models use:
 
 ```python
 1.0 / (1.0 + max(0.0, best_score))
 ```
+
+Higher-is-better utility models only use the best score directly when it is already in `[0, 1]`.
+Unbounded utility scores fall back to a neutral `0.5` instead of presenting raw utility as a
+calibrated probability.
 
 It is not a calibrated task-success estimate.
 

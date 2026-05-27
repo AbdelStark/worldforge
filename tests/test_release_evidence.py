@@ -70,8 +70,8 @@ def test_release_evidence_renders_without_credentials(
     assert "uv run python scripts/check_optional_import_boundaries.py" in report
     assert "uv run --extra harness pytest --cov=src/worldforge" in report
     assert "Run with `--run-gates` to execute this checkout-safe gate." in report
-    assert "[`" in report
-    assert "benchmark.json" in report
+    assert "`<host-local-path>/benchmark.json`" in report
+    assert str(tmp_path) not in report
     assert "No prepared-host smokes were run for this branch." in report
 
 
@@ -90,6 +90,7 @@ def test_release_evidence_links_live_manifest_and_artifact(tmp_path: Path) -> No
         command_argv=("worldforge-smoke-runway",),
         event_count=3,
         artifact_paths={"video": video_path},
+        artifact_root=manifest_path.parent,
         created_at="2026-01-01T00:00:00+00:00",
     )
     write_run_manifest(manifest_path, manifest)
@@ -108,6 +109,39 @@ def test_release_evidence_links_live_manifest_and_artifact(tmp_path: Path) -> No
     assert "`generate`" in report
     assert "`video`=" in report
     assert "video.mp4" in report
+
+
+def test_release_evidence_redacts_host_local_artifact_paths(tmp_path: Path) -> None:
+    output = tmp_path / "release-evidence.md"
+    artifact = tmp_path / "dist" / "worldforge.whl"
+    artifact.parent.mkdir()
+    artifact.write_bytes(b"wheel-bytes")
+    gate_results = release_gate_results(
+        (ReleaseGate("Docs", "uv run mkdocs build --strict", "fix docs"),),
+        run=False,
+    )
+
+    payload = generate_release_evidence.release_evidence_payload(
+        manifests=(),
+        benchmark_artifacts=(artifact,),
+        artifacts=(artifact,),
+        gate_results=gate_results,
+    )
+    report = render_release_evidence(
+        output=output,
+        manifests=(),
+        benchmark_artifacts=(artifact,),
+        artifacts=(artifact,),
+        gate_results=gate_results,
+    )
+
+    payload_text = json.dumps(payload, sort_keys=True)
+    assert payload["benchmark_artifacts"][0]["path"] == "<host-local-path>/worldforge.whl"
+    assert payload["release_artifacts"][0]["path"] == "<host-local-path>/worldforge.whl"
+    assert str(tmp_path) not in payload_text
+    assert str(tmp_path) not in report
+    assert "`<host-local-path>/worldforge.whl`" in report
+    assert "](../../" not in report
 
 
 def test_release_evidence_main_writes_default_shape(tmp_path: Path) -> None:
@@ -150,6 +184,60 @@ def test_release_evidence_gate_runner_records_pass_fail_and_skip() -> None:
     assert results[1].exit_code == 7
     assert len(results[1].stderr_tail) <= generate_release_evidence.MAX_CAPTURE_CHARS
     assert results[2].triage_step == "host skipped intentionally"
+
+
+def test_release_evidence_gate_runner_redacts_output_and_reasons() -> None:
+    gates = (
+        ReleaseGate("Fail", "python /Users/alice/private/run.py", "inspect /Users/alice/logs"),
+        ReleaseGate("Skip", "skip-command", "inspect skip"),
+    )
+
+    def runner(command: str, **kwargs) -> CompletedProcess[str]:
+        assert kwargs["shell"] is True
+        return CompletedProcess(
+            command,
+            2,
+            stdout="wrote /Users/alice/private/out.json token=stdout-secret",
+            stderr=(
+                "failed Authorization: Bearer stderr-secret at "
+                "https://example.test/artifact.json?token=download-secret"
+            ),
+        )
+
+    results = release_gate_results(
+        gates,
+        run=True,
+        skip_gates=("Skip",),
+        skip_reason="host skipped /private/tmp/run token=skip-secret",
+        runner=runner,
+    )
+    payload = generate_release_evidence.release_evidence_payload(
+        manifests=(),
+        benchmark_artifacts=(),
+        artifacts=(),
+        gate_results=results,
+    )
+    report = render_release_evidence(
+        output=Path(".worldforge/release-evidence/release-evidence.md"),
+        manifests=(),
+        benchmark_artifacts=(),
+        artifacts=(),
+        gate_results=results,
+        known_limitations=("local log /Users/alice/private/log token=limitation-secret",),
+    )
+
+    evidence_text = json.dumps(payload, sort_keys=True) + report
+    assert "/Users/alice" not in evidence_text
+    assert "/private/tmp" not in evidence_text
+    assert "stdout-secret" not in evidence_text
+    assert "stderr-secret" not in evidence_text
+    assert "download-secret" not in evidence_text
+    assert "skip-secret" not in evidence_text
+    assert "limitation-secret" not in evidence_text
+    assert "<host-local-path>" in evidence_text
+    assert "token=[redacted]" in evidence_text
+    assert "Authorization: [redacted]" in evidence_text
+    assert "https://example.test/artifact.json" in evidence_text
 
 
 def test_release_evidence_gate_runner_accepts_deterministic_clock() -> None:
@@ -220,7 +308,7 @@ def test_release_evidence_payload_uses_explicit_clock_for_snapshot(tmp_path: Pat
     )
 
     assert snapshot["generated_at"] == "2026-01-01T00:00:00+00:00"
-    assert snapshot["benchmark_artifacts"][0]["path"] == "<tmp>/benchmark.json"
+    assert snapshot["benchmark_artifacts"][0]["path"] == "<host-local-path>/benchmark.json"
     assert snapshot["git"]["commit"] == "<commit>"
 
 

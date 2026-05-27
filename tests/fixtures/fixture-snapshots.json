@@ -85,16 +85,16 @@
       "fixture_schema_version": 1,
       "path": "src/worldforge/testing/fixtures/embed/invalid_text_empty.json",
       "review_status": "tracked",
-      "sha256": "sha256:03bc094febdcc428af5487366fb5b53f7ca517f391ec046bda4ca4c8397bd226",
-      "size_bytes": 463
+      "sha256": "sha256:e8325083463f56643571383e2bb39dd183c5819dda1e9220ec571141607c4937",
+      "size_bytes": 409
     },
     {
       "fixture_kind": "capability-fixture",
       "fixture_schema_version": 1,
       "path": "src/worldforge/testing/fixtures/embed/invalid_text_whitespace.json",
       "review_status": "tracked",
-      "sha256": "sha256:2a9a20036f1180b619db0cbd75d8d2dd68b6ff5d7159ff71b32b364a1869c48b",
-      "size_bytes": 466
+      "sha256": "sha256:1d2175617b0c1069ac36371677a6cadb26da08a86d8e7ff14b6e2b6c5bdcc534",
+      "size_bytes": 381
     },
     {
       "fixture_kind": "capability-fixture",

@@ -15,6 +15,16 @@ description: "Use for TheWorldHarness work: Textual screens, flows, launchpad, c
 
 Never import Textual from `worldforge.__init__`, `worldforge.cli`, or non-TUI harness modules.
 
+## Harness Engineering Contract
+
+- Treat each flow as a testable runner first and a Textual screen second.
+- Keep flow inputs, summaries, and screen state JSON-native so evidence can move between CLI,
+  tests, screenshots, and docs.
+- Keep long-running provider/runtime work behind explicit workers or commands; UI state should
+  report progress and failure without hiding the underlying exception context.
+- Use deterministic mock providers and temporary state by default. Live provider flows require
+  explicit host-owned configuration and skipped/preflight states when unavailable.
+
 ## Workflow
 
 1. Read `models.py`, `flows.py`, and `cli.py` before touching TUI modules.
@@ -24,6 +34,13 @@ Never import Textual from `worldforge.__init__`, `worldforge.cli`, or non-TUI ha
 5. Update the relevant tests: `test_harness_cli.py`, `test_harness_flows.py`, `test_harness_guards.py`, `test_harness_tui.py`, `test_harness_worlds_view.py`, or `test_harness_snapshots.py`.
 6. Update screenshots only when UI behavior or documented visual state changed.
 7. Validate with focused harness tests and the `--extra harness` coverage gate when behavior changes.
+
+## Definition Of Done
+
+- `worldforge harness --list --format json` works without the `harness` extra.
+- Changed flows are covered at the flow/CLI level before TUI-specific tests.
+- Textual imports remain isolated and optional-import boundary checks pass when imports moved.
+- Snapshot or screenshot updates are intentional and tied to verified behavior.
 
 ## Spec Map
 

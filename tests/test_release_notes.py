@@ -147,6 +147,150 @@ def test_release_notes_draft_collects_changelog_issues_and_evidence(tmp_path: Pa
     assert "/Users/alice" not in draft.markdown
 
 
+def test_release_notes_draft_uses_failed_gate_rows_for_status(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        """# Changelog
+
+## Unreleased
+
+### Fixed
+
+- Fixed release evidence status handling.
+""",
+        encoding="utf-8",
+    )
+    evidence = tmp_path / "release-evidence.json"
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "validation_summary": {
+                    "passed": 1,
+                    "failed": 0,
+                    "skipped": 0,
+                    "host-owned": 0,
+                },
+                "validation_gates": [
+                    {
+                        "name": "Tests",
+                        "status": "failed",
+                        "command": "uv run pytest",
+                        "triage_step": "fix tests",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    draft = build_release_notes_draft(
+        changelog_path=changelog,
+        release_evidence_path=evidence,
+        now_utc=DeterministicClock(start=datetime(2026, 5, 11, tzinfo=UTC)).now,
+    )
+
+    assert draft.status == "needs-validation-review"
+    assert "- Draft status: `needs-validation-review`" in draft.markdown
+    assert "| Tests | failed | `uv run pytest` | fix tests |" in draft.markdown
+
+
+def test_release_notes_draft_redacts_secret_shapes_from_all_user_inputs(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        """# Changelog
+
+## Unreleased
+
+### Fixed
+
+- Fixed release path token=changelog-secret at /var/folders/private/log.
+""",
+        encoding="utf-8",
+    )
+    evidence = tmp_path / "release-evidence.json"
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "validation_summary": {
+                    "passed": 1,
+                    "failed": 0,
+                    "skipped": 0,
+                    "host-owned": 0,
+                },
+                "validation_gates": [
+                    {
+                        "name": "Gate token=gate-secret",
+                        "status": "passed",
+                        "command": "uv run pytest token=command-secret",
+                        "triage_step": "inspect /var/folders/private/gate token=triage-secret",
+                    }
+                ],
+                "known_limitations": [
+                    "limitation Authorization: Bearer limitation-secret at /tmp/private/log"
+                ],
+                "claim_boundary": "claim secret=claim-secret at /var/folders/private/claim",
+                "live_provider_evidence": [
+                    {
+                        "provider": "runway",
+                        "status": "host-owned",
+                        "manifests": [],
+                        "reason": "skip token=provider-secret at /private/tmp/provider",
+                    }
+                ],
+                "extra_live_provider_evidence": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    issues = tmp_path / "issues.json"
+    issues.write_text(
+        json.dumps(
+            [
+                {
+                    "number": 1,
+                    "title": "issue token=issue-secret at /var/folders/private/issue",
+                    "url": "https://github.com/AbdelStark/worldforge/issues/1?token=url-secret",
+                    "labels": [{"name": "release token=label-secret"}],
+                    "closedAt": "2026-05-11T00:00:00Z",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    draft = build_release_notes_draft(
+        changelog_path=changelog,
+        release_evidence_path=evidence,
+        issues_json_path=issues,
+        known_caveats=("caveat token=caveat-secret at /var/folders/private/caveat",),
+        now_utc=DeterministicClock(start=datetime(2026, 5, 11, tzinfo=UTC)).now,
+    )
+
+    for secret in (
+        "changelog-secret",
+        "gate-secret",
+        "command-secret",
+        "triage-secret",
+        "limitation-secret",
+        "claim-secret",
+        "provider-secret",
+        "issue-secret",
+        "url-secret",
+        "label-secret",
+        "caveat-secret",
+    ):
+        assert secret not in draft.markdown
+    for host_path in ("/var/folders/private", "/tmp/private", "/private/tmp"):
+        assert host_path not in draft.markdown
+    assert "token=[redacted]" in draft.markdown
+    assert "secret=[redacted]" in draft.markdown
+    assert "Authorization: [redacted] [redacted]" in draft.markdown
+    assert "<host-local-path>" in draft.markdown
+    assert "[redacted-url]" in draft.markdown
+
+
 def test_release_notes_main_reports_missing_validation_evidence(
     tmp_path: Path,
     capsys,

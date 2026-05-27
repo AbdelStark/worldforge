@@ -11,6 +11,7 @@ import worldforge.providers.http_utils as http_utils
 from worldforge import (
     Action,
     ActionPolicyResult,
+    ActionScoreResult,
     BBox,
     Comparison,
     EmbeddingResult,
@@ -369,6 +370,38 @@ def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None
     )
     assert policy_result.action_candidates == [[Action.move_to(0.1, 0.5, 0.0)]]
     assert policy_result.to_dict()["embodiment_tag"] == "TEST"
+
+    cost_score = ActionScoreResult(
+        provider="score",
+        scores=[0.4, 0.1],
+        best_index=1,
+        lower_is_better=True,
+    )
+    assert cost_score.best_score == 0.1
+
+    utility_score = ActionScoreResult(
+        provider="score",
+        scores=[0.4, 0.1],
+        best_index=0,
+        lower_is_better=False,
+    )
+    assert utility_score.best_score == 0.4
+
+    with pytest.raises(WorldForgeError, match="lower_is_better direction"):
+        ActionScoreResult(
+            provider="score",
+            scores=[0.4, 0.1],
+            best_index=0,
+            lower_is_better=True,
+        )
+
+    with pytest.raises(WorldForgeError, match="lower_is_better direction"):
+        ActionScoreResult(
+            provider="score",
+            scores=[0.4, 0.1],
+            best_index=1,
+            lower_is_better=False,
+        )
 
     with pytest.raises(WorldForgeError, match="actions"):
         ActionPolicyResult(provider="policy", actions=[])

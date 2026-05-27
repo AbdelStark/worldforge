@@ -36,6 +36,7 @@ def test_build_run_manifest_records_value_free_runtime_evidence(
         input_fixture=input_fixture,
         result={"task_id": "task-1", "status": "succeeded"},
         artifact_paths={"downloaded_video": tmp_path / "video.mp4"},
+        artifact_root=tmp_path,
     ).to_dict()
 
     assert manifest["schema_version"] == 1
@@ -46,7 +47,7 @@ def test_build_run_manifest_records_value_free_runtime_evidence(
         {"task_id": "task-1", "status": "succeeded"}
     )
     assert manifest["event_count"] == 2
-    assert manifest["artifact_paths"] == {"downloaded_video": str(tmp_path / "video.mp4")}
+    assert manifest["artifact_paths"] == {"downloaded_video": "video.mp4"}
     assert manifest["env_summary"] == [
         {
             "name": "RUNWAYML_API_SECRET",
@@ -77,6 +78,20 @@ def test_write_run_manifest_validates_before_writing(tmp_path: Path) -> None:
 
     assert write_run_manifest(path, manifest) == path
     assert json.loads(path.read_text(encoding="utf-8"))["provider_profile"] == "cosmos"
+
+
+def test_validate_run_manifest_rejects_unknown_status() -> None:
+    manifest = build_run_manifest(
+        run_id="run-1",
+        provider_profile="cosmos",
+        capability="generate",
+        status="passed",
+        env_vars=("COSMOS_BASE_URL",),
+        command_argv=("smoke",),
+    ).to_dict()
+
+    with pytest.raises(WorldForgeError, match="status must be passed"):
+        validate_run_manifest({**manifest, "status": "success"})
 
 
 def test_run_manifest_preserves_safe_input_summary() -> None:
@@ -122,7 +137,7 @@ def test_run_manifest_rejects_secret_like_values_and_signed_urls(tmp_path: Path)
     ).to_dict()
     assert sanitized["artifact_paths"] == {"video": "https://example.test/video.mp4"}
 
-    with pytest.raises(WorldForgeError, match=r"secret-like metadata|unsafe URL"):
+    with pytest.raises(WorldForgeError, match=r"secret-like metadata|unsafe URL|normalized"):
         validate_run_manifest(
             {
                 **manifest,
@@ -130,6 +145,32 @@ def test_run_manifest_rejects_secret_like_values_and_signed_urls(tmp_path: Path)
                     "video": "https://example.test/video.mp4?X-Amz-Signature=secret"
                 },
             }
+        )
+
+
+def test_run_manifest_rejects_host_local_artifact_paths(tmp_path: Path) -> None:
+    manifest = build_run_manifest(
+        run_id="run-1",
+        provider_profile="runway",
+        capability="generate",
+        status="passed",
+        env_vars=("RUNWAYML_API_SECRET",),
+        command_argv=("smoke",),
+    ).to_dict()
+
+    with pytest.raises(WorldForgeError, match="absolute host paths"):
+        validate_run_manifest({**manifest, "artifact_paths": {"video": str(tmp_path / "v.mp4")}})
+
+    with pytest.raises(WorldForgeError, match="outside the run directory"):
+        build_run_manifest(
+            run_id="run-1",
+            provider_profile="runway",
+            capability="generate",
+            status="passed",
+            env_vars=("RUNWAYML_API_SECRET",),
+            command_argv=("smoke",),
+            artifact_paths={"video": tmp_path.parent / "v.mp4"},
+            artifact_root=tmp_path,
         )
 
 

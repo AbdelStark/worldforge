@@ -1067,6 +1067,57 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Filter to runs that include a safe artifact of this label or suffix.",
     )
 
+    runs_prune = runs_subparsers.add_parser(
+        "prune",
+        help="Plan or apply a retention policy against preserved run workspaces.",
+    )
+    runs_prune.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path(".worldforge"),
+        help="WorldForge workspace directory containing runs/.",
+    )
+    runs_prune.add_argument(
+        "--max-age-days",
+        type=int,
+        default=None,
+        help=(
+            "Delete runs older than this many days (default 30). "
+            "Pass 0 to override the 24h safety window."
+        ),
+    )
+    runs_prune.add_argument(
+        "--keep-latest",
+        type=int,
+        default=None,
+        help="Always retain the newest N runs irrespective of age (default 10).",
+    )
+    runs_prune.add_argument(
+        "--family",
+        action="append",
+        default=None,
+        help=(
+            "Restrict pruning to this manifest kind (eval, benchmark, flow, ...). "
+            "Repeat to add more."
+        ),
+    )
+    runs_prune.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually delete selected run workspaces. Default is dry-run.",
+    )
+    runs_prune.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format for the prune report.",
+    )
+    runs_prune.add_argument(
+        "--retention-profile",
+        type=Path,
+        help="Optional non-secret config profile; uses its runs_retention section as defaults.",
+    )
+
     runs_cleanup = runs_subparsers.add_parser("cleanup", help="Remove old preserved runs.")
     runs_cleanup.add_argument(
         "--workspace-dir",
@@ -1573,6 +1624,54 @@ def _cmd_runs(args: argparse.Namespace) -> int:
                 encoding="utf-8",
             )
             return 0
+        print(rendered, end="" if rendered.endswith("\n") else "\n")
+        return 0
+
+    if args.runs_command == "prune":
+        from worldforge.runs_prune import (
+            RunsRetentionPolicy,
+            apply_prune,
+            parse_runs_retention,
+            plan_prune,
+        )
+
+        max_age_days = args.max_age_days
+        keep_latest = args.keep_latest
+        families = tuple(args.family or ())
+        if args.retention_profile is not None:
+            try:
+                profile_payload = json.loads(
+                    args.retention_profile.expanduser().read_text(encoding="utf-8")
+                )
+            except (OSError, json.JSONDecodeError) as exc:
+                raise WorldForgeError(
+                    f"Failed to read retention profile {args.retention_profile}: {exc}"
+                ) from exc
+            retention = profile_payload.get("runs_retention")
+            if isinstance(retention, dict):
+                policy_from_profile = parse_runs_retention(retention)
+                # CLI flags override profile values regardless of argparse form
+                # (`--flag value` or `--flag=value`); the parser leaves explicit
+                # defaults at None when the user did not pass the flag at all.
+                if max_age_days is None:
+                    max_age_days = policy_from_profile.max_age_days
+                if keep_latest is None:
+                    keep_latest = policy_from_profile.keep_latest
+                if not families and policy_from_profile.families:
+                    families = policy_from_profile.families
+        if max_age_days is None:
+            max_age_days = 30
+        if keep_latest is None:
+            keep_latest = 10
+        policy = RunsRetentionPolicy(
+            max_age_days=max_age_days,
+            keep_latest=keep_latest,
+            families=families,
+        )
+        report = plan_prune(args.workspace_dir, policy=policy)
+        if args.apply:
+            report = apply_prune(report)
+        rendered = report.to_markdown() if args.format == "markdown" else report.to_json()
         print(rendered, end="" if rendered.endswith("\n") else "\n")
         return 0
 

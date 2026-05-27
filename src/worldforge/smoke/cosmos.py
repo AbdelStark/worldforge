@@ -107,6 +107,7 @@ def _write_manifest(
             },
             result=result,
             artifact_paths={"video": args.output},
+            artifact_root=args.run_manifest.parent,
         ),
     )
 

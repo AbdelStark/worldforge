@@ -244,11 +244,16 @@ class WorkflowTrace:
             raise WorldForgeError("WorkflowTrace steps must contain at least one step.")
         _validate_step_graph(normalized_steps)
         object.__setattr__(self, "steps", normalized_steps)
-        resolved_status = self.status or _derive_trace_status(normalized_steps)
+        derived_status = _derive_trace_status(normalized_steps)
+        resolved_status = self.status or derived_status
         resolved_status = _require_trace_text(resolved_status, name="WorkflowTrace status").lower()
         if resolved_status not in WORKFLOW_TRACE_STEP_STATUSES:
             options = ", ".join(WORKFLOW_TRACE_STEP_STATUSES)
             raise WorldForgeError(f"WorkflowTrace status must be one of: {options}.")
+        if resolved_status != derived_status:
+            raise WorldForgeError(
+                "WorkflowTrace status must match the status derived from its steps."
+            )
         object.__setattr__(self, "status", resolved_status)
         metadata = require_json_dict(dict(self.metadata), name="WorkflowTrace metadata")
         object.__setattr__(self, "metadata", _sanitize_trace_metadata(metadata))

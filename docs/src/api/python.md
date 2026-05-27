@@ -229,8 +229,9 @@ result = forge.score_actions(
 print(result.best_index, result.best_score)
 ```
 
-`ActionScoreResult` validates finite scores, exposes `best_index` and `best_score`, and includes
-`lower_is_better` so callers do not have to infer score direction from provider-specific docs.
+`ActionScoreResult` validates finite scores, exposes `best_index` and `best_score`, and requires
+`best_index` to match `lower_is_better` so callers do not have to infer score direction from
+provider-specific docs.
 Metadata must be JSON-native: dict keys are strings, numbers are finite, and object instances or
 tuples are rejected instead of being coerced silently.
 

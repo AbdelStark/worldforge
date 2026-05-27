@@ -171,7 +171,7 @@ boundaries.
 - Optional local adapter for `stable_worldmodel.policy.AutoCostModel`.
 - Exposes only `score=True`.
 - Validates `pixels`, `goal`, `action`, four-dimensional action candidates, finite cost outputs,
-  and `best_index`.
+  and direction-consistent `best_index`.
 
 `providers/cosmos.py` and `providers/runway.py`
 
@@ -250,7 +250,7 @@ Expanded:
 5. Result boundary
    - PredictionPayload updates world state only after validation
    - VideoClip validates media metadata and bytes/source paths
-   - ActionScoreResult validates finite scores and an in-range best_index
+   - ActionScoreResult validates finite scores and a direction-consistent best_index
    - ActionPolicyResult validates executable actions and JSON-compatible raw actions
    - ProviderError surfaces provider/runtime failures with context
    - unexpected protocol exceptions are wrapped as ProviderError after failure events are emitted
@@ -590,7 +590,7 @@ PredictionPayload
 ActionScoreResult
   provider: non-empty string
   scores: non-empty list of finite numbers
-  best_index: index into scores
+  best_index: direction-consistent index into scores
   best_score: scores[best_index]
   lower_is_better: bool
   metadata: JSON object
@@ -628,7 +628,7 @@ State invariants:
 - provider capability names are a closed set; unknown capability filters fail explicitly instead
   of silently excluding every provider
 - invalid public inputs fail explicitly instead of being silently coerced
-- score providers return finite scores and an in-range `best_index`
+- score providers return finite scores and a `best_index` that matches `lower_is_better`
 - policy providers return executable actions and preserve raw provider actions
 - remote media artifacts reject unsupported content types before returning a `VideoClip`
 - provider events sanitize log-facing targets, messages, and metadata before event sinks record
@@ -658,7 +658,7 @@ caller input error     -> fail before provider call when possible
 provider/runtime error -> ProviderError with provider-specific context
 state mutation         -> only after provider output validates
 remote artifact        -> content type and body validated before VideoClip is returned
-score output           -> finite scores + valid best_index before Plan is returned
+score output           -> finite scores + direction-consistent best_index before Plan is returned
 ```
 
 ## Observability

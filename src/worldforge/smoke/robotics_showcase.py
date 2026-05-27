@@ -27,6 +27,7 @@ from .leworldmodel_bridges import get_bridge
 
 DEFAULT_JSON_OUTPUT = Path("/tmp/worldforge-robotics-showcase/real-run.json")
 DEFAULT_RERUN_OUTPUT = Path("/tmp/worldforge-robotics-showcase/real-run.rrd")
+DEFAULT_TENSORBOARD_OUTPUT = Path(".worldforge/tensorboard")
 DEFAULT_BRIDGE = "pusht"
 
 
@@ -159,6 +160,41 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable the wrapper's default Rerun recording.",
     )
+    parser.add_argument(
+        "--tensorboard",
+        action="store_true",
+        help=(
+            "Write TensorBoard ``tfevents`` logs for the LeWorldModel checkpoint run "
+            "under .worldforge/tensorboard/ so the checkpoint provenance, scores, "
+            "latencies, and provider events can be inspected with "
+            "`tensorboard --logdir <path>`."
+        ),
+    )
+    parser.add_argument(
+        "--tensorboard-logdir",
+        type=Path,
+        default=None,
+        help="Override the default TensorBoard log directory for this run.",
+    )
+    parser.add_argument(
+        "--tensorboard-run-name",
+        default=None,
+        help=(
+            "Optional subdirectory name under --tensorboard-logdir for this run. "
+            "Defaults to a timestamped run name when omitted."
+        ),
+    )
+    parser.add_argument(
+        "--tensorboard-flush-secs",
+        type=int,
+        default=30,
+        help="Flush interval (seconds) for the TensorBoard SummaryWriter. Defaults to 30.",
+    )
+    parser.add_argument(
+        "--no-tensorboard",
+        action="store_true",
+        help="Disable the wrapper's default TensorBoard recording.",
+    )
     parser.add_argument("--json-only", action="store_true")
     parser.add_argument(
         "--tui",
@@ -279,6 +315,15 @@ def _forward_args(args: argparse.Namespace) -> list[str]:
             forwarded.extend(["--rerun-output", str(args.rerun_output)])
         elif args.rerun:
             forwarded.extend(["--rerun-output", str(DEFAULT_RERUN_OUTPUT)])
+    if not args.no_tensorboard and not args.health_only:
+        logdir = args.tensorboard_logdir
+        if logdir is None and args.tensorboard:
+            logdir = DEFAULT_TENSORBOARD_OUTPUT
+        if logdir is not None:
+            forwarded.extend(["--tensorboard-logdir", str(logdir)])
+            if args.tensorboard_run_name is not None:
+                forwarded.extend(["--tensorboard-run-name", args.tensorboard_run_name])
+            forwarded.extend(["--tensorboard-flush-secs", str(args.tensorboard_flush_secs)])
     if args.json_only:
         forwarded.append("--json-only")
     if args.health_only:

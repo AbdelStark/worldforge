@@ -338,7 +338,7 @@ def test_run_scenario_result_supports_exact_stable_snapshot(tmp_path: Path) -> N
         '  "final_step": 2,\n'
         '  "object_count": 1,\n'
         '  "scenario_id": "first-scenario",\n'
-        '  "schema_version": 1,\n'
+        '  "schema_version": 2,\n'
         '  "world_id": "<world-id>"\n'
         "}\n"
     )

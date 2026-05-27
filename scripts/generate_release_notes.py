@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
 DEFAULT_CHANGELOG = ROOT / "CHANGELOG.md"
 DEFAULT_RELEASE_EVIDENCE = ROOT / ".worldforge" / "release-evidence" / "release-evidence.json"
 DEFAULT_OUTPUT = ROOT / ".worldforge" / "release-notes" / "release-notes-draft.md"
@@ -25,7 +29,11 @@ GITHUB_ISSUE_EXPORT_COMMAND = (
     "> .worldforge/release-notes/closed-issues.json"
 )
 
-HOST_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes)/[^\s)`|]+")
+from worldforge.models import _redact_observable_text  # noqa: E402
+
+HOST_PATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes|var/folders|tmp)/[^\s)`|]+"
+)
 SIGNED_URL_PATTERN = re.compile(
     r"https?://[^\s)`|]*(?:X-Amz-Signature|sig=|signature=|token=|secret=)[^\s)`|]*",
     re.IGNORECASE,
@@ -442,12 +450,42 @@ def _label_names(raw_labels: Any) -> tuple[str, ...]:
 def _draft_status(release_evidence: ReleaseEvidenceRecord) -> str:
     if release_evidence.status != "present":
         return "needs-validation-evidence"
-    summary = (
-        release_evidence.payload.get("validation_summary", {}) if release_evidence.payload else {}
-    )
-    if isinstance(summary, dict) and int(summary.get("failed") or 0) > 0:
+    payload = release_evidence.payload or {}
+    if _validation_summary_failed_count(payload) > 0 or _failed_validation_gate_count(payload) > 0:
         return "needs-validation-review"
     return "ready-for-maintainer-review"
+
+
+def _validation_summary_failed_count(payload: dict[str, Any]) -> int:
+    summary = payload.get("validation_summary", {})
+    if not isinstance(summary, dict):
+        return 0
+    return _validation_summary_count(summary, "failed")
+
+
+def _failed_validation_gate_count(payload: dict[str, Any]) -> int:
+    gates = payload.get("validation_gates", [])
+    if not isinstance(gates, list):
+        return 0
+    failed = 0
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        raw_status = gate.get("status")
+        if isinstance(raw_status, str) and raw_status.strip().lower() == "failed":
+            failed += 1
+    return failed
+
+
+def _validation_summary_count(summary: dict[str, Any], name: str) -> int:
+    value = summary.get(name)
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value)
+    return 0
 
 
 def _release_evidence_warnings(release_evidence: ReleaseEvidenceRecord) -> list[str]:
@@ -554,7 +592,7 @@ def _render_validation(release_evidence: ReleaseEvidenceRecord) -> list[str]:
     lines.append(
         "- Summary: "
         + ", ".join(
-            f"`{name}`={int(summary.get(name) or 0)}"
+            f"`{name}`={_validation_summary_count(summary, name)}"
             for name in ("passed", "failed", "skipped", "host-owned")
         )
     )
@@ -676,9 +714,9 @@ def _release_known_limitations(release_evidence: ReleaseEvidenceRecord) -> tuple
 
 
 def _sanitize_text(value: str) -> str:
-    return HOST_PATH_PATTERN.sub(
-        "<host-local-path>", SIGNED_URL_PATTERN.sub("[redacted-url]", value)
-    )
+    sanitized = SIGNED_URL_PATTERN.sub("[redacted-url]", value)
+    sanitized = _redact_observable_text(sanitized)
+    return HOST_PATH_PATTERN.sub("<host-local-path>", sanitized)
 
 
 def _display_path(path: Path) -> str:

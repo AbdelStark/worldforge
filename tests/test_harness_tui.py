@@ -188,6 +188,262 @@ def test_robotics_showcase_app_exposes_rerun_open_shortcut(
     assert kwargs["start_new_session"] is True
 
 
+def _capture_notifications(
+    monkeypatch: pytest.MonkeyPatch,
+    tui_module: object,
+) -> list[tuple[str, str | None]]:
+    notifications: list[tuple[str, str | None]] = []
+    original_notify = tui_module.RoboticsShowcaseApp.notify  # type: ignore[attr-defined]
+
+    def capturing_notify(self, message: str, **kwargs: object) -> None:
+        severity = kwargs.get("severity") if isinstance(kwargs.get("severity"), str) else None
+        notifications.append((message, severity))  # type: ignore[arg-type]
+        original_notify(self, message, **kwargs)
+
+    monkeypatch.setattr(tui_module.RoboticsShowcaseApp, "notify", capturing_notify)  # type: ignore[attr-defined]
+    return notifications
+
+
+def test_robotics_showcase_app_exposes_tensorboard_open_shortcut(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("textual")
+
+    import worldforge.harness.tui as tui
+
+    summary = _robotics_summary()
+    tensorboard_dir = tmp_path / "tb" / "unit-run"
+    tensorboard_dir.mkdir(parents=True)
+    (tensorboard_dir / "events.out.tfevents.placeholder").write_bytes(b"events")
+    summary["tensorboard"] = {
+        "log_dir": str(tensorboard_dir),
+        "run_name": "unit-run",
+        "flush_secs": 30,
+        "events_written": True,
+    }
+    launched: dict[str, object] = {}
+
+    def fake_popen(command: list[str], **kwargs: object) -> object:
+        launched["command"] = command
+        launched["kwargs"] = dict(kwargs)
+        for handle in (kwargs.get("stdout"), kwargs.get("stderr")):
+            if hasattr(handle, "write"):
+                handle.write(b"")
+        return object()
+
+    monkeypatch.setattr(tui.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(tui, "_tensorboard_port_open", lambda *args, **kwargs: True)
+    monkeypatch.setattr(tui, "ROBOTICS_TENSORBOARD_POLL_INTERVAL_S", 0.01)
+    browser_opens: list[str] = []
+    monkeypatch.setattr(
+        tui.webbrowser,
+        "open",
+        lambda url, *args, **kwargs: browser_opens.append(url) or True,
+    )
+    notifications = _capture_notifications(monkeypatch, tui)
+
+    async def scenario() -> None:
+        app = tui.RoboticsShowcaseApp(
+            summary=summary,
+            summary_path=tmp_path / "summary.json",
+            stage_delay=0.0,
+            animate_arm=False,
+        )
+        async with app.run_test(size=(150, 60)) as pilot:
+            await pilot.pause()
+            assert app.query_one(tui.RoboticsTensorBoardPane) is not None
+            await pilot.press("t")
+            await pilot.pause(delay=0.2)
+
+    asyncio.run(scenario())
+
+    assert launched["command"] == [
+        "uvx",
+        "--from",
+        "tensorboard>=2.16,<3",
+        "--with",
+        "setuptools<81",
+        "tensorboard",
+        "--logdir",
+        str(tensorboard_dir),
+        "--port",
+        "6006",
+    ]
+    kwargs = launched["kwargs"]
+    assert isinstance(kwargs, dict)
+    stdout_path = tensorboard_dir / tui.ROBOTICS_TENSORBOARD_STDOUT_LOG
+    stderr_path = tensorboard_dir / tui.ROBOTICS_TENSORBOARD_STDERR_LOG
+    assert kwargs["stdout"] is not tui.subprocess.DEVNULL
+    assert kwargs["stderr"] is not tui.subprocess.DEVNULL
+    assert getattr(kwargs["stdout"], "name", "") == str(stdout_path)
+    assert getattr(kwargs["stderr"], "name", "") == str(stderr_path)
+    assert kwargs["start_new_session"] is True
+    assert stdout_path.exists()
+    assert stderr_path.exists()
+    assert browser_opens == ["http://localhost:6006/"]
+    assert any(
+        severity == "information" and "Waiting for TensorBoard" in message
+        for message, severity in notifications
+    )
+    assert any(
+        severity == "information" and message == "Opening http://localhost:6006/"
+        for message, severity in notifications
+    )
+
+
+def test_robotics_showcase_app_tensorboard_shortcut_warns_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("textual")
+
+    import worldforge.harness.tui as tui
+
+    summary = _robotics_summary()
+    summary.pop("tensorboard", None)
+
+    def fake_popen(command: list[str], **kwargs: object) -> object:
+        raise AssertionError("subprocess should not be launched when TensorBoard is disabled.")
+
+    def fake_open(url: str, *args: object, **kwargs: object) -> bool:
+        raise AssertionError("webbrowser.open should not be called when TensorBoard is disabled.")
+
+    def fake_port_open(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("port poller should not run when TensorBoard is disabled.")
+
+    monkeypatch.setattr(tui.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(tui.webbrowser, "open", fake_open)
+    monkeypatch.setattr(tui, "_tensorboard_port_open", fake_port_open)
+
+    notifications = _capture_notifications(monkeypatch, tui)
+
+    async def scenario() -> None:
+        app = tui.RoboticsShowcaseApp(
+            summary=summary,
+            summary_path=tmp_path / "summary.json",
+            stage_delay=0.0,
+            animate_arm=False,
+        )
+        async with app.run_test(size=(150, 52)) as pilot:
+            await pilot.pause()
+            from textual.css.query import NoMatches
+
+            with pytest.raises(NoMatches):
+                app.query_one(tui.RoboticsTensorBoardPane)
+            await pilot.press("t")
+            await pilot.pause()
+
+    asyncio.run(scenario())
+
+    assert any(
+        severity == "warning" and "TensorBoard log directory" in message
+        for message, severity in notifications
+    )
+
+
+def test_robotics_showcase_app_tensorboard_shortcut_notifies_when_browser_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("textual")
+
+    import worldforge.harness.tui as tui
+
+    summary = _robotics_summary()
+    tensorboard_dir = tmp_path / "tb" / "unit-run"
+    tensorboard_dir.mkdir(parents=True)
+    summary["tensorboard"] = {
+        "log_dir": str(tensorboard_dir),
+        "run_name": "unit-run",
+        "flush_secs": 30,
+        "events_written": True,
+    }
+
+    monkeypatch.setattr(
+        tui.subprocess,
+        "Popen",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(tui, "_tensorboard_port_open", lambda *args, **kwargs: True)
+    monkeypatch.setattr(tui, "ROBOTICS_TENSORBOARD_POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(tui.webbrowser, "open", lambda *args, **kwargs: False)
+    notifications = _capture_notifications(monkeypatch, tui)
+
+    async def scenario() -> None:
+        app = tui.RoboticsShowcaseApp(
+            summary=summary,
+            summary_path=tmp_path / "summary.json",
+            stage_delay=0.0,
+            animate_arm=False,
+        )
+        async with app.run_test(size=(150, 60)) as pilot:
+            await pilot.pause()
+            await pilot.press("t")
+            await pilot.pause(delay=0.2)
+
+    asyncio.run(scenario())
+
+    assert any(
+        severity == "warning" and "Visit http://localhost:6006/" in message
+        for message, severity in notifications
+    )
+
+
+def test_robotics_showcase_app_tensorboard_shortcut_reports_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("textual")
+
+    import worldforge.harness.tui as tui
+
+    summary = _robotics_summary()
+    tensorboard_dir = tmp_path / "tb" / "unit-run"
+    tensorboard_dir.mkdir(parents=True)
+    summary["tensorboard"] = {
+        "log_dir": str(tensorboard_dir),
+        "run_name": "unit-run",
+        "flush_secs": 30,
+        "events_written": True,
+    }
+
+    monkeypatch.setattr(
+        tui.subprocess,
+        "Popen",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(tui, "_tensorboard_port_open", lambda *args, **kwargs: False)
+    monkeypatch.setattr(tui, "ROBOTICS_TENSORBOARD_READY_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(tui, "ROBOTICS_TENSORBOARD_POLL_INTERVAL_S", 0.01)
+
+    def fake_open(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("webbrowser.open should not run when TensorBoard never starts.")
+
+    monkeypatch.setattr(tui.webbrowser, "open", fake_open)
+    notifications = _capture_notifications(monkeypatch, tui)
+
+    async def scenario() -> None:
+        app = tui.RoboticsShowcaseApp(
+            summary=summary,
+            summary_path=tmp_path / "summary.json",
+            stage_delay=0.0,
+            animate_arm=False,
+        )
+        async with app.run_test(size=(150, 60)) as pilot:
+            await pilot.pause()
+            await pilot.press("t")
+            await pilot.pause(delay=0.25)
+
+    asyncio.run(scenario())
+
+    stderr_path = tensorboard_dir / tui.ROBOTICS_TENSORBOARD_STDERR_LOG
+    assert any(
+        severity == "error" and "did not come up" in message and str(stderr_path) in message
+        for message, severity in notifications
+    )
+
+
 def test_robotics_showcase_help_overlay_explains_tabletop_replay(tmp_path) -> None:
     pytest.importorskip("textual")
 
