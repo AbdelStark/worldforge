@@ -1,0 +1,138 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "worldforge-ai"
+version = "0.5.0"
+description = "Python integration layer for testable physical-AI world-model workflows, with capability contracts, planning, evaluation, benchmarks, diagnostics, local state, and CLI tools."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "WorldForge contributors" }]
+maintainers = [{ name = "Abdel (@AbdelStark)" }]
+dependencies = [
+    "httpx>=0.27,<1.0",
+]
+keywords = [
+    "world-models",
+    "physical-ai",
+    "robotics",
+    "simulation",
+    "planning",
+    "evaluation",
+    "ai-framework",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Repository = "https://github.com/AbdelStark/worldforge"
+Documentation = "https://abdelstark.github.io/worldforge/"
+Issues = "https://github.com/AbdelStark/worldforge/issues"
+Changelog = "https://github.com/AbdelStark/worldforge/blob/main/CHANGELOG.md"
+
+[project.scripts]
+worldforge = "worldforge.cli:main"
+worldforge-harness = "worldforge.harness.cli:main"
+worldforge-open-tensorboard = "worldforge.harness.tensorboard_launcher:main"
+worldforge-demo-leworldmodel = "worldforge.demos.leworldmodel_e2e:main"
+worldforge-demo-lerobot = "worldforge.demos.lerobot_e2e:main"
+worldforge-demo-rerun = "worldforge.demos.rerun_showcase:main"
+worldforge-smoke-cosmos = "worldforge.smoke.cosmos:main"
+worldforge-smoke-cosmos-policy = "worldforge.smoke.cosmos_policy:main"
+worldforge-smoke-runway = "worldforge.smoke.runway:main"
+worldforge-build-leworldmodel-checkpoint = "worldforge.smoke.leworldmodel_checkpoint:main"
+worldforge-smoke-leworldmodel = "worldforge.smoke.leworldmodel:main"
+worldforge-smoke-jepa-wms = "worldforge.smoke.jepa_wms:main"
+worldforge-smoke-lerobot-leworldmodel = "worldforge.smoke.lerobot_leworldmodel:main"
+worldforge-robotics-showcase = "worldforge.smoke.robotics_showcase:main"
+lewm-real = "worldforge.smoke.leworldmodel:main"
+lewm-lerobot-real = "worldforge.smoke.lerobot_leworldmodel:main"
+
+[project.entry-points.pytest11]
+worldforge-runtime-profiles = "worldforge.testing.pytest_plugin"
+
+[project.optional-dependencies]
+harness = [
+    "textual>=8.2,<9",
+]
+rerun = [
+    "rerun-sdk>=0.24,<0.32",
+]
+tensorboard = [
+    "tensorboard>=2.16,<3",
+]
+
+[dependency-groups]
+dev = [
+    "mkdocs-material>=9.6,<10",
+    "pip-audit>=2.9,<3",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.0",
+    "ruff>=0.8",
+]
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/worldforge"]
+only-packages = true
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/worldforge/providers/runtime_manifests" = "worldforge/providers/runtime_manifests"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/examples",
+    "/docs",
+    "/scripts",
+    "/.env.example",
+    "/AGENTS.md",
+    "/CHANGELOG.md",
+    "/CITATION.cff",
+    "/CODE_OF_CONDUCT.md",
+    "/README.md",
+    "/CONTRIBUTING.md",
+    "/SUPPORT.md",
+    "/SECURITY.md",
+    "/MAINTAINERS.md",
+    "/LICENSE",
+    "/mkdocs.yml",
+]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+testpaths = ["tests"]
+xfail_strict = true
+markers = [
+    "live: requires live provider/runtime access and is skipped unless --run-live is passed",
+    "gpu: requires GPU runtime access and is skipped unless --run-gpu is passed",
+    "network: may make network calls and is skipped unless --run-network is passed",
+    "robotics: requires robotics or simulator runtime and is skipped unless --run-robotics is passed",
+    "credentialed: requires credentials or private endpoints and is skipped unless --run-credentialed is passed",
+    "provider_profile(name): requires provider-specific live runtime environment",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+extend-select = ["C4", "N806", "PERF", "PIE", "PLW1510", "PT013", "PT018", "RET", "RUF", "SIM"]

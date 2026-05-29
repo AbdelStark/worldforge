@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "provider": "lerobot",
+  "capabilities": ["policy"],
+  "optional_dependencies": ["lerobot"],
+  "required_env_vars": ["LEROBOT_POLICY_PATH", "LEROBOT_POLICY"],
+  "optional_env_vars": ["LEROBOT_POLICY_TYPE", "LEROBOT_DEVICE", "LEROBOT_CACHE_DIR", "LEROBOT_EMBODIMENT_TAG"],
+  "default_model": "host-selected Hugging Face repo id or local checkpoint directory",
+  "device_support": ["cpu", "cuda", "mps"],
+  "host_owned_artifacts": ["policy checkpoint", "policy cache", "embodiment action translator"],
+  "minimum_smoke_command": "scripts/smoke_lerobot_policy.py --policy-path <repo-or-checkpoint> --device cpu",
+  "expected_success_signal": "select_actions() returns validated WorldForge Action candidates",
+  "setup_hint": "install LeRobot in the host runtime and provide an action_translator for the embodiment",
+  "docs_path": "docs/src/providers/lerobot.md"
+}

@@ -1,0 +1,1032 @@
+"""NVIDIA Cosmos-Policy server provider."""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import math
+import struct
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from time import perf_counter
+
+import httpx
+
+from worldforge.models import (
+    Action,
+    ActionPolicyResult,
+    JSONDict,
+    ProviderCapabilities,
+    ProviderEvent,
+    ProviderHealth,
+    ProviderRequestPolicy,
+    WorldForgeError,
+    WorldStateError,
+    _redact_observable_text,
+    require_finite_number,
+    require_json_dict,
+    require_positive_int,
+)
+
+from ._config import (
+    ProviderConfigSummary,
+    config_source,
+    env_value,
+    optional_bool,
+    optional_non_empty,
+)
+from ._policy import json_object, normalize_policy_action_candidates
+from .base import ProviderError, ProviderProfileSpec, RemoteProvider, _field_summary
+from .http_utils import request_json_with_policy, validate_remote_base_url
+
+COSMOS_POLICY_BASE_URL_ENV_VAR = "COSMOS_POLICY_BASE_URL"
+COSMOS_POLICY_API_TOKEN_ENV_VAR = "COSMOS_POLICY_API_TOKEN"
+COSMOS_POLICY_TIMEOUT_SECONDS_ENV_VAR = "COSMOS_POLICY_TIMEOUT_SECONDS"
+COSMOS_POLICY_EMBODIMENT_TAG_ENV_VAR = "COSMOS_POLICY_EMBODIMENT_TAG"
+COSMOS_POLICY_MODEL_ENV_VAR = "COSMOS_POLICY_MODEL"
+COSMOS_POLICY_RETURN_ALL_ENV_VAR = "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS"
+COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR = "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL"
+COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR = "COSMOS_POLICY_ALLOWED_HOSTS"
+DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS = 600.0
+DEFAULT_COSMOS_POLICY_ACTION_DIM = 14
+DEFAULT_COSMOS_POLICY_EMBODIMENT_TAG = "aloha"
+DEFAULT_COSMOS_POLICY_MODEL = "nvidia/Cosmos-Policy-ALOHA-Predict2-2B"
+
+ActionTranslator = Callable[
+    [object, JSONDict, JSONDict],
+    Sequence[Action] | Sequence[Sequence[Action]],
+]
+
+_OBSERVATION_FIELDS = (
+    "primary_image",
+    "left_wrist_image",
+    "right_wrist_image",
+    "proprio",
+)
+_JSON_NUMPY_DATA_FIELD = "__numpy__"
+_MAX_JSON_NUMPY_ACTION_ELEMENTS = 1024
+_PREDICTION_SUMMARY_MAX_DEPTH = 8
+_PREDICTION_SUMMARY_MAX_KEYS = 32
+
+
+@dataclass(slots=True, frozen=True)
+class CosmosPolicyResponse:
+    """Validated policy response from a Cosmos-Policy `/act` server."""
+
+    actions: list[list[float]]
+    value_prediction: float | None = None
+    all_actions: list[list[list[float]]] = field(default_factory=list)
+    all_value_predictions: list[float] = field(default_factory=list)
+    future_prediction_summary: JSONDict = field(default_factory=dict)
+    provider_info: JSONDict = field(default_factory=dict)
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: JSONDict,
+        *,
+        provider_name: str,
+        expected_action_dim: int | None,
+    ) -> CosmosPolicyResponse:
+        if not isinstance(payload, dict):
+            raise ProviderError(
+                f"Provider '{provider_name}' policy response must be a JSON object."
+            )
+        actions = _normalize_action_matrix(
+            payload.get("actions"),
+            name=f"Provider '{provider_name}' policy response field 'actions'",
+            expected_action_dim=expected_action_dim,
+        )
+        all_actions = _normalize_all_actions(
+            payload.get("all_actions"),
+            provider_name=provider_name,
+            expected_action_dim=expected_action_dim,
+        )
+        value_prediction = _optional_float(
+            payload.get("value_prediction"),
+            name=f"Provider '{provider_name}' policy response field 'value_prediction'",
+        )
+        all_value_predictions_present = "all_value_predictions" in payload
+        all_value_predictions = _optional_float_list(
+            payload.get("all_value_predictions"),
+            name=f"Provider '{provider_name}' policy response field 'all_value_predictions'",
+        )
+        if all_value_predictions_present:
+            if all_actions and len(all_value_predictions) != len(all_actions):
+                raise ProviderError(
+                    f"Provider '{provider_name}' policy response field 'all_value_predictions' "
+                    f"must contain {len(all_actions)} value(s) to match 'all_actions'; "
+                    f"got {len(all_value_predictions)}."
+                )
+            if not all_actions and len(all_value_predictions) != 1:
+                raise ProviderError(
+                    f"Provider '{provider_name}' policy response field 'all_value_predictions' "
+                    "must contain exactly 1 value when 'all_actions' is absent."
+                )
+        future_prediction_summary = _future_prediction_summary(payload)
+        provider_info = {
+            "value_prediction": value_prediction,
+            "all_value_predictions": all_value_predictions,
+            "future_prediction_summary": future_prediction_summary,
+        }
+        if "all_actions_by_depth" in payload:
+            provider_info["all_actions_by_depth_shape"] = _bounded_shape(
+                payload["all_actions_by_depth"]
+            )
+        if "all_value_predictions_by_depth" in payload:
+            provider_info["all_value_predictions_by_depth"] = _optional_nested_float_lists(
+                payload["all_value_predictions_by_depth"],
+                name=(
+                    f"Provider '{provider_name}' policy response field "
+                    "'all_value_predictions_by_depth'"
+                ),
+            )
+        return cls(
+            actions=actions,
+            value_prediction=value_prediction,
+            all_actions=all_actions,
+            all_value_predictions=all_value_predictions,
+            future_prediction_summary=future_prediction_summary,
+            provider_info=json_object(provider_info, name="Cosmos-Policy provider_info"),
+        )
+
+
+class CosmosPolicyProvider(RemoteProvider):
+    """HTTP adapter for NVIDIA Cosmos-Policy ALOHA policy servers.
+
+    Cosmos-Policy is modeled as an embodied policy server. WorldForge sends an
+    ALOHA-shaped observation and task description to `/act`, preserves validated
+    raw action chunks, and requires a host-supplied action translator before
+    returning executable WorldForge actions.
+    """
+
+    env_var = COSMOS_POLICY_BASE_URL_ENV_VAR
+
+    def __init__(
+        self,
+        name: str = "cosmos-policy",
+        *,
+        base_url: str | None = None,
+        api_token: str | None = None,
+        timeout_seconds: float | str | None = None,
+        embodiment_tag: str | None = None,
+        model: str | None = None,
+        expected_action_dim: int | None = DEFAULT_COSMOS_POLICY_ACTION_DIM,
+        return_all_query_results: bool | str | None = None,
+        allow_local_base_url: bool | str | None = None,
+        allowed_hosts: Sequence[str] | str | None = None,
+        action_translator: ActionTranslator | None = None,
+        request_policy: ProviderRequestPolicy | None = None,
+        event_handler: Callable[[ProviderEvent], None] | None = None,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        if action_translator is not None and not callable(action_translator):
+            raise WorldForgeError("Cosmos-Policy action_translator must be callable.")
+        if expected_action_dim is not None:
+            expected_action_dim = require_positive_int(
+                expected_action_dim,
+                name="Cosmos-Policy expected_action_dim",
+            )
+        self._base_url_direct = base_url is not None
+        self._base_url = optional_non_empty(
+            base_url if base_url is not None else env_value(COSMOS_POLICY_BASE_URL_ENV_VAR),
+            name="Cosmos-Policy base_url",
+        )
+        self._api_token_direct = api_token is not None
+        self.api_token = optional_non_empty(
+            api_token if api_token is not None else env_value(COSMOS_POLICY_API_TOKEN_ENV_VAR),
+            name="Cosmos-Policy api_token",
+        )
+        self._timeout_direct = timeout_seconds is not None
+        self.timeout_seconds = _optional_positive_float(
+            timeout_seconds
+            if timeout_seconds is not None
+            else env_value(COSMOS_POLICY_TIMEOUT_SECONDS_ENV_VAR),
+            name="Cosmos-Policy timeout_seconds",
+        )
+        if self.timeout_seconds is None:
+            self.timeout_seconds = DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS
+        self._embodiment_direct = embodiment_tag is not None
+        self.embodiment_tag = optional_non_empty(
+            embodiment_tag
+            if embodiment_tag is not None
+            else env_value(COSMOS_POLICY_EMBODIMENT_TAG_ENV_VAR)
+            or DEFAULT_COSMOS_POLICY_EMBODIMENT_TAG,
+            name="Cosmos-Policy embodiment_tag",
+        )
+        self._model_direct = model is not None
+        self.model = optional_non_empty(
+            model
+            if model is not None
+            else env_value(COSMOS_POLICY_MODEL_ENV_VAR) or DEFAULT_COSMOS_POLICY_MODEL,
+            name="Cosmos-Policy model",
+        )
+        self.return_all_query_results = optional_bool(
+            return_all_query_results
+            if return_all_query_results is not None
+            else env_value(COSMOS_POLICY_RETURN_ALL_ENV_VAR),
+            name="Cosmos-Policy return_all_query_results",
+        )
+        self._return_all_query_results_direct = return_all_query_results is not None
+        self._allow_local_base_url_direct = allow_local_base_url is not None
+        parsed_allow_local = optional_bool(
+            allow_local_base_url
+            if allow_local_base_url is not None
+            else env_value(COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR),
+            name="Cosmos-Policy allow_local_base_url",
+        )
+        self.allow_local_base_url = bool(parsed_allow_local)
+        self._allowed_hosts_direct = allowed_hosts is not None
+        self.allowed_hosts = _optional_host_patterns(
+            allowed_hosts
+            if allowed_hosts is not None
+            else env_value(COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR),
+            name="Cosmos-Policy allowed_hosts",
+        )
+        self.expected_action_dim = expected_action_dim
+        self._action_translator = action_translator
+        self._transport = transport
+        supports_policy = self._action_translator is not None
+
+        resolved_request_policy = request_policy or ProviderRequestPolicy.remote_defaults(
+            request_timeout_seconds=self.timeout_seconds
+        )
+        super().__init__(
+            name=name,
+            capabilities=ProviderCapabilities(
+                predict=False,
+                generate=False,
+                reason=False,
+                embed=False,
+                plan=False,
+                transfer=False,
+                score=False,
+                policy=supports_policy,
+            ),
+            profile=ProviderProfileSpec(
+                description=(
+                    "NVIDIA Cosmos-Policy server adapter for selecting embodied ALOHA "
+                    "action chunks."
+                ),
+                package="worldforge + host-supplied Cosmos-Policy server",
+                implementation_status="beta",
+                requires_credentials=False,
+                required_env_vars=(COSMOS_POLICY_BASE_URL_ENV_VAR,),
+                supported_modalities=("images", "state", "language", "actions"),
+                artifact_types=("action_policy",),
+                notes=(
+                    "Targets the Cosmos-Policy ALOHA `/act` server contract.",
+                    "Does not import cosmos_policy, torch, CUDA, Docker, or robot runtime "
+                    "dependencies.",
+                    "Requires a host-supplied action_translator to map raw 14D bimanual "
+                    "actions to WorldForge Action objects.",
+                    "Rejects localhost, private, and link-local base URLs during URL preflight "
+                    "unless "
+                    f"{COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR}=1 is explicitly set.",
+                    f"Supports {COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR} for deployments that require "
+                    "an explicit host allowlist.",
+                    "DNS checks are a best-effort preflight, not a pinned-connection or network "
+                    "egress control.",
+                    "Cosmos-Policy is an embodied policy/planning runtime, not the existing "
+                    "Cosmos media-generation NIM adapter.",
+                ),
+                default_model=self.model,
+                supported_models=(self.model,) if self.model else (),
+            ),
+            request_policy=resolved_request_policy,
+            event_handler=event_handler,
+        )
+
+    def configured(self) -> bool:
+        return self._resolved_base_url() is not None
+
+    def config_summary(self) -> ProviderConfigSummary:
+        return ProviderConfigSummary(
+            provider=self.name,
+            configured=self.configured(),
+            fields=(
+                _field_summary(
+                    COSMOS_POLICY_BASE_URL_ENV_VAR,
+                    required=True,
+                    source=config_source(
+                        COSMOS_POLICY_BASE_URL_ENV_VAR,
+                        direct=self._base_url_direct,
+                    ),
+                    present=self._resolved_base_url() is not None,
+                ),
+                _field_summary(
+                    COSMOS_POLICY_API_TOKEN_ENV_VAR,
+                    required=False,
+                    secret=True,
+                    source=config_source(
+                        COSMOS_POLICY_API_TOKEN_ENV_VAR,
+                        direct=self._api_token_direct,
+                    ),
+                    present=self.api_token is not None,
+                ),
+                _field_summary(
+                    COSMOS_POLICY_TIMEOUT_SECONDS_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        COSMOS_POLICY_TIMEOUT_SECONDS_ENV_VAR,
+                        direct=self._timeout_direct,
+                        default=not self._timeout_direct
+                        and env_value(COSMOS_POLICY_TIMEOUT_SECONDS_ENV_VAR) is None,
+                    ),
+                    present=self._timeout_direct
+                    or env_value(COSMOS_POLICY_TIMEOUT_SECONDS_ENV_VAR) is not None,
+                ),
+                _field_summary(
+                    COSMOS_POLICY_EMBODIMENT_TAG_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        COSMOS_POLICY_EMBODIMENT_TAG_ENV_VAR,
+                        direct=self._embodiment_direct,
+                        default=not self._embodiment_direct
+                        and env_value(COSMOS_POLICY_EMBODIMENT_TAG_ENV_VAR) is None,
+                    ),
+                    present=self.embodiment_tag is not None,
+                ),
+                _field_summary(
+                    COSMOS_POLICY_MODEL_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        COSMOS_POLICY_MODEL_ENV_VAR,
+                        direct=self._model_direct,
+                        default=not self._model_direct
+                        and env_value(COSMOS_POLICY_MODEL_ENV_VAR) is None,
+                    ),
+                    present=self.model is not None,
+                ),
+                _field_summary(
+                    COSMOS_POLICY_RETURN_ALL_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        COSMOS_POLICY_RETURN_ALL_ENV_VAR,
+                        direct=self._return_all_query_results_direct,
+                    ),
+                    present=self._return_all_query_results_direct
+                    or env_value(COSMOS_POLICY_RETURN_ALL_ENV_VAR) is not None,
+                ),
+                _field_summary(
+                    COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR,
+                        direct=self._allow_local_base_url_direct,
+                        default=not self._allow_local_base_url_direct
+                        and env_value(COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR) is None,
+                    ),
+                    present=self._allow_local_base_url_direct
+                    or env_value(COSMOS_POLICY_ALLOW_LOCAL_BASE_URL_ENV_VAR) is not None,
+                ),
+                _field_summary(
+                    COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR,
+                    required=False,
+                    source=config_source(
+                        COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR,
+                        direct=self._allowed_hosts_direct,
+                    ),
+                    present=self._allowed_hosts_direct
+                    or env_value(COSMOS_POLICY_ALLOWED_HOSTS_ENV_VAR) is not None,
+                ),
+            ),
+        )
+
+    def _resolved_base_url(self) -> str | None:
+        return self._base_url
+
+    def _headers(self) -> dict[str, str]:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        if self.api_token:
+            headers["Authorization"] = f"Bearer {self.api_token}"
+        return headers
+
+    def _client(self) -> httpx.Client:
+        base_url = self._resolved_base_url()
+        if not base_url:
+            raise ProviderError(
+                f"Provider '{self.name}' is unavailable: missing {COSMOS_POLICY_BASE_URL_ENV_VAR}."
+            )
+        validated_base_url = validate_remote_base_url(
+            base_url,
+            provider_name=self.name,
+            env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
+            allow_local_network=self.allow_local_base_url,
+            allowed_hosts=self.allowed_hosts,
+        )
+        return httpx.Client(
+            base_url=validated_base_url,
+            headers=self._headers(),
+            transport=self._transport,
+        )
+
+    def health(self) -> ProviderHealth:
+        started = perf_counter()
+        if not self.configured():
+            return self._health(
+                started,
+                f"missing {COSMOS_POLICY_BASE_URL_ENV_VAR}",
+                healthy=False,
+            )
+        base_url = self._resolved_base_url()
+        if base_url is not None:
+            try:
+                validate_remote_base_url(
+                    base_url,
+                    provider_name=self.name,
+                    env_var=COSMOS_POLICY_BASE_URL_ENV_VAR,
+                    allow_local_network=self.allow_local_base_url,
+                    allowed_hosts=self.allowed_hosts,
+                )
+            except ProviderError as exc:
+                return self._health(started, str(exc), healthy=False)
+        return self._health(
+            started,
+            "configured for Cosmos-Policy /act; upstream exposes no non-mutating health endpoint",
+            healthy=True,
+        )
+
+    def _validate_info(self, info: JSONDict) -> tuple[JSONDict, str, int | None]:
+        normalized_info = require_json_dict(info, name="Cosmos-Policy policy info")
+        observation = normalized_info.get("observation")
+        if not isinstance(observation, dict) or not observation:
+            raise WorldForgeError(
+                "Cosmos-Policy policy info.observation must be a non-empty JSON object."
+            )
+        for field_name in _OBSERVATION_FIELDS:
+            if field_name not in observation:
+                raise WorldForgeError(
+                    f"Cosmos-Policy ALOHA observation must include '{field_name}'."
+                )
+        if "task_description" in normalized_info:
+            task_description = normalized_info["task_description"]
+        else:
+            task_description = observation.get("task_description")
+        if not isinstance(task_description, str) or not task_description.strip():
+            raise WorldForgeError(
+                "Cosmos-Policy policy info must include a non-empty task_description."
+            )
+        embodiment_tag_value = normalized_info.get("embodiment_tag")
+        if embodiment_tag_value is not None and (
+            not isinstance(embodiment_tag_value, str) or not embodiment_tag_value.strip()
+        ):
+            raise WorldForgeError(
+                "Cosmos-Policy policy info.embodiment_tag must be a non-empty string."
+            )
+        options = normalized_info.get("options")
+        if options is not None and not isinstance(options, dict):
+            raise WorldForgeError("Cosmos-Policy policy info.options must be a JSON object.")
+        observation_action_horizon_present = "action_horizon" in observation
+        options_action_horizon_present = isinstance(options, dict) and "action_horizon" in options
+        payload: JSONDict = dict(observation)
+        payload["task_description"] = task_description.strip()
+        if options:
+            for key, value in options.items():
+                if key in payload and key != "action_horizon" and payload[key] != value:
+                    raise WorldForgeError(
+                        f"Cosmos-Policy option '{key}' conflicts with the observation payload."
+                    )
+                payload[key] = value
+        if "return_all_query_results" in normalized_info:
+            return_all = normalized_info["return_all_query_results"]
+            if not isinstance(return_all, bool):
+                raise WorldForgeError("Cosmos-Policy return_all_query_results must be a boolean.")
+            payload["return_all_query_results"] = return_all
+        elif self.return_all_query_results is not None:
+            payload["return_all_query_results"] = self.return_all_query_results
+
+        action_horizon_info_present = "action_horizon" in normalized_info
+        action_horizon_payload_present = "action_horizon" in payload
+        payload_action_horizon_source = (
+            "options.action_horizon"
+            if options_action_horizon_present
+            else "observation.action_horizon"
+        )
+        if action_horizon_info_present:
+            action_horizon = _require_action_horizon(
+                normalized_info["action_horizon"],
+                source="info.action_horizon",
+            )
+            if action_horizon_payload_present:
+                payload_action_horizon = _require_action_horizon(
+                    payload["action_horizon"],
+                    source=payload_action_horizon_source,
+                )
+                if payload_action_horizon != action_horizon:
+                    raise WorldForgeError(
+                        "Cosmos-Policy option 'action_horizon' conflicts with info.action_horizon."
+                    )
+        elif action_horizon_payload_present:
+            action_horizon = _require_action_horizon(
+                payload["action_horizon"],
+                source=payload_action_horizon_source,
+            )
+        else:
+            action_horizon = None
+        if observation_action_horizon_present and options_action_horizon_present:
+            observation_action_horizon = _require_action_horizon(
+                observation["action_horizon"],
+                source="observation.action_horizon",
+            )
+            options_action_horizon = _require_action_horizon(
+                options["action_horizon"],
+                source="options.action_horizon",
+            )
+            if observation_action_horizon != options_action_horizon:
+                raise WorldForgeError(
+                    "Cosmos-Policy option 'action_horizon' conflicts with the observation payload."
+                )
+        if action_horizon is not None:
+            payload["action_horizon"] = action_horizon
+        return payload, task_description.strip(), action_horizon
+
+    def _translate_actions(
+        self,
+        *,
+        raw_actions: object,
+        info: JSONDict,
+        provider_info: JSONDict,
+    ) -> list[list[Action]]:
+        if self._action_translator is None:
+            raise ProviderError(
+                "Cosmos-Policy actions are embodiment-specific; provide action_translator "
+                "to map raw policy actions into WorldForge Action objects."
+            )
+        try:
+            translated = self._action_translator(raw_actions, info, provider_info)
+        except Exception as exc:
+            raise ProviderError("Cosmos-Policy action translation failed.") from exc
+        return normalize_policy_action_candidates(
+            translated,
+            provider_label="Cosmos-Policy",
+        )
+
+    def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
+        started = perf_counter()
+        payload, task_description, action_horizon_override = self._validate_info(info)
+        if self._action_translator is None:
+            raise ProviderError(
+                "Cosmos-Policy actions are embodiment-specific; provide action_translator "
+                "to map raw policy actions into WorldForge Action objects."
+            )
+        try:
+            request_policy = self._require_request_policy()
+            with self._client() as client:
+                try:
+                    response_payload = request_json_with_policy(
+                        client,
+                        method="POST",
+                        url="/act",
+                        provider_name=self.name,
+                        operation_name="policy",
+                        policy=request_policy.request,
+                        emit_event=self._emit_event,
+                        accepted_content_types=("application/json",),
+                        json=payload,
+                    )
+                except ProviderError as exc:
+                    if _is_malformed_json_response_error(str(exc)):
+                        raise WorldStateError(str(exc)) from exc
+                    raise
+            try:
+                parsed = CosmosPolicyResponse.from_payload(
+                    response_payload,
+                    provider_name=self.name,
+                    expected_action_dim=self.expected_action_dim,
+                )
+            except (ProviderError, WorldForgeError) as exc:
+                raise WorldStateError(str(exc)) from exc
+            raw_actions: JSONDict = {"actions": parsed.actions}
+            if parsed.all_actions:
+                raw_actions["all_actions"] = parsed.all_actions
+            candidate_plans = self._translate_actions(
+                raw_actions=raw_actions,
+                info=info,
+                provider_info=parsed.provider_info,
+            )
+            if parsed.all_actions and len(candidate_plans) != len(parsed.all_actions):
+                raise ProviderError(
+                    "Cosmos-Policy action translator returned "
+                    f"{len(candidate_plans)} candidate(s) for "
+                    f"{len(parsed.all_actions)} raw candidate(s)."
+                )
+            if not parsed.all_actions and len(candidate_plans) != 1:
+                raise ProviderError(
+                    "Cosmos-Policy action translator must return exactly 1 candidate "
+                    "when the response omits 'all_actions'."
+                )
+            selected_index = _selected_action_index(parsed.actions, parsed.all_actions)
+            if selected_index >= len(candidate_plans):
+                raise ProviderError(
+                    "Cosmos-Policy selected candidate index "
+                    f"{selected_index} is outside the translated candidate count "
+                    f"{len(candidate_plans)}."
+                )
+            selected_actions = candidate_plans[selected_index]
+            embodiment_tag_value = info.get("embodiment_tag")
+            if embodiment_tag_value is not None:
+                embodiment_tag = embodiment_tag_value.strip()
+            else:
+                embodiment_tag = self.embodiment_tag or ""
+            action_horizon = len(selected_actions)
+            return ActionPolicyResult(
+                provider=self.name,
+                actions=list(selected_actions),
+                raw_actions=raw_actions,
+                action_horizon=action_horizon,
+                embodiment_tag=embodiment_tag or None,
+                metadata={
+                    "runtime": "cosmos-policy-server",
+                    "server_path": "/act",
+                    "model": self.model,
+                    "task_description": task_description,
+                    "expected_action_dim": self.expected_action_dim,
+                    "selected_candidate_index": selected_index,
+                    "candidate_count": len(candidate_plans),
+                    "requested_action_horizon": action_horizon_override,
+                    "provider_info": parsed.provider_info,
+                    "raw_action_summary": {
+                        "actions_shape": _bounded_shape(parsed.actions),
+                        "all_actions_shape": _bounded_shape(parsed.all_actions)
+                        if parsed.all_actions
+                        else None,
+                    },
+                },
+                action_candidates=candidate_plans,
+            )
+        except ProviderError as exc:
+            self._emit_event(
+                ProviderEvent(
+                    provider=self.name,
+                    operation="policy",
+                    phase="failure",
+                    attempt=1,
+                    max_attempts=1,
+                    method="POST",
+                    target="/act",
+                    duration_ms=max(0.1, (perf_counter() - started) * 1000),
+                    message=str(exc),
+                    metadata={"stage": "worldforge-boundary"},
+                )
+            )
+            raise
+        except WorldStateError as exc:
+            self._emit_event(
+                ProviderEvent(
+                    provider=self.name,
+                    operation="policy",
+                    phase="failure",
+                    attempt=1,
+                    max_attempts=1,
+                    method="POST",
+                    target="/act",
+                    duration_ms=max(0.1, (perf_counter() - started) * 1000),
+                    message=str(exc),
+                    metadata={"stage": "worldforge-boundary"},
+                )
+            )
+            raise
+        except Exception as exc:
+            error = ProviderError(
+                f"Cosmos-Policy action selection failed: {_redact_observable_text(str(exc))}"
+            )
+            self._emit_event(
+                ProviderEvent(
+                    provider=self.name,
+                    operation="policy",
+                    phase="failure",
+                    attempt=1,
+                    max_attempts=1,
+                    method="POST",
+                    target="/act",
+                    duration_ms=max(0.1, (perf_counter() - started) * 1000),
+                    message=str(error),
+                    metadata={"stage": "worldforge-boundary"},
+                )
+            )
+            raise error from exc
+
+
+def _optional_positive_float(value: float | int | str | None, *, name: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if not value.strip():
+            return None
+        try:
+            parsed = float(value)
+        except ValueError:
+            raise WorldForgeError(f"{name} must be greater than 0.") from None
+        value = parsed
+    number = require_finite_number(value, name=name)
+    if number <= 0.0:
+        raise WorldForgeError(f"{name} must be greater than 0.")
+    return number
+
+
+def _optional_host_patterns(
+    value: Sequence[str] | str | None, *, name: str
+) -> tuple[str, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        raw_patterns = [item for item in value.split(",") if item.strip()]
+        if not raw_patterns:
+            return None
+    else:
+        raw_patterns = list(value)
+    patterns: list[str] = []
+    for index, item in enumerate(raw_patterns):
+        if not isinstance(item, str) or not item.strip():
+            raise WorldForgeError(f"{name}[{index}] must be a non-empty hostname pattern.")
+        patterns.append(item.strip().lower())
+    if not patterns:
+        raise WorldForgeError(f"{name} must contain at least one hostname pattern when provided.")
+    return tuple(patterns)
+
+
+def _require_action_horizon(value: object, *, source: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WorldForgeError(f"Cosmos-Policy {source} must be an integer greater than 0.")
+    return require_positive_int(value, name=f"Cosmos-Policy {source}")
+
+
+def _optional_float(value: object, *, name: str) -> float | None:
+    if value is None:
+        return None
+    return require_finite_number(value, name=name)
+
+
+def _is_malformed_json_response_error(message: str) -> bool:
+    return any(
+        marker in message
+        for marker in (
+            "returned invalid JSON",
+            "returned a non-object JSON payload",
+            "returned unsupported content type",
+        )
+    )
+
+
+def _optional_float_list(value: object, *, name: str) -> list[float]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ProviderError(f"{name} must be a list when present.")
+    return [
+        require_finite_number(item, name=f"{name}[{index}]") for index, item in enumerate(value)
+    ]
+
+
+def _optional_nested_float_lists(value: object, *, name: str) -> list[list[float]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ProviderError(f"{name} must be a list when present.")
+    nested: list[list[float]] = []
+    for index, item in enumerate(value):
+        nested.append(_optional_float_list(item, name=f"{name}[{index}]"))
+    return nested
+
+
+def _normalize_action_matrix(
+    value: object,
+    *,
+    name: str,
+    expected_action_dim: int | None,
+) -> list[list[float]]:
+    if not isinstance(value, list) or not value:
+        raise ProviderError(f"{name} must be a non-empty action matrix.")
+    rows: list[list[float]] = []
+    width: int | None = None
+    for row_index, row in enumerate(value):
+        row = _decode_json_numpy_action_row(
+            row,
+            name=f"{name}[{row_index}]",
+            expected_action_dim=expected_action_dim,
+        )
+        if not isinstance(row, list) or not row:
+            raise ProviderError(f"{name}[{row_index}] must be a non-empty action row.")
+        if width is None:
+            width = len(row)
+            if expected_action_dim is not None and width != expected_action_dim:
+                raise ProviderError(
+                    f"{name} action_dim must be {expected_action_dim}; got {width}."
+                )
+        elif len(row) != width:
+            raise ProviderError(f"{name} must be rectangular.")
+        rows.append(
+            [
+                require_finite_number(value, name=f"{name}[{row_index}][{column_index}]")
+                for column_index, value in enumerate(row)
+            ]
+        )
+    return rows
+
+
+def _decode_json_numpy_action_row(
+    value: object,
+    *,
+    name: str,
+    expected_action_dim: int | None,
+) -> object:
+    if not _is_json_numpy_payload(value):
+        return value
+    array_shape = _json_numpy_shape(value, name=name)
+    if len(array_shape) != 1:
+        raise ProviderError(f"{name} must be a 1-D encoded numpy action row.")
+    item_count = array_shape[0]
+    if expected_action_dim is not None and item_count != expected_action_dim:
+        raise ProviderError(f"{name} action_dim must be {expected_action_dim}; got {item_count}.")
+    if item_count > _MAX_JSON_NUMPY_ACTION_ELEMENTS:
+        raise ProviderError(
+            f"{name} encoded action row exceeds {_MAX_JSON_NUMPY_ACTION_ELEMENTS} elements."
+        )
+    return _decode_json_numpy_numeric_array(value, name=name, array_shape=array_shape)
+
+
+def _is_json_numpy_payload(value: object) -> bool:
+    return isinstance(value, dict) and _JSON_NUMPY_DATA_FIELD in value
+
+
+def _json_numpy_shape(value: object, *, name: str) -> list[int]:
+    if not isinstance(value, dict):
+        raise ProviderError(f"{name} must be an encoded numpy object.")
+    shape = value.get("shape")
+    if not isinstance(shape, list):
+        raise ProviderError(f"{name}.shape must be a list of non-negative integers.")
+    normalized_shape: list[int] = []
+    for index, item in enumerate(shape):
+        if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+            raise ProviderError(f"{name}.shape[{index}] must be a non-negative integer.")
+        normalized_shape.append(item)
+    return normalized_shape
+
+
+def _decode_json_numpy_numeric_array(
+    value: object,
+    *,
+    name: str,
+    array_shape: Sequence[int] | None = None,
+) -> list[float]:
+    if not isinstance(value, dict):
+        raise ProviderError(f"{name} must be an encoded numpy object.")
+    dtype = value.get("dtype")
+    if not isinstance(dtype, str) or not dtype.strip():
+        raise ProviderError(f"{name}.dtype must be a non-empty string.")
+    if array_shape is None:
+        array_shape = _json_numpy_shape(value, name=name)
+    item_count = 1
+    for dimension in array_shape:
+        item_count *= dimension
+    if item_count <= 0:
+        raise ProviderError(f"{name} must encode a non-empty action row.")
+    raw_payload = value.get(_JSON_NUMPY_DATA_FIELD)
+    if not isinstance(raw_payload, str) or not raw_payload:
+        raise ProviderError(f"{name}.{_JSON_NUMPY_DATA_FIELD} must be a non-empty string.")
+    try:
+        raw_bytes = base64.b64decode(raw_payload, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ProviderError(f"{name}.{_JSON_NUMPY_DATA_FIELD} is not valid base64.") from exc
+    endian_prefix, item_format, item_size = _json_numpy_float_format(dtype, name=name)
+    expected_bytes = item_count * item_size
+    if len(raw_bytes) != expected_bytes:
+        raise ProviderError(
+            f"{name} byte length must match shape and dtype; expected {expected_bytes}, "
+            f"got {len(raw_bytes)}."
+        )
+    try:
+        decoded = struct.unpack(f"{endian_prefix}{item_count}{item_format}", raw_bytes)
+    except struct.error as exc:
+        raise ProviderError(f"{name} could not be decoded as numeric action data.") from exc
+    return [
+        require_finite_number(item, name=f"{name}[{index}]") for index, item in enumerate(decoded)
+    ]
+
+
+def _json_numpy_float_format(dtype: str, *, name: str) -> tuple[str, str, int]:
+    normalized = dtype.strip().lower()
+    endian_prefix = "<"
+    if normalized[0] in ("<", ">", "=", "|"):
+        endian_prefix = "=" if normalized[0] == "|" else normalized[0]
+        normalized = normalized[1:]
+    if normalized in ("f8", "float64"):
+        return endian_prefix, "d", 8
+    if normalized in ("f4", "float32"):
+        return endian_prefix, "f", 4
+    raise ProviderError(f"{name}.dtype must be float32 or float64 encoded numpy data.")
+
+
+def _normalize_all_actions(
+    value: object,
+    *,
+    provider_name: str,
+    expected_action_dim: int | None,
+) -> list[list[list[float]]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not value:
+        raise ProviderError(
+            f"Provider '{provider_name}' policy response field 'all_actions' must be a "
+            "non-empty list when present."
+        )
+    return [
+        _normalize_action_matrix(
+            candidate,
+            name=(
+                f"Provider '{provider_name}' policy response field 'all_actions'[{candidate_index}]"
+            ),
+            expected_action_dim=expected_action_dim,
+        )
+        for candidate_index, candidate in enumerate(value)
+    ]
+
+
+def _selected_action_index(
+    actions: list[list[float]],
+    all_actions: list[list[list[float]]],
+) -> int:
+    if not all_actions:
+        return 0
+    for index, candidate in enumerate(all_actions):
+        if _action_matrices_close(candidate, actions):
+            return index
+    raise WorldStateError(
+        "Cosmos-Policy response field 'actions' must match one entry in 'all_actions'."
+    )
+
+
+def _action_matrices_close(
+    left: list[list[float]],
+    right: list[list[float]],
+    *,
+    rel_tol: float = 1e-6,
+    abs_tol: float = 1e-6,
+) -> bool:
+    if len(left) != len(right):
+        return False
+    for left_row, right_row in zip(left, right, strict=True):
+        if len(left_row) != len(right_row):
+            return False
+        for left_value, right_value in zip(left_row, right_row, strict=True):
+            if not math.isclose(left_value, right_value, rel_tol=rel_tol, abs_tol=abs_tol):
+                return False
+    return True
+
+
+def _bounded_shape(value: object, *, depth: int = 0, max_depth: int = 8) -> list[int] | None:
+    if depth >= max_depth:
+        return []
+    if _is_json_numpy_payload(value):
+        return _json_numpy_shape(value, name="encoded numpy payload")
+    if not isinstance(value, list):
+        return []
+    if not value:
+        return [0]
+    child_shape = _bounded_shape(value[0], depth=depth + 1, max_depth=max_depth)
+    return [len(value), *(child_shape or [])]
+
+
+def _future_prediction_summary(payload: JSONDict) -> JSONDict:
+    summary: JSONDict = {}
+    for key in (
+        "future_image_predictions",
+        "future_image_predictions_by_depth",
+        "all_future_image_predictions",
+        "all_future_image_predictions_by_depth",
+    ):
+        if key in payload:
+            summary[key] = _summarize_prediction_payload(payload[key])
+    return summary
+
+
+def _summarize_prediction_payload(
+    value: object,
+    *,
+    depth: int = 0,
+    max_depth: int = _PREDICTION_SUMMARY_MAX_DEPTH,
+    max_keys: int = _PREDICTION_SUMMARY_MAX_KEYS,
+) -> JSONDict:
+    if depth >= max_depth:
+        return {"truncated": True}
+    if _is_json_numpy_payload(value):
+        return {"shape": _bounded_shape(value)}
+    if isinstance(value, dict):
+        string_keys = sorted(key for key in value if isinstance(key, str))
+        summary = {
+            key: _summarize_prediction_payload(
+                value[key],
+                depth=depth + 1,
+                max_depth=max_depth,
+                max_keys=max_keys,
+            )
+            for key in string_keys[:max_keys]
+        }
+        if len(string_keys) > max_keys:
+            summary["truncated_keys"] = len(string_keys) - max_keys
+        return summary
+    return {"shape": _bounded_shape(value)}

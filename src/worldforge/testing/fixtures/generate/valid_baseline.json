@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "generate.valid_baseline",
+  "capability": "generate",
+  "data_class": "synthetic",
+  "expected": "valid",
+  "expected_error_pattern": null,
+  "description": "Prompt-only video generation request with a one-second duration.",
+  "payload": {
+    "prompt": "fixture corpus orbiting cube over a reflective floor",
+    "duration_seconds": 1.0
+  }
+}

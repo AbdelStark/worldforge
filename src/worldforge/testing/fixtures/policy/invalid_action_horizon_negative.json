@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "policy.invalid_action_horizon_negative",
+  "capability": "policy",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "action_horizon",
+  "description": "Policy rejects a negative action_horizon: callers must request at least one action.",
+  "payload": {
+    "info": {
+      "observation": {
+        "state": {"eef": [[[0.0, 0.5, 0.0]]]},
+        "language": {"task": [["move the object"]]}
+      },
+      "action_horizon": -1,
+      "embodiment_tag": "fixture",
+      "mode": "select_action"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "budgets": [
+    {
+      "provider": "mock",
+      "operation": "generate",
+      "min_success_rate": 1.0,
+      "max_error_count": 0,
+      "max_retry_count": 0,
+      "max_average_latency_ms": 10000.0,
+      "max_p95_latency_ms": 10000.0
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "id": "lab-setup-base",
+  "name": "Lab setup base",
+  "description": "Shared lab setup: one cube on a table with a single mock predict step. Children override expectations and actions to capture variant runs without copying the full setup.",
+  "provider": "mock",
+  "world": {
+    "name": "lab-setup-base-world",
+    "objects": [
+      {
+        "id": "lab-cube",
+        "name": "cube",
+        "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+        "bbox": {
+          "min": {"x": -0.05, "y": 0.45, "z": -0.05},
+          "max": {"x": 0.05, "y": 0.55, "z": 0.05}
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "kind": "predict",
+      "parameters": {"x": 0.25, "y": 0.5, "z": 0.0, "steps": 1}
+    }
+  ],
+  "expected_artifacts": [
+    {"label": "object_count", "kind": "object_count", "value": 1},
+    {"label": "step_count", "kind": "step", "value": 1}
+  ],
+  "metadata": {
+    "gallery_intent": "shared inheritance parent",
+    "first_triage_step": "If this base scenario fails, inspect the mock provider setup before debugging any child."
+  }
+}

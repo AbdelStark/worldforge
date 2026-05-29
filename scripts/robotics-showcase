@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+filter_runtime_warnings() {
+  awk '
+    /objc\[[0-9]+\]: Class .* is implemented in both/ { next }
+    /This may cause spurious casting failures/ { next }
+    /pygame\/pkgdata.py:.*pkg_resources is deprecated/ { next }
+    /^[[:space:]]*from pkg_resources import resource_stream, resource_exists/ { next }
+    /stable_worldmodel\/envs\/__init__\.py:.*ale-py not found/ { next }
+    /^[[:space:]]*from stable_worldmodel\.envs import ale/ { next }
+    /gymnasium\/spaces\/box.py:.*Casting input x to numpy array/ { next }
+    /^[[:space:]]*gym\.logger\.warn\("Casting input x to numpy array\."\)/ { next }
+    /WARNING:root:Unexpected key\(s\) when loading model:/ { next }
+    { print; fflush() }
+  '
+}
+
+should_launch_tui() {
+  for arg in "$@"; do
+    case "$arg" in
+      --help|-h|--json-only|--health-only|--no-tui)
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
+has_tui_arg() {
+  for arg in "$@"; do
+    case "$arg" in
+      --tui)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+has_rerun_sink_arg() {
+  for arg in "$@"; do
+    case "$arg" in
+      --rerun|--rerun-output|--rerun-spawn|--rerun-connect-url|--rerun-serve-grpc-port)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+should_enable_rerun() {
+  for arg in "$@"; do
+    case "$arg" in
+      --help|-h|--health-only|--json-only|--no-rerun)
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
+has_tensorboard_arg() {
+  for arg in "$@"; do
+    case "$arg" in
+      --tensorboard|--tensorboard-logdir|--tensorboard-run-name|--tensorboard-flush-secs)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+should_enable_tensorboard() {
+  for arg in "$@"; do
+    case "$arg" in
+      --help|-h|--health-only|--no-tensorboard)
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
+is_help_request() {
+  for arg in "$@"; do
+    case "$arg" in
+      --help|-h)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+cd "$repo_root"
+export PYGAME_HIDE_SUPPORT_PROMPT="${PYGAME_HIDE_SUPPORT_PROMPT:-1}"
+
+if is_help_request "$@"; then
+  exec uv run --python 3.13 worldforge-robotics-showcase "$@"
+fi
+
+showcase_args=("$@")
+if should_enable_rerun "$@" && ! has_rerun_sink_arg "$@"; then
+  showcase_args=(--rerun "$@")
+fi
+if should_enable_tensorboard "$@" && ! has_tensorboard_arg "$@"; then
+  showcase_args=(--tensorboard "${showcase_args[@]}")
+fi
+runtime_args=(
+  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git"
+  --with "datasets>=2.21"
+  --with "huggingface_hub"
+  --with "hydra-core"
+  --with "omegaconf"
+  --with "matplotlib"
+  --with "transformers"
+  --with "lerobot[transformers-dep]==0.5.1"
+  --with "pygame"
+  --with "opencv-python"
+  --with "imageio"
+  --with "pymunk"
+  --with "gymnasium"
+  --with "shapely"
+  --with "tensorboard>=2.16,<3"
+)
+
+if should_launch_tui "$@"; then
+  runtime_args+=(--with "textual>=8.2,<9")
+  if ! has_tui_arg "$@"; then
+    showcase_args=(--tui "${showcase_args[@]}")
+  fi
+fi
+
+if [[ "${WORLDFORGE_SHOW_RUNTIME_WARNINGS:-}" == "1" ]]; then
+  exec uv run --python 3.13 "${runtime_args[@]}" worldforge-robotics-showcase "${showcase_args[@]}"
+fi
+
+exec uv run --python 3.13 "${runtime_args[@]}" worldforge-robotics-showcase "${showcase_args[@]}" \
+  2> >(filter_runtime_warnings >&2)

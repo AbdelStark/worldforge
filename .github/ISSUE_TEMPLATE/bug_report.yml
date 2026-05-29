@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible WorldForge bug.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not file vulnerabilities, credentials, signed URLs, private endpoints, or host-local
+        artifacts here. Use the private Security tab for security-sensitive reports.
+
+        Before scoping a fix, pick the matching contributor task starter:
+        https://abdelstark.github.io/worldforge/task-starters/
+        CLI/operator, provider, artifact, evaluation, docs, and demo fixes each have different
+        validation and evidence requirements.
+  - type: dropdown
+    id: triage_stream
+    attributes:
+      label: Triage stream
+      description: Pick the roadmap stream that best matches the bug.
+      options:
+        - Provider evidence or runtime contract
+        - Evidence integrity, evaluation, benchmark, or artifact
+        - Operator workflow, harness, persistence, or adapter authoring
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What broke, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Exact commands, inputs, and relevant files.
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Error output or traceback.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: WorldForge version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, uv version, optional runtime versions if relevant.
+    validations:
+      required: true

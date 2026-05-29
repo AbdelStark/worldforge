@@ -1,0 +1,58 @@
+name: Security
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_LOCKED: "true"
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+
+  pip-audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.18"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Export locked dependencies
+        run: uv export --all-groups --no-emit-project --no-hashes -o requirements-ci.txt
+
+      - name: Audit dependencies
+        run: uvx --from pip-audit pip-audit -r requirements-ci.txt

@@ -1,0 +1,745 @@
+# Provider Authoring Guide
+
+This guide turns the WorldForge world-model taxonomy into an implementation checklist for new
+provider adapters. Use it before writing code. The goal is to keep adapters honest: every provider
+must say what kind of "world model" it is, expose only capabilities it implements, validate every
+boundary, and document failure modes clearly enough that callers can operate it without reading the
+adapter source.
+
+Related docs:
+
+- [World Model Taxonomy](./world-model-taxonomy.md)
+- [Architecture](./architecture.md)
+- [Providers](./providers/README.md)
+- [Provider Configuration Index](./provider-configuration-index.md)
+- [Python API](./api/python.md)
+
+## Scaffold Generator
+
+Use the scaffold generator to create the first draft of a provider adapter, fixture files, test
+file, runtime manifest stub, provider docs stub, and workbench checklist:
+
+```bash
+uv run python scripts/scaffold_provider.py "Acme WM" \
+  --taxonomy "JEPA latent predictive world model" \
+  --implementation-status scaffold \
+  --planned-capability score \
+  --remote \
+  --env-var ACME_WM_API_KEY
+```
+
+Generated files:
+
+```text
+src/worldforge/providers/acme_wm.py
+tests/test_acme_wm_provider.py
+tests/fixtures/providers/acme_wm_success.json
+tests/fixtures/providers/acme_wm_error.json
+src/worldforge/providers/runtime_manifests/acme-wm.json.stub
+docs/src/providers/acme-wm.md
+docs/src/providers/acme-wm-workbench.md
+```
+
+The generated provider is safe by default: it starts as `implementation_status="scaffold"`,
+advertises no public capabilities, and raises `ProviderError` from generated method stubs. Enable
+capabilities only after the adapter calls the real upstream runtime, validates inputs and outputs,
+and has fixture-driven tests for every documented failure mode.
+
+The generated runtime manifest is deliberately named `.json.stub`; it is not loadable runtime
+evidence and should not be renamed to `.json` until every TODO is replaced, the host-owned smoke
+path writes a sanitized `run_manifest.json`, and `uv run pytest tests/test_provider_runtime_manifests.py`
+passes. The generated workbench checklist records the fail-closed checks, promotion work, and next
+validation commands for the provider.
+
+## Workbench Loop
+
+Before opening a provider PR, run the non-TUI workbench from a clean checkout:
+
+```bash
+uv run worldforge provider workbench mock
+uv run worldforge provider workbench <provider> --format json
+uv run worldforge provider workbench jepa-wms --format markdown
+uv run python scripts/generate_provider_docs.py --check
+```
+
+The report lists the conformance helper required for every advertised capability, planned
+capabilities for scaffold/candidate adapters, runtime manifest status, docs/catalog drift status,
+provider configuration index drift, redaction checks, safe artifact references, and validation
+commands. It validates
+`tests/fixtures/providers/<provider>_*.json` playback files when they exist, including module-safe
+prefixes such as `jepa_wms_*.json` for direct-construction candidates. It also names missing
+promotion evidence by future status (`experimental`, `beta`, `stable`) so a scaffold gap is visible
+without turning into an accidental capability claim. It invokes only deterministic local providers
+by default. Use `--live` only on a prepared host when credentials, optional dependencies, injected
+runtimes, and runtime-owned artifacts are intentionally available.
+
+## Lifecycle Hooks
+
+Prepared-host providers can expose optional lifecycle hooks without changing their capability
+methods:
+
+```python
+from worldforge import ProviderLifecycleResult
+
+
+def preflight(self) -> ProviderLifecycleResult:
+    return ProviderLifecycleResult(
+        provider=self.name,
+        hook="preflight",
+        status="ready",
+        ready=True,
+        latency_ms=0.1,
+        details="runtime reachable",
+        evidence={"runtime": "prepared-host"},
+    )
+```
+
+The supported hooks are `preflight`, `warmup`, and `teardown`. The supported statuses are `no-op`,
+`ready`, `skipped`, `failed`, and `teardown-failed`. Evidence must be JSON-native and sanitized:
+record versions, shape summaries, feature flags, or manifest identifiers, not raw observations,
+tokens, private endpoints, checkpoint paths, GPU logs, or downloaded model files.
+
+Default hooks are safe for existing providers. Configured providers report `no-op`; missing required
+configuration reports `skipped` with a skip reason. Capability protocol implementations may define
+the same hook methods next to their existing `score_actions`, `select_actions`, `reason`, or other
+capability method; registration still happens through the capability method, and diagnostics pick up
+the lifecycle hooks through the observable wrapper.
+
+Diagnostics serialize the aggregate `ProviderLifecycleStatus` in `worldforge doctor` and
+`worldforge provider info <provider>`:
+
+```bash
+uv run worldforge doctor --registered-only
+uv run worldforge provider info gr00t --format json
+```
+
+Use lifecycle hooks for host-owned dependency checks, checkpoint presence checks, cheap server
+reachability probes, model warmup, cache preparation, and releasing provider-owned clients. Do not
+use them to install dependencies, provision credentials, start long-running daemons, download large
+assets unexpectedly, or claim an optional runtime is available when the host has not supplied it.
+
+## Adapter Decision Tree
+
+Start with the provider's real contract, not its label or category.
+
+```text
+New upstream provider
+  |
+  |-- Can it rank action candidates from observations/goals?
+  |     `-- expose score_actions(...) -> ActionScoreResult
+  |
+  |-- Can it choose robot action chunks from observations/instructions?
+  |     `-- expose select_actions(...) -> ActionPolicyResult
+  |
+  |-- Can it roll a WorldForge state forward from an Action?
+  |     `-- expose predict(...) -> PredictionPayload
+  |
+  |-- Can it generate a video artifact from prompt/options?
+  |     `-- expose generate(...) -> VideoClip
+  |
+  |-- Can it transform one video artifact into another?
+  |     `-- expose transfer(...) -> VideoClip
+  |
+  |-- Can it answer questions about a world/prompt?
+  |     `-- expose reason(...) -> ReasoningResult
+  |
+  |-- Can it embed text or another explicit input?
+  |     `-- expose embed(...) -> EmbeddingResult
+  |
+  `-- If none are true, do not add a provider yet.
+      Write host integration code or a design issue first.
+```
+
+Mermaid equivalent:
+
+```mermaid
+flowchart TD
+    Upstream[New upstream provider]
+    Upstream --> Score{Ranks action candidates?}
+    Score -- yes --> ScoreApi[score_actions -> ActionScoreResult]
+    Score -- no --> Policy{Selects robot action chunks?}
+    Policy -- yes --> PolicyApi[select_actions -> ActionPolicyResult]
+    Policy -- no --> Predict{Rolls state forward?}
+    Predict -- yes --> PredictApi[predict -> PredictionPayload]
+    Predict -- no --> Generate{Generates video artifact?}
+    Generate -- yes --> GenerateApi[generate -> VideoClip]
+    Generate -- no --> Transfer{Transforms video artifact?}
+    Transfer -- yes --> TransferApi[transfer -> VideoClip]
+    Transfer -- no --> Reason{Answers questions?}
+    Reason -- yes --> ReasonApi[reason -> ReasoningResult]
+    Reason -- no --> Embed{Embeds explicit input?}
+    Embed -- yes --> EmbedApi[embed -> EmbeddingResult]
+    Embed -- no --> NoProvider[Do not add provider yet]
+```
+
+## Step 1: Classify the Provider
+
+Every provider doc and profile should identify the provider's taxonomy category.
+
+| Category | Typical provider surface | WorldForge expectation |
+| --- | --- | --- |
+| JEPA latent predictive world model | `score`, future `predict` or latent rollout | First-class planning path. Follow the LeWorldModel pattern. |
+| Model-based RL latent dynamics | `predict`, `score`, maybe future policy selection | Expose the exported control surface, not the whole trainer. |
+| Generative video simulator | `generate`, maybe future action-conditioned `predict` | Do not imply controllable planning unless the API supports it. |
+| Spatial / 3D world model | future scene or asset surfaces | Keep out of core until typed scene contracts exist. |
+| Physical AI infrastructure | `generate`, `transfer`, future data/eval adapters | Model each stable API as one capability. |
+| Embodied policy / VLA action model | `policy`, maybe paired with a score provider | Treat as an actor. Do not claim it predicts futures. |
+| Active inference / structured generative model | future belief, uncertainty, or policy outputs | Preserve beliefs and uncertainty explicitly. |
+| Deterministic local surrogate | any tested local subset | Make it obvious that it is a surrogate. |
+
+Checklist:
+
+- [ ] The provider's taxonomy category is documented.
+- [ ] The provider's capabilities are derived from actual callable behavior.
+- [ ] Full providers inherit `ProviderError` defaults for unsupported `BaseProvider` methods.
+- [ ] Single-capability protocol implementations expose only their one callable method.
+- [ ] Scaffold adapters are labeled `scaffold` and do not claim real upstream behavior.
+- [ ] The provider profile notes whether it is local, remote, deterministic, beta, stable, or
+      scaffold.
+
+## Step 2: Choose Capabilities Narrowly
+
+WorldForge capabilities are not badges. They are callable contracts.
+`ProviderCapabilities()` starts with every flag set to `False`; adapters must opt into each
+supported operation explicitly. Capability names are validated; typos should fail loudly during
+filtering, diagnostics, and tests.
+
+```text
+capabilities.predict  -> predict(world_state, action, steps)
+capabilities.generate -> generate(prompt, duration_seconds, options)
+capabilities.transfer -> transfer(clip, width, height, fps, prompt, options)
+capabilities.reason   -> reason(query, world_state)
+capabilities.embed    -> embed(text)
+capabilities.score    -> score_actions(info, action_candidates)
+capabilities.policy   -> select_actions(info)
+capabilities.plan     -> currently reserved for providers that implement planning directly
+```
+
+Rules:
+
+- [ ] Do not set `predict=True` unless the adapter returns a validated `PredictionPayload`.
+- [ ] Do not set `generate=True` unless the adapter returns a validated `VideoClip`.
+- [ ] Do not set `score=True` unless the adapter returns `ActionScoreResult` with finite scores
+      and a valid `best_index`.
+- [ ] Do not set `policy=True` unless the adapter returns `ActionPolicyResult` with at least one
+      executable WorldForge `Action`.
+- [ ] Do not set `reason=True` for models that only return unstructured logs, captions, or
+      provider diagnostics.
+- [ ] Do not set `plan=True` just because a provider can score candidates. Score-based planning is
+      represented by `score=True` plus `World.plan(...)`.
+
+Implementation choices:
+
+- Use a `BaseProvider` subclass when one adapter owns several capabilities, needs catalog
+  auto-registration, or has provider-specific health/configuration behavior.
+- Use a capability protocol implementation when one local object exposes one narrow method such as
+  `score_actions(...)` or `select_actions(...)`. Protocol implementations declare `name`, optional
+  `ProviderProfileSpec` metadata, and the matching method; `WorldForge` wraps them for events,
+  health, profiles, diagnostics, planning, and benchmarks.
+- Use `RunnableModel` only when one logical model genuinely groups several protocol
+  implementations under one registration call.
+
+## Step 3: Apply the Promotion Gate
+
+`ProviderProfileSpec.implementation_status` is the maturity claim that appears in diagnostics and
+generated provider catalog docs. Change it only when the provider has the evidence for the target
+status.
+
+| Status | Allowed public claim | Required evidence before promotion | Required wording |
+| --- | --- | --- | --- |
+| `scaffold` | Reserved provider name or candidate contract. | Provider docs say it is not real; public capability flags are disabled or the candidate stays outside auto-registration; methods fail closed unless a test-only opt-in is explicit. | "scaffold", "reservation", or "candidate"; never "integration" or "usable provider". |
+| `experimental` | Real upstream path exists, but the contract may change. | Injected-runtime or fixture tests cover the callable boundary, health reports missing runtime/config clearly, and docs list known gaps or blockers. | "experimental", "known gaps", and host-owned runtime limits. |
+| `beta` | Prepared hosts can use the provider for the documented capability. | Capability tests, runtime manifest, generated provider docs, fixture-backed failure modes, redacted events, and a documented smoke command or explicit live-smoke blocker. | "prepared host", supported models/env vars, failure modes, and artifact retention where relevant. |
+| `stable` | Recommended provider path for its capability. | Repeated smoke evidence, release evidence, parser and validation coverage, incident/runbook notes, compatibility expectations, and no unresolved runtime contract blockers. | "stable" only with supported operator use and compatibility limits. |
+
+Promotion checklist:
+
+- [ ] Update `ProviderProfileSpec.implementation_status` and profile metadata in the provider.
+- [ ] Update `runtime_ownership` or `docs_page` in `src/worldforge/providers/catalog.py` when the
+      generated catalog row would otherwise be misleading.
+- [ ] Run `uv run python scripts/generate_provider_docs.py` after catalog/profile changes, then
+      `uv run python scripts/generate_provider_docs.py --check`.
+- [ ] Run provider-specific pytest files plus `uv run pytest tests/test_provider_catalog_docs.py`.
+- [ ] Run `uv run mkdocs build --strict`.
+- [ ] Keep the behavior change separate from promotion wording when either part is large.
+
+Current classifications:
+
+| Provider | Status | Why it is classified this way |
+| --- | --- | --- |
+| `mock` | `stable` | Deterministic in-repo provider with no optional runtime and broad checkout-safe test coverage. |
+| `cosmos` | `beta` | Real remote generate adapter with fixture coverage and runtime manifest; prepared hosts own the Cosmos deployment. |
+| `runway` | `beta` | Real remote generate/transfer adapter with parser and artifact checks; prepared hosts own credentials and artifact retention. |
+| `leworldmodel` | `stable` | Recommended score adapter for the official LeWM loading path; prepared hosts own torch, `stable_worldmodel`, checkpoints, and task preprocessing. |
+| `gr00t` | `beta` | Real remote PolicyClient boundary with fixture-backed failure coverage; prepared hosts own the reachable server, credentials, translator, and robot runtime. |
+| `lerobot` | `stable` | Recommended embodied policy adapter for the LeRobot `PreTrainedPolicy` path; prepared hosts own LeRobot, checkpoints, translators, and robot runtime. |
+| `jepa` | `experimental` | Score-only adapter for host-owned `facebookresearch/jepa-wms` torch-hub runtimes. |
+| `genie` | `scaffold` | Fail-closed reservation until a concrete upstream runtime/API contract exists. |
+| `jepa-wms` | `scaffold` | Direct-construction candidate only; not exported or auto-registered until runtime limits and smoke evidence are credible. |
+
+## Step 4: Define the Contract Before Code
+
+Write down the provider contract in the PR description or docs before implementation.
+
+```text
+Provider contract
+  name:
+  taxonomy category:
+  implementation status:
+  local or remote:
+  credentials/env vars:
+  optional dependencies:
+  default model/checkpoint:
+  supported modalities:
+  artifact types:
+  capabilities:
+  input shape/range constraints:
+  output schema:
+  score direction, if any:
+  retry/timeout behavior:
+  failure modes:
+  tests:
+```
+
+Questions to answer:
+
+- [ ] What exact upstream API, package, checkpoint format, or runtime is being wrapped?
+- [ ] What version range or installation path is expected?
+- [ ] Which environment variables trigger auto-registration?
+- [ ] Which inputs are host-preprocessed rather than inferred by WorldForge?
+- [ ] What are the provider-specific limits: duration, resolution, action shape, token budget,
+      file size, content type, polling limits, or model context?
+- [ ] What does a lower or higher score mean?
+- [ ] If this is a policy, who owns embodiment-specific action translation?
+- [ ] What does the provider return when output is partial, expired, missing, malformed, or
+      physically implausible?
+
+## Step 5: Use the Standard Adapter Shape
+
+Provider adapters should be small boundary objects. Choose the smallest shape that honestly
+represents the integration.
+
+```text
+Full provider class
+  |
+  |-- __init__
+  |     define identity, capabilities, profile metadata, env vars, request policy
+  |
+  |-- configured()
+  |     return whether registration/runtime config is present
+  |
+  |-- health()
+  |     validate local availability without doing expensive work
+  |
+  |-- capability method
+  |     validate WorldForge inputs
+  |     call upstream
+  |     parse upstream response
+  |     return typed WorldForge model
+  |     emit ProviderEvent
+  |
+  `-- private parser/validator helpers
+        keep upstream schemas explicit and testable
+```
+
+Minimal full-provider skeleton:
+
+```python
+from worldforge.models import ProviderCapabilities, ProviderHealth
+from worldforge.providers import BaseProvider, ProviderError
+from worldforge.providers.base import ProviderProfileSpec
+
+
+class ExampleProvider(BaseProvider):
+    env_var = "EXAMPLE_API_KEY"
+
+    def __init__(self, *, event_handler=None):
+        super().__init__(
+            name="example",
+            capabilities=ProviderCapabilities(generate=True),
+            profile=ProviderProfileSpec(
+                description="Example provider adapter.",
+                package="worldforge",
+                implementation_status="beta",
+                deterministic=False,
+                required_env_vars=(self.env_var,),
+                supported_modalities=("text",),
+                artifact_types=("video",),
+                notes=("Documents provider-specific limits here.",),
+            ),
+            event_handler=event_handler,
+        )
+
+    def health(self) -> ProviderHealth:
+        # Keep health cheap. Do not download large artifacts or load huge checkpoints here.
+        return super().health()
+
+    def generate(self, prompt, duration_seconds, *, options=None):
+        try:
+            self._require_credentials()
+            # validate inputs, call upstream, parse response, return VideoClip
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(f"Provider 'example' generation failed: {exc}") from exc
+```
+
+Minimal single-capability protocol skeleton:
+
+```python
+from worldforge import ActionScoreResult, WorldForge
+from worldforge.providers.base import ProviderProfileSpec
+
+
+class ExampleCost:
+    name = "example-cost"
+    profile = ProviderProfileSpec(
+        description="Example local cost model.",
+        implementation_status="experimental",
+        deterministic=True,
+        supported_modalities=("world_state", "action"),
+        artifact_types=("score",),
+    )
+
+    def score_actions(self, *, info, action_candidates):
+        # validate info and candidates, call model/runtime, return finite scores
+        return ActionScoreResult(provider=self.name, scores=[0.2, 0.8], best_index=0)
+
+
+forge = WorldForge(auto_register_remote=False)
+forge.register_cost(ExampleCost())
+```
+
+For a runnable policy-plus-score example using plain in-process protocol objects, see
+[Capability Protocols Quickstart](./capability-protocols-quickstart.md).
+
+## Step 6: Boundary Validation Checklist
+
+Validate at the narrowest boundary. Do not let malformed upstream or caller data leak into public
+models.
+
+Caller input:
+
+- [ ] Non-empty provider name, prompt, model ID, and required env vars.
+- [ ] Positive duration, width, height, fps, step count, polling limits, and timeouts.
+- [ ] Finite numeric values for positions, scores, probabilities, latencies, and embeddings.
+- [ ] Existing local file paths before network upload.
+- [ ] Rectangular nested numeric arrays when accepting tensor-like JSON.
+- [ ] Explicit action tensor rank and shape for score providers.
+- [ ] Explicit observation modalities and action translator requirements for policy providers.
+
+Upstream response:
+
+- [ ] JSON response is an object when an object is expected.
+- [ ] Required fields are present and correctly typed.
+- [ ] Task IDs are non-empty and stable across create/poll responses.
+- [ ] Terminal task states are explicit.
+- [ ] Partial outputs fail with `ProviderError` unless the public contract supports partial
+      results.
+- [ ] Artifact URLs are non-empty and sanitized before download.
+- [ ] Expired artifacts fail with context.
+- [ ] Unsupported content types fail before returning `VideoClip`.
+- [ ] Base64 media fields decode successfully.
+- [ ] Scores flatten to a non-empty finite list.
+- [ ] Policy action chunks preserve raw provider output and translate to executable
+      WorldForge `Action` objects.
+
+State mutation:
+
+- [ ] Do not apply provider-supplied world state until it passes world-state validation.
+- [ ] Do not mutate the caller's `World` during comparison workflows.
+- [ ] Preserve history and metadata intentionally.
+
+## Step 7: LeWorldModel-Style Score Provider Checklist
+
+Use this checklist for JEPA and latent cost-model providers.
+
+```text
+host preprocessing
+  -> info tensors / arrays
+  -> action candidate tensor
+  -> candidate WorldForge Action sequences
+  -> provider.score_actions(...)
+  -> ActionScoreResult.best_index
+  -> Plan(actions=selected candidate)
+```
+
+Required behavior:
+
+- [ ] Expose `score=True` and no unrelated capabilities.
+- [ ] Keep optional heavy dependencies out of base package dependencies.
+- [ ] Import optional runtime packages lazily.
+- [ ] Health reports missing optional dependencies clearly.
+- [ ] `info` validates required fields such as `pixels`, `goal`, and `action`.
+- [ ] `action_candidates` validates provider-specific rank and shape.
+- [ ] Model output validates as non-empty finite scores.
+- [ ] Score count matches the executable candidate count used by `World.plan(...)`.
+- [ ] `best_index` matches provider score direction.
+- [ ] `lower_is_better` is explicit.
+- [ ] `metadata` includes policy/checkpoint/model identifiers and score semantics.
+- [ ] Docs state that host code owns task preprocessing and action-space mapping.
+- [ ] Tests cover malformed tensors, missing fields, invalid ranks, non-finite scores, and
+      best-index plan selection.
+
+Do not:
+
+- [ ] Do not pretend a cost model can generate video.
+- [ ] Do not pretend a score provider can execute a plan.
+- [ ] Do not hide score direction in prose only.
+- [ ] Do not infer raw image transforms unless the adapter actually implements and tests them.
+
+## Step 8: Embodied Policy Provider Checklist
+
+Use this checklist for VLA and robot policy providers such as NVIDIA Isaac GR00T.
+
+```text
+host sensors / simulation state
+  -> policy observation dict
+  -> provider.select_actions(...)
+  -> ActionPolicyResult(actions, raw_actions, action_candidates)
+  -> optional score provider filters candidates
+  -> Plan(actions=selected candidate)
+```
+
+Required behavior:
+
+- [ ] Expose `policy=True` and no unrelated capabilities unless separately implemented.
+- [ ] Keep GR00T, CUDA, checkpoints, TensorRT, and robot runtime dependencies host-owned.
+- [ ] Import optional runtime packages lazily or accept an injected client/runtime.
+- [ ] `info["observation"]` names the modalities it contains, such as `video`, `state`, and
+      `language`.
+- [ ] Raw provider actions are preserved in `ActionPolicyResult.raw_actions` for debugging.
+- [ ] Embodiment tags, action horizons, and provider-native info are preserved in metadata.
+- [ ] Embodiment-specific action translation is explicit. Do not guess robot action semantics.
+- [ ] Tests cover missing translator, malformed observations, malformed provider output, policy
+      plan selection, and policy+score plan selection.
+
+Do not:
+
+- [ ] Do not call a policy a world model just because it is trained for embodied control.
+- [ ] Do not set `predict=True` unless the provider returns a validated future WorldForge state.
+- [ ] Do not set `score=True` unless it ranks candidates with explicit score semantics.
+- [ ] Do not hide real-robot safety checks inside WorldForge. Safety interlocks are host-owned.
+
+## Step 9: Predictive Provider Checklist
+
+Use this checklist for providers that roll a world state forward.
+
+- [ ] Implement `predict(world_state, action, steps)`.
+- [ ] Validate `steps` and action fields before calling upstream.
+- [ ] Convert upstream output into a complete world-state JSON object.
+- [ ] Validate object IDs, metadata, history, and non-negative step.
+- [ ] Return `PredictionPayload` with confidence, physics score, frames, metadata, and latency.
+- [ ] Preserve provider identity in returned metadata where useful.
+- [ ] Tests cover malformed world state, missing scene objects, impossible actions if applicable,
+      non-finite metrics, and provider failure propagation.
+
+## Step 10: Generative and Transfer Provider Checklist
+
+Use this checklist for video or artifact providers.
+
+- [ ] Implement `generate(...)` only for prompt-to-video or equivalent artifact generation.
+- [ ] Implement `transfer(...)` only for video-to-video or artifact-to-artifact transformation.
+- [ ] Validate prompt, duration, size, ratio, fps, and file paths before the outbound request.
+- [ ] Model provider-specific options with `GenerationOptions` where possible.
+- [ ] Keep create-style mutations single-attempt unless the provider contract is idempotent.
+- [ ] Poll with bounded attempts and explicit terminal states.
+- [ ] Validate artifact content type before reading into `VideoClip`.
+- [ ] Reject empty artifact bodies.
+- [ ] Tests cover bad content types, expired artifacts, missing outputs, task failures, malformed
+      JSON, timeout, retry, and provider-specific limits.
+
+## Step 11: Observability and Failure Semantics
+
+Every real provider should emit useful `ProviderEvent` records.
+
+```text
+operation starts
+  -> upstream call or local model call
+  -> retry event, if retryable
+  -> success event with duration and key metadata
+  -> failure event with duration and sanitized message
+```
+
+Checklist:
+
+- [ ] Events include provider name, operation, phase, duration, and attempt where relevant.
+- [ ] HTTP events include status code when available.
+- [ ] Failure events do not leak secrets, bearer tokens, signed URLs, or raw credentials.
+- [ ] Retry events are emitted only for retryable operations.
+- [ ] Provider errors include operation, provider name, and the failed input class, not just
+      "request failed."
+- [ ] Unexpected exceptions are wrapped in `ProviderError` with context.
+
+## Step 12: Test Requirements
+
+Provider tests should be fixture-driven and contract-driven.
+
+Recommended layout:
+
+```text
+tests/
+|-- test_provider_name.py
+|-- fixtures/
+|   `-- providers/
+|       |-- provider_success.json
+|       |-- provider_failure.json
+|       |-- provider_partial_output.json
+|       `-- provider_malformed.json
+```
+
+Required tests:
+
+- [ ] Provider profile advertises the correct capabilities and limits.
+- [ ] `health()` reports missing credentials, missing optional dependencies, and healthy config.
+- [ ] Happy path returns the typed public model.
+- [ ] Every documented failure mode raises `ProviderError`, `WorldForgeError`, or
+      `WorldStateError` as appropriate.
+- [ ] Malformed upstream payloads are rejected.
+- [ ] Partial outputs are rejected or represented explicitly.
+- [ ] Bad content types are rejected for media artifacts.
+- [ ] Expired artifact URLs fail with context.
+- [ ] Provider-specific limits are tested.
+- [ ] Event emission is tested for success and failure.
+- [ ] `worldforge.testing.assert_provider_contract(...)` passes for the provider where applicable.
+
+Reusable conformance helpers are available for narrow provider tests:
+
+| Helper | Capability covered |
+| --- | --- |
+| `assert_predict_conformance(...)` | `predict -> PredictionPayload` |
+| `assert_generate_conformance(...)` | `generate -> VideoClip` |
+| `assert_transfer_conformance(...)` | `transfer -> VideoClip` |
+| `assert_reason_conformance(...)` | `reason -> ReasoningResult` |
+| `assert_embed_conformance(...)` | `embed -> EmbeddingResult` |
+| `assert_score_conformance(...)` | `score_actions -> ActionScoreResult` |
+| `assert_policy_conformance(...)` | `select_actions -> ActionPolicyResult` |
+| `assert_provider_events_conform(...)` | JSON-native, redaction-safe provider events |
+
+Use the capability-specific helper when a fixture or injected runtime exercises one operation.
+Use `assert_provider_contract(...)` when the test can safely exercise every declared capability for
+the provider.
+
+### Contract CLI Evidence
+
+External adapter authors can run the same contract surface from the CLI and attach the output to an
+issue or PR:
+
+```bash
+uv run worldforge provider contract mock --format markdown
+uv run worldforge provider contract --factory my_pkg.adapters:make_my_policy_provider --format json
+```
+
+The command checks provider metadata first, selects capability checks from the provider profile, and
+prints JSON or Markdown evidence with passed checks, skipped host-owned checks, failures, next
+steps, and validation commands. Registered providers can be named directly. Adapters that are not
+installed through the `worldforge.providers` entry-point group can use `--factory module:factory`.
+
+Live capability calls against non-local providers are skipped unless the host explicitly passes
+`--live`. Score and policy providers can supply fixture payloads with `--score-info`,
+`--score-candidates`, and `--policy-info`; otherwise the command uses the checkout-safe contract
+fixtures where possible. Passing CLI evidence is adapter-contract evidence only. It is not automatic
+promotion evidence and does not claim physical fidelity, media quality, or robot safety.
+
+For a package-shape walkthrough, run:
+
+```bash
+uv run python scripts/demo_showcases.py run external-provider-package --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+The workflow generates a temp external provider package, exercises `worldforge.providers`
+entry-point discovery and skip reasons, and preserves a safe report without publishing anything.
+
+When a provider fixture changes, use the fixture drift walkthrough before updating committed
+snapshots:
+
+```bash
+uv run python scripts/demo_showcases.py run fixture-drift-review --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+It shows missing fixture, digest drift, schema-version drift, unsafe path, and
+`intended-update` review states under a temp workspace so authors can practice the approved update
+path without mutating tracked fixtures.
+
+Remote providers:
+
+- [ ] No tests require live credentials.
+- [ ] HTTP calls use fakes, fixtures, or local handlers.
+- [ ] Retry and timeout behavior is deterministic.
+
+Local model providers:
+
+- [ ] Heavy model dependencies are faked in unit tests.
+- [ ] A real-model smoke script is optional, documented, and not part of the default unit suite.
+- [ ] Checkpoint paths and cache directories are host-owned.
+
+## Step 13: Documentation Requirements
+
+A provider PR is incomplete without docs.
+
+- [ ] Provider matrix row in [Providers](./providers/README.md).
+- [ ] Provider-specific limits and environment variables.
+- [ ] API examples for the public methods touched.
+- [ ] Failure modes in [Python API](./api/python.md) when new public errors are introduced.
+- [ ] Architecture updates if a new capability or pipeline is introduced.
+- [ ] README update if the provider changes the main user-facing story.
+- [ ] Changelog entry for user-visible behavior.
+- [ ] `AGENTS.md` update if future AI contributors need new constraints or commands.
+
+## Pull Request Checklist
+
+Use this checklist in provider PRs.
+
+```text
+Provider identity
+  [ ] taxonomy category documented
+  [ ] capabilities are narrow and truthful
+  [ ] profile metadata is complete
+
+Runtime contract
+  [ ] env vars and optional dependencies documented
+  [ ] input shapes and limits documented
+  [ ] output schema and score direction documented
+  [ ] unsupported methods fail through BaseProvider defaults, or the implementation is a
+      single-capability protocol object with no unrelated public methods
+
+Validation and errors
+  [ ] caller inputs validated
+  [ ] upstream responses parsed by typed helpers
+  [ ] returned PredictionPayload, EvaluationResult, BenchmarkResult, and provider-specific result
+      metadata are JSON-native and finite before artifacts are rendered
+  [ ] malformed/partial/expired/bad-content responses rejected
+  [ ] ProviderError messages are actionable and sanitized
+
+Observability
+  [ ] success events emitted
+  [ ] failure events emitted
+  [ ] retry events emitted when applicable
+
+Tests
+  [ ] happy path covered
+  [ ] failure modes covered with fixtures
+  [ ] provider-specific limits covered
+  [ ] contract tests run where applicable
+
+Docs
+  [ ] provider docs updated
+  [ ] generated provider catalog docs checked
+  [ ] API docs updated
+  [ ] changelog updated
+  [ ] agent context updated when needed
+```
+
+## Review Standard
+
+The reviewer should reject the provider if any of these are true:
+
+- The adapter advertises a capability that is not implemented end to end.
+- The provider's meaning of "world model" is vague.
+- Score direction is implicit.
+- Input shape is undocumented.
+- Remote response parsing is ad hoc and untested.
+- Optional heavy dependencies are added to the base install without a strong reason.
+- A provider failure can silently fall back to mock behavior.
+- A malformed upstream payload can become a successful public result.
+- The PR lacks fixture-driven tests for documented failure modes.

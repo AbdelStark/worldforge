@@ -1,0 +1,47 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Framework runtime data
+.worldforge/
+.research/
+
+# IDE and editor files
+.idea/
+.vscode/
+.venv/
+.venv-*/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+site/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Local data
+*.sqlite
+*.sqlite3
+*.db
+
+.claude/tsc-cache/
+.claude/cache/
+.claude/worktrees/
+.tldr/
+.tldrignore
+.agents/harness/goals/

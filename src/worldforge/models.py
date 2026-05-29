@@ -1,0 +1,2041 @@
+"""Public domain models, error hierarchy, and serialisation helpers for WorldForge.
+
+This module owns the typed contracts crossed by every public surface:
+
+- **Errors.** :class:`WorldForgeError` covers invalid caller input and public-model validation
+  failures, :class:`WorldStateError` covers malformed persisted or provider-supplied world
+  state, and :class:`ProviderError` (in :mod:`worldforge.providers.base`) covers runtime
+  failures inside an adapter.
+- **Geometry.** :class:`Position`, :class:`Rotation`, :class:`Pose`, and :class:`BBox` are the
+  numeric primitives shared by scene objects, predictions, and evaluation suites.
+- **Provider contracts.** :class:`ProviderCapabilities`, :class:`ProviderInfo`,
+  :class:`ProviderProfile`, :class:`ProviderRequestPolicy`, :class:`RetryPolicy`,
+  :class:`RequestOperationPolicy`, :class:`ProviderHealth`, :class:`ProviderLifecycleStatus`,
+  and :class:`ProviderEvent` describe what an adapter promises and how its calls are policed.
+- **Result payloads.** :class:`PredictionPayload`, :class:`VideoClip`, :class:`ReasoningResult`,
+  :class:`EmbeddingResult`, :class:`ActionScoreResult`, and :class:`ActionPolicyResult` are the
+  return types of capability calls.
+- **Validation helpers.** Construction-time validators reject NaN/Infinity, malformed JSON,
+  unknown capability names, and otherwise unsafe values before they reach persistence or
+  outbound HTTP.
+
+All public dataclasses use ``slots=True`` and validate their fields in ``__post_init__`` so
+boundary failures surface immediately, never as a confusing downstream error.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import re
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from hashlib import sha256
+from mimetypes import guess_type
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
+
+JSONDict = dict[str, Any]
+CAPABILITY_NAMES = (
+    "predict",
+    "generate",
+    "reason",
+    "embed",
+    "plan",
+    "transfer",
+    "score",
+    "policy",
+)
+PROVIDER_LIFECYCLE_HOOKS = ("preflight", "warmup", "teardown")
+PROVIDER_LIFECYCLE_STATUSES = ("no-op", "ready", "skipped", "failed", "teardown-failed")
+_REDACTED_OBSERVABLE_VALUE = "[redacted]"
+_SENSITIVE_FIELD_PATTERN = re.compile(
+    r"(api[_-]?key|authorization|bearer|credential|password|secret|signature|signed[_-]?url|token)",
+    re.IGNORECASE,
+)
+_SENSITIVE_ASSIGNMENT_PATTERN = re.compile(
+    r"\b([A-Za-z0-9_-]*(?:api[_-]?key|authorization|credential|password|secret|signature|signed[_-]?url|token)[A-Za-z0-9_-]*)=([^&\s,;]+)",
+    re.IGNORECASE,
+)
+_SENSITIVE_COLON_PATTERN = re.compile(
+    r"(?P<key_quote>[\"']?)"
+    r"(?P<key>[A-Za-z0-9_-]*(?:api[_-]?key|authorization|bearer|credential|password|secret|signature|signed[_-]?url|token)[A-Za-z0-9_-]*)"
+    r"(?P=key_quote)\s*:\s*"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|[^,\s;}]+)",
+    re.IGNORECASE,
+)
+_BEARER_VALUE_PATTERN = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
+_URL_IN_TEXT_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
+
+
+class WorldForgeError(ValueError):
+    """Raised when a caller supplies invalid input to the framework."""
+
+
+class WorldStateError(WorldForgeError):
+    """Raised when persisted or provider-supplied world state is malformed."""
+
+
+def generate_id(prefix: str) -> str:
+    """Return an opaque identifier with a stable prefix."""
+
+    return f"{prefix}_{uuid4().hex[:12]}"
+
+
+def dump_json(payload: Any) -> str:
+    """Serialize data with deterministic formatting."""
+
+    try:
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise WorldForgeError(
+            "Payload must be JSON serializable and contain only finite numbers."
+        ) from exc
+
+
+def _clone_json_value(value: Any, *, name: str) -> Any:
+    """Return a JSON-native deep copy or raise for non-JSON values."""
+
+    if value is None or isinstance(value, str | bool):
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return require_finite_number(value, name=name)
+    if isinstance(value, list):
+        return [_clone_json_value(item, name=f"{name}[]") for item in value]
+    if isinstance(value, dict):
+        cloned: JSONDict = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise WorldForgeError(f"{name} keys must be strings.")
+            cloned[key] = _clone_json_value(item, name=f"{name}.{key}")
+        return cloned
+    raise WorldForgeError(f"{name} must contain only JSON-compatible values.")
+
+
+def require_json_dict(value: Any, *, name: str, allow_empty: bool = True) -> JSONDict:
+    """Return a JSON-native dict copy with string keys and finite numeric values."""
+
+    if not isinstance(value, dict):
+        raise WorldForgeError(f"{name} must be a JSON object.")
+    if not allow_empty and not value:
+        raise WorldForgeError(f"{name} must be a non-empty JSON object.")
+    cloned = _clone_json_value(value, name=name)
+    if not isinstance(cloned, dict):  # pragma: no cover - defensive invariant
+        raise WorldForgeError(f"{name} must be a JSON object.")
+    return cloned
+
+
+def ensure_directory(path: Path) -> None:
+    """Create a directory tree when it does not already exist."""
+
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def average(values: Iterable[float]) -> float:
+    """Return the arithmetic mean for a non-empty iterable."""
+
+    numbers = list(values)
+    if not numbers:
+        return 0.0
+    return sum(numbers) / len(numbers)
+
+
+def require_positive_int(value: int, *, name: str) -> int:
+    """Raise WorldForgeError unless ``value`` is a non-bool positive int."""
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise WorldForgeError(f"{name} must be an integer greater than 0.")
+    return value
+
+
+def require_non_negative_int(value: int, *, name: str) -> int:
+    """Raise WorldForgeError unless ``value`` is a non-bool integer >= 0."""
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise WorldForgeError(f"{name} must be an integer greater than or equal to 0.")
+    return value
+
+
+def require_finite_number(value: float | int, *, name: str) -> float:
+    """Raise WorldForgeError unless ``value`` is a finite real number."""
+
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise WorldForgeError(f"{name} must be a finite number.")
+    number = float(value)
+    if not math.isfinite(number):
+        raise WorldForgeError(f"{name} must be a finite number.")
+    return number
+
+
+def require_probability(value: float | int, *, name: str) -> float:
+    """Raise WorldForgeError unless ``value`` is finite and within [0, 1]."""
+
+    number = require_finite_number(value, name=name)
+    if number < 0.0 or number > 1.0:
+        raise WorldForgeError(f"{name} must be between 0 and 1.")
+    return number
+
+
+def require_bool(value: bool, *, name: str) -> bool:
+    """Raise WorldForgeError unless ``value`` is a real boolean."""
+
+    if not isinstance(value, bool):
+        raise WorldForgeError(f"{name} must be a boolean.")
+    return value
+
+
+def _sanitize_observable_target(value: object | None) -> str | None:
+    """Return a provider event target safe for logs and metrics."""
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise WorldForgeError("ProviderEvent target must be a string when provided.")
+    target = value.strip()
+    if not target:
+        return None
+    try:
+        parts = urlsplit(target)
+    except ValueError:
+        stripped = target.split("?", maxsplit=1)[0].split("#", maxsplit=1)[0]
+        return stripped or _REDACTED_OBSERVABLE_VALUE
+    if parts.scheme or parts.netloc or parts.query or parts.fragment:
+        # Signed artifact URLs and bearer-style presigned URLs keep credentials in
+        # query strings. Provider events need route-level context, not secrets.
+        netloc = parts.netloc.rsplit("@", maxsplit=1)[-1]
+        sanitized = urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+        return sanitized or _REDACTED_OBSERVABLE_VALUE
+    return target
+
+
+def _sanitize_observable_id(value: object | None, *, name: str) -> str | None:
+    """Return a provider event correlation identifier safe for logs."""
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise WorldForgeError(f"{name} must be a string when provided.")
+    sanitized = _redact_observable_text(value.strip())
+    return sanitized or None
+
+
+def _redact_observable_text(value: str) -> str:
+    """Redact common secret shapes from provider event text."""
+
+    def _redact_colon_assignment(match: re.Match[str]) -> str:
+        raw_value = match.group("value")
+        quote = raw_value[0] if raw_value[:1] in {"'", '"'} else ""
+        redacted_value = f"{quote}{_REDACTED_OBSERVABLE_VALUE}{quote}"
+        key_quote = match.group("key_quote")
+        return f"{key_quote}{match.group('key')}{key_quote}: {redacted_value}"
+
+    redacted = _URL_IN_TEXT_PATTERN.sub(
+        lambda match: _sanitize_observable_target(match.group(0)) or _REDACTED_OBSERVABLE_VALUE,
+        value,
+    )
+    redacted = _BEARER_VALUE_PATTERN.sub("Bearer [redacted]", redacted)
+    redacted = _SENSITIVE_ASSIGNMENT_PATTERN.sub(
+        lambda match: f"{match.group(1)}={_REDACTED_OBSERVABLE_VALUE}",
+        redacted,
+    )
+    return _SENSITIVE_COLON_PATTERN.sub(_redact_colon_assignment, redacted)
+
+
+def _redact_observable_value(value: Any, *, key: str | None = None) -> Any:
+    """Redact obvious secrets from nested provider event metadata."""
+
+    if key is not None and _SENSITIVE_FIELD_PATTERN.search(key):
+        return _REDACTED_OBSERVABLE_VALUE
+    if isinstance(value, str):
+        return _redact_observable_text(value)
+    if isinstance(value, dict):
+        return {
+            item_key: _redact_observable_value(item_value, key=str(item_key))
+            for item_key, item_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_observable_value(item) for item in value]
+    return value
+
+
+def deterministic_floats(seed: str, size: int) -> list[float]:
+    """Generate deterministic floats in the range [0, 1)."""
+
+    digest = sha256(seed.encode("utf-8")).digest()
+    values: list[float] = []
+    counter = 0
+    while len(values) < size:
+        block = sha256(digest + counter.to_bytes(4, "big")).digest()
+        for index in range(0, len(block), 4):
+            if len(values) >= size:
+                break
+            chunk = int.from_bytes(block[index : index + 4], "big")
+            values.append((chunk % 10_000) / 10_000.0)
+        counter += 1
+    return values
+
+
+@dataclass(slots=True, frozen=True)
+class Position:
+    """A 3D position in world coordinates."""
+
+    x: float
+    y: float
+    z: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "x", require_finite_number(self.x, name="Position.x"))
+        object.__setattr__(self, "y", require_finite_number(self.y, name="Position.y"))
+        object.__setattr__(self, "z", require_finite_number(self.z, name="Position.z"))
+
+    def to_dict(self) -> JSONDict:
+        return {"x": self.x, "y": self.y, "z": self.z}
+
+    @classmethod
+    def from_dict(cls, payload: JSONDict) -> Position:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Position payload must be a JSON object.")
+        try:
+            return cls(
+                x=payload["x"],
+                y=payload["y"],
+                z=payload["z"],
+            )
+        except KeyError as exc:
+            raise WorldForgeError(
+                f"Position payload is missing coordinate '{exc.args[0]}'."
+            ) from exc
+
+    def distance_to(self, other: Position) -> float:
+        """Return the Euclidean distance to ``other`` in world-coordinate units."""
+
+        return math.dist((self.x, self.y, self.z), (other.x, other.y, other.z))
+
+
+@dataclass(slots=True, frozen=True)
+class Rotation:
+    """A quaternion rotation."""
+
+    w: float = 1.0
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "w", require_finite_number(self.w, name="Rotation.w"))
+        object.__setattr__(self, "x", require_finite_number(self.x, name="Rotation.x"))
+        object.__setattr__(self, "y", require_finite_number(self.y, name="Rotation.y"))
+        object.__setattr__(self, "z", require_finite_number(self.z, name="Rotation.z"))
+
+    def to_dict(self) -> JSONDict:
+        return {"w": self.w, "x": self.x, "y": self.y, "z": self.z}
+
+    @classmethod
+    def from_dict(cls, payload: JSONDict | None) -> Rotation:
+        if payload is None:
+            return cls()
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Rotation payload must be a JSON object when provided.")
+        return cls(
+            w=payload.get("w", 1.0),
+            x=payload.get("x", 0.0),
+            y=payload.get("y", 0.0),
+            z=payload.get("z", 0.0),
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class Pose:
+    """A 6DoF pose."""
+
+    position: Position
+    rotation: Rotation = field(default_factory=Rotation)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.position, Position):
+            raise WorldForgeError("Pose position must be a Position.")
+        if not isinstance(self.rotation, Rotation):
+            raise WorldForgeError("Pose rotation must be a Rotation.")
+
+    def to_dict(self) -> JSONDict:
+        return {"position": self.position.to_dict(), "rotation": self.rotation.to_dict()}
+
+    @classmethod
+    def from_dict(cls, payload: JSONDict) -> Pose:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Pose payload must be a JSON object.")
+        return cls(
+            position=Position.from_dict(payload["position"]),
+            rotation=Rotation.from_dict(payload.get("rotation")),
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class BBox:
+    """Axis-aligned bounding box."""
+
+    min: Position
+    max: Position
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.min, Position) or not isinstance(self.max, Position):
+            raise WorldForgeError("BBox min and max must be Position instances.")
+        if self.min.x > self.max.x or self.min.y > self.max.y or self.min.z > self.max.z:
+            raise WorldForgeError("BBox min coordinates must be less than or equal to max.")
+
+    def to_dict(self) -> JSONDict:
+        return {"min": self.min.to_dict(), "max": self.max.to_dict()}
+
+    @classmethod
+    def from_dict(cls, payload: JSONDict) -> BBox:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("BBox payload must be a JSON object.")
+        return cls(
+            min=Position.from_dict(payload["min"]),
+            max=Position.from_dict(payload["max"]),
+        )
+
+
+@dataclass(slots=True)
+class Action:
+    """A structured action applied to a world."""
+
+    kind: str
+    parameters: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, str) or not self.kind.strip():
+            raise WorldForgeError("Action kind must be a non-empty string.")
+        if not isinstance(self.parameters, dict):
+            raise WorldForgeError("Action parameters must be a JSON object.")
+        self.kind = self.kind.strip()
+        self.parameters = require_json_dict(self.parameters, name="Action parameters")
+
+    @staticmethod
+    def move_to(
+        x: float,
+        y: float,
+        z: float,
+        speed: float = 1.0,
+        *,
+        object_id: str | None = None,
+    ) -> Action:
+        target_position = Position(x, y, z)
+        resolved_speed = require_finite_number(speed, name="Action.move_to speed")
+        if resolved_speed <= 0.0:
+            raise WorldForgeError("Action.move_to speed must be greater than 0.")
+        parameters: JSONDict = {
+            "target": target_position.to_dict(),
+            "speed": resolved_speed,
+        }
+        if object_id is not None:
+            if not str(object_id).strip():
+                raise WorldForgeError("Action.move_to object_id must not be empty when provided.")
+            parameters["object_id"] = str(object_id).strip()
+        return Action(
+            "move_to",
+            parameters,
+        )
+
+    @staticmethod
+    def spawn_object(
+        name: str,
+        position: Position | None = None,
+        bbox: BBox | None = None,
+    ) -> Action:
+        if not isinstance(name, str) or not name.strip():
+            raise WorldForgeError("Action.spawn_object name must be a non-empty string.")
+        object_position = position or Position(0.0, 0.5, 0.0)
+        object_bbox = bbox or BBox(
+            Position(object_position.x - 0.05, object_position.y - 0.05, object_position.z - 0.05),
+            Position(object_position.x + 0.05, object_position.y + 0.05, object_position.z + 0.05),
+        )
+        return Action(
+            "spawn_object",
+            {
+                "name": name.strip(),
+                "position": object_position.to_dict(),
+                "bbox": object_bbox.to_dict(),
+            },
+        )
+
+    @staticmethod
+    def from_dict(payload: JSONDict) -> Action:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Action.from_dict expects a JSON object.")
+        if "type" in payload:
+            parameters = payload.get("parameters", {})
+            if not isinstance(parameters, dict):
+                raise WorldForgeError("Action.from_dict field 'parameters' must be a JSON object.")
+            return Action(str(payload["type"]), parameters)
+        if len(payload) != 1:
+            raise WorldForgeError("Action.from_dict expects {'type': ...} or a single-key mapping.")
+        kind, parameters = next(iter(payload.items()))
+        if not isinstance(parameters, dict):
+            raise WorldForgeError("Action.from_dict single-key parameters must be a JSON object.")
+        return Action(str(kind), parameters)
+
+    def to_dict(self) -> JSONDict:
+        return {"type": self.kind, "parameters": dict(self.parameters)}
+
+    def to_json(self) -> str:
+        return dump_json(self.to_dict())
+
+
+@dataclass(slots=True, frozen=True)
+class StructuredGoal:
+    """Typed structured planning goal with explicit validation."""
+
+    kind: str
+    object_id: str | None = None
+    object_name: str | None = None
+    position: Position | None = None
+    reference_object_id: str | None = None
+    reference_object_name: str | None = None
+    offset: Position | None = None
+    tolerance: float = 0.05
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "tolerance",
+            require_finite_number(self.tolerance, name="StructuredGoal tolerance"),
+        )
+        if self.kind not in {"object_at", "spawn_object", "object_near", "swap_objects"}:
+            raise WorldForgeError(
+                "StructuredGoal kind must be one of: object_at, spawn_object, "
+                "object_near, swap_objects."
+            )
+        if self.kind in {"object_at", "object_near", "swap_objects"} and self.tolerance <= 0.0:
+            raise WorldForgeError(f"StructuredGoal {self.kind} tolerance must be greater than 0.")
+        if self.kind == "object_at":
+            if self.position is None:
+                raise WorldForgeError("StructuredGoal object_at goals require a target position.")
+            self._require_primary_selector("object_at")
+            self._reject_reference_selector("object_at")
+            self._reject_offset("object_at")
+        if self.kind == "spawn_object":
+            if not self.object_name:
+                raise WorldForgeError("StructuredGoal spawn_object goals require object_name.")
+            if self.object_id is not None:
+                raise WorldForgeError("StructuredGoal spawn_object goals do not accept object_id.")
+            self._reject_reference_selector("spawn_object")
+            self._reject_offset("spawn_object")
+        if self.kind == "object_near":
+            self._require_primary_selector("object_near")
+            self._require_reference_selector("object_near")
+            if self.position is not None:
+                raise WorldForgeError("StructuredGoal object_near goals do not accept position.")
+            if self.offset is None:
+                object.__setattr__(self, "offset", Position(0.1, 0.0, 0.0))
+            self._require_distinct_selectors("object_near")
+        if self.kind == "swap_objects":
+            self._require_primary_selector("swap_objects")
+            self._require_reference_selector("swap_objects")
+            if self.position is not None:
+                raise WorldForgeError("StructuredGoal swap_objects goals do not accept position.")
+            self._reject_offset("swap_objects")
+            self._require_distinct_selectors("swap_objects")
+
+    @staticmethod
+    def _has_selector(object_id: str | None, object_name: str | None) -> bool:
+        return bool(object_id or object_name)
+
+    @staticmethod
+    def _selector_label(
+        object_id: str | None,
+        object_name: str | None,
+        *,
+        fallback: str = "object",
+    ) -> str:
+        return object_name or object_id or fallback
+
+    @staticmethod
+    def _normalize_selector_payload(
+        payload: object,
+        *,
+        field_name: str,
+    ) -> JSONDict:
+        if payload is None:
+            return {}
+        if isinstance(payload, str):
+            return {"name": payload}
+        if not isinstance(payload, dict):
+            raise WorldForgeError(f"StructuredGoal field '{field_name}' must be a JSON object.")
+        return payload
+
+    @classmethod
+    def _selector_fields(
+        cls,
+        payload: object,
+        *,
+        field_name: str,
+    ) -> tuple[str | None, str | None]:
+        normalized = cls._normalize_selector_payload(payload, field_name=field_name)
+        object_id = str(normalized["id"]) if normalized.get("id") is not None else None
+        object_name = str(normalized["name"]) if normalized.get("name") is not None else None
+        return object_id, object_name
+
+    def _require_primary_selector(self, kind: str) -> None:
+        if not self._has_selector(self.object_id, self.object_name):
+            raise WorldForgeError(f"StructuredGoal {kind} goals require object_id or object_name.")
+
+    def _require_reference_selector(self, kind: str) -> None:
+        if not self._has_selector(self.reference_object_id, self.reference_object_name):
+            raise WorldForgeError(
+                f"StructuredGoal {kind} goals require reference_object.id or reference_object.name."
+            )
+
+    def _reject_reference_selector(self, kind: str) -> None:
+        if self.reference_object_id is not None or self.reference_object_name is not None:
+            raise WorldForgeError(
+                f"StructuredGoal {kind} goals do not accept reference_object selectors."
+            )
+
+    def _reject_offset(self, kind: str) -> None:
+        if self.offset is not None:
+            raise WorldForgeError(f"StructuredGoal {kind} goals do not accept offset.")
+
+    def _require_distinct_selectors(self, kind: str) -> None:
+        same_id = (
+            self.object_id is not None
+            and self.reference_object_id is not None
+            and self.object_id == self.reference_object_id
+        )
+        same_name = (
+            self.object_id is None
+            and self.reference_object_id is None
+            and self.object_name is not None
+            and self.object_name == self.reference_object_name
+        )
+        if same_id or same_name:
+            raise WorldForgeError(
+                f"StructuredGoal {kind} goals require distinct primary and reference objects."
+            )
+
+    @classmethod
+    def object_at(
+        cls,
+        *,
+        position: Position,
+        object_id: str | None = None,
+        object_name: str | None = None,
+        tolerance: float = 0.05,
+    ) -> StructuredGoal:
+        return cls(
+            kind="object_at",
+            object_id=object_id,
+            object_name=object_name,
+            position=position,
+            tolerance=tolerance,
+        )
+
+    @classmethod
+    def object_near(
+        cls,
+        *,
+        object_id: str | None = None,
+        object_name: str | None = None,
+        reference_object_id: str | None = None,
+        reference_object_name: str | None = None,
+        offset: Position | None = None,
+        tolerance: float = 0.05,
+    ) -> StructuredGoal:
+        return cls(
+            kind="object_near",
+            object_id=object_id,
+            object_name=object_name,
+            reference_object_id=reference_object_id,
+            reference_object_name=reference_object_name,
+            offset=offset,
+            tolerance=tolerance,
+        )
+
+    @classmethod
+    def spawn_object(
+        cls,
+        object_name: str,
+        *,
+        position: Position | None = None,
+    ) -> StructuredGoal:
+        return cls(
+            kind="spawn_object",
+            object_name=object_name,
+            position=position,
+        )
+
+    @classmethod
+    def swap_objects(
+        cls,
+        *,
+        object_id: str | None = None,
+        object_name: str | None = None,
+        reference_object_id: str | None = None,
+        reference_object_name: str | None = None,
+        tolerance: float = 0.05,
+    ) -> StructuredGoal:
+        return cls(
+            kind="swap_objects",
+            object_id=object_id,
+            object_name=object_name,
+            reference_object_id=reference_object_id,
+            reference_object_name=reference_object_name,
+            tolerance=tolerance,
+        )
+
+    @classmethod
+    def from_json(cls, payload: str) -> StructuredGoal:
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise WorldForgeError(f"goal_json must be valid JSON: {exc}") from exc
+        return cls.from_dict(decoded)
+
+    @classmethod
+    def from_dict(cls, payload: JSONDict) -> StructuredGoal:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("Structured goals must decode to a JSON object.")
+
+        if "kind" in payload:
+            kind = str(payload["kind"])
+            object_id, object_name = cls._selector_fields(
+                payload.get("object"), field_name="object"
+            )
+            reference_object_id, reference_object_name = cls._selector_fields(
+                payload.get("reference_object"),
+                field_name="reference_object",
+            )
+            position_payload = payload.get("position")
+            position = (
+                Position.from_dict(position_payload) if isinstance(position_payload, dict) else None
+            )
+            offset_payload = payload.get("offset")
+            offset = (
+                Position.from_dict(offset_payload) if isinstance(offset_payload, dict) else None
+            )
+            return cls(
+                kind=kind,
+                object_id=object_id,
+                object_name=object_name,
+                position=position,
+                reference_object_id=reference_object_id,
+                reference_object_name=reference_object_name,
+                offset=offset,
+                tolerance=payload.get("tolerance", 0.05),
+            )
+
+        if payload.get("type") != "condition":
+            raise WorldForgeError(
+                "StructuredGoal JSON must include either 'kind' or legacy type='condition'."
+            )
+        condition = payload.get("condition")
+        if not isinstance(condition, dict) or len(condition) != 1:
+            raise WorldForgeError(
+                "Legacy goal_json condition payload must contain exactly one condition."
+            )
+
+        condition_name, condition_payload = next(iter(condition.items()))
+        if not isinstance(condition_payload, dict):
+            raise WorldForgeError("Legacy goal_json condition payload must be a JSON object.")
+
+        if condition_name == "ObjectAt":
+            position_payload = condition_payload.get("position")
+            if not isinstance(position_payload, dict):
+                raise WorldForgeError("Legacy ObjectAt goals require a position object.")
+            object_value = condition_payload.get("object")
+            object_name = condition_payload.get("object_name")
+            return cls.object_at(
+                object_id=str(object_value) if object_value is not None else None,
+                object_name=str(object_name) if object_name is not None else None,
+                position=Position.from_dict(position_payload),
+                tolerance=condition_payload.get("tolerance", 0.05),
+            )
+
+        if condition_name == "SpawnObject":
+            object_payload = condition_payload.get("object", {})
+            if isinstance(object_payload, str):
+                object_name = object_payload
+            elif isinstance(object_payload, dict):
+                object_name = object_payload.get("name")
+            else:
+                object_name = condition_payload.get("name")
+            if object_name is None:
+                raise WorldForgeError("Legacy SpawnObject goals require object.name or name.")
+            position_payload = condition_payload.get("position")
+            return cls.spawn_object(
+                str(object_name),
+                position=(
+                    Position.from_dict(position_payload)
+                    if isinstance(position_payload, dict)
+                    else None
+                ),
+            )
+
+        if condition_name == "ObjectNear":
+            object_id, object_name = cls._selector_fields(
+                condition_payload.get("object"),
+                field_name="object",
+            )
+            reference_object_id, reference_object_name = cls._selector_fields(
+                condition_payload.get("reference_object", condition_payload.get("anchor")),
+                field_name="reference_object",
+            )
+            offset_payload = condition_payload.get("offset")
+            offset = (
+                Position.from_dict(offset_payload) if isinstance(offset_payload, dict) else None
+            )
+            return cls.object_near(
+                object_id=object_id,
+                object_name=object_name,
+                reference_object_id=reference_object_id,
+                reference_object_name=reference_object_name,
+                offset=offset,
+                tolerance=condition_payload.get("tolerance", 0.05),
+            )
+
+        if condition_name == "SwapObjects":
+            object_id, object_name = cls._selector_fields(
+                condition_payload.get("object", condition_payload.get("first_object")),
+                field_name="object",
+            )
+            reference_object_id, reference_object_name = cls._selector_fields(
+                condition_payload.get("reference_object", condition_payload.get("second_object")),
+                field_name="reference_object",
+            )
+            return cls.swap_objects(
+                object_id=object_id,
+                object_name=object_name,
+                reference_object_id=reference_object_id,
+                reference_object_name=reference_object_name,
+                tolerance=condition_payload.get("tolerance", 0.05),
+            )
+
+        raise WorldForgeError(f"Unsupported legacy structured goal condition '{condition_name}'.")
+
+    def to_dict(self) -> JSONDict:
+        payload: JSONDict = {
+            "kind": self.kind,
+            "object": {},
+        }
+        if self.object_id is not None:
+            payload["object"]["id"] = self.object_id
+        if self.object_name is not None:
+            payload["object"]["name"] = self.object_name
+        if self.position is not None:
+            payload["position"] = self.position.to_dict()
+        if self.reference_object_id is not None or self.reference_object_name is not None:
+            payload["reference_object"] = {}
+            if self.reference_object_id is not None:
+                payload["reference_object"]["id"] = self.reference_object_id
+            if self.reference_object_name is not None:
+                payload["reference_object"]["name"] = self.reference_object_name
+        if self.offset is not None:
+            payload["offset"] = self.offset.to_dict()
+        if self.kind in {"object_at", "object_near", "swap_objects"}:
+            payload["tolerance"] = self.tolerance
+        return payload
+
+    def to_json(self) -> str:
+        return dump_json(self.to_dict())
+
+    def summary(self) -> str:
+        if self.kind == "spawn_object":
+            return f"spawn {self.object_name}"
+        target = self._selector_label(self.object_id, self.object_name)
+        if self.kind == "object_near":
+            reference = self._selector_label(
+                self.reference_object_id,
+                self.reference_object_name,
+                fallback="reference object",
+            )
+            offset = self.offset
+            if offset is None:
+                raise WorldForgeError(
+                    "StructuredGoal object_near must have a non-null offset (enforced in "
+                    "__post_init__)."
+                )
+            return (
+                f"move {target} near {reference} "
+                f"with offset ({offset.x:.2f}, {offset.y:.2f}, {offset.z:.2f})"
+            )
+        if self.kind == "swap_objects":
+            reference = self._selector_label(
+                self.reference_object_id,
+                self.reference_object_name,
+                fallback="reference object",
+            )
+            return f"swap {target} with {reference}"
+        position = self.position
+        if position is None:
+            raise WorldForgeError(
+                f"StructuredGoal {self.kind!r} must have a non-null position (enforced in "
+                "__post_init__)."
+            )
+        return f"move {target} to ({position.x:.2f}, {position.y:.2f}, {position.z:.2f})"
+
+
+@dataclass(slots=True)
+class SceneObjectPatch:
+    """Partial mutation for a scene object."""
+
+    name: str | None = None
+    position: Position | None = None
+    graspable: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.name is not None:
+            self.set_name(self.name)
+        if self.position is not None:
+            self.set_position(self.position)
+        if self.graspable is not None:
+            self.set_graspable(self.graspable)
+
+    def set_name(self, name: str) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise WorldForgeError("SceneObjectPatch name must be a non-empty string.")
+        self.name = name.strip()
+
+    def set_position(self, position: Position) -> None:
+        if not isinstance(position, Position):
+            raise WorldForgeError("SceneObjectPatch position must be a Position.")
+        self.position = position
+
+    def set_graspable(self, value: bool) -> None:
+        self.graspable = require_bool(value, name="SceneObjectPatch graspable")
+
+
+@dataclass(slots=True)
+class SceneObject:
+    """An object tracked in the scene graph."""
+
+    name: str
+    position: Position
+    bbox: BBox
+    id: str = field(default_factory=lambda: generate_id("obj"))
+    is_graspable: bool = False
+    metadata: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise WorldForgeError("SceneObject name must be a non-empty string.")
+        if not isinstance(self.position, Position):
+            raise WorldForgeError("SceneObject position must be a Position.")
+        if not isinstance(self.bbox, BBox):
+            raise WorldForgeError("SceneObject bbox must be a BBox.")
+        if not isinstance(self.id, str) or not self.id.strip():
+            raise WorldForgeError("SceneObject id must be a non-empty string.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("SceneObject metadata must be a JSON object.")
+        self.name = self.name.strip()
+        self.id = self.id.strip()
+        self.is_graspable = require_bool(
+            self.is_graspable,
+            name="SceneObject is_graspable",
+        )
+        self.metadata = require_json_dict(self.metadata, name="SceneObject metadata")
+
+    @property
+    def pose(self) -> Pose:
+        return Pose(position=self.position)
+
+    def copy(self) -> SceneObject:
+        return SceneObject.from_dict(self.to_dict())
+
+    def _bbox_translated_to(self, position: Position) -> BBox:
+        dx = position.x - self.position.x
+        dy = position.y - self.position.y
+        dz = position.z - self.position.z
+        return BBox(
+            min=Position(
+                self.bbox.min.x + dx,
+                self.bbox.min.y + dy,
+                self.bbox.min.z + dz,
+            ),
+            max=Position(
+                self.bbox.max.x + dx,
+                self.bbox.max.y + dy,
+                self.bbox.max.z + dz,
+            ),
+        )
+
+    def apply_patch(self, patch: SceneObjectPatch) -> None:
+        if patch.name is not None:
+            self.name = patch.name
+        if patch.position is not None:
+            self.bbox = self._bbox_translated_to(patch.position)
+            self.position = patch.position
+        if patch.graspable is not None:
+            self.is_graspable = patch.graspable
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "pose": self.pose.to_dict(),
+            "bbox": self.bbox.to_dict(),
+            "is_graspable": self.is_graspable,
+            "metadata": dict(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: JSONDict) -> SceneObject:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("SceneObject payload must be a JSON object.")
+        pose = (
+            Pose.from_dict(payload["pose"])
+            if "pose" in payload
+            else Pose(Position.from_dict(payload["position"]))
+        )
+        return cls(
+            id=str(payload.get("id") or generate_id("obj")),
+            name=str(payload["name"]),
+            position=pose.position,
+            bbox=BBox.from_dict(payload["bbox"]),
+            is_graspable=payload.get("is_graspable", False),
+            metadata=dict(payload.get("metadata", {})),
+        )
+
+
+@dataclass(slots=True)
+class ProviderCapabilities:
+    """Boolean capability matrix for a provider.
+
+    All flags default to ``False``. Provider adapters must opt into each callable surface
+    explicitly so unsupported workflows fail at capability resolution instead of falling through to
+    mock behavior or ad hoc string checks.
+    """
+
+    predict: bool = False
+    generate: bool = False
+    reason: bool = False
+    embed: bool = False
+    plan: bool = False
+    transfer: bool = False
+    score: bool = False
+    policy: bool = False
+
+    def __post_init__(self) -> None:
+        for capability in CAPABILITY_NAMES:
+            setattr(
+                self,
+                capability,
+                require_bool(
+                    getattr(self, capability),
+                    name=f"ProviderCapabilities {capability}",
+                ),
+            )
+
+    def to_dict(self) -> JSONDict:
+        return {name: getattr(self, name) for name in CAPABILITY_NAMES}
+
+    def supports(self, capability: str) -> bool:
+        """Return whether a known capability is enabled.
+
+        Unknown names raise ``WorldForgeError`` because a typo in routing or diagnostics should not
+        silently behave like an unsupported provider.
+        """
+
+        if not isinstance(capability, str) or capability not in CAPABILITY_NAMES:
+            known = ", ".join(CAPABILITY_NAMES)
+            raise WorldForgeError(
+                f"Unknown provider capability '{capability}'. Known capabilities: {known}."
+            )
+        return bool(getattr(self, capability))
+
+    def enabled_names(self) -> list[str]:
+        """Return the canonical names of every capability set to ``True``.
+
+        The order matches :data:`CAPABILITY_NAMES` so diagnostics, CLI output, and reports
+        render capabilities consistently across providers.
+        """
+
+        return [name for name in CAPABILITY_NAMES if getattr(self, name)]
+
+
+@dataclass(slots=True, frozen=True)
+class RetryPolicy:
+    """Retry and backoff policy for one class of remote operations."""
+
+    max_attempts: int = 1
+    backoff_seconds: float = 0.0
+    backoff_multiplier: float = 1.0
+    retryable_status_codes: tuple[int, ...] = (408, 429, 500, 502, 503, 504)
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.max_attempts, bool)
+            or not isinstance(self.max_attempts, int)
+            or self.max_attempts < 1
+        ):
+            raise WorldForgeError("RetryPolicy max_attempts must be greater than or equal to 1.")
+        object.__setattr__(
+            self,
+            "backoff_seconds",
+            require_finite_number(self.backoff_seconds, name="RetryPolicy backoff_seconds"),
+        )
+        object.__setattr__(
+            self,
+            "backoff_multiplier",
+            require_finite_number(self.backoff_multiplier, name="RetryPolicy backoff_multiplier"),
+        )
+        if self.backoff_seconds < 0.0:
+            raise WorldForgeError("RetryPolicy backoff_seconds must be non-negative.")
+        if self.backoff_multiplier < 1.0:
+            raise WorldForgeError(
+                "RetryPolicy backoff_multiplier must be greater than or equal to 1."
+            )
+        object.__setattr__(
+            self,
+            "retryable_status_codes",
+            tuple(self.retryable_status_codes),
+        )
+        for status_code in self.retryable_status_codes:
+            if (
+                isinstance(status_code, bool)
+                or not isinstance(status_code, int)
+                or status_code < 100
+                or status_code > 599
+            ):
+                raise WorldForgeError(
+                    "RetryPolicy retryable_status_codes must contain valid HTTP status codes."
+                )
+
+    def delay_for_attempt(self, attempt_number: int) -> float:
+        """Return the sleep delay before the given attempt number."""
+
+        if attempt_number <= 1 or self.backoff_seconds == 0.0:
+            return 0.0
+        return self.backoff_seconds * (self.backoff_multiplier ** (attempt_number - 2))
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "max_attempts": self.max_attempts,
+            "backoff_seconds": self.backoff_seconds,
+            "backoff_multiplier": self.backoff_multiplier,
+            "retryable_status_codes": list(self.retryable_status_codes),
+        }
+
+
+@dataclass(slots=True, frozen=True)
+class RequestOperationPolicy:
+    """Timeout and retry policy for a single remote operation type."""
+
+    timeout_seconds: float
+    retry: RetryPolicy = field(default_factory=RetryPolicy)
+    max_elapsed_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "timeout_seconds",
+            require_finite_number(
+                self.timeout_seconds,
+                name="RequestOperationPolicy timeout_seconds",
+            ),
+        )
+        if self.timeout_seconds <= 0.0:
+            raise WorldForgeError("RequestOperationPolicy timeout_seconds must be greater than 0.")
+        if self.max_elapsed_seconds is not None:
+            object.__setattr__(
+                self,
+                "max_elapsed_seconds",
+                require_finite_number(
+                    self.max_elapsed_seconds,
+                    name="RequestOperationPolicy max_elapsed_seconds",
+                ),
+            )
+            if self.max_elapsed_seconds <= 0.0:
+                raise WorldForgeError(
+                    "RequestOperationPolicy max_elapsed_seconds must be greater than 0."
+                )
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "timeout_seconds": self.timeout_seconds,
+            "retry": self.retry.to_dict(),
+            "max_elapsed_seconds": self.max_elapsed_seconds,
+        }
+
+
+@dataclass(slots=True, frozen=True)
+class ProviderRequestPolicy:
+    """Typed network policy for HTTP-backed provider operations."""
+
+    health: RequestOperationPolicy
+    request: RequestOperationPolicy
+    polling: RequestOperationPolicy
+    download: RequestOperationPolicy
+
+    @classmethod
+    def remote_defaults(
+        cls,
+        *,
+        request_timeout_seconds: float,
+        health_timeout_seconds: float | None = None,
+        polling_timeout_seconds: float | None = None,
+        download_timeout_seconds: float | None = None,
+        health_max_elapsed_seconds: float | None = None,
+        request_max_elapsed_seconds: float | None = None,
+        polling_max_elapsed_seconds: float | None = None,
+        download_max_elapsed_seconds: float | None = None,
+        read_retry_attempts: int = 3,
+        read_backoff_seconds: float = 0.25,
+        read_backoff_multiplier: float = 2.0,
+    ) -> ProviderRequestPolicy:
+        read_retry = RetryPolicy(
+            max_attempts=read_retry_attempts,
+            backoff_seconds=read_backoff_seconds,
+            backoff_multiplier=read_backoff_multiplier,
+        )
+        no_retry = RetryPolicy(max_attempts=1)
+        resolved_request_timeout = require_finite_number(
+            request_timeout_seconds,
+            name="ProviderRequestPolicy request_timeout_seconds",
+        )
+        resolved_health_timeout = require_finite_number(
+            health_timeout_seconds
+            if health_timeout_seconds is not None
+            else min(resolved_request_timeout, 10.0),
+            name="ProviderRequestPolicy health_timeout_seconds",
+        )
+        resolved_polling_timeout = require_finite_number(
+            polling_timeout_seconds
+            if polling_timeout_seconds is not None
+            else min(resolved_request_timeout, 30.0),
+            name="ProviderRequestPolicy polling_timeout_seconds",
+        )
+        resolved_download_timeout = require_finite_number(
+            download_timeout_seconds
+            if download_timeout_seconds is not None
+            else resolved_request_timeout,
+            name="ProviderRequestPolicy download_timeout_seconds",
+        )
+        return cls(
+            health=RequestOperationPolicy(
+                timeout_seconds=resolved_health_timeout,
+                retry=read_retry,
+                max_elapsed_seconds=health_max_elapsed_seconds,
+            ),
+            request=RequestOperationPolicy(
+                timeout_seconds=resolved_request_timeout,
+                retry=no_retry,
+                max_elapsed_seconds=request_max_elapsed_seconds,
+            ),
+            polling=RequestOperationPolicy(
+                timeout_seconds=resolved_polling_timeout,
+                retry=read_retry,
+                max_elapsed_seconds=polling_max_elapsed_seconds,
+            ),
+            download=RequestOperationPolicy(
+                timeout_seconds=resolved_download_timeout,
+                retry=read_retry,
+                max_elapsed_seconds=download_max_elapsed_seconds,
+            ),
+        )
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "health": self.health.to_dict(),
+            "request": self.request.to_dict(),
+            "polling": self.polling.to_dict(),
+            "download": self.download.to_dict(),
+        }
+
+
+@dataclass(slots=True)
+class GenerationOptions:
+    """Typed options for provider media generation requests."""
+
+    image: str | None = None
+    video: str | None = None
+    model: str | None = None
+    ratio: str | None = None
+    size: str | None = None
+    fps: float | None = None
+    seed: int | None = None
+    negative_prompt: str | None = None
+    reference_images: list[str] = field(default_factory=list)
+    extras: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.fps is not None:
+            self.fps = require_finite_number(self.fps, name="GenerationOptions fps")
+            if self.fps <= 0.0:
+                raise WorldForgeError("GenerationOptions fps must be greater than 0.")
+        if self.seed is not None and (
+            isinstance(self.seed, bool) or not isinstance(self.seed, int)
+        ):
+            raise WorldForgeError("GenerationOptions seed must be an integer when provided.")
+        if not isinstance(self.reference_images, list) or not all(
+            isinstance(reference, str) for reference in self.reference_images
+        ):
+            raise WorldForgeError("GenerationOptions reference_images must be a list of strings.")
+        if not isinstance(self.extras, dict):
+            raise WorldForgeError("GenerationOptions extras must be a JSON object.")
+        self.reference_images = list(self.reference_images)
+        self.extras = require_json_dict(self.extras, name="GenerationOptions extras")
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "image": self.image,
+            "video": self.video,
+            "model": self.model,
+            "ratio": self.ratio,
+            "size": self.size,
+            "fps": self.fps,
+            "seed": self.seed,
+            "negative_prompt": self.negative_prompt,
+            "reference_images": list(self.reference_images),
+            "extras": dict(self.extras),
+        }
+
+
+@dataclass(slots=True)
+class ProviderInfo:
+    """Provider metadata returned by registry APIs."""
+
+    name: str
+    capabilities: ProviderCapabilities
+    is_local: bool
+    description: str = ""
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "name": self.name,
+            "capabilities": self.capabilities.to_dict(),
+            "is_local": self.is_local,
+            "description": self.description,
+        }
+
+
+@dataclass(slots=True)
+class ProviderProfile:
+    """Provider profile metadata for routing and diagnostics."""
+
+    name: str
+    capabilities: ProviderCapabilities
+    is_local: bool
+    description: str = ""
+    package: str = "worldforge"
+    implementation_status: str = "experimental"
+    deterministic: bool = False
+    requires_credentials: bool = False
+    credential_env_var: str | None = None
+    required_env_vars: list[str] = field(default_factory=list)
+    supported_modalities: list[str] = field(default_factory=list)
+    artifact_types: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    default_model: str | None = None
+    supported_models: list[str] = field(default_factory=list)
+    request_policy: ProviderRequestPolicy | None = None
+
+    @property
+    def supported_tasks(self) -> list[str]:
+        return self.capabilities.enabled_names()
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "name": self.name,
+            "capabilities": self.capabilities.to_dict(),
+            "supported_tasks": self.supported_tasks,
+            "is_local": self.is_local,
+            "description": self.description,
+            "package": self.package,
+            "implementation_status": self.implementation_status,
+            "deterministic": self.deterministic,
+            "requires_credentials": self.requires_credentials,
+            "credential_env_var": self.credential_env_var,
+            "required_env_vars": list(self.required_env_vars),
+            "supported_modalities": list(self.supported_modalities),
+            "artifact_types": list(self.artifact_types),
+            "notes": list(self.notes),
+            "default_model": self.default_model,
+            "supported_models": list(self.supported_models),
+            "request_policy": self.request_policy.to_dict() if self.request_policy else None,
+        }
+
+
+@dataclass(slots=True)
+class ProviderEvent:
+    """Structured provider event emitted during observable operations."""
+
+    provider: str
+    operation: str
+    phase: str
+    attempt: int = 1
+    max_attempts: int = 1
+    method: str | None = None
+    target: str | None = None
+    status_code: int | None = None
+    duration_ms: float | None = None
+    message: str = ""
+    metadata: JSONDict = field(default_factory=dict)
+    run_id: str | None = None
+    request_id: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
+    artifact_id: str | None = None
+    input_digest: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ProviderEvent provider must be a non-empty string.")
+        if not isinstance(self.operation, str) or not self.operation.strip():
+            raise WorldForgeError("ProviderEvent operation must be a non-empty string.")
+        if not isinstance(self.phase, str) or not self.phase.strip():
+            raise WorldForgeError("ProviderEvent phase must be a non-empty string.")
+        if isinstance(self.attempt, bool) or not isinstance(self.attempt, int) or self.attempt < 1:
+            raise WorldForgeError("ProviderEvent attempt must be greater than or equal to 1.")
+        if (
+            isinstance(self.max_attempts, bool)
+            or not isinstance(self.max_attempts, int)
+            or self.max_attempts < self.attempt
+        ):
+            raise WorldForgeError(
+                "ProviderEvent max_attempts must be greater than or equal to attempt."
+            )
+        if self.status_code is not None and (
+            isinstance(self.status_code, bool)
+            or not isinstance(self.status_code, int)
+            or self.status_code < 100
+            or self.status_code > 599
+        ):
+            raise WorldForgeError("ProviderEvent status_code must be a valid HTTP status code.")
+        if self.duration_ms is not None:
+            self.duration_ms = require_finite_number(
+                self.duration_ms,
+                name="ProviderEvent duration_ms",
+            )
+        if self.duration_ms is not None and self.duration_ms < 0.0:
+            raise WorldForgeError("ProviderEvent duration_ms must be non-negative when set.")
+        if self.method is not None and not isinstance(self.method, str):
+            raise WorldForgeError("ProviderEvent method must be a string when provided.")
+        if not isinstance(self.message, str):
+            raise WorldForgeError("ProviderEvent message must be a string.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("ProviderEvent metadata must be a JSON object.")
+        self.provider = self.provider.strip()
+        self.operation = self.operation.strip()
+        self.phase = self.phase.strip().lower()
+        self.method = self.method.strip().upper() if self.method else None
+        self.target = _sanitize_observable_target(self.target)
+        self.message = _redact_observable_text(self.message)
+        self.metadata = require_json_dict(
+            _redact_observable_value(dict(self.metadata)),
+            name="ProviderEvent metadata",
+        )
+        self.run_id = _sanitize_observable_id(self.run_id, name="ProviderEvent run_id")
+        self.request_id = _sanitize_observable_id(
+            self.request_id,
+            name="ProviderEvent request_id",
+        )
+        self.trace_id = _sanitize_observable_id(self.trace_id, name="ProviderEvent trace_id")
+        self.span_id = _sanitize_observable_id(self.span_id, name="ProviderEvent span_id")
+        self.artifact_id = _sanitize_observable_id(
+            self.artifact_id,
+            name="ProviderEvent artifact_id",
+        )
+        self.input_digest = _sanitize_observable_id(
+            self.input_digest,
+            name="ProviderEvent input_digest",
+        )
+
+    def to_dict(self) -> JSONDict:
+        payload: JSONDict = {
+            "provider": self.provider,
+            "operation": self.operation,
+            "phase": self.phase,
+            "attempt": self.attempt,
+            "max_attempts": self.max_attempts,
+            "method": self.method,
+            "target": self.target,
+            "status_code": self.status_code,
+            "duration_ms": self.duration_ms,
+            "message": self.message,
+            "metadata": dict(self.metadata),
+        }
+        optional_fields = {
+            "run_id": self.run_id,
+            "request_id": self.request_id,
+            "trace_id": self.trace_id,
+            "span_id": self.span_id,
+            "artifact_id": self.artifact_id,
+            "input_digest": self.input_digest,
+        }
+        payload.update(
+            {
+                field_name: value
+                for field_name, value in optional_fields.items()
+                if value is not None
+            }
+        )
+        return payload
+
+
+@dataclass(slots=True)
+class ProviderHealth:
+    """Health information for a provider."""
+
+    name: str
+    healthy: bool
+    latency_ms: float
+    details: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise WorldForgeError("ProviderHealth name must be a non-empty string.")
+        self.name = self.name.strip()
+        self.healthy = require_bool(self.healthy, name="ProviderHealth healthy")
+        self.latency_ms = require_finite_number(
+            self.latency_ms,
+            name="ProviderHealth latency_ms",
+        )
+        if self.latency_ms < 0.0:
+            raise WorldForgeError("ProviderHealth latency_ms must be non-negative.")
+        if not isinstance(self.details, str):
+            raise WorldForgeError("ProviderHealth details must be a string.")
+        self.details = _redact_observable_text(self.details)
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "name": self.name,
+            "healthy": self.healthy,
+            "latency_ms": self.latency_ms,
+            "details": self.details,
+        }
+
+
+@dataclass(slots=True)
+class ProviderLifecycleResult:
+    """Result from one provider lifecycle hook.
+
+    Hooks are provider-owned and optional. A result describes exactly one phase
+    (`preflight`, `warmup`, or `teardown`) without leaking host paths, endpoints,
+    credentials, or raw runtime payloads into diagnostics.
+    """
+
+    provider: str
+    hook: str
+    status: str
+    ready: bool
+    latency_ms: float
+    details: str = ""
+    skip_reason: str = ""
+    evidence: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ProviderLifecycleResult provider must be a non-empty string.")
+        if self.hook not in PROVIDER_LIFECYCLE_HOOKS:
+            hooks = ", ".join(PROVIDER_LIFECYCLE_HOOKS)
+            raise WorldForgeError(f"ProviderLifecycleResult hook must be one of: {hooks}.")
+        if self.status not in PROVIDER_LIFECYCLE_STATUSES:
+            statuses = ", ".join(PROVIDER_LIFECYCLE_STATUSES)
+            raise WorldForgeError(f"ProviderLifecycleResult status must be one of: {statuses}.")
+        self.ready = require_bool(self.ready, name="ProviderLifecycleResult ready")
+        self.latency_ms = require_finite_number(
+            self.latency_ms,
+            name="ProviderLifecycleResult latency_ms",
+        )
+        if self.latency_ms < 0.0:
+            raise WorldForgeError("ProviderLifecycleResult latency_ms must be non-negative.")
+        if not isinstance(self.details, str):
+            raise WorldForgeError("ProviderLifecycleResult details must be a string.")
+        if not isinstance(self.skip_reason, str):
+            raise WorldForgeError("ProviderLifecycleResult skip_reason must be a string.")
+        self.provider = self.provider.strip()
+        self.details = _redact_observable_text(self.details)
+        self.skip_reason = _redact_observable_text(self.skip_reason)
+        self.evidence = require_json_dict(
+            _redact_observable_value(dict(self.evidence)),
+            name="ProviderLifecycleResult evidence",
+        )
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "provider": self.provider,
+            "hook": self.hook,
+            "status": self.status,
+            "ready": self.ready,
+            "latency_ms": self.latency_ms,
+            "details": self.details,
+            "skip_reason": self.skip_reason,
+            "evidence": dict(self.evidence),
+        }
+
+
+@dataclass(slots=True)
+class ProviderLifecycleStatus:
+    """Aggregate lifecycle readiness for provider diagnostics."""
+
+    provider: str
+    status: str
+    ready: bool
+    preflight: ProviderLifecycleResult
+    warmup: ProviderLifecycleResult | None = None
+    teardown: ProviderLifecycleResult | None = None
+    details: str = ""
+    skip_reason: str = ""
+    evidence: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ProviderLifecycleStatus provider must be a non-empty string.")
+        if self.status not in PROVIDER_LIFECYCLE_STATUSES:
+            statuses = ", ".join(PROVIDER_LIFECYCLE_STATUSES)
+            raise WorldForgeError(f"ProviderLifecycleStatus status must be one of: {statuses}.")
+        self.ready = require_bool(self.ready, name="ProviderLifecycleStatus ready")
+        self.provider = self.provider.strip()
+        for result in (self.preflight, self.warmup, self.teardown):
+            if result is None:
+                continue
+            if not isinstance(result, ProviderLifecycleResult):
+                raise WorldForgeError(
+                    "ProviderLifecycleStatus hook results must be ProviderLifecycleResult."
+                )
+            if result.provider != self.provider:
+                raise WorldForgeError(
+                    "ProviderLifecycleStatus hook result providers must match status provider."
+                )
+        if self.preflight.hook != "preflight":
+            raise WorldForgeError("ProviderLifecycleStatus preflight hook must be 'preflight'.")
+        if self.warmup is not None and self.warmup.hook != "warmup":
+            raise WorldForgeError("ProviderLifecycleStatus warmup hook must be 'warmup'.")
+        if self.teardown is not None and self.teardown.hook != "teardown":
+            raise WorldForgeError("ProviderLifecycleStatus teardown hook must be 'teardown'.")
+        if not isinstance(self.details, str):
+            raise WorldForgeError("ProviderLifecycleStatus details must be a string.")
+        if not isinstance(self.skip_reason, str):
+            raise WorldForgeError("ProviderLifecycleStatus skip_reason must be a string.")
+        self.details = _redact_observable_text(self.details)
+        self.skip_reason = _redact_observable_text(self.skip_reason)
+        self.evidence = require_json_dict(
+            _redact_observable_value(dict(self.evidence)),
+            name="ProviderLifecycleStatus evidence",
+        )
+
+    def to_dict(self) -> JSONDict:
+        hooks: JSONDict = {"preflight": self.preflight.to_dict()}
+        if self.warmup is not None:
+            hooks["warmup"] = self.warmup.to_dict()
+        if self.teardown is not None:
+            hooks["teardown"] = self.teardown.to_dict()
+        return {
+            "provider": self.provider,
+            "status": self.status,
+            "ready": self.ready,
+            "details": self.details,
+            "skip_reason": self.skip_reason,
+            "evidence": dict(self.evidence),
+            "hooks": hooks,
+        }
+
+
+@dataclass(slots=True)
+class ProviderDoctorStatus:
+    """Diagnostic snapshot for a provider in the active environment."""
+
+    registered: bool
+    profile: ProviderProfile
+    health: ProviderHealth
+    lifecycle: ProviderLifecycleStatus
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "name": self.profile.name,
+            "registered": self.registered,
+            "profile": self.profile.to_dict(),
+            "health": self.health.to_dict(),
+            "lifecycle": self.lifecycle.to_dict(),
+        }
+
+
+@dataclass(slots=True)
+class DoctorReport:
+    """Environment diagnostics for the current WorldForge install."""
+
+    state_dir: str
+    world_count: int
+    providers: list[ProviderDoctorStatus]
+    issues: list[str] = field(default_factory=list)
+
+    @property
+    def provider_count(self) -> int:
+        return len(self.providers)
+
+    @property
+    def healthy_provider_count(self) -> int:
+        return sum(1 for provider in self.providers if provider.health.healthy)
+
+    @property
+    def registered_provider_count(self) -> int:
+        return sum(1 for provider in self.providers if provider.registered)
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "state_dir": self.state_dir,
+            "world_count": self.world_count,
+            "provider_count": self.provider_count,
+            "healthy_provider_count": self.healthy_provider_count,
+            "registered_provider_count": self.registered_provider_count,
+            "providers": [provider.to_dict() for provider in self.providers],
+            "issues": list(self.issues),
+        }
+
+    def to_json(self) -> str:
+        return dump_json(self.to_dict())
+
+
+@dataclass(slots=True)
+class VideoClip:
+    """Generated or transformed video content."""
+
+    frames: list[bytes]
+    fps: float
+    resolution: tuple[int, int]
+    duration_seconds: float
+    metadata: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not all(isinstance(frame, bytes) for frame in self.frames):
+            raise WorldForgeError("VideoClip frames must be bytes.")
+        self.fps = require_finite_number(self.fps, name="VideoClip fps")
+        if self.fps <= 0.0:
+            raise WorldForgeError("VideoClip fps must be greater than 0.")
+        try:
+            width, height = self.resolution
+        except (TypeError, ValueError) as exc:
+            raise WorldForgeError("VideoClip resolution must contain width and height.") from exc
+        if (
+            isinstance(width, bool)
+            or isinstance(height, bool)
+            or not isinstance(width, int)
+            or not isinstance(height, int)
+            or width <= 0
+            or height <= 0
+        ):
+            raise WorldForgeError("VideoClip resolution values must be greater than 0.")
+        self.resolution = (width, height)
+        self.duration_seconds = require_finite_number(
+            self.duration_seconds,
+            name="VideoClip duration_seconds",
+        )
+        if self.duration_seconds < 0.0:
+            raise WorldForgeError("VideoClip duration_seconds must be non-negative.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("VideoClip metadata must be a JSON object.")
+        self.frames = list(self.frames)
+        self.metadata = require_json_dict(self.metadata, name="VideoClip metadata")
+
+    @property
+    def frame_count(self) -> int:
+        """Number of binary frames carried by the clip."""
+
+        return len(self.frames)
+
+    def blob(self) -> bytes:
+        """Return the clip's frames as a single bytes payload.
+
+        A single-frame clip returns ``frames[0]`` unchanged, which is the right shape for
+        single-image content types such as ``image/jpeg`` or ``image/png``. Multi-frame clips
+        return the frames concatenated; callers that need per-frame access should iterate
+        ``frames`` directly rather than re-splitting the blob.
+        """
+
+        if self.frame_count == 1:
+            return self.frames[0]
+        return b"".join(self.frames)
+
+    def content_type(self) -> str:
+        """Return the clip's MIME type, or ``application/octet-stream`` if unknown."""
+
+        return str(self.metadata.get("content_type", "application/octet-stream"))
+
+    def save(self, path: str | Path) -> Path:
+        """Persist the clip bytes to disk and return the resolved path."""
+
+        target = Path(path).expanduser().resolve()
+        ensure_directory(target.parent)
+        target.write_bytes(self.blob())
+        return target
+
+    @classmethod
+    def from_file(
+        cls,
+        path: str | Path,
+        *,
+        fps: float = 24.0,
+        resolution: tuple[int, int] = (1280, 720),
+        duration_seconds: float = 0.0,
+        metadata: JSONDict | None = None,
+    ) -> VideoClip:
+        """Build a clip from a local file for transfer-style APIs."""
+
+        source = Path(path).expanduser().resolve()
+        if not source.exists():
+            raise WorldForgeError(f"Video clip source does not exist: {source}")
+        if not source.is_file():
+            raise WorldForgeError(f"Video clip source is not a file: {source}")
+        content_type = guess_type(source.name)[0] or "application/octet-stream"
+        merged_metadata = dict(metadata or {})
+        merged_metadata.setdefault("content_type", content_type)
+        merged_metadata.setdefault("source_path", str(source))
+        return cls(
+            frames=[source.read_bytes()],
+            fps=fps,
+            resolution=resolution,
+            duration_seconds=duration_seconds,
+            metadata=merged_metadata,
+        )
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "frame_count": self.frame_count,
+            "fps": self.fps,
+            "resolution": list(self.resolution),
+            "duration_seconds": self.duration_seconds,
+            "content_type": self.content_type(),
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(slots=True)
+class ReasoningResult:
+    """A provider answer about a scene or prompt."""
+
+    provider: str
+    answer: str
+    confidence: float
+    evidence: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ReasoningResult provider must be a non-empty string.")
+        if not isinstance(self.answer, str):
+            raise WorldForgeError("ReasoningResult answer must be a string.")
+        self.confidence = require_probability(
+            self.confidence,
+            name="ReasoningResult confidence",
+        )
+        if not isinstance(self.evidence, list) or not all(
+            isinstance(item, str) for item in self.evidence
+        ):
+            raise WorldForgeError("ReasoningResult evidence must be a list of strings.")
+        self.provider = self.provider.strip()
+        self.evidence = list(self.evidence)
+
+
+@dataclass(slots=True)
+class EmbeddingResult:
+    """Embedding output from a provider."""
+
+    provider: str
+    model: str
+    vector: list[float]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("EmbeddingResult provider must be a non-empty string.")
+        if not isinstance(self.model, str) or not self.model.strip():
+            raise WorldForgeError("EmbeddingResult model must be a non-empty string.")
+        if not isinstance(self.vector, list) or not self.vector:
+            raise WorldForgeError("EmbeddingResult vector must be a non-empty list.")
+        self.provider = self.provider.strip()
+        self.model = self.model.strip()
+        self.vector = [
+            require_finite_number(value, name="EmbeddingResult vector value")
+            for value in self.vector
+        ]
+
+    @property
+    def shape(self) -> list[int]:
+        return [len(self.vector)]
+
+
+@dataclass(slots=True)
+class ActionScoreResult:
+    """Provider scores for a batch of candidate action sequences.
+
+    Scores are provider-defined, but ``best_index`` must identify the candidate the
+    provider recommends for downstream planning.
+    """
+
+    provider: str
+    scores: list[float]
+    best_index: int
+    lower_is_better: bool = True
+    metadata: JSONDict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ActionScoreResult provider must be a non-empty string.")
+        if not isinstance(self.scores, list) or not self.scores:
+            raise WorldForgeError("ActionScoreResult scores must be a non-empty list.")
+        self.scores = [
+            require_finite_number(score, name="ActionScoreResult score") for score in self.scores
+        ]
+        if (
+            isinstance(self.best_index, bool)
+            or not isinstance(self.best_index, int)
+            or self.best_index < 0
+            or self.best_index >= len(self.scores)
+        ):
+            raise WorldForgeError("ActionScoreResult best_index is out of range.")
+        if not isinstance(self.lower_is_better, bool):
+            raise WorldForgeError("ActionScoreResult lower_is_better must be a boolean.")
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("ActionScoreResult metadata must be a JSON object.")
+        self.provider = self.provider.strip()
+        self.metadata = require_json_dict(self.metadata, name="ActionScoreResult metadata")
+
+    @property
+    def best_score(self) -> float:
+        return self.scores[self.best_index]
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "provider": self.provider,
+            "scores": list(self.scores),
+            "best_index": self.best_index,
+            "best_score": self.best_score,
+            "lower_is_better": self.lower_is_better,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(slots=True)
+class ActionPolicyResult:
+    """Provider-selected action chunk from an embodied policy.
+
+    Policy providers choose or propose actions from observations. They do not imply future-state
+    prediction or candidate scoring unless the provider exposes those capabilities separately.
+    ``action_candidates`` stores one or more executable candidate plans when the policy can expose
+    alternatives for downstream scoring.
+    """
+
+    provider: str
+    actions: list[Action]
+    raw_actions: JSONDict = field(default_factory=dict)
+    action_horizon: int | None = None
+    embodiment_tag: str | None = None
+    metadata: JSONDict = field(default_factory=dict)
+    action_candidates: list[list[Action]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise WorldForgeError("ActionPolicyResult provider must be a non-empty string.")
+        if not isinstance(self.actions, list) or not self.actions:
+            raise WorldForgeError("ActionPolicyResult actions must be a non-empty list.")
+        if not all(isinstance(action, Action) for action in self.actions):
+            raise WorldForgeError("ActionPolicyResult actions must contain only Action instances.")
+        if not isinstance(self.raw_actions, dict):
+            raise WorldForgeError("ActionPolicyResult raw_actions must be a JSON object.")
+        if self.action_horizon is not None:
+            self.action_horizon = require_positive_int(
+                self.action_horizon,
+                name="ActionPolicyResult action_horizon",
+            )
+        if self.embodiment_tag is not None:
+            if not isinstance(self.embodiment_tag, str) or not self.embodiment_tag.strip():
+                raise WorldForgeError(
+                    "ActionPolicyResult embodiment_tag must be a non-empty string when provided."
+                )
+            self.embodiment_tag = self.embodiment_tag.strip()
+        if not isinstance(self.metadata, dict):
+            raise WorldForgeError("ActionPolicyResult metadata must be a JSON object.")
+        if not isinstance(self.action_candidates, list):
+            raise WorldForgeError("ActionPolicyResult action_candidates must be a list.")
+
+        normalized_candidates: list[list[Action]]
+        if self.action_candidates:
+            normalized_candidates = []
+            for index, candidate in enumerate(self.action_candidates):
+                if not isinstance(candidate, list) or not candidate:
+                    raise WorldForgeError(
+                        "ActionPolicyResult action_candidates must contain non-empty action lists."
+                    )
+                if not all(isinstance(action, Action) for action in candidate):
+                    raise WorldForgeError(
+                        f"ActionPolicyResult action_candidates[{index}] must contain only "
+                        "Action instances."
+                    )
+                normalized_candidates.append(list(candidate))
+        else:
+            normalized_candidates = [list(self.actions)]
+
+        self.provider = self.provider.strip()
+        self.actions = list(self.actions)
+        self.raw_actions = require_json_dict(
+            self.raw_actions,
+            name="ActionPolicyResult raw_actions",
+        )
+        self.metadata = require_json_dict(
+            self.metadata,
+            name="ActionPolicyResult metadata",
+        )
+        self.action_candidates = normalized_candidates
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "provider": self.provider,
+            "actions": [action.to_dict() for action in self.actions],
+            "raw_actions": dict(self.raw_actions),
+            "action_horizon": self.action_horizon,
+            "embodiment_tag": self.embodiment_tag,
+            "metadata": dict(self.metadata),
+            "action_candidates": [
+                [action.to_dict() for action in candidate] for candidate in self.action_candidates
+            ],
+        }
+
+
+@dataclass(slots=True)
+class HistoryEntry:
+    """A recorded world snapshot."""
+
+    step: int
+    state: JSONDict
+    summary: str
+    action_json: str | None = None
+
+    def __post_init__(self) -> None:
+        self.step = require_non_negative_int(self.step, name="HistoryEntry step")
+        if not isinstance(self.state, dict):
+            raise WorldForgeError("HistoryEntry state must be a JSON object.")
+        if not isinstance(self.summary, str) or not self.summary.strip():
+            raise WorldForgeError("HistoryEntry summary must be a non-empty string.")
+        if self.action_json is not None:
+            if not isinstance(self.action_json, str) or not self.action_json.strip():
+                raise WorldForgeError(
+                    "HistoryEntry action_json must be a non-empty string when provided."
+                )
+            try:
+                action_payload = json.loads(self.action_json)
+            except json.JSONDecodeError as exc:
+                raise WorldForgeError("HistoryEntry action_json must be valid JSON.") from exc
+            Action.from_dict(action_payload)
+        self.state = dict(self.state)
+        self.summary = self.summary.strip()
+
+    def to_dict(self) -> JSONDict:
+        return {
+            "step": self.step,
+            "state": self.state,
+            "summary": self.summary,
+            "action_json": self.action_json,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: JSONDict) -> HistoryEntry:
+        if not isinstance(payload, dict):
+            raise WorldForgeError("HistoryEntry payload must be a JSON object.")
+        return cls(
+            step=payload["step"],
+            state=payload["state"],
+            summary=payload.get("summary", ""),
+            action_json=payload.get("action_json"),
+        )

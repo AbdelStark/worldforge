@@ -1,0 +1,66 @@
+{
+  "projectName": "worldforge",
+  "projectOwner": "AbdelStark",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "commitConvention": "none",
+  "contributorsPerLine": 7,
+  "contributorsSortAlphabetically": false,
+  "badgeTemplate": "[![All Contributors](https://img.shields.io/badge/all_contributors-<%= contributors.length %>-ee8449?style=for-the-badge)](#contributors)",
+  "linkToUsage": false,
+  "skipCi": true,
+  "contributors": [
+    {
+      "login": "AbdelStark",
+      "name": "Abdel",
+      "avatar_url": "https://avatars.githubusercontent.com/u/45264458",
+      "profile": "https://github.com/AbdelStark",
+      "contributions": [
+        "code",
+        "ideas",
+        "projectManagement"
+      ]
+    },
+    {
+      "login": "0xLucqs",
+      "name": "0xLucqs",
+      "avatar_url": "https://avatars.githubusercontent.com/u/70894690",
+      "profile": "https://github.com/0xLucqs",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Th0rgal",
+      "name": "Thomas Marchand",
+      "avatar_url": "https://avatars.githubusercontent.com/u/41830259?v=4",
+      "profile": "https://github.com/Th0rgal",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "omarespejel",
+      "name": "Omar U. Espejel",
+      "avatar_url": "https://avatars.githubusercontent.com/u/4755430?v=4",
+      "profile": "https://github.com/omarespejel",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "adrienlacombe",
+      "name": "Adrien Lacombe",
+      "avatar_url": "https://avatars.githubusercontent.com/u/6303520?v=4",
+      "profile": "https://github.com/adrienlacombe",
+      "contributions": [
+        "code"
+      ]
+    }
+  ]
+}

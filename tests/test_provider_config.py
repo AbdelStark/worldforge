@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from worldforge.config_profiles import (
+    CONFIG_PROFILE_SCHEMA_VERSION,
+    load_config_profile,
+    parse_config_profile,
+)
+from worldforge.models import WorldForgeError
+from worldforge.providers import (
+    CosmosPolicyProvider,
+    CosmosProvider,
+    GrootPolicyClientProvider,
+    LeRobotPolicyProvider,
+    LeWorldModelProvider,
+    RunwayProvider,
+)
+from worldforge.providers.catalog import create_known_providers
+from worldforge.providers.runtime_manifest import load_runtime_manifest, load_runtime_manifests
+
+SECRET_VALUES = (
+    "cosmos-secret",
+    "cosmos-policy-secret",
+    "runway-secret",
+    "gr00t-secret",
+    "signed-query-secret",
+    "password-secret",
+    "legacy-jepa-secret",
+)
+
+
+def _assert_no_secret_values(payload: object) -> None:
+    serialized = json.dumps(payload, sort_keys=True)
+    for secret in SECRET_VALUES:
+        assert secret not in serialized
+
+
+def test_provider_config_summaries_are_value_free_json(monkeypatch) -> None:
+    monkeypatch.setenv("COSMOS_BASE_URL", "https://cosmos.example.test")
+    monkeypatch.setenv("NVIDIA_API_KEY", "cosmos-secret")
+    monkeypatch.setenv("COSMOS_POLICY_BASE_URL", "https://cosmos-policy.example.test")
+    monkeypatch.setenv("COSMOS_POLICY_API_TOKEN", "cosmos-policy-secret")
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-secret")
+    monkeypatch.setenv("GROOT_POLICY_HOST", "127.0.0.1")
+    monkeypatch.setenv("GROOT_POLICY_API_TOKEN", "gr00t-secret")
+    monkeypatch.setenv("LEROBOT_POLICY_PATH", "lerobot/checkpoint")
+    monkeypatch.setenv("LEWORLDMODEL_POLICY", "pusht/lewm")
+    monkeypatch.setenv("JEPA_MODEL_NAME", "jepa_wm_pusht")
+    monkeypatch.setenv("JEPA_MODEL_PATH", "legacy-jepa-secret")
+    monkeypatch.setenv("VOYAGE_API_KEY", "voyage-test-key")
+
+    summaries = [provider.config_summary().to_dict() for provider in create_known_providers()]
+
+    assert {summary["provider"] for summary in summaries} == {
+        "mock",
+        "cosmos",
+        "cosmos-policy",
+        "runway",
+        "leworldmodel",
+        "gr00t",
+        "lerobot",
+        "jepa",
+        "genie",
+        "voyage",
+    }
+    for summary in summaries:
+        assert set(summary) == {"provider", "configured", "fields"}
+        for field in summary["fields"]:
+            assert set(field) == {
+                "name",
+                "present",
+                "source",
+                "required",
+                "secret",
+                "valid",
+                "detail",
+                "aliases",
+            }
+            assert "value" not in field
+    _assert_no_secret_values(summaries)
+    jepa_summary = next(summary for summary in summaries if summary["provider"] == "jepa")
+    assert [field["name"] for field in jepa_summary["fields"]] == [
+        "JEPA_MODEL_NAME",
+        "JEPA_MODEL_PATH",
+        "JEPA_DEVICE",
+    ]
+
+
+def test_provider_config_summary_reports_alias_source_without_value(monkeypatch) -> None:
+    monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
+    monkeypatch.setenv("RUNWAY_API_SECRET", "runway-secret")
+
+    summary = RunwayProvider().config_summary().to_dict()
+
+    api_field = summary["fields"][0]
+    assert api_field["name"] == "RUNWAYML_API_SECRET"
+    assert api_field["aliases"] == ["RUNWAY_API_SECRET"]
+    assert api_field["present"] is True
+    assert api_field["source"] == "env:RUNWAY_API_SECRET"
+    assert api_field["secret"] is True
+    _assert_no_secret_values(summary)
+
+
+def test_direct_provider_config_summary_reports_source_not_value(monkeypatch) -> None:
+    monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_ALLOW_LOCAL_BASE_URL", raising=False)
+    monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
+    monkeypatch.delenv("RUNWAY_API_SECRET", raising=False)
+    monkeypatch.delenv("GROOT_POLICY_HOST", raising=False)
+    monkeypatch.delenv("LEROBOT_POLICY_PATH", raising=False)
+    monkeypatch.delenv("LEWORLDMODEL_POLICY", raising=False)
+
+    summaries = [
+        CosmosProvider(base_url="https://cosmos.example.test").config_summary().to_dict(),
+        CosmosPolicyProvider(
+            base_url="https://cosmos-policy.example.test",
+            api_token="cosmos-policy-secret",
+        )
+        .config_summary()
+        .to_dict(),
+        GrootPolicyClientProvider(host="127.0.0.1", api_token="gr00t-secret")
+        .config_summary()
+        .to_dict(),
+        LeRobotPolicyProvider(policy_path="lerobot/checkpoint").config_summary().to_dict(),
+        LeWorldModelProvider(policy="pusht/lewm").config_summary().to_dict(),
+    ]
+
+    for summary in summaries:
+        assert summary["configured"] is True
+        assert summary["fields"][0]["source"] == "direct"
+    _assert_no_secret_values(summaries)
+
+
+def test_runtime_manifest_config_summaries_cover_declared_env_without_values() -> None:
+    env = {
+        "RUNWAY_API_SECRET": "runway-secret",
+        "RUNWAYML_BASE_URL": "https://api.example.test",
+        "NVIDIA_API_KEY": "cosmos-secret",
+    }
+
+    runway_summary = load_runtime_manifest("runway").config_summary(environ=env).to_dict()
+
+    assert runway_summary["configured"] is True
+    assert runway_summary["fields"][0]["source"] == "env:RUNWAY_API_SECRET"
+    assert runway_summary["fields"][0]["aliases"] == ["RUNWAY_API_SECRET"]
+    assert runway_summary["fields"][0]["secret"] is True
+    assert runway_summary["fields"][1]["name"] == "RUNWAYML_BASE_URL"
+    for manifest in load_runtime_manifests():
+        summary = manifest.config_summary(environ={}).to_dict()
+        assert summary["provider"] == manifest.provider
+        assert [field["name"] for field in summary["fields"]] == [
+            manifest.required_env_vars[0],
+            *manifest.optional_env_vars,
+        ]
+    _assert_no_secret_values(runway_summary)
+
+
+def test_config_profile_loads_non_secret_defaults_and_provenance(tmp_path) -> None:
+    profile_path = tmp_path / "local-profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "schema_version": CONFIG_PROFILE_SCHEMA_VERSION,
+                "name": "local-mock",
+                "providers": ["mock"],
+                "operations": ["predict"],
+                "workspace_dir": ".worldforge/profiled",
+                "run_workspace": ".worldforge/profiled-runs",
+                "state_dir": ".worldforge/worlds",
+                "output_format": "json",
+                "timeout_preset": "checkout-safe",
+                "retry_preset": "none",
+                "runtime_cache_roots": {"leworldmodel": ".worldforge/cache/leworldmodel"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profile = load_config_profile(profile_path)
+    provenance = profile.to_provenance()
+
+    assert profile.name == "local-mock"
+    assert profile.providers == ("mock",)
+    assert profile.operations == ("predict",)
+    assert profile.workspace_dir == ".worldforge/profiled"
+    assert provenance["schema_version"] == CONFIG_PROFILE_SCHEMA_VERSION
+    assert provenance["source"] == "profile:local-profile.json"
+    assert provenance["sha256"].startswith("sha256:")
+    assert provenance["runtime_cache_roots"] == {"leworldmodel": ".worldforge/cache/leworldmodel"}
+    _assert_no_secret_values(provenance)
+
+
+def test_config_profile_rejects_secret_keys_and_unsafe_paths() -> None:
+    valid_base = {
+        "schema_version": CONFIG_PROFILE_SCHEMA_VERSION,
+        "name": "safe",
+        "provider": "mock",
+    }
+
+    with pytest.raises(WorldForgeError, match="secret-looking key"):
+        parse_config_profile({**valid_base, "api_token": "not-shared"})
+    with pytest.raises(WorldForgeError, match="safe relative path"):
+        parse_config_profile({**valid_base, "workspace_dir": "/Users/abdel/.worldforge"})
+    with pytest.raises(WorldForgeError, match=r"must not contain '\.\.'"):
+        parse_config_profile({**valid_base, "run_workspace": "../outside"})
+    with pytest.raises(WorldForgeError, match="signed URLs"):
+        parse_config_profile(
+            {
+                **valid_base,
+                "runtime_cache_roots": {
+                    "leworldmodel": ".worldforge/cache?download=1",
+                },
+            }
+        )

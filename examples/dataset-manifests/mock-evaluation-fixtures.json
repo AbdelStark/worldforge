@@ -1,0 +1,48 @@
+{
+  "description": "Checkout-safe manifest for mock evaluation fixture references.",
+  "entries": [
+    {
+      "description": "Small JSON scenario fixture used as a provenance-citable local reference.",
+      "id": "cube-on-table-scenario",
+      "kind": "local-fixture",
+      "license": "MIT",
+      "path": "examples/scenarios/cube-on-table.json",
+      "sha256": "sha256:8f4d316e72de6e82881b9ee6d2d34251aa9940ece56791df20d2e5ab9fad3e16"
+    },
+    {
+      "description": "Stable remote reference to an earlier tiny checkout fixture revision pinned by commit.",
+      "id": "cube-on-table-remote-reference",
+      "kind": "remote-reference",
+      "license": "MIT",
+      "sha256": "sha256:72b95ee161e971da5eb37a54b426dda56863819d81cd6e4b32f1111f8336c086",
+      "uri": "https://raw.githubusercontent.com/AbdelStark/worldforge/7f8d1e3478d1160d77ee908f5f7e13142209cba0/examples/scenarios/cube-on-table.json"
+    }
+  ],
+  "host_acquisition_steps": [
+    "Use checkout fixtures already present in the repository for local-fixture entries.",
+    "For host-asset entries, prepare assets outside the repository and record a host-verified digest before citing results."
+  ],
+  "id": "mock-evaluation-fixtures",
+  "license": "MIT for checkout fixtures; host-owned assets require operator verification",
+  "metadata": {
+    "claim_boundary": "This manifest cites references for deterministic evaluation evidence only; it does not store datasets."
+  },
+  "name": "Mock Evaluation Fixture Manifest",
+  "privacy": {
+    "classification": "public",
+    "contains_personal_data": false,
+    "notes": "Synthetic checkout fixture references only."
+  },
+  "provenance": {
+    "owner": "WorldForge maintainers",
+    "source": "WorldForge checkout fixtures and host-owned external references",
+    "version": "mock-evaluation-fixtures:1"
+  },
+  "safety": {
+    "contains_robot_logs": false,
+    "contains_sensitive_capability_data": false,
+    "notes": "No raw robot logs, credentials, signed URLs, or private endpoints are stored.",
+    "reviewed": true
+  },
+  "schema_version": 1
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "reason.invalid_query_empty",
+  "capability": "reason",
+  "data_class": "synthetic",
+  "expected": "invalid",
+  "expected_error_pattern": "query",
+  "description": "Reason rejects an empty query string before reaching the provider.",
+  "payload": {
+    "query": "",
+    "world_state": {
+      "schema_version": 1,
+      "id": "world_fixture_reason_invalid_query",
+      "name": "fixture-world",
+      "provider": "fixture",
+      "step": 0,
+      "scene": {"objects": {}},
+      "metadata": {}
+    }
+  }
+}

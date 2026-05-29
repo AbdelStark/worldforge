@@ -1,0 +1,29 @@
+{
+  "_instructions": "Incomplete scaffold stub for voyage. Replace every TODO, remove stub_status/usable_as_evidence, rename this file to voyage.json, and validate it before using it as runtime evidence.",
+  "capabilities": [
+    "embed"
+  ],
+  "default_model": "TODO_MODEL_OR_RUNTIME_ALIAS",
+  "device_support": [
+    "TODO_DEVICE"
+  ],
+  "docs_path": "docs/src/providers/voyage.md",
+  "expected_success_signal": "TODO describe the validated provider result and sanitized run_manifest.json signal",
+  "host_owned_artifacts": [
+    "TODO_HOST_OWNED_CHECKPOINT_OR_RUNTIME_ARTIFACT"
+  ],
+  "implementation_status": "scaffold",
+  "minimum_smoke_command": "TODO uv run worldforge-smoke-voyage --run-manifest .worldforge/runs/voyage-live/run_manifest.json",
+  "optional_dependencies": [
+    "TODO_RUNTIME_PACKAGE"
+  ],
+  "optional_env_vars": [],
+  "provider": "voyage",
+  "required_env_vars": [
+    "VOYAGE_API_KEY"
+  ],
+  "schema_version": 1,
+  "setup_hint": "TODO document host-owned install, credentials, cache, and checkpoint setup",
+  "stub_status": "incomplete",
+  "usable_as_evidence": false
+}

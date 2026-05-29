@@ -1,0 +1,72 @@
+"""Testing helpers for WorldForge integrations."""
+
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
+_EXPORTS: dict[str, str] = {  # pragma: no cover - initialized before pytest-cov by plugins
+    "ProviderContractReport": "worldforge.testing.providers",
+    "assert_embed_conformance": "worldforge.testing.providers",
+    "assert_generate_conformance": "worldforge.testing.providers",
+    "assert_policy_conformance": "worldforge.testing.providers",
+    "assert_predict_conformance": "worldforge.testing.providers",
+    "assert_provider_contract": "worldforge.testing.providers",
+    "assert_provider_events_conform": "worldforge.testing.providers",
+    "assert_provider_metadata_conformance": "worldforge.testing.providers",
+    "assert_reason_conformance": "worldforge.testing.providers",
+    "assert_score_conformance": "worldforge.testing.providers",
+    "assert_transfer_conformance": "worldforge.testing.providers",
+    "sample_contract_action": "worldforge.testing.providers",
+    "sample_contract_policy_info": "worldforge.testing.providers",
+    "sample_contract_world_state": "worldforge.testing.providers",
+    "CAPABILITY_FIXTURE_NAMES": "worldforge.testing.capability_fixtures",
+    "CapabilityFixture": "worldforge.testing.capability_fixtures",
+    "FIXTURE_SCHEMA_VERSION": "worldforge.testing.capability_fixtures",
+    "iter_all_fixtures": "worldforge.testing.capability_fixtures",
+    "iter_capability_fixtures": "worldforge.testing.capability_fixtures",
+    "list_fixture_names": "worldforge.testing.capability_fixtures",
+    "load_capability_fixture": "worldforge.testing.capability_fixtures",
+    "FIXTURE_SNAPSHOT_MANIFEST_SCHEMA_VERSION": "worldforge.testing.fixture_snapshots",
+    "FIXTURE_SNAPSHOT_RESULT_STATUSES": "worldforge.testing.fixture_snapshots",
+    "FIXTURE_SNAPSHOT_REVIEW_STATUSES": "worldforge.testing.fixture_snapshots",
+    "FixtureSnapshotEntry": "worldforge.testing.fixture_snapshots",
+    "FixtureSnapshotIssue": "worldforge.testing.fixture_snapshots",
+    "FixtureSnapshotManifest": "worldforge.testing.fixture_snapshots",
+    "FixtureSnapshotReport": "worldforge.testing.fixture_snapshots",
+    "build_fixture_snapshot_manifest": "worldforge.testing.fixture_snapshots",
+    "default_fixture_snapshot_paths": "worldforge.testing.fixture_snapshots",
+    "load_fixture_snapshot_manifest": "worldforge.testing.fixture_snapshots",
+    "render_fixture_snapshot_review": "worldforge.testing.fixture_snapshots",
+    "validate_fixture_snapshot_manifest": "worldforge.testing.fixture_snapshots",
+    "PROVIDER_RUNTIME_PROFILES": "worldforge.testing.runtime_profiles",
+    "PROVIDER_RUNTIME_PROFILES_BY_NAME": "worldforge.testing.runtime_profiles",
+    "RUNTIME_MARKERS": "worldforge.testing.runtime_profiles",
+    "RUNTIME_MARKERS_BY_NAME": "worldforge.testing.runtime_profiles",
+    "ProviderRuntimeProfile": "worldforge.testing.runtime_profiles",
+    "RuntimeMarker": "worldforge.testing.runtime_profiles",
+    "provider_profile_skip_reason": "worldforge.testing.runtime_profiles",
+    "pytest_marker_definitions": "worldforge.testing.runtime_profiles",
+    "runtime_marker_skip_reason": "worldforge.testing.runtime_profiles",
+    "DeterministicClock": "worldforge.testing.determinism",
+    "DeterministicIdFactory": "worldforge.testing.determinism",
+    "deterministic_run_workspace": "worldforge.testing.determinism",
+    "stable_json_dumps": "worldforge.testing.determinism",
+    "stable_path": "worldforge.testing.determinism",
+    "stable_snapshot": "worldforge.testing.determinism",
+}
+
+__all__ = sorted(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(_EXPORTS[name])
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:  # pragma: no cover - module dir support
+    return sorted((*globals(), *_EXPORTS))
