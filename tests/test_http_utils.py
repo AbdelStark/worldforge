@@ -7,7 +7,11 @@ import pytest
 
 from worldforge.models import ProviderEvent, RequestOperationPolicy
 from worldforge.providers import ProviderError, http_utils
-from worldforge.providers.http_utils import _getaddrinfo_with_timeout, validate_remote_base_url
+from worldforge.providers.http_utils import (
+    _getaddrinfo_with_timeout,
+    validate_remote_base_url,
+    validate_remote_url,
+)
 
 
 class _FakeQueue:
@@ -76,6 +80,22 @@ def test_validate_remote_base_url_rejects_credentials_query_and_fragments() -> N
                 url,
                 provider_name="cosmos-policy",
                 env_var="COSMOS_POLICY_BASE_URL",
+            )
+
+
+def test_validate_remote_url_rejects_malformed_public_urls() -> None:
+    for url, match in (
+        (" ", "non-empty URL"),
+        ("ftp://downloads.example.com/file.mp4", "http or https"),
+        ("https:///file.mp4", "hostname"),
+        ("https://user:secret@downloads.example.com/file.mp4", "embedded credentials"),
+    ):
+        with pytest.raises(ProviderError, match=match):
+            validate_remote_url(
+                url,
+                provider_name="runway",
+                url_name="artifact URL",
+                resolve_dns=False,
             )
 
 

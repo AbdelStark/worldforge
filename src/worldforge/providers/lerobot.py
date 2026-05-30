@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -31,7 +32,6 @@ from worldforge.models import (
     ProviderEvent,
     ProviderHealth,
     WorldForgeError,
-    require_positive_int,
 )
 
 from ._config import (
@@ -41,7 +41,17 @@ from ._config import (
     first_env_value,
     optional_non_empty,
 )
-from ._policy import json_object, no_grad_context, normalize_policy_action_candidates, prepare_model
+from ._policy import (
+    json_object,
+    no_grad_context,
+    normalize_policy_action_candidates,
+    policy_action_horizon,
+    policy_info_object,
+    policy_mode,
+    policy_observation,
+    policy_options,
+    prepare_model,
+)
 from .base import BaseProvider, ProviderError, ProviderProfileSpec, _field_summary
 from .runtime_manifest import (
     missing_optional_dependency_detail,
@@ -76,6 +86,17 @@ ActionTranslator = Callable[
     [object, JSONDict, JSONDict],
     Sequence[Action] | Sequence[Sequence[Action]],
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class _LeRobotConfig:
+    policy_path: str | None
+    policy_type: str | None
+    device: str | None
+    device_direct: bool
+    device_configured: bool
+    cache_dir: str | None
+    embodiment_tag: str | None
 
 
 def _optional_policy_type(value: str | None, *, name: str) -> str | None:
@@ -167,6 +188,120 @@ def _raw_action_summary(actions: object) -> JSONDict:
     }
 
 
+def _validated_policy_loader(policy_loader: PolicyLoader | None) -> PolicyLoader | None:
+    if policy_loader is not None and not callable(policy_loader):
+        raise WorldForgeError("LeRobot policy_loader must be callable when provided.")
+    return policy_loader
+
+
+def _validated_action_translator(
+    action_translator: ActionTranslator | None,
+) -> ActionTranslator | None:
+    if action_translator is not None and not callable(action_translator):
+        raise WorldForgeError("LeRobot action_translator must be callable when provided.")
+    return action_translator
+
+
+def _lerobot_policy_path(policy_path: str | None) -> str | None:
+    return optional_non_empty(
+        policy_path
+        if policy_path is not None
+        else first_env_value(LEROBOT_POLICY_PATH_ENV_ALIASES),
+        name="LeRobot policy_path",
+    )
+
+
+def _lerobot_policy_type(policy_type: str | None) -> str | None:
+    return _optional_policy_type(
+        policy_type if policy_type is not None else env_value(LEROBOT_POLICY_TYPE_ENV_VAR),
+        name="LeRobot policy_type",
+    )
+
+
+def _lerobot_device(device: str | None) -> tuple[str | None, bool, bool]:
+    configured_device = device if device is not None else env_value(LEROBOT_DEVICE_ENV_VAR)
+    return (
+        optional_non_empty(
+            device if device is not None else configured_device or LEROBOT_DEFAULT_DEVICE,
+            name="LeRobot device",
+        ),
+        device is not None,
+        configured_device is not None,
+    )
+
+
+def _lerobot_cache_dir(cache_dir: str | None) -> str | None:
+    return optional_non_empty(
+        cache_dir if cache_dir is not None else env_value(LEROBOT_CACHE_DIR_ENV_VAR),
+        name="LeRobot cache_dir",
+    )
+
+
+def _lerobot_embodiment_tag(embodiment_tag: str | None) -> str | None:
+    return optional_non_empty(
+        embodiment_tag if embodiment_tag is not None else env_value(LEROBOT_EMBODIMENT_TAG_ENV_VAR),
+        name="LeRobot embodiment_tag",
+    )
+
+
+def _resolve_lerobot_config(
+    *,
+    policy_path: str | None,
+    policy_type: str | None,
+    device: str | None,
+    cache_dir: str | None,
+    embodiment_tag: str | None,
+) -> _LeRobotConfig:
+    resolved_device, device_direct, device_configured = _lerobot_device(device)
+    return _LeRobotConfig(
+        policy_path=_lerobot_policy_path(policy_path),
+        policy_type=_lerobot_policy_type(policy_type),
+        device=resolved_device,
+        device_direct=device_direct,
+        device_configured=device_configured,
+        cache_dir=_lerobot_cache_dir(cache_dir),
+        embodiment_tag=_lerobot_embodiment_tag(embodiment_tag),
+    )
+
+
+def _lerobot_capabilities() -> ProviderCapabilities:
+    return ProviderCapabilities(
+        predict=False,
+        generate=False,
+        reason=False,
+        embed=False,
+        plan=False,
+        transfer=False,
+        score=False,
+        policy=True,
+    )
+
+
+def _lerobot_profile(config: _LeRobotConfig) -> ProviderProfileSpec:
+    supported_models = (config.policy_path,) if config.policy_path else ()
+    return ProviderProfileSpec(
+        is_local=True,
+        description="Hugging Face LeRobot pretrained-policy adapter for embodied action selection.",
+        package="worldforge + lerobot",
+        implementation_status="stable",
+        requires_credentials=False,
+        required_env_vars=tuple(LEROBOT_POLICY_PATH_ENV_ALIASES),
+        supported_modalities=("state", "images", "language", "actions"),
+        artifact_types=("action_policy",),
+        notes=(
+            "Loads policies with lerobot.policies.PreTrainedPolicy.from_pretrained.",
+            "Defaults to CPU unless LEROBOT_DEVICE or device= selects another runtime.",
+            "Supports ACT, Diffusion, TDMPC, VQBet, Pi0, Pi0Fast, SAC, SmolVLA policies.",
+            "Set LEROBOT_POLICY_PATH to a Hugging Face repo id or local checkpoint directory.",
+            "Requires a host-supplied action_translator to map raw policy tensors to WorldForge "
+            "Action objects; LeRobot policies are embodiment-specific.",
+            "LeRobot is an action-policy provider, not a predictive world model.",
+        ),
+        default_model=config.policy_path,
+        supported_models=supported_models,
+    )
+
+
 class LeRobotPolicyProvider(BaseProvider):
     """Adapter for Hugging Face LeRobot pretrained policies.
 
@@ -190,79 +325,29 @@ class LeRobotPolicyProvider(BaseProvider):
         action_translator: ActionTranslator | None = None,
         event_handler: Callable[[ProviderEvent], None] | None = None,
     ) -> None:
-        if policy_loader is not None and not callable(policy_loader):
-            raise WorldForgeError("LeRobot policy_loader must be callable when provided.")
-        if action_translator is not None and not callable(action_translator):
-            raise WorldForgeError("LeRobot action_translator must be callable when provided.")
-        self.policy_path = optional_non_empty(
-            policy_path
-            if policy_path is not None
-            else first_env_value(LEROBOT_POLICY_PATH_ENV_ALIASES),
-            name="LeRobot policy_path",
+        config = _resolve_lerobot_config(
+            policy_path=policy_path,
+            policy_type=policy_type,
+            device=device,
+            cache_dir=cache_dir,
+            embodiment_tag=embodiment_tag,
         )
-        self.policy_type = _optional_policy_type(
-            policy_type if policy_type is not None else env_value(LEROBOT_POLICY_TYPE_ENV_VAR),
-            name="LeRobot policy_type",
-        )
-        self._device_direct = device is not None
-        configured_device = device if device is not None else env_value(LEROBOT_DEVICE_ENV_VAR)
-        self._device_configured = configured_device is not None
-        self.device = optional_non_empty(
-            device if device is not None else configured_device or LEROBOT_DEFAULT_DEVICE,
-            name="LeRobot device",
-        )
-        self.cache_dir = optional_non_empty(
-            cache_dir if cache_dir is not None else env_value(LEROBOT_CACHE_DIR_ENV_VAR),
-            name="LeRobot cache_dir",
-        )
-        self.embodiment_tag = optional_non_empty(
-            embodiment_tag
-            if embodiment_tag is not None
-            else env_value(LEROBOT_EMBODIMENT_TAG_ENV_VAR),
-            name="LeRobot embodiment_tag",
-        )
+        self.policy_path = config.policy_path
+        self.policy_type = config.policy_type
+        self._device_direct = config.device_direct
+        self._device_configured = config.device_configured
+        self.device = config.device
+        self.cache_dir = config.cache_dir
+        self.embodiment_tag = config.embodiment_tag
         self._policy = policy
         self._loaded_policy_mode = "injected_policy" if policy is not None else None
-        self._policy_loader = policy_loader
-        self._action_translator = action_translator
+        self._policy_loader = _validated_policy_loader(policy_loader)
+        self._action_translator = _validated_action_translator(action_translator)
 
-        supported_models = (self.policy_path,) if self.policy_path else ()
         super().__init__(
             name=name,
-            capabilities=ProviderCapabilities(
-                predict=False,
-                generate=False,
-                reason=False,
-                embed=False,
-                plan=False,
-                transfer=False,
-                score=False,
-                policy=True,
-            ),
-            profile=ProviderProfileSpec(
-                is_local=True,
-                description=(
-                    "Hugging Face LeRobot pretrained-policy adapter for embodied action selection."
-                ),
-                package="worldforge + lerobot",
-                implementation_status="stable",
-                requires_credentials=False,
-                required_env_vars=tuple(LEROBOT_POLICY_PATH_ENV_ALIASES),
-                supported_modalities=("state", "images", "language", "actions"),
-                artifact_types=("action_policy",),
-                notes=(
-                    "Loads policies with lerobot.policies.PreTrainedPolicy.from_pretrained.",
-                    "Defaults to CPU unless LEROBOT_DEVICE or device= selects another runtime.",
-                    "Supports ACT, Diffusion, TDMPC, VQBet, Pi0, Pi0Fast, SAC, SmolVLA policies.",
-                    "Set LEROBOT_POLICY_PATH to a Hugging Face repo id or local checkpoint "
-                    "directory.",
-                    "Requires a host-supplied action_translator to map raw policy tensors to "
-                    "WorldForge Action objects; LeRobot policies are embodiment-specific.",
-                    "LeRobot is an action-policy provider, not a predictive world model.",
-                ),
-                default_model=self.policy_path,
-                supported_models=supported_models,
-            ),
+            capabilities=_lerobot_capabilities(),
+            profile=_lerobot_profile(config),
             event_handler=event_handler,
         )
 
@@ -470,23 +555,21 @@ class LeRobotPolicyProvider(BaseProvider):
         )
 
     def _validate_info(self, info: JSONDict) -> tuple[JSONDict, JSONDict | None, str]:
-        if not isinstance(info, dict):
-            raise ProviderError("LeRobot policy info must be a JSON object.")
-        observation = info.get("observation")
-        if not isinstance(observation, dict) or not observation:
-            raise ProviderError("LeRobot policy info.observation must be a non-empty JSON object.")
-        for key in observation:
-            if not isinstance(key, str) or not key.strip():
-                raise ProviderError("LeRobot policy observation keys must be non-empty strings.")
-        options = info.get("options")
-        if options is not None and not isinstance(options, dict):
-            raise ProviderError("LeRobot policy info.options must be a JSON object when provided.")
-        mode = info.get("mode", "select_action")
-        if not isinstance(mode, str) or mode.strip() not in {"select_action", "predict_chunk"}:
-            raise ProviderError(
-                "LeRobot policy info.mode must be 'select_action' or 'predict_chunk'."
-            )
-        return dict(observation), dict(options) if isinstance(options, dict) else None, mode.strip()
+        info = policy_info_object(info, provider_label="LeRobot")
+        observation = policy_observation(
+            info,
+            provider_label="LeRobot",
+            require_non_empty=True,
+            validate_keys=True,
+        )
+        options = policy_options(info, provider_label="LeRobot")
+        mode = policy_mode(
+            info,
+            provider_label="LeRobot",
+            default="select_action",
+            choices=("select_action", "predict_chunk"),
+        )
+        return observation, options, mode
 
     def _translate_actions(
         self,
@@ -538,116 +621,150 @@ class LeRobotPolicyProvider(BaseProvider):
         if callable(reset):
             reset()
 
+    def _policy_duration_ms(self, started: float) -> float:
+        return max(0.1, (perf_counter() - started) * 1000)
+
+    def _validated_action_horizon(self, info: JSONDict) -> int | None:
+        return policy_action_horizon(
+            info,
+            provider_label="LeRobot",
+            value_name="LeRobot action_horizon",
+        )
+
+    def _policy_response(self, *, observation: JSONDict, mode: str) -> object:
+        policy = self._load_policy()
+        try:
+            return self._invoke_policy(policy, observation, mode)
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(f"LeRobot policy inference failed: {exc}") from exc
+
+    def _raw_action_response_parts(self, response: object) -> tuple[object, object]:
+        if not isinstance(response, tuple):
+            return response, {}
+        if len(response) != 2:
+            raise ProviderError("LeRobot policy tuple response must contain (actions, info).")
+        raw_actions, raw_provider_info = response
+        return raw_actions, raw_provider_info
+
+    def _normalized_raw_actions(self, raw_actions: object) -> JSONDict:
+        return json_object({"actions": raw_actions}, name="LeRobot raw_actions")
+
+    def _translator_contract_summary(self) -> JSONDict | None:
+        contract_summary = getattr(self._action_translator, "contract_summary", None)
+        if not callable(contract_summary):
+            return None
+        return json_object(contract_summary(), name="LeRobot translator_contract")
+
+    def _resolved_action_horizon(
+        self,
+        *,
+        requested_action_horizon: int | None,
+        candidate_plans: list[list[Action]],
+    ) -> int:
+        if requested_action_horizon is not None:
+            return requested_action_horizon
+        return len(candidate_plans[0])
+
+    def _build_policy_result(
+        self,
+        *,
+        info: JSONDict,
+        mode: str,
+        raw_actions: object,
+        raw_provider_info: object,
+        requested_action_horizon: int | None,
+    ) -> ActionPolicyResult:
+        normalized_raw_actions = self._normalized_raw_actions(raw_actions)
+        normalized_provider_info = json_object(raw_provider_info, name="LeRobot provider_info")
+        candidate_plans = self._translate_actions(
+            raw_actions=raw_actions,
+            info=info,
+            provider_info=normalized_provider_info,
+        )
+        embodiment_tag = str(info.get("embodiment_tag") or self.embodiment_tag or "").strip()
+        return ActionPolicyResult(
+            provider=self.name,
+            actions=list(candidate_plans[0]),
+            raw_actions=normalized_raw_actions,
+            action_horizon=self._resolved_action_horizon(
+                requested_action_horizon=requested_action_horizon,
+                candidate_plans=candidate_plans,
+            ),
+            embodiment_tag=embodiment_tag or None,
+            metadata={
+                "runtime": "lerobot",
+                "loader_mode": self._loader_mode(),
+                "policy_path": self.policy_path,
+                "policy_type": self.policy_type,
+                "device": self.device,
+                "mode": mode,
+                "provider_info": normalized_provider_info,
+                "raw_action_summary": _raw_action_summary(normalized_raw_actions["actions"]),
+                "candidate_count": len(candidate_plans),
+                "translator_contract": self._translator_contract_summary(),
+            },
+            action_candidates=candidate_plans,
+        )
+
+    def _select_actions_result(self, *, info: JSONDict) -> tuple[ActionPolicyResult, str]:
+        observation, _options, mode = self._validate_info(info)
+        requested_action_horizon = self._validated_action_horizon(info)
+        response = self._policy_response(observation=observation, mode=mode)
+        raw_actions, raw_provider_info = self._raw_action_response_parts(response)
+        return (
+            self._build_policy_result(
+                info=info,
+                mode=mode,
+                raw_actions=raw_actions,
+                raw_provider_info=raw_provider_info,
+                requested_action_horizon=requested_action_horizon,
+            ),
+            mode,
+        )
+
+    def _emit_policy_success(
+        self,
+        *,
+        started: float,
+        result: ActionPolicyResult,
+        mode: str,
+    ) -> None:
+        self._emit_operation_event(
+            "policy",
+            phase="success",
+            duration_ms=self._policy_duration_ms(started),
+            metadata={
+                "policy_path": self.policy_path,
+                "policy_type": self.policy_type,
+                "loader_mode": self._loader_mode(),
+                "candidate_count": len(result.action_candidates),
+                "action_horizon": result.action_horizon,
+                "embodiment_tag": result.embodiment_tag,
+                "mode": mode,
+            },
+        )
+
+    def _emit_policy_failure(self, *, started: float, error: ProviderError) -> None:
+        self._emit_operation_event(
+            "policy",
+            phase="failure",
+            duration_ms=self._policy_duration_ms(started),
+            message=str(error),
+            metadata={"policy_path": self.policy_path, "policy_type": self.policy_type},
+        )
+
     def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
         started = perf_counter()
         try:
-            observation, _options, mode = self._validate_info(info)
-            policy = self._load_policy()
-            try:
-                raw = self._invoke_policy(policy, observation, mode)
-            except ProviderError:
-                raise
-            except Exception as exc:
-                raise ProviderError(f"LeRobot policy inference failed: {exc}") from exc
-
-            if isinstance(raw, tuple):
-                if len(raw) != 2:
-                    raise ProviderError(
-                        "LeRobot policy tuple response must contain (actions, info)."
-                    )
-                raw_actions, raw_provider_info = raw
-            else:
-                raw_actions = raw
-                raw_provider_info = {}
-
-            normalized_raw_actions = json_object(
-                {"actions": raw_actions},
-                name="LeRobot raw_actions",
-            )
-            normalized_provider_info = json_object(
-                raw_provider_info,
-                name="LeRobot provider_info",
-            )
-            candidate_plans = self._translate_actions(
-                raw_actions=raw_actions,
-                info=info,
-                provider_info=normalized_provider_info,
-            )
-            translator_contract = None
-            contract_summary = getattr(self._action_translator, "contract_summary", None)
-            if callable(contract_summary):
-                translator_contract = json_object(
-                    contract_summary(),
-                    name="LeRobot translator_contract",
-                )
-            action_horizon_value = info.get("action_horizon")
-            if action_horizon_value is None:
-                action_horizon = len(candidate_plans[0])
-            elif isinstance(action_horizon_value, bool) or not isinstance(
-                action_horizon_value, int
-            ):
-                raise ProviderError(
-                    "LeRobot info.action_horizon must be an integer greater than 0."
-                )
-            else:
-                action_horizon = require_positive_int(
-                    action_horizon_value,
-                    name="LeRobot action_horizon",
-                )
-            embodiment_tag = str(info.get("embodiment_tag") or self.embodiment_tag or "").strip()
-            result = ActionPolicyResult(
-                provider=self.name,
-                actions=list(candidate_plans[0]),
-                raw_actions=normalized_raw_actions,
-                action_horizon=action_horizon,
-                embodiment_tag=embodiment_tag or None,
-                metadata={
-                    "runtime": "lerobot",
-                    "loader_mode": self._loader_mode(),
-                    "policy_path": self.policy_path,
-                    "policy_type": self.policy_type,
-                    "device": self.device,
-                    "mode": mode,
-                    "provider_info": normalized_provider_info,
-                    "raw_action_summary": _raw_action_summary(
-                        normalized_raw_actions["actions"],
-                    ),
-                    "candidate_count": len(candidate_plans),
-                    "translator_contract": translator_contract,
-                },
-                action_candidates=candidate_plans,
-            )
-            self._emit_operation_event(
-                "policy",
-                phase="success",
-                duration_ms=max(0.1, (perf_counter() - started) * 1000),
-                metadata={
-                    "policy_path": self.policy_path,
-                    "policy_type": self.policy_type,
-                    "loader_mode": self._loader_mode(),
-                    "candidate_count": len(result.action_candidates),
-                    "action_horizon": result.action_horizon,
-                    "embodiment_tag": result.embodiment_tag,
-                    "mode": mode,
-                },
-            )
+            result, mode = self._select_actions_result(info=info)
+            self._emit_policy_success(started=started, result=result, mode=mode)
             return result
         except ProviderError as exc:
-            self._emit_operation_event(
-                "policy",
-                phase="failure",
-                duration_ms=max(0.1, (perf_counter() - started) * 1000),
-                message=str(exc),
-                metadata={"policy_path": self.policy_path, "policy_type": self.policy_type},
-            )
+            self._emit_policy_failure(started=started, error=exc)
             raise
         except Exception as exc:
             error = ProviderError(f"LeRobot policy selection failed: {exc}")
-            self._emit_operation_event(
-                "policy",
-                phase="failure",
-                duration_ms=max(0.1, (perf_counter() - started) * 1000),
-                message=str(error),
-                metadata={"policy_path": self.policy_path, "policy_type": self.policy_type},
-            )
+            self._emit_policy_failure(started=started, error=error)
             raise error from exc

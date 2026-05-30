@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+from worldforge.harness.workspace import create_run_workspace
+from worldforge.models import WorldForgeError
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "demo_showcases.py"
@@ -255,3 +261,44 @@ def test_demo_showcase_runner_rejects_unknown_workflow(tmp_path: Path) -> None:
         assert exc.args == ("missing",)
     else:
         raise AssertionError("missing workflow should raise KeyError")
+
+
+def test_demo_showcase_artifact_copy_sanitizes_and_guards_targets(tmp_path: Path) -> None:
+    module = _load_demo_showcases()
+    source_path = tmp_path / "source-report.json"
+    source_path.write_text('{"status": "ok"}\n', encoding="utf-8")
+    workspace = create_run_workspace(
+        tmp_path / "workspace",
+        kind="demo_showcase",
+        command="uv run python scripts/demo_showcases.py run demo",
+    )
+
+    copied = module._copy_artifact_paths(
+        workspace,
+        {
+            "review html": str(source_path),
+            "missing": str(tmp_path / "missing.json"),
+            1: str(source_path),
+            "bad-type": 42,
+        },
+    )
+
+    assert copied == {"review html": "artifacts/review_html.json"}
+    assert (workspace.path / copied["review html"]).read_text(encoding="utf-8") == (
+        '{"status": "ok"}\n'
+    )
+    with pytest.raises(ValueError, match="escapes artifacts"):
+        module._artifact_copy_target(workspace, "artifacts/../results/escaped.json")
+
+
+def test_demo_showcase_json_writer_rejects_non_finite_payload_before_touching_disk(
+    tmp_path: Path,
+) -> None:
+    module = _load_demo_showcases()
+    target = tmp_path / "nested" / "artifact.json"
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        module._write_json(target, {"score": math.nan})
+
+    assert not target.exists()
+    assert not target.parent.exists()

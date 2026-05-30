@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from worldforge.models import JSONDict, WorldForgeError
+from worldforge.models import JSONDict, WorldForgeError, dump_json, require_json_dict
 
 RUNS_PRUNE_SCHEMA_VERSION = 1
 
@@ -124,7 +124,7 @@ class PruneReport:
         }
 
     def to_json(self, *, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent, sort_keys=True) + "\n"
+        return dump_json(self.to_dict(), indent=indent) + "\n"
 
     def to_markdown(self) -> str:
         lines = [
@@ -156,6 +156,19 @@ class PruneReport:
         if not self.candidates:
             lines.append("| - | - | - | - | - | - |")
         return "\n".join(lines) + "\n"
+
+
+@dataclass(frozen=True, slots=True)
+class _RunEntry:
+    run_dir: Path
+    manifest: JSONDict | None
+    created_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class _PruneCutoffs:
+    safety: datetime
+    age: datetime
 
 
 def plan_prune(
@@ -284,6 +297,123 @@ def _ensure_inside_runs(target: Path, *, runs_root: Path) -> None:
         )
 
 
+def _run_entries(runs_root: Path) -> list[_RunEntry]:
+    entries: list[_RunEntry] = []
+    for run_dir in sorted(runs_root.iterdir(), key=lambda p: p.name, reverse=True):
+        if not run_dir.is_dir():
+            continue
+        manifest = _load_manifest(run_dir)
+        entries.append(
+            _RunEntry(
+                run_dir=run_dir,
+                manifest=manifest,
+                created_at=_parse_created_at(manifest, run_dir),
+            )
+        )
+    return entries
+
+
+def _family_filter(policy: RunsRetentionPolicy) -> set[str]:
+    return {family.lower() for family in policy.families}
+
+
+def _run_kind(manifest: JSONDict | None) -> str:
+    return str(manifest.get("kind") or "") if isinstance(manifest, dict) else ""
+
+
+def _run_id(entry: _RunEntry) -> str:
+    manifest = entry.manifest
+    if isinstance(manifest, dict) and manifest.get("run_id"):
+        return str(manifest.get("run_id"))
+    return entry.run_dir.name
+
+
+def _created_label(manifest: JSONDict | None) -> str:
+    return str(manifest.get("created_at") or "") if isinstance(manifest, dict) else ""
+
+
+def _is_in_family(entry: _RunEntry, family_filter: set[str]) -> bool:
+    return not family_filter or _run_kind(entry.manifest).lower() in family_filter
+
+
+def _kept_run_indices(
+    entries: list[_RunEntry],
+    *,
+    family_filter: set[str],
+    keep_latest: int,
+) -> set[int]:
+    # Compute keep_latest *inside* the filtered family set so a non-matching
+    # newer run cannot consume a keep slot when --family is used.
+    in_family_indices = [
+        index for index, entry in enumerate(entries) if _is_in_family(entry, family_filter)
+    ]
+    return set(in_family_indices[:keep_latest])
+
+
+def _prune_cutoffs(policy: RunsRetentionPolicy, now: datetime) -> _PruneCutoffs:
+    return _PruneCutoffs(
+        safety=now - _PRUNE_KEEP_SAFETY_WINDOW,
+        age=now - timedelta(days=policy.max_age_days) if policy.max_age_days > 0 else now,
+    )
+
+
+def _candidate_action(
+    *,
+    index: int,
+    entry: _RunEntry,
+    policy: RunsRetentionPolicy,
+    family_filter: set[str],
+    kept_indices: set[int],
+    cutoffs: _PruneCutoffs,
+) -> tuple[str, str]:
+    kind = _run_kind(entry.manifest)
+    if family_filter and kind.lower() not in family_filter:
+        return "skip-family", f"kind '{kind}' is not in selected families"
+    if index in kept_indices:
+        return "skip-keep-latest", f"within keep_latest={policy.keep_latest}"
+    if (
+        policy.max_age_days > 0
+        and entry.created_at is not None
+        and entry.created_at > cutoffs.safety
+    ):
+        return "skip-young", "younger than 24 hours; pass max_age_days=0 to override"
+    if policy.max_age_days == 0:
+        return "delete", "max_age_days=0 forces delete after keep_latest window"
+    if entry.created_at is None:
+        return "skip-young", "manifest missing or unparseable created_at; refusing to delete"
+    if entry.created_at <= cutoffs.age:
+        return "delete", f"older than {policy.max_age_days} days"
+    return "keep", "kept by policy"
+
+
+def _prune_candidate(
+    *,
+    index: int,
+    entry: _RunEntry,
+    policy: RunsRetentionPolicy,
+    family_filter: set[str],
+    kept_indices: set[int],
+    cutoffs: _PruneCutoffs,
+) -> PruneCandidate:
+    action, reason = _candidate_action(
+        index=index,
+        entry=entry,
+        policy=policy,
+        family_filter=family_filter,
+        kept_indices=kept_indices,
+        cutoffs=cutoffs,
+    )
+    return PruneCandidate(
+        run_id=_run_id(entry),
+        run_dir=str(entry.run_dir),
+        kind=_run_kind(entry.manifest),
+        created_at=_created_label(entry.manifest),
+        size_bytes=_directory_size(entry.run_dir),
+        action=action,
+        reason=reason,
+    )
+
+
 def _scan_candidates(
     runs_root: Path,
     *,
@@ -292,71 +422,25 @@ def _scan_candidates(
 ) -> Iterable[PruneCandidate]:
     if not runs_root.is_dir():
         return ()
-    entries: list[tuple[Path, JSONDict | None, datetime | None]] = []
-    for run_dir in sorted(runs_root.iterdir(), key=lambda p: p.name, reverse=True):
-        if not run_dir.is_dir():
-            continue
-        manifest = _load_manifest(run_dir)
-        created_at = _parse_created_at(manifest, run_dir)
-        entries.append((run_dir, manifest, created_at))
-
-    family_filter = {family.lower() for family in policy.families}
-    candidates: list[PruneCandidate] = []
-    # Compute keep_latest *inside* the filtered family set so a non-matching
-    # newer run cannot consume a keep slot when --family is used.
-    in_family_indices = [
-        index
-        for index, (_, manifest, _) in enumerate(entries)
-        if not family_filter
-        or (isinstance(manifest, dict) and str(manifest.get("kind") or "").lower() in family_filter)
+    entries = _run_entries(runs_root)
+    family_filter = _family_filter(policy)
+    kept_indices = _kept_run_indices(
+        entries,
+        family_filter=family_filter,
+        keep_latest=policy.keep_latest,
+    )
+    cutoffs = _prune_cutoffs(policy, now)
+    return [
+        _prune_candidate(
+            index=index,
+            entry=entry,
+            policy=policy,
+            family_filter=family_filter,
+            kept_indices=kept_indices,
+            cutoffs=cutoffs,
+        )
+        for index, entry in enumerate(entries)
     ]
-    kept_indices = set(in_family_indices[: policy.keep_latest])
-    safety_cutoff = now - _PRUNE_KEEP_SAFETY_WINDOW
-    age_cutoff = now - timedelta(days=policy.max_age_days) if policy.max_age_days > 0 else now
-
-    for index, (run_dir, manifest, created_at) in enumerate(entries):
-        run_id = (
-            str(manifest.get("run_id"))
-            if isinstance(manifest, dict) and manifest.get("run_id")
-            else run_dir.name
-        )
-        kind = str(manifest.get("kind") or "") if isinstance(manifest, dict) else ""
-        created_label = str(manifest.get("created_at") or "") if isinstance(manifest, dict) else ""
-        size_bytes = _directory_size(run_dir)
-        action = "keep"
-        reason = "kept by policy"
-
-        if family_filter and kind.lower() not in family_filter:
-            action = "skip-family"
-            reason = f"kind '{kind}' is not in selected families"
-        elif index in kept_indices:
-            action = "skip-keep-latest"
-            reason = f"within keep_latest={policy.keep_latest}"
-        elif policy.max_age_days > 0 and created_at is not None and created_at > safety_cutoff:
-            action = "skip-young"
-            reason = "younger than 24 hours; pass max_age_days=0 to override"
-        elif policy.max_age_days == 0:
-            action = "delete"
-            reason = "max_age_days=0 forces delete after keep_latest window"
-        elif created_at is None:
-            action = "skip-young"
-            reason = "manifest missing or unparseable created_at; refusing to delete"
-        elif created_at <= age_cutoff:
-            action = "delete"
-            reason = f"older than {policy.max_age_days} days"
-
-        candidates.append(
-            PruneCandidate(
-                run_id=run_id,
-                run_dir=str(run_dir),
-                kind=kind,
-                created_at=created_label,
-                size_bytes=size_bytes,
-                action=action,
-                reason=reason,
-            )
-        )
-    return candidates
 
 
 def _load_manifest(run_dir: Path) -> JSONDict | None:
@@ -364,10 +448,13 @@ def _load_manifest(run_dir: Path) -> JSONDict | None:
     if not manifest_path.is_file():
         return None
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        payload = require_json_dict(
+            json.loads(manifest_path.read_text(encoding="utf-8")),
+            name=f"Run manifest {manifest_path}",
+        )
+    except (OSError, json.JSONDecodeError, WorldForgeError):
         return None
-    return payload if isinstance(payload, dict) else None
+    return payload
 
 
 def _parse_created_at(manifest: JSONDict | None, run_dir: Path) -> datetime | None:

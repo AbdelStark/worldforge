@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import importlib.util
 import inspect
 import json
 import sys
 from collections.abc import Callable
-from pathlib import Path
 
 import pytest
 
+import worldforge.testing.provider_contract_validation as provider_contract_validation
 import worldforge.testing.providers as provider_testing
 from worldforge import (
     Action,
@@ -18,9 +17,16 @@ from worldforge import (
     ProviderCapabilities,
     ReasoningResult,
     VideoClip,
+    WorldForgeError,
 )
 from worldforge.cli import main as worldforge_main
+from worldforge.demos.provider_failure_gallery import build_provider_failure_gallery_entries
 from worldforge.models import ProviderEvent, ProviderHealth
+from worldforge.provider_contracts import (
+    ProviderContractCheck,
+    ProviderContractEvidence,
+    load_json_contract_input,
+)
 from worldforge.providers import (
     BaseProvider,
     CosmosProvider,
@@ -44,25 +50,54 @@ from worldforge.testing import (
     load_capability_fixture,
 )
 
-_ROOT = Path(__file__).resolve().parents[1]
-_DEMO_SCRIPT = _ROOT / "scripts" / "demo_showcases.py"
-_DEMO_SPEC = importlib.util.spec_from_file_location(
-    "demo_showcases_for_provider_contract_tests",
-    _DEMO_SCRIPT,
-)
-assert _DEMO_SPEC is not None
-_demo_showcases = importlib.util.module_from_spec(_DEMO_SPEC)
-assert _DEMO_SPEC.loader is not None
-sys.modules[_DEMO_SPEC.name] = _demo_showcases
-_DEMO_SPEC.loader.exec_module(_demo_showcases)
-
 
 def _gallery_entry(entry_id: str) -> dict[str, object]:
-    entries = {
-        str(entry["id"]): entry
-        for entry in _demo_showcases.build_provider_failure_gallery_entries()
-    }
+    entries = {str(entry["id"]): entry for entry in build_provider_failure_gallery_entries()}
     return entries[entry_id]
+
+
+def test_provider_contract_facade_uses_shared_validation_module() -> None:
+    assert provider_testing._validate_prediction is provider_contract_validation.validate_prediction
+    assert provider_testing._validate_provider_events is (
+        provider_contract_validation.validate_provider_events
+    )
+    assert provider_testing._expect_provider_error is (
+        provider_contract_validation.expect_provider_error
+    )
+
+
+def test_provider_contract_json_boundaries_reject_non_finite_payloads(tmp_path) -> None:
+    score_info = tmp_path / "score-info.json"
+    score_info.write_text('{"temperature": NaN}\n', encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        load_json_contract_input(score_info, name="score-info")
+
+    score_candidates = tmp_path / "score-candidates.json"
+    score_candidates.write_text('[["candidate-a"], ["candidate-b"]]\n', encoding="utf-8")
+    assert load_json_contract_input(score_candidates, name="score-candidates") == [
+        ["candidate-a"],
+        ["candidate-b"],
+    ]
+
+    evidence = ProviderContractEvidence(
+        provider="bad-json",
+        registered=True,
+        configured=True,
+        profile={"quality": float("nan")},
+        health={},
+        checks=(
+            ProviderContractCheck(
+                name="metadata",
+                status="passed",
+                detail="metadata ok",
+                next_step="keep metadata valid",
+            ),
+        ),
+        validation_commands=("uv run worldforge provider contract bad-json --format json",),
+    )
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        evidence.to_json()
 
 
 def test_mock_provider_passes_contract_checks() -> None:

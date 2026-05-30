@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 
+from worldforge.harness.workbench_rendering import provider_workbench_markdown
 from worldforge.models import JSONDict, ProviderEvent, WorldForgeError
 from worldforge.providers import BaseProvider, ProviderError
 from worldforge.providers.catalog import DOC_CAPABILITY_ORDER, PROVIDER_CATALOG
@@ -76,6 +77,12 @@ class _WorkbenchTarget:
     docs_page: str
 
 
+@dataclass(frozen=True, slots=True)
+class _ConformanceStep:
+    capability: str
+    run: Callable[[BaseProvider, object | None], object | None]
+
+
 def provider_workbench_report(
     provider_name: str,
     *,
@@ -93,40 +100,101 @@ def provider_workbench_report(
     events: list[ProviderEvent] = []
     target = _create_workbench_target(provider_name, events.append)
     provider = target.provider
-    profile = provider.profile()
     docs_base = docs_root or Path.cwd()
     started = perf_counter()
 
-    required_tests = _required_tests(provider)
-    planned_capabilities = _planned_capabilities(provider)
-    health_report = _health_report(provider)
-    invocation = _run_safe_conformance(provider, live=live)
-    fixture_report = _fixture_report(provider.name, fixtures_dir=fixtures_dir)
-    runtime_manifest_report = _runtime_manifest_report(provider.name)
-    docs_report = _docs_report(provider, docs_root=docs_base, target=target)
-    catalog_report = _catalog_report(provider.name, docs_root=docs_base, target=target)
-    event_report = _event_report(events, provider=provider.name)
-    checks = [
-        _status_check(
-            "profile",
-            "passed",
-            (
-                f"{provider.name} advertises {', '.join(required_tests) or 'no'} capability "
-                f"tests; planned capabilities: {', '.join(planned_capabilities) or 'none'}."
-            ),
-        ),
-        health_report,
-        invocation,
-        fixture_report,
-        runtime_manifest_report,
-        docs_report,
-        catalog_report,
-        event_report,
-    ]
-    promotion_report = _promotion_report(
+    required_tests, planned_capabilities = _provider_capability_surface(provider)
+    checks = _initial_workbench_checks(
+        provider,
+        live=live,
+        fixtures_dir=fixtures_dir,
+        docs_root=docs_base,
+        target=target,
+        events=events,
+        required_tests=required_tests,
+        planned_capabilities=planned_capabilities,
+    )
+    promotion_report = _append_promotion_check(
         provider,
         checks=checks,
         docs_root=docs_base,
+        target=target,
+        required_tests=required_tests,
+        planned_capabilities=planned_capabilities,
+    )
+    return _workbench_payload(
+        provider,
+        target=target,
+        checks=checks,
+        live=live,
+        started=started,
+        required_tests=required_tests,
+        planned_capabilities=planned_capabilities,
+        promotion_report=promotion_report,
+        docs_root=docs_base,
+    )
+
+
+def _provider_capability_surface(provider: BaseProvider) -> tuple[list[str], list[str]]:
+    return _required_tests(provider), _planned_capabilities(provider)
+
+
+def _initial_workbench_checks(
+    provider: BaseProvider,
+    *,
+    live: bool,
+    fixtures_dir: Path | None,
+    docs_root: Path,
+    target: _WorkbenchTarget,
+    events: list[ProviderEvent],
+    required_tests: list[str],
+    planned_capabilities: list[str],
+) -> list[JSONDict]:
+    return [
+        _profile_check(
+            provider,
+            required_tests=required_tests,
+            planned_capabilities=planned_capabilities,
+        ),
+        _health_report(provider),
+        _run_safe_conformance(provider, live=live),
+        _fixture_report(provider.name, fixtures_dir=fixtures_dir),
+        _runtime_manifest_report(provider.name),
+        _docs_report(provider, docs_root=docs_root, target=target),
+        _catalog_report(provider.name, docs_root=docs_root, target=target),
+        _event_report(events, provider=provider.name),
+    ]
+
+
+def _profile_check(
+    provider: BaseProvider,
+    *,
+    required_tests: list[str],
+    planned_capabilities: list[str],
+) -> JSONDict:
+    return _status_check(
+        "profile",
+        "passed",
+        (
+            f"{provider.name} advertises {', '.join(required_tests) or 'no'} capability "
+            f"tests; planned capabilities: {', '.join(planned_capabilities) or 'none'}."
+        ),
+    )
+
+
+def _append_promotion_check(
+    provider: BaseProvider,
+    *,
+    checks: list[JSONDict],
+    docs_root: Path,
+    target: _WorkbenchTarget,
+    required_tests: list[str],
+    planned_capabilities: list[str],
+) -> JSONDict:
+    promotion_report = _promotion_report(
+        provider,
+        checks=checks,
+        docs_root=docs_root,
         target=target,
         required_tests=required_tests,
         planned_capabilities=planned_capabilities,
@@ -138,24 +206,41 @@ def provider_workbench_report(
             _promotion_detail(promotion_report),
         )
     )
+    return promotion_report
 
-    status = (
-        "passed" if all(check["status"] in {"passed", "skipped"} for check in checks) else "failed"
-    )
+
+def _workbench_status(checks: list[JSONDict]) -> str:
+    if all(check["status"] in {"passed", "skipped"} for check in checks):
+        return "passed"
+    return "failed"
+
+
+def _workbench_payload(
+    provider: BaseProvider,
+    *,
+    target: _WorkbenchTarget,
+    checks: list[JSONDict],
+    live: bool,
+    started: float,
+    required_tests: list[str],
+    planned_capabilities: list[str],
+    promotion_report: JSONDict,
+    docs_root: Path,
+) -> JSONDict:
     return {
         "provider": provider.name,
         "target_source": target.source,
         "catalog_registered": target.catalog_registered,
-        "status": status,
+        "status": _workbench_status(checks),
         "live": live,
         "duration_ms": round((perf_counter() - started) * 1000, 3),
-        "profile": profile.to_dict(),
+        "profile": provider.profile().to_dict(),
         "required_tests": required_tests,
         "planned_capabilities": planned_capabilities,
         "promotion": promotion_report,
         "checks": checks,
         "safe_artifacts": _safe_artifacts(provider.name, checks=checks, target=target),
-        "validation_commands": _validation_commands(provider.name, docs_root=docs_base),
+        "validation_commands": _validation_commands(provider.name, docs_root=docs_root),
         "docs": {
             "authoring_guide": AUTHORING_DOC,
             "catalog_check": CATALOG_CHECK_COMMAND,
@@ -165,85 +250,6 @@ def provider_workbench_report(
         },
         "issue_summary": _issue_summary(provider.name, checks),
     }
-
-
-def provider_workbench_markdown(report: JSONDict) -> str:
-    """Render a provider workbench report as pasteable Markdown."""
-
-    lines = [
-        f"# Provider Workbench: `{report['provider']}`",
-        "",
-        f"- status: `{report['status']}`",
-        f"- target source: `{report['target_source']}`",
-        f"- catalog registered: `{str(report['catalog_registered']).lower()}`",
-        f"- live calls: `{str(report['live']).lower()}`",
-        f"- duration_ms: `{report['duration_ms']}`",
-        "",
-        "## Required Capability Tests",
-        "",
-    ]
-    required_tests = report["required_tests"]
-    if isinstance(required_tests, list) and required_tests:
-        lines.extend(f"- `{test}`" for test in required_tests)
-    else:
-        lines.append("- none advertised")
-    planned_capabilities = report.get("planned_capabilities", [])
-    lines.extend(["", "## Planned Capability Surface", ""])
-    if isinstance(planned_capabilities, list) and planned_capabilities:
-        lines.extend(f"- `{capability}`" for capability in planned_capabilities)
-    else:
-        lines.append("- none declared")
-    lines.extend(["", "## Checks", ""])
-    lines.extend(
-        f"- `{check['status']}` `{check['name']}`: {check['detail']}" for check in report["checks"]
-    )
-    promotion = report["promotion"]
-    lines.extend(
-        [
-            "",
-            "## Promotion Evidence",
-            "",
-            f"- current status: `{promotion['current_status']}`",
-        ]
-    )
-    missing_by_status = promotion["missing_evidence_by_status"]
-    if isinstance(missing_by_status, dict) and missing_by_status:
-        lines.extend(
-            f"- missing for `{status}`: {', '.join(f'`{item}`' for item in missing) or 'none'}"
-            for status, missing in missing_by_status.items()
-        )
-    else:
-        lines.append("- no promotion gaps for the current status")
-    lines.extend(["", "## Safe Artifacts", ""])
-    safe_artifacts = report.get("safe_artifacts", [])
-    if isinstance(safe_artifacts, list) and safe_artifacts:
-        lines.extend(
-            f"- `{artifact['path']}`: {artifact['note']}"
-            for artifact in safe_artifacts
-            if isinstance(artifact, dict)
-        )
-    else:
-        lines.append("- no local artifacts were referenced")
-    lines.extend(["", "## Validation Commands", ""])
-    validation_commands = report.get("validation_commands", [])
-    if isinstance(validation_commands, list):
-        lines.extend(f"- `{command}`" for command in validation_commands)
-    docs = report["docs"]
-    lines.extend(
-        [
-            "",
-            "## Author Links",
-            "",
-            f"- authoring guide: `{docs['authoring_guide']}`",
-            f"- generated catalog check: `{docs['catalog_check']}`",
-            f"- fixture pattern: `{docs['fixture_pattern']}`",
-            "",
-            "## Issue Summary",
-            "",
-            str(report["issue_summary"]),
-        ]
-    )
-    return "\n".join(lines)
 
 
 def _create_workbench_target(
@@ -292,33 +298,15 @@ def _planned_capabilities(provider: BaseProvider) -> list[str]:
 
 
 def _run_safe_conformance(provider: BaseProvider, *, live: bool) -> JSONDict:
-    profile = provider.profile()
-    can_invoke = live or (profile.is_local and profile.deterministic and provider.configured())
-    if not can_invoke:
+    if not _can_run_conformance(provider, live=live):
         return _status_check(
             "conformance",
             "skipped",
             "live provider calls were not selected; rerun with --live on a prepared host.",
         )
 
-    generated = None
-    exercised: list[str] = []
     try:
-        if profile.capabilities.predict:
-            assert_predict_conformance(provider)
-            exercised.append("predict")
-        if profile.capabilities.reason:
-            assert_reason_conformance(provider)
-            exercised.append("reason")
-        if profile.capabilities.embed:
-            assert_embed_conformance(provider)
-            exercised.append("embed")
-        if profile.capabilities.generate:
-            generated = assert_generate_conformance(provider)
-            exercised.append("generate")
-        if profile.capabilities.transfer:
-            assert_transfer_conformance(provider, clip=generated)
-            exercised.append("transfer")
+        exercised = _exercise_conformance_steps(provider)
     except (AssertionError, ProviderError, WorldForgeError) as exc:
         return _status_check("conformance", "failed", str(exc))
 
@@ -327,6 +315,56 @@ def _run_safe_conformance(provider: BaseProvider, *, live: bool) -> JSONDict:
         "passed",
         f"exercised {', '.join(exercised) if exercised else 'metadata-only'} safely.",
     )
+
+
+def _can_run_conformance(provider: BaseProvider, *, live: bool) -> bool:
+    profile = provider.profile()
+    return live or (profile.is_local and profile.deterministic and provider.configured())
+
+
+def _exercise_conformance_steps(provider: BaseProvider) -> list[str]:
+    generated_clip: object | None = None
+    exercised: list[str] = []
+    capabilities = provider.profile().capabilities
+    for step in _CONFORMANCE_STEPS:
+        if not capabilities.supports(step.capability):
+            continue
+        generated_clip = step.run(provider, generated_clip)
+        exercised.append(step.capability)
+    return exercised
+
+
+def _run_predict_conformance(provider: BaseProvider, clip: object | None) -> object | None:
+    assert_predict_conformance(provider)
+    return clip
+
+
+def _run_reason_conformance(provider: BaseProvider, clip: object | None) -> object | None:
+    assert_reason_conformance(provider)
+    return clip
+
+
+def _run_embed_conformance(provider: BaseProvider, clip: object | None) -> object | None:
+    assert_embed_conformance(provider)
+    return clip
+
+
+def _run_generate_conformance(provider: BaseProvider, _clip: object | None) -> object | None:
+    return assert_generate_conformance(provider)
+
+
+def _run_transfer_conformance(provider: BaseProvider, clip: object | None) -> object | None:
+    assert_transfer_conformance(provider, clip=clip)
+    return clip
+
+
+_CONFORMANCE_STEPS: tuple[_ConformanceStep, ...] = (
+    _ConformanceStep("predict", _run_predict_conformance),
+    _ConformanceStep("reason", _run_reason_conformance),
+    _ConformanceStep("embed", _run_embed_conformance),
+    _ConformanceStep("generate", _run_generate_conformance),
+    _ConformanceStep("transfer", _run_transfer_conformance),
+)
 
 
 def _health_report(provider: BaseProvider) -> JSONDict:
@@ -353,9 +391,9 @@ def _fixture_report(provider: str, *, fixtures_dir: Path | None) -> JSONDict:
         return _status_check("fixtures", "skipped", f"{resolved_dir} does not exist.")
 
     patterns = _fixture_patterns(provider)
-    fixture_paths = sorted({path for pattern in patterns for path in resolved_dir.glob(pattern)})
+    fixture_paths = _provider_fixture_paths(resolved_dir, patterns)
     if not fixture_paths:
-        rendered_patterns = ", ".join(str(resolved_dir / pattern) for pattern in patterns)
+        rendered_patterns = _rendered_fixture_patterns(resolved_dir, patterns)
         return _status_check(
             "fixtures",
             "skipped",
@@ -363,10 +401,7 @@ def _fixture_report(provider: str, *, fixtures_dir: Path | None) -> JSONDict:
         )
 
     try:
-        for path in fixture_paths:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict):
-                raise WorldForgeError(f"{path} must contain a JSON object.")
+        _validate_provider_fixture_payloads(fixture_paths)
     except (OSError, json.JSONDecodeError, WorldForgeError) as exc:
         return _status_check("fixtures", "failed", str(exc))
 
@@ -387,6 +422,26 @@ def _fixture_patterns(provider: str) -> tuple[str, ...]:
     if module_prefix not in prefixes:
         prefixes.append(module_prefix)
     return tuple(f"{prefix}_*.json" for prefix in prefixes)
+
+
+def _provider_fixture_paths(fixtures_dir: Path, patterns: tuple[str, ...]) -> list[Path]:
+    return sorted({path for pattern in patterns for path in fixtures_dir.glob(pattern)})
+
+
+def _rendered_fixture_patterns(fixtures_dir: Path, patterns: tuple[str, ...]) -> str:
+    return ", ".join(str(fixtures_dir / pattern) for pattern in patterns)
+
+
+def _validate_provider_fixture_payloads(paths: list[Path]) -> None:
+    for path in paths:
+        _read_provider_fixture_payload(path)
+
+
+def _read_provider_fixture_payload(path: Path) -> JSONDict:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise WorldForgeError(f"{path} must contain a JSON object.")
+    return payload
 
 
 def _runtime_manifest_report(provider: str) -> JSONDict:
@@ -523,31 +578,60 @@ def _present_evidence(
     planned_capabilities: list[str],
 ) -> set[str]:
     checks_by_name = {str(check["name"]): check for check in checks}
+    live_entry = _live_smoke_entry(docs_root / LIVE_SMOKE_EVIDENCE_DOC, provider)
+    return (
+        _workbench_doc_evidence(provider, docs_root=docs_root, target=target)
+        | _workbench_check_evidence(checks_by_name)
+        | _workbench_capability_evidence(required_tests, planned_capabilities)
+        | _workbench_live_smoke_evidence(live_entry)
+    )
+
+
+def _workbench_doc_evidence(
+    provider: str,
+    *,
+    docs_root: Path,
+    target: _WorkbenchTarget,
+) -> set[str]:
     present: set[str] = set()
     if _doc_mentions(docs_root / PROVIDER_COHORT_DOC, provider):
         present.add("selection_record")
-    if checks_by_name.get("docs", {}).get("status") == "passed":
-        present.add("docs_page")
-    if checks_by_name.get("catalog", {}).get("status") == "passed":
-        present.add("catalog_or_candidate_index")
-    if checks_by_name.get("runtime_manifest", {}).get("status") == "passed":
-        present.add("runtime_manifest")
-    if checks_by_name.get("fixtures", {}).get("status") == "passed":
-        present.add("fixture_coverage")
-    if required_tests or planned_capabilities:
-        present.add("conformance_helpers")
-    if checks_by_name.get("events", {}).get("status") == "passed":
-        present.add("redaction_checks")
-    if _live_smoke_entry(docs_root / LIVE_SMOKE_EVIDENCE_DOC, provider) is not None:
-        present.add("prepared_host_smoke_record")
-    live_entry = _live_smoke_entry(docs_root / LIVE_SMOKE_EVIDENCE_DOC, provider)
-    if isinstance(live_entry, dict) and live_entry.get("artifact_path"):
-        present.add("prepared_host_smoke_artifact")
     if target.catalog_registered and _doc_mentions(
         docs_root / "docs/src/claim-evidence-map.md",
         provider,
     ):
         present.add("release_evidence")
+    return present
+
+
+def _workbench_check_evidence(checks_by_name: dict[str, JSONDict]) -> set[str]:
+    check_evidence = {
+        "docs": "docs_page",
+        "catalog": "catalog_or_candidate_index",
+        "runtime_manifest": "runtime_manifest",
+        "fixtures": "fixture_coverage",
+        "events": "redaction_checks",
+    }
+    return {
+        evidence
+        for check_name, evidence in check_evidence.items()
+        if checks_by_name.get(check_name, {}).get("status") == "passed"
+    }
+
+
+def _workbench_capability_evidence(
+    required_tests: list[str],
+    planned_capabilities: list[str],
+) -> set[str]:
+    return {"conformance_helpers"} if required_tests or planned_capabilities else set()
+
+
+def _workbench_live_smoke_evidence(live_entry: object) -> set[str]:
+    present: set[str] = set()
+    if live_entry is not None:
+        present.add("prepared_host_smoke_record")
+    if isinstance(live_entry, dict) and live_entry.get("artifact_path"):
+        present.add("prepared_host_smoke_artifact")
     return present
 
 
@@ -641,3 +725,9 @@ def _issue_summary(provider: str, checks: list[JSONDict]) -> str:
         return f"`{provider}` workbench passed with no failing checks."
     rendered = "; ".join(f"{check['name']}: {check['detail']}" for check in failures)
     return f"`{provider}` workbench failures: {rendered}"
+
+
+__all__ = [
+    "provider_workbench_markdown",
+    "provider_workbench_report",
+]

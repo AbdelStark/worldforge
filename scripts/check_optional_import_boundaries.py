@@ -66,6 +66,7 @@ DEFAULT_BOUNDARIES = (
             "src/worldforge/smoke/leworldmodel.py",
             "src/worldforge/smoke/leworldmodel_checkpoint.py",
             "src/worldforge/smoke/lerobot_leworldmodel.py",
+            "src/worldforge/smoke/lerobot_leworldmodel_inputs.py",
             "src/worldforge/smoke/pusht_showcase_inputs.py",
         ),
         lazy_import_allowed=(

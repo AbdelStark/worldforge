@@ -7,6 +7,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,6 +16,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from worldforge.artifact_io import write_json_artifact  # noqa: E402
+
 DEFAULT_OUTPUT_DIR = ROOT / ".worldforge" / "dependency-audit"
 DEFAULT_JSON_OUTPUT = DEFAULT_OUTPUT_DIR / "dependency-audit.json"
 DEFAULT_MARKDOWN_OUTPUT = DEFAULT_OUTPUT_DIR / "dependency-audit.md"
@@ -99,9 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     json_output = args.json_output.expanduser().resolve()
     markdown_output = args.markdown_output.expanduser().resolve()
-    json_output.parent.mkdir(parents=True, exist_ok=True)
+    write_json_artifact(json_output, evidence.payload)
     markdown_output.parent.mkdir(parents=True, exist_ok=True)
-    json_output.write_text(json.dumps(evidence.payload, indent=2, sort_keys=True) + "\n")
     markdown_output.write_text(evidence.markdown, encoding="utf-8")
     print(f"wrote {_display_path(json_output)}")
     print(f"wrote {_display_path(markdown_output)}")

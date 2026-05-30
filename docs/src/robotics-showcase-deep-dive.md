@@ -825,7 +825,7 @@ Common failure points and where to inspect them:
   translator, and candidate builder.
 - `src/worldforge/providers/lerobot.py`: LeRobot `policy` provider.
 - `src/worldforge/providers/leworldmodel.py`: LeWorldModel `score` provider.
-- `src/worldforge/framework.py`: `World.plan(...)` policy-plus-score composition.
+- `src/worldforge/_world.py`: `World.plan(...)` policy-plus-score composition.
 
 ## Validation Commands
 

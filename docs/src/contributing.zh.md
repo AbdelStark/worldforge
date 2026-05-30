@@ -76,8 +76,18 @@ assert stable_json_dumps(snapshot) == expected_json
 
 关键目录：
 
-- `src/worldforge/models.py`：公开数据契约与验证。
-- `src/worldforge/framework.py`：运行时外观、世界、规划、持久化和诊断。
+- `src/worldforge/models.py`：公开兼容门面与模型重导出。
+- `src/worldforge/_model_utils.py`：共享 JSON 原生验证辅助工具和框架错误。
+- `src/worldforge/scene_models.py`：几何、动作、场景对象、结构化目标与历史契约。
+- `src/worldforge/capability_results.py`：媒体、推理、嵌入、动作评分与具身策略结果契约。
+- `src/worldforge/provider_models.py`：提供方面向契约的兼容门面。
+- `src/worldforge/provider_profiles.py`、`provider_request_policy.py`、`provider_events.py`、`provider_diagnostics.py` 和 `provider_redaction.py`：聚焦的提供方契约，分别覆盖能力/配置元数据、重试/超时、事件、生命周期诊断和脱敏。
+- `src/worldforge/framework.py`：运行时外观、提供方注册、持久化和诊断。
+- `src/worldforge/framework_capabilities.py`：内部能力协议注册表和分发。
+- `src/worldforge/_world.py`：可变世界状态、历史记录和规划。
+- `src/worldforge/_world_prompt_seeders.py`：基于提示词的本地种子场景辅助工具。
+- `src/worldforge/harness/tui_styles.py` 和 `tui_*_styles.py`：TheWorldHarness 使用的无
+  Textual 依赖 CSS 常量，按屏幕族分组并通过兼容门面导出。
 - `src/worldforge/providers/`：提供方接口、目录、适配器和脚手架。
 - `src/worldforge/testing/`：可复用的提供方契约辅助工具、夹具加载器、运行时标记和确定性工件测试控件。
 - `tests/fixtures/fixture-snapshots.json`：已追踪 JSON 夹具的清单；在有意修改夹具后，使用 `uv run python scripts/manage_fixture_snapshots.py --write` 更新该清单。

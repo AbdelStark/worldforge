@@ -197,6 +197,24 @@ def test_gr00t_policy_client_provider_passes_contract_and_emits_events() -> None
     assert events[-1].metadata["strict"] is False
 
 
+def test_gr00t_provider_accepts_string_action_horizon_from_jsonish_info() -> None:
+    client = FakeGrootClient(({"arm": [[[0.1, 0.5, 0.0], [0.2, 0.5, 0.0]]]}, {}))
+    provider = GrootPolicyClientProvider(
+        policy_client=client,
+        action_translator=lambda *_args: [
+            Action.move_to(0.1, 0.5, 0.0),
+            Action.move_to(0.2, 0.5, 0.0),
+        ],
+    )
+    info = _policy_info()
+    info["action_horizon"] = "2"
+
+    result = provider.select_actions(info=info)
+
+    assert result.action_horizon == 2
+    assert len(client.get_action_calls) == 1
+
+
 @pytest.mark.parametrize(
     ("raw_actions", "expected_raw"),
     [
@@ -840,6 +858,7 @@ def test_gr00t_policy_events_include_sanitized_remote_target_and_redacted_failur
         ({"strict": "maybe"}, "strict"),
         ({"strict": object()}, "strict"),
         ({"api_token": " "}, "api_token"),
+        ({"action_translator": object()}, "action_translator"),
     ],
 )
 def test_gr00t_provider_rejects_invalid_configuration(

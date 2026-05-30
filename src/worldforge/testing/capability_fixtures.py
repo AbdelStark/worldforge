@@ -107,43 +107,24 @@ def _capability_root(capability: str) -> Traversable:
 
 
 def _parse_fixture(payload: Mapping[str, Any], *, source: str) -> CapabilityFixture:
-    if not isinstance(payload, Mapping):
-        raise WorldForgeError(f"{source} must contain a JSON object.")
-    schema_version = payload.get("schema_version")
-    if schema_version != FIXTURE_SCHEMA_VERSION:
-        raise WorldForgeError(
-            f"{source} schema_version must be {FIXTURE_SCHEMA_VERSION}, got {schema_version!r}."
-        )
-    fixture_id = payload.get("id")
-    if not isinstance(fixture_id, str) or not fixture_id.strip():
-        raise WorldForgeError(f"{source} 'id' must be a non-empty string.")
-    capability = payload.get("capability")
-    if capability not in CAPABILITY_FIXTURE_NAMES:
-        raise WorldForgeError(
-            f"{source} 'capability' must be one of {', '.join(CAPABILITY_FIXTURE_NAMES)}."
-        )
-    data_class = payload.get("data_class")
-    if data_class not in _DATA_CLASSES:
-        raise WorldForgeError(f"{source} 'data_class' must be one of {', '.join(_DATA_CLASSES)}.")
-    expected = payload.get("expected")
-    if expected not in _EXPECTED_OUTCOMES:
-        raise WorldForgeError(
-            f"{source} 'expected' must be one of {', '.join(_EXPECTED_OUTCOMES)}."
-        )
-    expected_error_pattern = payload.get("expected_error_pattern")
-    if expected == "invalid":
-        if not isinstance(expected_error_pattern, str) or not expected_error_pattern.strip():
-            raise WorldForgeError(
-                f"{source} invalid fixtures must declare a non-empty expected_error_pattern."
-            )
-    elif expected_error_pattern is not None:
-        raise WorldForgeError(f"{source} valid fixtures must leave expected_error_pattern null.")
-    description = payload.get("description")
-    if not isinstance(description, str) or not description.strip():
-        raise WorldForgeError(f"{source} 'description' must be a non-empty string.")
-    fixture_payload = payload.get("payload")
-    if not isinstance(fixture_payload, dict):
-        raise WorldForgeError(f"{source} 'payload' must be a JSON object.")
+    _require_fixture_mapping(payload, source=source)
+    schema_version = _fixture_schema_version(payload, source=source)
+    fixture_id = _fixture_required_text(payload, "id", source=source)
+    capability = _fixture_choice(
+        payload,
+        "capability",
+        choices=CAPABILITY_FIXTURE_NAMES,
+        source=source,
+    )
+    data_class = _fixture_choice(payload, "data_class", choices=_DATA_CLASSES, source=source)
+    expected = _fixture_choice(payload, "expected", choices=_EXPECTED_OUTCOMES, source=source)
+    expected_error_pattern = _fixture_expected_error_pattern(
+        payload,
+        expected=expected,
+        source=source,
+    )
+    description = _fixture_required_text(payload, "description", source=source)
+    fixture_payload = _fixture_payload(payload, source=source)
     return CapabilityFixture(
         id=fixture_id,
         capability=capability,
@@ -154,6 +135,69 @@ def _parse_fixture(payload: Mapping[str, Any], *, source: str) -> CapabilityFixt
         payload=dict(fixture_payload),
         schema_version=schema_version,
     )
+
+
+def _require_fixture_mapping(payload: object, *, source: str) -> None:
+    if not isinstance(payload, Mapping):
+        raise WorldForgeError(f"{source} must contain a JSON object.")
+
+
+def _fixture_schema_version(payload: Mapping[str, Any], *, source: str) -> int:
+    schema_version = payload.get("schema_version")
+    if schema_version != FIXTURE_SCHEMA_VERSION:
+        raise WorldForgeError(
+            f"{source} schema_version must be {FIXTURE_SCHEMA_VERSION}, got {schema_version!r}."
+        )
+    return schema_version
+
+
+def _fixture_required_text(payload: Mapping[str, Any], key: str, *, source: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise WorldForgeError(f"{source} '{key}' must be a non-empty string.")
+    return value
+
+
+def _fixture_choice(
+    payload: Mapping[str, Any],
+    key: str,
+    *,
+    choices: tuple[str, ...],
+    source: str,
+) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or value not in choices:
+        raise WorldForgeError(f"{source} '{key}' must be one of {', '.join(choices)}.")
+    return value
+
+
+def _fixture_expected_error_pattern(
+    payload: Mapping[str, Any],
+    *,
+    expected: str,
+    source: str,
+) -> str | None:
+    expected_error_pattern = payload.get("expected_error_pattern")
+    if expected == "invalid":
+        return _invalid_fixture_error_pattern(expected_error_pattern, source=source)
+    if expected_error_pattern is not None:
+        raise WorldForgeError(f"{source} valid fixtures must leave expected_error_pattern null.")
+    return None
+
+
+def _invalid_fixture_error_pattern(value: object, *, source: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise WorldForgeError(
+            f"{source} invalid fixtures must declare a non-empty expected_error_pattern."
+        )
+    return value
+
+
+def _fixture_payload(payload: Mapping[str, Any], *, source: str) -> JSONDict:
+    fixture_payload = payload.get("payload")
+    if not isinstance(fixture_payload, dict):
+        raise WorldForgeError(f"{source} 'payload' must be a JSON object.")
+    return dict(fixture_payload)
 
 
 def list_fixture_names(capability: str) -> tuple[str, ...]:

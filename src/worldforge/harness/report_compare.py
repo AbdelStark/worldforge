@@ -2,24 +2,38 @@
 
 from __future__ import annotations
 
-import csv
-import hashlib
-import io
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from worldforge.models import JSONDict, WorldForgeError, dump_json
-from worldforge.report_renderers import (
-    ReportRenderer,
-    register_report_renderer,
-    render_report_artifact,
+from worldforge.harness.report_compare_regression import (
+    build_regression_payload,
 )
+from worldforge.harness.report_compare_regression import (
+    safe_artifact_map as _safe_artifact_map,
+)
+from worldforge.harness.report_compare_rendering import (
+    comparison_to_csv as comparison_to_csv,
+)
+from worldforge.harness.report_compare_rendering import (
+    comparison_to_markdown as comparison_to_markdown,
+)
+from worldforge.harness.report_compare_rendering import (
+    register_builtin_comparison_renderers,
+)
+from worldforge.harness.report_compare_rendering import (
+    regression_to_csv as regression_to_csv,
+)
+from worldforge.harness.report_compare_rendering import (
+    regression_to_markdown as regression_to_markdown,
+)
+from worldforge.harness.report_compare_rows import comparison_rows as _comparison_rows
+from worldforge.models import JSONDict, WorldForgeError, dump_json, require_json_dict
+from worldforge.report_renderers import render_report_artifact
 
 _SUPPORTED_KINDS = {"benchmark", "demo_showcase", "eval"}
 _COMPARISON_SCHEMA_VERSION = 2
 _REGRESSION_SCHEMA_VERSION = 1
-_SAFE_ARTIFACT_SUFFIXES = {".csv", ".html", ".json", ".jsonl", ".md", ".txt"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,28 +97,52 @@ def compare_preserved_run_reports(paths: list[Path], *, mode: str = "comparison"
 
     if mode == "regression":
         return compare_preserved_run_regression(paths)
+    _require_comparison_mode(mode)
+    reports = _load_comparison_reports(paths)
+    kind = _common_report_kind(reports)
+    contexts = _compatible_comparison_contexts(kind, reports)
+    payload = _comparison_payload(kind=kind, reports=reports, contexts=contexts)
+    dump_json(payload)
+    return payload
+
+
+def _require_comparison_mode(mode: str) -> None:
     if mode != "comparison":
         raise WorldForgeError("runs compare mode must be comparison or regression.")
+
+
+def _load_comparison_reports(paths: list[Path]) -> list[PreservedRunReport]:
     if len(paths) < 2:
         raise WorldForgeError(
             "runs compare requires at least two run directories or manifest paths."
         )
-    reports = [load_preserved_run_report(path) for path in paths]
+    return [load_preserved_run_report(path) for path in paths]
+
+
+def _common_report_kind(reports: list[PreservedRunReport]) -> str:
     kinds = {report.kind for report in reports}
     if len(kinds) != 1:
         details = ", ".join(f"{report.run_id}:{report.kind}" for report in reports)
         raise WorldForgeError(f"Cannot compare incompatible report types: {details}.")
+    return reports[0].kind
 
-    kind = reports[0].kind
+
+def _compatible_comparison_contexts(
+    kind: str,
+    reports: list[PreservedRunReport],
+) -> list[JSONDict]:
     contexts = [_comparison_context(report) for report in reports]
     _ensure_compatible_contexts(kind, contexts)
-    if kind == "benchmark":
-        rows = _benchmark_rows(reports, contexts)
-    elif kind == "eval":
-        rows = _evaluation_rows(reports, contexts)
-    else:
-        rows = _demo_showcase_rows(reports, contexts)
-    payload: JSONDict = {
+    return contexts
+
+
+def _comparison_payload(
+    *,
+    kind: str,
+    reports: list[PreservedRunReport],
+    contexts: list[JSONDict],
+) -> JSONDict:
+    return {
         "schema_version": _COMPARISON_SCHEMA_VERSION,
         "kind": kind,
         "baseline_run_id": reports[0].run_id,
@@ -114,10 +152,8 @@ def compare_preserved_run_reports(paths: list[Path], *, mode: str = "comparison"
         "runs": [
             _run_summary(report, context) for report, context in zip(reports, contexts, strict=True)
         ],
-        "rows": rows,
+        "rows": _comparison_rows(kind, reports, contexts),
     }
-    dump_json(payload)
-    return payload
 
 
 def compare_preserved_run_regression(paths: list[Path]) -> JSONDict:
@@ -143,355 +179,17 @@ def compare_preserved_run_regression(paths: list[Path]) -> JSONDict:
     runs = [
         _run_summary(report, context) for report, context in zip(reports, contexts, strict=True)
     ]
-    metric_deltas = _regression_metric_deltas(kind, reports)
-    budget_changes = _regression_budget_changes(contexts)
-    failure_changes = _regression_failure_changes(reports)
-    artifact_changes = _regression_artifact_changes(reports)
-    provenance_changes = _regression_provenance_changes(runs, contexts)
-    rows = _regression_rows(
-        metric_deltas=metric_deltas,
-        budget_changes=budget_changes,
-        failure_changes=failure_changes,
-        artifact_changes=artifact_changes,
-        provenance_changes=provenance_changes,
+    payload = build_regression_payload(
+        kind=kind,
+        reports=reports,
+        contexts=contexts,
+        runs=runs,
+        claim_boundary=_comparison_claim_boundary(reports),
+        comparison_context=_shared_context(kind, contexts),
+        schema_version=_REGRESSION_SCHEMA_VERSION,
     )
-    status = _regression_status(
-        metric_deltas=metric_deltas,
-        budget_changes=budget_changes,
-        failure_changes=failure_changes,
-    )
-    summary = {
-        "status": status,
-        "metric_delta_count": len(metric_deltas),
-        "regressed_metric_count": sum(1 for item in metric_deltas if item["status"] == "regressed"),
-        "improved_metric_count": sum(1 for item in metric_deltas if item["status"] == "improved"),
-        "new_failure_count": len(failure_changes["new_failures"]),
-        "removed_failure_count": len(failure_changes["removed_failures"]),
-        "artifact_drift_count": len(artifact_changes["added"])
-        + len(artifact_changes["removed"])
-        + len(artifact_changes["changed"]),
-        "provenance_difference_count": len(provenance_changes["differences"]),
-        "unsafe_artifact_exclusion_count": artifact_changes["excluded_unsafe_count"],
-    }
-    payload: JSONDict = {
-        "schema_version": _REGRESSION_SCHEMA_VERSION,
-        "mode": "regression",
-        "kind": kind,
-        "baseline_run_id": reports[0].run_id,
-        "candidate_run_id": reports[1].run_id,
-        "run_count": 2,
-        "claim_boundary": _comparison_claim_boundary(reports),
-        "comparison_context": _shared_context(kind, contexts),
-        "runs": runs,
-        "regression_summary": summary,
-        "metric_deltas": metric_deltas,
-        "budget_status_changes": budget_changes,
-        "failure_changes": failure_changes,
-        "artifact_changes": artifact_changes,
-        "provenance_changes": provenance_changes,
-        "rows": rows,
-    }
     dump_json(payload)
     return payload
-
-
-def comparison_to_markdown(payload: JSONDict) -> str:
-    """Render a comparison payload as Markdown."""
-
-    if payload.get("mode") == "regression":
-        return regression_to_markdown(payload)
-
-    lines = [
-        "# WorldForge Run Comparison",
-        "",
-        f"Kind: {payload['kind']}",
-        f"Baseline: `{payload['baseline_run_id']}`",
-        f"Claim boundary: {payload.get('claim_boundary') or '-'}",
-        "",
-        "## Comparison Context",
-        "",
-        (
-            "- Capabilities: "
-            f"{_markdown_join(payload['comparison_context'].get('capabilities')) or '-'}"
-        ),
-        f"- Operations: {_markdown_join(payload['comparison_context'].get('operations')) or '-'}",
-        f"- Fixture digest: `{payload['comparison_context'].get('fixture_digest') or '-'}`",
-        f"- Suite version: `{payload['comparison_context'].get('suite_version') or '-'}`",
-        f"- Budget refs: {_markdown_join(payload['comparison_context'].get('budget_refs')) or '-'}",
-        "",
-        "## Runs",
-        "",
-        (
-            "| run_id | date | status | command | provider | operation | evidence | skip reason | "
-            "artifacts | provenance |"
-        ),
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    lines.extend(
-        (
-            "| "
-            f"`{run['run_id']}` | {run['created_at']} | {run['status']} | "
-            f"`{run['command']}` | {run['provider']} | {run['operation']} | "
-            f"{_markdown_join(run['missing_evidence']) or 'complete'} | "
-            f"{run['skip_reason'] or ''} | "
-            f"{_markdown_join(run['artifact_refs'])} | {_markdown_join(run['provenance_refs'])} |"
-        )
-        for run in payload["runs"]
-    )
-
-    if payload["kind"] == "benchmark":
-        lines.extend(
-            [
-                "",
-                "## Benchmark Rows",
-                "",
-                (
-                    "| run_id | provider | capability | operation | ok | errors | retries | "
-                    "avg_ms | delta_avg_ms | p95_ms | throughput/s | events | budget |"
-                ),
-                (
-                    "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | "
-                    "---: | ---: | --- |"
-                ),
-            ]
-        )
-        lines.extend(
-            (
-                "| "
-                f"`{row['run_id']}` | {row['provider']} | {row['capability']} | "
-                f"{row['operation']} | "
-                f"{row['success_count']}/{row['iterations']} | {row['error_count']} | "
-                f"{row['retry_count']} | {_format_number(row['average_latency_ms'])} | "
-                f"{_format_number(row['delta_average_latency_ms'])} | "
-                f"{_format_number(row['p95_latency_ms'])} | "
-                f"{_format_number(row['throughput_per_second'])} | {row['event_count']} | "
-                f"{_budget_label(row)} |"
-            )
-            for row in payload["rows"]
-        )
-    elif payload["kind"] == "eval":
-        lines.extend(
-            [
-                "",
-                "## Evaluation Rows",
-                "",
-                (
-                    "| run_id | provider | capability | suite | average_score | "
-                    "delta_average_score | passed | scenarios | events |"
-                ),
-                "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
-            ]
-        )
-        lines.extend(
-            (
-                "| "
-                f"`{row['run_id']}` | {row['provider']} | {row['capability']} | "
-                f"{row['suite_id']} | "
-                f"{_format_number(row['average_score'])} | "
-                f"{_format_number(row['delta_average_score'])} | "
-                f"{row['passed_scenario_count']}/{row['scenario_count']} | "
-                f"{row['scenario_count']} | {row['event_count']} |"
-            )
-            for row in payload["rows"]
-        )
-    else:
-        lines.extend(
-            [
-                "",
-                "## Demo Showcase Rows",
-                "",
-                "| run_id | workflow | status | safe_to_attach | summary |",
-                "| --- | --- | --- | --- | --- |",
-            ]
-        )
-        lines.extend(
-            (
-                "| "
-                f"`{row['run_id']}` | {row['workflow']} | {row['status']} | "
-                f"{row['safe_to_attach']} | {row['summary']} |"
-            )
-            for row in payload["rows"]
-        )
-    return "\n".join(lines)
-
-
-def regression_to_markdown(payload: JSONDict) -> str:
-    """Render a regression comparison payload as Markdown."""
-
-    summary = _json_object(payload.get("regression_summary"))
-    artifact_changes = _json_object(payload.get("artifact_changes"))
-    failure_changes = _json_object(payload.get("failure_changes"))
-    provenance_changes = _json_object(payload.get("provenance_changes"))
-    budget_changes = _json_object(payload.get("budget_status_changes"))
-    lines = [
-        "# WorldForge Regression Comparison",
-        "",
-        f"Kind: {payload['kind']}",
-        f"Baseline: `{payload['baseline_run_id']}`",
-        f"Candidate: `{payload['candidate_run_id']}`",
-        f"Status: `{summary.get('status', 'unknown')}`",
-        f"Claim boundary: {payload.get('claim_boundary') or '-'}",
-        "",
-        "## Regression Summary",
-        "",
-        f"- Metric deltas: `{summary.get('metric_delta_count', 0)}`",
-        f"- Regressed metrics: `{summary.get('regressed_metric_count', 0)}`",
-        f"- Improved metrics: `{summary.get('improved_metric_count', 0)}`",
-        f"- New failures: `{summary.get('new_failure_count', 0)}`",
-        f"- Removed failures: `{summary.get('removed_failure_count', 0)}`",
-        f"- Artifact drift: `{summary.get('artifact_drift_count', 0)}`",
-        (f"- Unsafe artifact exclusions: `{summary.get('unsafe_artifact_exclusion_count', 0)}`"),
-        "",
-        "## Metric Deltas",
-        "",
-        "| Metric | Baseline | Candidate | Delta | Status |",
-        "| --- | ---: | ---: | ---: | --- |",
-    ]
-    if payload.get("metric_deltas"):
-        lines.extend(
-            (
-                "| "
-                f"`{metric['metric']}` | {_format_number(metric.get('baseline'))} | "
-                f"{_format_number(metric.get('candidate'))} | "
-                f"{_format_number(metric.get('delta'))} | `{metric['status']}` |"
-            )
-            for metric in payload["metric_deltas"]
-            if isinstance(metric, dict)
-        )
-    else:
-        lines.append("| none |  |  |  | `unchanged` |")
-
-    lines.extend(
-        [
-            "",
-            "## Budget Status",
-            "",
-            (
-                f"- Baseline: `{budget_changes.get('baseline_status', 'not-recorded')}`; "
-                f"Candidate: `{budget_changes.get('candidate_status', 'not-recorded')}`; "
-                f"Status: `{budget_changes.get('status', 'not-recorded')}`"
-            ),
-            "",
-            "## Failures",
-            "",
-            f"- New failures: {_markdown_join(failure_changes.get('new_failures')) or 'none'}",
-            (
-                "- Removed failures: "
-                f"{_markdown_join(failure_changes.get('removed_failures')) or 'none'}"
-            ),
-            "",
-            "## Artifact Drift",
-            "",
-            f"- Added safe artifacts: {_markdown_join(artifact_changes.get('added')) or 'none'}",
-            (
-                "- Removed safe artifacts: "
-                f"{_markdown_join(artifact_changes.get('removed')) or 'none'}"
-            ),
-            (
-                "- Changed safe artifacts: "
-                f"{_markdown_join(artifact_changes.get('changed')) or 'none'}"
-            ),
-            (
-                "- Unsafe artifacts excluded from rendered reports: "
-                f"`{artifact_changes.get('excluded_unsafe_count', 0)}`"
-            ),
-            "",
-            "## Provenance Differences",
-            "",
-            (f"- Differences: {_markdown_join(provenance_changes.get('differences')) or 'none'}"),
-        ]
-    )
-    return "\n".join(lines)
-
-
-def comparison_to_csv(payload: JSONDict) -> str:
-    """Render a comparison payload as stable CSV."""
-
-    if payload.get("mode") == "regression":
-        return regression_to_csv(payload)
-
-    buffer = io.StringIO()
-    if payload["kind"] == "benchmark":
-        fieldnames = [
-            "run_id",
-            "created_at",
-            "command",
-            "provider",
-            "capability",
-            "operation",
-            "fixture_digest",
-            "suite_version",
-            "budget_ref",
-            "budget_passed",
-            "iterations",
-            "success_count",
-            "error_count",
-            "retry_count",
-            "average_latency_ms",
-            "delta_average_latency_ms",
-            "p95_latency_ms",
-            "throughput_per_second",
-            "event_count",
-            "artifact_refs_json",
-            "provenance_refs_json",
-        ]
-    elif payload["kind"] == "eval":
-        fieldnames = [
-            "run_id",
-            "created_at",
-            "command",
-            "provider",
-            "capability",
-            "suite_id",
-            "fixture_digest",
-            "suite_version",
-            "average_score",
-            "delta_average_score",
-            "scenario_count",
-            "passed_scenario_count",
-            "failed_scenario_count",
-            "event_count",
-            "artifact_refs_json",
-            "provenance_refs_json",
-        ]
-    else:
-        fieldnames = [
-            "run_id",
-            "created_at",
-            "command",
-            "provider",
-            "workflow",
-            "status",
-            "safe_to_attach",
-            "summary",
-            "artifact_refs_json",
-            "provenance_refs_json",
-        ]
-    run_lookup = {run["run_id"]: run for run in payload["runs"]}
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
-    writer.writeheader()
-    for row in payload["rows"]:
-        run = run_lookup[row["run_id"]]
-        exported = {field: row.get(field, "") for field in fieldnames}
-        exported["created_at"] = run["created_at"]
-        exported["command"] = run["command"]
-        exported["artifact_refs_json"] = dump_json(run["artifact_refs"])
-        exported["provenance_refs_json"] = dump_json(run["provenance_refs"])
-        writer.writerow(exported)
-    return buffer.getvalue().strip()
-
-
-def regression_to_csv(payload: JSONDict) -> str:
-    """Render regression comparison rows as stable CSV."""
-
-    fieldnames = ["category", "name", "status", "baseline", "candidate", "delta", "detail"]
-    buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
-    writer.writeheader()
-    for row in payload.get("rows", []):
-        if isinstance(row, dict):
-            writer.writerow({field: row.get(field, "") for field in fieldnames})
-    return buffer.getvalue().strip()
 
 
 def comparison_artifact(payload: JSONDict, *, output_format: str) -> str:
@@ -508,39 +206,11 @@ def comparison_artifact(payload: JSONDict, *, output_format: str) -> str:
         raise
 
 
-def _comparison_json_renderer(payload: JSONDict) -> str:
-    return json.dumps(payload, indent=2, sort_keys=True)
-
-
-def _comparison_html_renderer(payload: JSONDict) -> str:
-    from worldforge.html_report import render_comparison_html
-
-    return render_comparison_html(payload)
-
-
 def _register_builtin_report_renderers() -> None:
-    schemas = (
-        f"comparison:{_COMPARISON_SCHEMA_VERSION}",
-        f"regression:{_REGRESSION_SCHEMA_VERSION}",
+    register_builtin_comparison_renderers(
+        comparison_schema_version=_COMPARISON_SCHEMA_VERSION,
+        regression_schema_version=_REGRESSION_SCHEMA_VERSION,
     )
-    for output_format, media_type, renderer in (
-        ("json", "application/json", _comparison_json_renderer),
-        ("markdown", "text/markdown", comparison_to_markdown),
-        ("csv", "text/csv", comparison_to_csv),
-        ("html", "text/html", _comparison_html_renderer),
-    ):
-        register_report_renderer(
-            ReportRenderer(
-                artifact_family="comparison",
-                output_format=output_format,
-                media_type=media_type,
-                supported_schemas=schemas,
-                safe_to_attach=True,
-                render=renderer,
-                description=f"Built-in preserved run comparison {output_format} renderer.",
-            ),
-            replace=True,
-        )
 
 
 _register_builtin_report_renderers()
@@ -553,9 +223,7 @@ def _read_json_object(path: Path, *, name: str) -> JSONDict:
         raise WorldForgeError(f"Failed to read {name} {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise WorldForgeError(f"{name.title()} {path} must contain valid JSON: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise WorldForgeError(f"{name.title()} {path} must be a JSON object.")
-    return dict(payload)
+    return require_json_dict(payload, name=f"{name.title()} {path}")
 
 
 def _validate_manifest_schema(manifest: JSONDict, *, run_path: Path) -> None:
@@ -758,373 +426,6 @@ def _provenance_refs(report: PreservedRunReport) -> list[str]:
     return refs
 
 
-def _safe_artifact_map(report: PreservedRunReport) -> tuple[dict[str, JSONDict], int]:
-    artifact_paths = report.manifest.get("artifact_paths", {})
-    if not isinstance(artifact_paths, dict):
-        return {}, 0
-    safe: dict[str, JSONDict] = {}
-    excluded = 0
-    for label, raw_path in sorted(artifact_paths.items()):
-        if not isinstance(label, str) or not isinstance(raw_path, str):
-            excluded += 1
-            continue
-        relative = Path(raw_path)
-        if (
-            not raw_path.strip()
-            or relative.is_absolute()
-            or ".." in relative.parts
-            or relative.suffix.lower() not in _SAFE_ARTIFACT_SUFFIXES
-        ):
-            excluded += 1
-            continue
-        artifact_path = report.run_path / relative
-        summary: JSONDict = {
-            "label": label,
-            "path": raw_path,
-            "suffix": relative.suffix.lower().removeprefix("."),
-            "exists": artifact_path.is_file(),
-            "size_bytes": None,
-            "sha256": None,
-        }
-        if artifact_path.is_file():
-            data = artifact_path.read_bytes()
-            summary["size_bytes"] = len(data)
-            summary["sha256"] = hashlib.sha256(data).hexdigest()
-        safe[label] = summary
-    return safe, excluded
-
-
-def _benchmark_rows(reports: list[PreservedRunReport], contexts: list[JSONDict]) -> list[JSONDict]:
-    baseline: dict[tuple[str, str], float | None] = {}
-    baseline_by_operation: dict[str, float | None] = {}
-    rows: list[JSONDict] = []
-    for report_index, (report, context) in enumerate(zip(reports, contexts, strict=True)):
-        for result in report.report.get("results", []):
-            if not isinstance(result, dict):
-                continue
-            key = (str(result.get("provider", "")), str(result.get("operation", "")))
-            avg = _optional_float(result.get("average_latency_ms"))
-            if report_index == 0:
-                baseline[key] = avg
-                baseline_by_operation.setdefault(key[1], avg)
-            baseline_avg = baseline.get(key, baseline_by_operation.get(key[1]))
-            event_count = _result_event_count(result)
-            row: JSONDict = {
-                "run_id": report.run_id,
-                "provider": key[0],
-                "capability": _row_capability(context, fallback=key[1]),
-                "operation": key[1],
-                "fixture_digest": context["fixture_digest"],
-                "suite_version": context["suite_version"],
-                "budget_ref": context["budget_ref"],
-                "budget_passed": context["budget_passed"],
-                "iterations": int(result.get("iterations", 0) or 0),
-                "success_count": int(result.get("success_count", 0) or 0),
-                "error_count": int(result.get("error_count", 0) or 0),
-                "retry_count": int(result.get("retry_count", 0) or 0),
-                "average_latency_ms": avg,
-                "delta_average_latency_ms": (
-                    None if avg is None or baseline_avg is None else avg - baseline_avg
-                ),
-                "p95_latency_ms": _optional_float(result.get("p95_latency_ms")),
-                "throughput_per_second": _optional_float(result.get("throughput_per_second")),
-                "event_count": event_count or int(context["event_count"]),
-            }
-            rows.append(row)
-    return rows
-
-
-def _evaluation_rows(reports: list[PreservedRunReport], contexts: list[JSONDict]) -> list[JSONDict]:
-    baseline: dict[str, float | None] = {}
-    baseline_average: float | None = None
-    rows: list[JSONDict] = []
-    for report_index, (report, context) in enumerate(zip(reports, contexts, strict=True)):
-        for summary in report.report.get("provider_summaries", []):
-            if not isinstance(summary, dict):
-                continue
-            provider = str(summary.get("provider", ""))
-            avg = _optional_float(summary.get("average_score"))
-            if report_index == 0:
-                baseline[provider] = avg
-                if baseline_average is None:
-                    baseline_average = avg
-            baseline_avg = baseline.get(provider, baseline_average)
-            rows.append(
-                {
-                    "run_id": report.run_id,
-                    "provider": provider,
-                    "capability": _row_capability(context, fallback=""),
-                    "suite_id": _evaluation_suite_id(report, context),
-                    "fixture_digest": context["fixture_digest"],
-                    "suite_version": context["suite_version"],
-                    "average_score": avg,
-                    "delta_average_score": (
-                        None if avg is None or baseline_avg is None else avg - baseline_avg
-                    ),
-                    "scenario_count": int(summary.get("scenario_count", 0) or 0),
-                    "passed_scenario_count": int(summary.get("passed_scenario_count", 0) or 0),
-                    "failed_scenario_count": int(summary.get("failed_scenario_count", 0) or 0),
-                    "event_count": int(context["event_count"]),
-                }
-            )
-    return rows
-
-
-def _demo_showcase_rows(
-    reports: list[PreservedRunReport],
-    contexts: list[JSONDict],
-) -> list[JSONDict]:
-    rows: list[JSONDict] = []
-    for report, context in zip(reports, contexts, strict=True):
-        rows.append(
-            {
-                "run_id": report.run_id,
-                "provider": str(report.manifest.get("provider", "")),
-                "workflow": _demo_workflow(report, context),
-                "status": str(report.report.get("status", report.manifest.get("status", ""))),
-                "safe_to_attach": bool(
-                    report.report.get(
-                        "safe_to_attach",
-                        _json_object(report.manifest.get("result_summary")).get(
-                            "safe_to_attach",
-                            False,
-                        ),
-                    )
-                ),
-                "summary": str(report.report.get("summary", "")),
-                "event_count": int(context["event_count"]),
-            }
-        )
-    return rows
-
-
-def _regression_metric_deltas(
-    kind: str,
-    reports: list[PreservedRunReport],
-) -> list[JSONDict]:
-    baseline, candidate = reports
-    if kind == "benchmark":
-        baseline_metrics = _benchmark_metric_values(baseline)
-        candidate_metrics = _benchmark_metric_values(candidate)
-        metric_specs = {
-            "average_latency_ms": False,
-            "p95_latency_ms": False,
-            "throughput_per_second": True,
-            "error_count": False,
-            "retry_count": False,
-            "success_count": True,
-        }
-    elif kind == "eval":
-        baseline_metrics = _evaluation_metric_values(baseline)
-        candidate_metrics = _evaluation_metric_values(candidate)
-        metric_specs = {
-            "average_score": True,
-            "pass_rate": True,
-            "passed_scenario_count": True,
-            "failed_scenario_count": False,
-        }
-    else:
-        baseline_metrics = _demo_metric_values(baseline)
-        candidate_metrics = _demo_metric_values(candidate)
-        metric_specs = {"safe_to_attach": True}
-    deltas: list[JSONDict] = []
-    for metric, higher_is_better in metric_specs.items():
-        baseline_value = baseline_metrics.get(metric)
-        candidate_value = candidate_metrics.get(metric)
-        if baseline_value is None and candidate_value is None:
-            continue
-        delta = (
-            None
-            if baseline_value is None or candidate_value is None
-            else candidate_value - baseline_value
-        )
-        deltas.append(
-            {
-                "metric": metric,
-                "baseline": baseline_value,
-                "candidate": candidate_value,
-                "delta": delta,
-                "higher_is_better": higher_is_better,
-                "status": _delta_status(delta, higher_is_better=higher_is_better),
-            }
-        )
-    return deltas
-
-
-def _regression_budget_changes(contexts: list[JSONDict]) -> JSONDict:
-    baseline = contexts[0].get("budget_passed")
-    candidate = contexts[1].get("budget_passed")
-    baseline_status = _budget_status(baseline)
-    candidate_status = _budget_status(candidate)
-    if candidate is False and baseline is not False:
-        status = "budget-violation"
-    elif baseline is False and candidate is True:
-        status = "improved"
-    elif baseline == candidate:
-        status = "unchanged"
-    else:
-        status = "changed"
-    return {
-        "status": status,
-        "baseline_status": baseline_status,
-        "candidate_status": candidate_status,
-        "baseline_budget_ref": contexts[0].get("budget_ref"),
-        "candidate_budget_ref": contexts[1].get("budget_ref"),
-    }
-
-
-def _regression_failure_changes(reports: list[PreservedRunReport]) -> JSONDict:
-    baseline = set(_failure_fingerprints(reports[0]))
-    candidate = set(_failure_fingerprints(reports[1]))
-    new_failures = sorted(candidate - baseline)
-    removed_failures = sorted(baseline - candidate)
-    if new_failures:
-        status = "new-failures"
-    elif removed_failures:
-        status = "improved"
-    else:
-        status = "unchanged"
-    return {
-        "status": status,
-        "new_failures": new_failures,
-        "removed_failures": removed_failures,
-        "baseline_failure_count": len(baseline),
-        "candidate_failure_count": len(candidate),
-    }
-
-
-def _regression_artifact_changes(reports: list[PreservedRunReport]) -> JSONDict:
-    baseline, baseline_excluded = _safe_artifact_map(reports[0])
-    candidate, candidate_excluded = _safe_artifact_map(reports[1])
-    baseline_labels = set(baseline)
-    candidate_labels = set(candidate)
-    changed = sorted(
-        label
-        for label in baseline_labels & candidate_labels
-        if _artifact_signature(baseline[label]) != _artifact_signature(candidate[label])
-    )
-    added = sorted(candidate_labels - baseline_labels)
-    removed = sorted(baseline_labels - candidate_labels)
-    status = "changed" if added or removed or changed else "unchanged"
-    return {
-        "status": status,
-        "added": added,
-        "removed": removed,
-        "changed": changed,
-        "baseline_safe_count": len(baseline),
-        "candidate_safe_count": len(candidate),
-        "excluded_unsafe_count": baseline_excluded + candidate_excluded,
-    }
-
-
-def _regression_provenance_changes(runs: list[JSONDict], contexts: list[JSONDict]) -> JSONDict:
-    differences = []
-    fields = (
-        ("provider", runs[0].get("provider"), runs[1].get("provider")),
-        ("operation", runs[0].get("operation"), runs[1].get("operation")),
-        ("command", runs[0].get("command"), runs[1].get("command")),
-        ("fixture_digest", contexts[0].get("fixture_digest"), contexts[1].get("fixture_digest")),
-        ("suite_version", contexts[0].get("suite_version"), contexts[1].get("suite_version")),
-        ("budget_ref", contexts[0].get("budget_ref"), contexts[1].get("budget_ref")),
-    )
-    for name, baseline, candidate in fields:
-        if baseline != candidate:
-            differences.append(name)
-    return {
-        "status": "changed" if differences else "unchanged",
-        "differences": differences,
-    }
-
-
-def _regression_rows(
-    *,
-    metric_deltas: list[JSONDict],
-    budget_changes: JSONDict,
-    failure_changes: JSONDict,
-    artifact_changes: JSONDict,
-    provenance_changes: JSONDict,
-) -> list[JSONDict]:
-    rows: list[JSONDict] = [
-        {
-            "category": "metric",
-            "name": metric["metric"],
-            "status": metric["status"],
-            "baseline": metric.get("baseline"),
-            "candidate": metric.get("candidate"),
-            "delta": metric.get("delta"),
-            "detail": "higher is better" if metric.get("higher_is_better") else "lower is better",
-        }
-        for metric in metric_deltas
-    ]
-    rows.append(
-        {
-            "category": "budget",
-            "name": "budget_status",
-            "status": budget_changes["status"],
-            "baseline": budget_changes["baseline_status"],
-            "candidate": budget_changes["candidate_status"],
-            "delta": "",
-            "detail": budget_changes.get("candidate_budget_ref") or "",
-        }
-    )
-    rows.append(
-        {
-            "category": "failure",
-            "name": "new_failures",
-            "status": failure_changes["status"],
-            "baseline": failure_changes["baseline_failure_count"],
-            "candidate": failure_changes["candidate_failure_count"],
-            "delta": len(failure_changes["new_failures"])
-            - len(failure_changes["removed_failures"]),
-            "detail": "; ".join(failure_changes["new_failures"]),
-        }
-    )
-    rows.append(
-        {
-            "category": "artifact",
-            "name": "artifact_drift",
-            "status": artifact_changes["status"],
-            "baseline": artifact_changes["baseline_safe_count"],
-            "candidate": artifact_changes["candidate_safe_count"],
-            "delta": len(artifact_changes["added"]) - len(artifact_changes["removed"]),
-            "detail": "unsafe artifacts excluded from rendered reports",
-        }
-    )
-    rows.append(
-        {
-            "category": "provenance",
-            "name": "provenance_differences",
-            "status": provenance_changes["status"],
-            "baseline": "",
-            "candidate": "",
-            "delta": len(provenance_changes["differences"]),
-            "detail": "; ".join(provenance_changes["differences"]),
-        }
-    )
-    return rows
-
-
-def _regression_status(
-    *,
-    metric_deltas: list[JSONDict],
-    budget_changes: JSONDict,
-    failure_changes: JSONDict,
-) -> str:
-    if (
-        any(delta["status"] == "regressed" for delta in metric_deltas)
-        or budget_changes["status"] == "budget-violation"
-        or failure_changes["new_failures"]
-    ):
-        return "regressed"
-    if (
-        any(delta["status"] == "improved" for delta in metric_deltas)
-        or budget_changes["status"] == "improved"
-        or failure_changes["removed_failures"]
-    ):
-        return "improved"
-    return "unchanged"
-
-
 def _report_providers(report: PreservedRunReport) -> list[str]:
     if report.kind == "benchmark":
         return _strings(
@@ -1227,194 +528,6 @@ def _missing_evidence(kind: str, context: JSONDict) -> list[str]:
     return missing
 
 
-def _row_capability(context: JSONDict, *, fallback: str) -> str:
-    capabilities = context.get("capabilities")
-    if isinstance(capabilities, list) and capabilities:
-        return ",".join(str(capability) for capability in capabilities)
-    return fallback
-
-
-def _evaluation_suite_id(report: PreservedRunReport, context: JSONDict) -> str:
-    suite_id = _optional_text(report.report.get("suite_id"))
-    if suite_id is not None:
-        return suite_id
-    operations = context.get("operations")
-    if isinstance(operations, list) and operations:
-        return str(operations[0])
-    return ""
-
-
-def _demo_workflow(report: PreservedRunReport, context: JSONDict) -> str:
-    input_summary = _json_object(report.manifest.get("input_summary"))
-    for value in (input_summary.get("workflow"), report.manifest.get("operation")):
-        text = _optional_text(value)
-        if text:
-            return text
-    operations = context.get("operations")
-    if isinstance(operations, list) and operations:
-        return str(operations[0])
-    return ""
-
-
-def _benchmark_metric_values(report: PreservedRunReport) -> dict[str, float | None]:
-    results = [result for result in report.report.get("results", []) if isinstance(result, dict)]
-    if not results:
-        return {}
-    return {
-        "average_latency_ms": _mean_optional_float(
-            result.get("average_latency_ms") for result in results
-        ),
-        "p95_latency_ms": _mean_optional_float(result.get("p95_latency_ms") for result in results),
-        "throughput_per_second": _mean_optional_float(
-            result.get("throughput_per_second") for result in results
-        ),
-        "error_count": float(sum(int(result.get("error_count", 0) or 0) for result in results)),
-        "retry_count": float(sum(int(result.get("retry_count", 0) or 0) for result in results)),
-        "success_count": float(sum(int(result.get("success_count", 0) or 0) for result in results)),
-    }
-
-
-def _evaluation_metric_values(report: PreservedRunReport) -> dict[str, float | None]:
-    summaries = [
-        summary
-        for summary in report.report.get("provider_summaries", [])
-        if isinstance(summary, dict)
-    ]
-    if not summaries:
-        return {}
-    scenario_count = sum(int(summary.get("scenario_count", 0) or 0) for summary in summaries)
-    passed = sum(int(summary.get("passed_scenario_count", 0) or 0) for summary in summaries)
-    failed = sum(int(summary.get("failed_scenario_count", 0) or 0) for summary in summaries)
-    return {
-        "average_score": _mean_optional_float(
-            summary.get("average_score") for summary in summaries
-        ),
-        "pass_rate": None if scenario_count <= 0 else passed / scenario_count,
-        "passed_scenario_count": float(passed),
-        "failed_scenario_count": float(failed),
-    }
-
-
-def _demo_metric_values(report: PreservedRunReport) -> dict[str, float | None]:
-    safe = bool(
-        report.report.get(
-            "safe_to_attach",
-            _json_object(report.manifest.get("result_summary")).get("safe_to_attach", False),
-        )
-    )
-    return {"safe_to_attach": 1.0 if safe else 0.0}
-
-
-def _mean_optional_float(values: object) -> float | None:
-    numbers = [
-        number
-        for number in (_optional_float(value) for value in values)  # type: ignore[union-attr]
-        if number is not None
-    ]
-    return sum(numbers) / len(numbers) if numbers else None
-
-
-def _delta_status(delta: float | None, *, higher_is_better: bool) -> str:
-    if delta is None or delta == 0:
-        return "unchanged"
-    if higher_is_better:
-        return "improved" if delta > 0 else "regressed"
-    return "improved" if delta < 0 else "regressed"
-
-
-def _budget_status(value: object) -> str:
-    if value is True:
-        return "passed"
-    if value is False:
-        return "failed"
-    return "not-recorded"
-
-
-def _failure_fingerprints(report: PreservedRunReport) -> list[str]:
-    failures: list[str] = []
-    result_summary = _json_object(report.manifest.get("result_summary"))
-    if str(report.manifest.get("status")) in {"failed", "cancelled", "skipped"}:
-        reason = (
-            _optional_text(result_summary.get("failure_reason"))
-            or _optional_text(result_summary.get("skip_reason"))
-            or _optional_text(result_summary.get("reason"))
-            or str(report.manifest.get("status"))
-        )
-        failures.append(f"run:{report.manifest.get('status')}:{reason}")
-    if report.kind == "benchmark":
-        for result in report.report.get("results", []):
-            if not isinstance(result, dict):
-                continue
-            operation = result.get("operation", "")
-            failures.extend(
-                f"benchmark:{operation}:{_failure_text(error)}"
-                for error in result.get("errors", []) or []
-            )
-            error_count = int(result.get("error_count", 0) or 0)
-            if error_count and not result.get("errors"):
-                failures.append(f"benchmark:{operation}:error_count={error_count}")
-    elif report.kind == "eval":
-        failures.extend(
-            "eval:"
-            f"{result.get('provider', '')}:"
-            f"{result.get('scenario', '')}:"
-            f"{_failure_text(result.get('details') or result.get('error') or 'failed')}"
-            for result in report.report.get("results", [])
-            if isinstance(result, dict) and result.get("passed") is False
-        )
-    elif (
-        report.kind == "demo_showcase"
-        and not failures
-        and str(report.report.get("status", "passed")) != "passed"
-    ):
-        failures.append(f"demo:{_demo_workflow(report, {})}:{report.report.get('status')}")
-    return sorted(dict.fromkeys(failures))
-
-
-def _failure_text(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        for key in ("message", "error", "type", "reason"):
-            text = _optional_text(value.get(key))
-            if text:
-                return text
-        return dump_json(value)
-    return str(value)
-
-
-def _artifact_signature(summary: JSONDict) -> tuple[object, ...]:
-    return (
-        summary.get("suffix"),
-        summary.get("exists"),
-        summary.get("size_bytes"),
-        summary.get("sha256"),
-    )
-
-
-def _result_event_count(result: JSONDict) -> int:
-    metrics = result.get("operation_metrics", {})
-    if not isinstance(metrics, dict):
-        return 0
-    events = metrics.get("events", [])
-    if not isinstance(events, list):
-        return 0
-    total = 0
-    for event in events:
-        if isinstance(event, dict):
-            total += int(event.get("request_count", 0) or 0)
-    return total
-
-
-def _optional_float(value: object) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _optional_text(value: object) -> str | None:
     if not isinstance(value, str):
         return None
@@ -1467,27 +580,3 @@ def _sorted_union(values: object) -> list[str]:
         elif isinstance(value, list):
             union.update(str(item) for item in value if str(item))
     return sorted(union)
-
-
-def _budget_label(row: JSONDict) -> str:
-    verdict = row.get("budget_passed")
-    if verdict is True:
-        status = "passed"
-    elif verdict is False:
-        status = "failed"
-    else:
-        status = "not recorded"
-    budget_ref = row.get("budget_ref")
-    return f"{status} `{budget_ref}`" if budget_ref else status
-
-
-def _format_number(value: object) -> str:
-    if value is None:
-        return ""
-    return f"{float(value):.4f}"
-
-
-def _markdown_join(values: object) -> str:
-    if not isinstance(values, list) or not values:
-        return ""
-    return "<br>".join(f"`{value}`" for value in values)

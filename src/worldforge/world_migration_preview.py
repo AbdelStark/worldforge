@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
-import re
 from copy import deepcopy
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from worldforge.framework import SCHEMA_VERSION, _validate_storage_id, _validate_world_state_payload
+from worldforge._state import (
+    SCHEMA_VERSION,
+)
+from worldforge._state import (
+    validate_storage_id as _validate_storage_id,
+)
+from worldforge._state import (
+    validate_world_state_payload as _validate_world_state_payload,
+)
 from worldforge.models import (
     BBox,
     JSONDict,
@@ -15,18 +23,29 @@ from worldforge.models import (
     SceneObject,
     WorldForgeError,
     WorldStateError,
+    require_json_dict,
+)
+from worldforge.world_migration_preview_reporting import (
+    _first_triage_step,
+    _invalid_field,
+    _path_token,
+    _required_change,
+    _safe_file_name,
+    _safe_id_value,
+    _sanitize_message,
+    _unsafe_id,
+    render_world_migration_preview_markdown,
 )
 
 WORLD_MIGRATION_PREVIEW_SCHEMA_VERSION = 1
 
-_SAFE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
-_SECRET_LIKE_PATTERN = re.compile(
-    r"(?:api[_-]?key|authorization|bearer|secret|signature|signed|token|x-amz)",
-    re.IGNORECASE,
-)
-_HOST_LOCAL_PATH_PATTERN = re.compile(
-    r"(?P<path>(?:/Users|/private|/var/folders|/tmp)/[^\s,;:)'\"]+)"
-)
+
+@dataclass(slots=True)
+class _MigrationPreviewFindings:
+    required_changes: list[JSONDict] = field(default_factory=list)
+    invalid_fields: list[JSONDict] = field(default_factory=list)
+    unsafe_ids: list[JSONDict] = field(default_factory=list)
+    bounding_box_corrections: list[JSONDict] = field(default_factory=list)
 
 
 def preview_world_migration_from_world_id(world_id: str, *, state_dir: Path) -> JSONDict:
@@ -109,141 +128,115 @@ def preview_world_migration(
     but it never writes the source payload, local state directory, or exported JSON file.
     """
 
-    required_changes: list[JSONDict] = []
-    invalid_fields: list[JSONDict] = []
-    unsafe_ids: list[JSONDict] = []
-    bounding_box_corrections: list[JSONDict] = []
-
+    findings = _MigrationPreviewFindings()
     if not isinstance(payload, dict):
-        return _report(
-            source=source or {"kind": "payload", "label": "<input>"},
-            schema={},
-            invalid_fields=[
-                _invalid_field(
-                    path="source", message="World migration source must be a JSON object."
-                )
-            ],
-        )
+        return _non_object_source_report(source)
 
-    state, schema, source_kind = _extract_world_state(payload, invalid_fields, required_changes)
+    state, schema, source_kind = _extract_world_state(
+        payload,
+        findings.invalid_fields,
+        findings.required_changes,
+    )
+    resolved_source = _resolved_preview_source(source, source_kind=source_kind)
+    if state is None:
+        return _migration_preview_report(source=resolved_source, schema=schema, findings=findings)
+
+    candidate = _analyzed_migration_candidate(state, findings=findings)
+    _record_expected_world_id_mismatch(
+        state,
+        expected_world_id=expected_world_id,
+        invalid_fields=findings.invalid_fields,
+    )
+    _record_candidate_validation(candidate, invalid_fields=findings.invalid_fields)
+    return _migration_preview_report(source=resolved_source, schema=schema, findings=findings)
+
+
+def _non_object_source_report(source: JSONDict | None) -> JSONDict:
+    return _report(
+        source=source or {"kind": "payload", "label": "<input>"},
+        schema={},
+        invalid_fields=[
+            _invalid_field(path="source", message="World migration source must be a JSON object.")
+        ],
+    )
+
+
+def _resolved_preview_source(source: JSONDict | None, *, source_kind: str) -> JSONDict:
     resolved_source = dict(source or {"kind": source_kind, "label": "<input>"})
     if source and source.get("kind") == "json-file":
         resolved_source["payload_kind"] = source_kind
-    if state is None:
-        return _report(
-            source=resolved_source,
-            schema=schema,
-            required_changes=required_changes,
-            invalid_fields=invalid_fields,
-            unsafe_ids=unsafe_ids,
-            bounding_box_corrections=bounding_box_corrections,
-        )
+    return resolved_source
 
+
+def _analyzed_migration_candidate(
+    state: JSONDict,
+    *,
+    findings: _MigrationPreviewFindings,
+) -> JSONDict:
     candidate = deepcopy(state)
     _analyze_state(
         state,
         candidate,
         path="state",
-        required_changes=required_changes,
-        unsafe_ids=unsafe_ids,
-        bounding_box_corrections=bounding_box_corrections,
+        required_changes=findings.required_changes,
+        unsafe_ids=findings.unsafe_ids,
+        bounding_box_corrections=findings.bounding_box_corrections,
+    )
+    return candidate
+
+
+def _record_expected_world_id_mismatch(
+    state: JSONDict,
+    *,
+    expected_world_id: str | None,
+    invalid_fields: list[JSONDict],
+) -> None:
+    if expected_world_id is None:
+        return
+    payload_world_id = state.get("id")
+    if not isinstance(payload_world_id, str) or payload_world_id == expected_world_id:
+        return
+    invalid_fields.append(
+        _invalid_field(
+            path="state.id",
+            message=(
+                "Persisted world filename does not match the serialized world id; "
+                "export a valid copy before renaming."
+            ),
+            details={
+                "file_world_id": expected_world_id,
+                "payload_world_id": _safe_id_value(payload_world_id),
+            },
+        )
     )
 
-    if expected_world_id is not None:
-        payload_world_id = state.get("id")
-        if isinstance(payload_world_id, str) and payload_world_id != expected_world_id:
-            invalid_fields.append(
-                _invalid_field(
-                    path="state.id",
-                    message=(
-                        "Persisted world filename does not match the serialized world id; "
-                        "export a valid copy before renaming."
-                    ),
-                    details={
-                        "file_world_id": expected_world_id,
-                        "payload_world_id": _safe_id_value(payload_world_id),
-                    },
-                )
-            )
 
-    if isinstance(candidate, dict):
-        try:
-            _validate_world_state_payload(candidate, context="World state")
-        except WorldStateError as exc:
-            invalid_fields.append(
-                _invalid_field(
-                    path="state",
-                    message=f"World state validation failed: {_sanitize_message(str(exc))}",
-                )
+def _record_candidate_validation(candidate: JSONDict, *, invalid_fields: list[JSONDict]) -> None:
+    try:
+        _validate_world_state_payload(candidate, context="World state")
+    except WorldStateError as exc:
+        invalid_fields.append(
+            _invalid_field(
+                path="state",
+                message=f"World state validation failed: {_sanitize_message(str(exc))}",
             )
+        )
 
+
+def _migration_preview_report(
+    *,
+    source: JSONDict,
+    schema: JSONDict,
+    findings: _MigrationPreviewFindings,
+) -> JSONDict:
     return _report(
-        source=resolved_source,
+        source=source,
         schema=schema,
-        required_changes=required_changes,
-        invalid_fields=invalid_fields,
-        unsafe_ids=unsafe_ids,
-        bounding_box_corrections=bounding_box_corrections,
+        required_changes=findings.required_changes,
+        invalid_fields=findings.invalid_fields,
+        unsafe_ids=findings.unsafe_ids,
+        bounding_box_corrections=findings.bounding_box_corrections,
     )
-
-
-def render_world_migration_preview_markdown(report: JSONDict) -> str:
-    """Render a migration preview report for operator review."""
-
-    counts = report.get("counts", {})
-    schema = report.get("schema", {})
-    source = report.get("source", {})
-    lines = [
-        "# WorldForge World Migration Preview",
-        "",
-        f"status: `{report.get('status', 'unknown')}`",
-        f"safe_to_attach: `{str(report.get('safe_to_attach', False)).lower()}`",
-        f"read_only: `{str(report.get('read_only', False)).lower()}`",
-        f"can_apply_safely: `{str(report.get('can_apply_safely', False)).lower()}`",
-        f"rewrite_available: `{str(report.get('rewrite_available', False)).lower()}`",
-        f"source: `{source.get('label', '<input>')}`",
-        f"source_kind: `{source.get('kind', 'unknown')}`",
-        f"world_schema_version: `{schema.get('world_schema_version', 'missing')}`",
-        (
-            "current_world_schema_version: "
-            f"`{schema.get('current_world_schema_version', SCHEMA_VERSION)}`"
-        ),
-        "",
-        f"required_changes: `{counts.get('required_change_count', 0)}`",
-        f"invalid_fields: `{counts.get('invalid_field_count', 0)}`",
-        f"unsafe_ids: `{counts.get('unsafe_id_count', 0)}`",
-        f"bounding_box_corrections: `{counts.get('bounding_box_correction_count', 0)}`",
-        "",
-        "First triage:",
-        "",
-        f"- {report.get('first_triage_step', _first_triage_step(False, False))}",
-    ]
-
-    _append_table(
-        lines,
-        title="Required Changes",
-        rows=report.get("required_changes", []),
-        columns=("kind", "path", "message"),
-    )
-    _append_table(
-        lines,
-        title="Invalid Fields",
-        rows=report.get("invalid_fields", []),
-        columns=("path", "message"),
-    )
-    _append_table(
-        lines,
-        title="Unsafe IDs",
-        rows=report.get("unsafe_ids", []),
-        columns=("kind", "path", "message"),
-    )
-    _append_table(
-        lines,
-        title="Bounding Box Corrections",
-        rows=report.get("bounding_box_corrections", []),
-        columns=("path", "object_id", "message"),
-    )
-    return "\n".join(lines) + "\n"
 
 
 def _extract_world_state(
@@ -384,60 +377,150 @@ def _analyze_scene_objects(
     unsafe_ids: list[JSONDict],
     bounding_box_corrections: list[JSONDict],
 ) -> None:
-    objects = state.get("scene", {}).get("objects", {})
-    candidate_objects = candidate.get("scene", {}).get("objects", {})
-    if not isinstance(objects, dict) or not isinstance(candidate_objects, dict):
+    object_maps = _scene_object_maps(state, candidate)
+    if object_maps is None:
         return
+    objects, candidate_objects = object_maps
 
     for raw_object_id, raw_object in sorted(objects.items(), key=lambda item: str(item[0])):
-        object_path = f"{path}.scene.objects.{_path_token(raw_object_id)}"
-        _analyze_object_id(raw_object_id, path=object_path, unsafe_ids=unsafe_ids)
-        if not isinstance(raw_object, dict):
-            continue
-        embedded_id = raw_object.get("id")
-        if embedded_id is not None:
-            _analyze_object_id(
-                embedded_id,
-                path=f"{object_path}.id",
-                unsafe_ids=unsafe_ids,
-            )
+        _analyze_scene_object(
+            raw_object_id,
+            raw_object,
+            candidate_objects,
+            path=path,
+            required_changes=required_changes,
+            unsafe_ids=unsafe_ids,
+            bounding_box_corrections=bounding_box_corrections,
+        )
 
-        object_payload = dict(raw_object)
-        object_payload.setdefault("id", str(raw_object_id))
-        try:
-            scene_object = SceneObject.from_dict(object_payload)
-        except WorldForgeError:
-            continue
 
-        if "position" in raw_object and "pose" not in raw_object:
-            required_changes.append(
-                _required_change(
-                    kind="promote-position-to-pose",
-                    path=f"{object_path}.position",
-                    message="Legacy scene object position should be promoted to pose.position.",
-                )
-            )
-            candidate_objects[raw_object_id] = scene_object.to_dict()
+def _scene_object_maps(
+    state: JSONDict,
+    candidate: JSONDict,
+) -> tuple[dict[object, object], dict[object, object]] | None:
+    scene = state.get("scene", {})
+    candidate_scene = candidate.get("scene", {})
+    if not isinstance(scene, dict) or not isinstance(candidate_scene, dict):
+        return None
+    objects = scene.get("objects", {})
+    candidate_objects = candidate_scene.get("objects", {})
+    if not isinstance(objects, dict) or not isinstance(candidate_objects, dict):
+        return None
+    return objects, candidate_objects
 
-        if not _position_inside_bbox(scene_object.position, scene_object.bbox):
-            proposed_bbox = _bbox_centered_on_position(scene_object.position, scene_object.bbox)
-            bounding_box_corrections.append(
-                {
-                    "path": f"{object_path}.bbox",
-                    "object_id": _safe_id_value(scene_object.id),
-                    "message": (
-                        "Scene object position is outside its bounding box; previewed migration "
-                        "would translate the bounding box center onto the object pose."
-                    ),
-                    "position": scene_object.position.to_dict(),
-                    "current_bbox": scene_object.bbox.to_dict(),
-                    "proposed_bbox": proposed_bbox.to_dict(),
-                    "safe_to_attach": True,
-                }
-            )
-            target = candidate_objects.get(raw_object_id)
-            if isinstance(target, dict):
-                target["bbox"] = proposed_bbox.to_dict()
+
+def _analyze_scene_object(
+    raw_object_id: object,
+    raw_object: object,
+    candidate_objects: dict[object, object],
+    *,
+    path: str,
+    required_changes: list[JSONDict],
+    unsafe_ids: list[JSONDict],
+    bounding_box_corrections: list[JSONDict],
+) -> None:
+    object_path = f"{path}.scene.objects.{_path_token(raw_object_id)}"
+    _analyze_scene_object_ids(raw_object_id, raw_object, path=object_path, unsafe_ids=unsafe_ids)
+    if not isinstance(raw_object, dict):
+        return
+
+    scene_object = _scene_object_from_payload(raw_object_id, raw_object)
+    if scene_object is None:
+        return
+
+    _record_legacy_position_migration(
+        raw_object_id,
+        raw_object,
+        scene_object,
+        candidate_objects,
+        path=object_path,
+        required_changes=required_changes,
+    )
+    _record_bbox_correction(
+        raw_object_id,
+        scene_object,
+        candidate_objects,
+        path=object_path,
+        bounding_box_corrections=bounding_box_corrections,
+    )
+
+
+def _analyze_scene_object_ids(
+    raw_object_id: object,
+    raw_object: object,
+    *,
+    path: str,
+    unsafe_ids: list[JSONDict],
+) -> None:
+    _analyze_object_id(raw_object_id, path=path, unsafe_ids=unsafe_ids)
+    if not isinstance(raw_object, dict):
+        return
+    embedded_id = raw_object.get("id")
+    if embedded_id is not None:
+        _analyze_object_id(embedded_id, path=f"{path}.id", unsafe_ids=unsafe_ids)
+
+
+def _scene_object_from_payload(
+    raw_object_id: object,
+    raw_object: dict[object, object],
+) -> SceneObject | None:
+    object_payload = dict(raw_object)
+    object_payload.setdefault("id", str(raw_object_id))
+    try:
+        return SceneObject.from_dict(object_payload)
+    except WorldForgeError:
+        return None
+
+
+def _record_legacy_position_migration(
+    raw_object_id: object,
+    raw_object: dict[object, object],
+    scene_object: SceneObject,
+    candidate_objects: dict[object, object],
+    *,
+    path: str,
+    required_changes: list[JSONDict],
+) -> None:
+    if "position" not in raw_object or "pose" in raw_object:
+        return
+    required_changes.append(
+        _required_change(
+            kind="promote-position-to-pose",
+            path=f"{path}.position",
+            message="Legacy scene object position should be promoted to pose.position.",
+        )
+    )
+    candidate_objects[raw_object_id] = scene_object.to_dict()
+
+
+def _record_bbox_correction(
+    raw_object_id: object,
+    scene_object: SceneObject,
+    candidate_objects: dict[object, object],
+    *,
+    path: str,
+    bounding_box_corrections: list[JSONDict],
+) -> None:
+    if _position_inside_bbox(scene_object.position, scene_object.bbox):
+        return
+    proposed_bbox = _bbox_centered_on_position(scene_object.position, scene_object.bbox)
+    bounding_box_corrections.append(
+        {
+            "path": f"{path}.bbox",
+            "object_id": _safe_id_value(scene_object.id),
+            "message": (
+                "Scene object position is outside its bounding box; previewed migration "
+                "would translate the bounding box center onto the object pose."
+            ),
+            "position": scene_object.position.to_dict(),
+            "current_bbox": scene_object.bbox.to_dict(),
+            "proposed_bbox": proposed_bbox.to_dict(),
+            "safe_to_attach": True,
+        }
+    )
+    target = candidate_objects.get(raw_object_id)
+    if isinstance(target, dict):
+        target["bbox"] = proposed_bbox.to_dict()
 
 
 def _analyze_history(
@@ -527,32 +610,10 @@ def _load_json(path: Path) -> JSONDict:
         raise WorldStateError(str(exc)) from exc
     except json.JSONDecodeError as exc:
         raise WorldStateError(str(exc)) from exc
-    if not isinstance(payload, dict):
-        raise WorldStateError("World JSON must decode to an object.")
-    return payload
-
-
-def _required_change(*, kind: str, path: str, message: str) -> JSONDict:
-    return {"kind": kind, "path": path, "message": message, "safe_to_attach": True}
-
-
-def _invalid_field(*, path: str, message: str, details: JSONDict | None = None) -> JSONDict:
-    return {
-        "path": path,
-        "message": _sanitize_message(message),
-        "safe_to_attach": True,
-        "details": details or {},
-    }
-
-
-def _unsafe_id(*, kind: str, path: str, message: str, value: object) -> JSONDict:
-    return {
-        "kind": kind,
-        "path": path,
-        "message": _sanitize_message(message),
-        "value": value,
-        "safe_to_attach": True,
-    }
+    try:
+        return require_json_dict(payload, name="World JSON")
+    except WorldForgeError as exc:
+        raise WorldStateError(str(exc)) from exc
 
 
 def _analyze_object_id(value: object, *, path: str, unsafe_ids: list[JSONDict]) -> None:
@@ -593,76 +654,6 @@ def _position_inside_bbox(position: Position, bbox: BBox) -> bool:
         and bbox.min.y <= position.y <= bbox.max.y
         and bbox.min.z <= position.z <= bbox.max.z
     )
-
-
-def _sanitize_message(message: str) -> str:
-    sanitized = _HOST_LOCAL_PATH_PATTERN.sub("<host-local-path>", message)
-    if _SECRET_LIKE_PATTERN.search(sanitized):
-        return _SECRET_LIKE_PATTERN.sub("<redacted>", sanitized)
-    return sanitized
-
-
-def _safe_file_name(value: str) -> str:
-    return value if _is_public_name(value) else "<unsafe-name>"
-
-
-def _safe_id_value(value: object) -> str:
-    if isinstance(value, str) and value.strip() and _is_public_name(value):
-        return value
-    return "<unsafe-id>"
-
-
-def _path_token(value: object) -> str:
-    if isinstance(value, str) and value.strip() and _is_public_name(value):
-        return value
-    return "<unsafe-id>"
-
-
-def _is_public_name(value: str) -> bool:
-    return (
-        _SAFE_NAME_PATTERN.fullmatch(value) is not None
-        and _SECRET_LIKE_PATTERN.search(value) is None
-    )
-
-
-def _first_triage_step(blocked: bool, needs_migration: bool) -> str:
-    if blocked:
-        return (
-            "run `uv run worldforge world preflight --state-dir .worldforge/worlds "
-            "--workspace-dir .worldforge --format json` before moving or rewriting state."
-        )
-    if needs_migration:
-        return (
-            "export the source JSON first, review this preview, then apply migration through an "
-            "explicit host-owned rewrite step."
-        )
-    return "no migration is required for this world state."
-
-
-def _append_table(
-    lines: list[str],
-    *,
-    title: str,
-    rows: object,
-    columns: tuple[str, ...],
-) -> None:
-    lines.extend(["", f"## {title}", ""])
-    if not isinstance(rows, list) or not rows:
-        lines.append("- None.")
-        return
-    lines.append("| " + " | ".join(column.replace("_", " ").title() for column in columns) + " |")
-    lines.append("| " + " | ".join("---" for _ in columns) + " |")
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        lines.append(
-            "| " + " | ".join(_markdown_cell(row.get(column)) for column in columns) + " |"
-        )
-
-
-def _markdown_cell(value: object) -> str:
-    text = str(value if value is not None else "")
-    return text.replace("|", "\\|").replace("\n", " ")
 
 
 __all__ = [

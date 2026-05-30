@@ -128,6 +128,29 @@ def test_provider_benchmark_harness_reports_mock_operations(tmp_path) -> None:
     assert "ProviderEvent" in payload["metric_semantics"]
 
 
+def test_benchmark_report_markdown_renders_optional_provenance_fields(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    report = ProviderBenchmarkHarness(forge=forge).run(
+        "mock",
+        operations=["generate"],
+        iterations=1,
+    )
+    assert report.provenance is not None
+    report.provenance = report.provenance.with_overrides(
+        command=("worldforge", "benchmark", "--preset", "mock-smoke"),
+        runtime_manifests={"mock": "mock:schema-1"},
+        budget_file={"path": "examples/benchmark-budget.json", "sha256": "sha256:abc123"},
+        notes="release evidence",
+    )
+
+    markdown = report.to_markdown()
+
+    assert "Runtime manifests: mock=mock:schema-1" in markdown
+    assert "Budget file: examples/benchmark-budget.json" in markdown
+    assert "Command: `worldforge benchmark --preset mock-smoke`" in markdown
+    assert "Notes: release evidence" in markdown
+
+
 def test_benchmark_report_evaluates_budget_gates(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
     report = ProviderBenchmarkHarness(forge=forge).run(
@@ -395,10 +418,15 @@ def test_benchmark_inputs_preview_provider_native_score_candidates() -> None:
     ("kwargs", "message"),
     [
         ({"prediction_action": {"type": "move_to"}}, "prediction_action must be an Action"),
+        ({"reason_query": ""}, "reason_query must be a non-empty string"),
+        ({"generation_prompt": "  "}, "generation_prompt must be a non-empty string"),
+        ({"transfer_prompt": ""}, "transfer_prompt must be a non-empty string"),
         ({"embedding_text": ""}, "embedding_text must be a non-empty string"),
         ({"score_info": {}}, "score_info must be a non-empty JSON object"),
+        ({"score_info": {"bad": object()}}, "JSON serializable"),
         ({"score_action_candidates": None}, "score_action_candidates must not be None"),
         ({"policy_info": []}, "policy_info must be a non-empty JSON object"),
+        ({"policy_info": {"bad": object()}}, "JSON serializable"),
         ({"transfer_clip": {}}, "transfer_clip must be a VideoClip"),
     ],
 )
@@ -655,13 +683,25 @@ def test_provider_benchmark_harness_records_provider_error_samples(tmp_path) -> 
     # Swap the predict handler so the narrowed except branch fires without an outbound call.
     harness._operation_handlers["predict"] = _boom
 
-    report = harness.run("mock", operations=["predict"], iterations=2, concurrency=1)
+    samples: list[dict[str, object]] = []
+    report = harness.run(
+        "mock",
+        operations=["predict"],
+        iterations=2,
+        concurrency=1,
+        on_sample=samples.append,
+    )
     result = report.results[0]
     assert result.success_count == 0
     assert result.error_count == 2
     assert result.average_latency_ms is None
     assert result.p95_latency_ms is None
     assert all("simulated provider outage" in message for message in result.errors)
+    assert [sample["iteration"] for sample in samples] == [1, 2]
+    assert {sample["provider"] for sample in samples} == {"mock"}
+    assert {sample["operation"] for sample in samples} == {"predict"}
+    assert {sample["succeeded"] for sample in samples} == {False}
+    assert all("simulated provider outage" in str(sample["error"]) for sample in samples)
 
     gate = report.evaluate_budgets(
         [BenchmarkBudget(provider="mock", operation="predict", max_average_latency_ms=1.0)]

@@ -17,69 +17,81 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
-from math import prod
 from pathlib import Path
-from statistics import mean, median
 from time import perf_counter
 from typing import Any
 
 from worldforge.providers import LeWorldModelProvider
+from worldforge.smoke import leworldmodel_tensors as _tensors
+from worldforge.smoke.leworldmodel_models import (
+    _ResolvedCheckpoint,
+    _ScoreRun,
+    _SmokeSettings,
+    _TensorBatch,
+)
+from worldforge.smoke.leworldmodel_output import (
+    _display_path,
+    _print_header,
+    _print_preflight,
+    _print_provider_setup,
+    _print_resolved_runtime,
+    _print_score_plan,
+    _print_success_report,
+    _print_tensor_plan,
+    _print_tensor_summary,
+    _runtime_command,
+    _use_color,
+    _write_json_output,
+)
+from worldforge.smoke.leworldmodel_output import (
+    _paint as _paint,
+)
+from worldforge.smoke.leworldmodel_output import (
+    _status_text as _status_text,
+)
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 from worldforge.smoke.runtime_assets import leworldmodel_checkpoint_asset
 
 DEFAULT_STABLEWM_HOME = "~/.stable-wm"
-ANSI_CODES = {
-    "reset": "\033[0m",
-    "bold": "\033[1m",
-    "red": "\033[31m",
-    "green": "\033[32m",
-    "yellow": "\033[33m",
-    "blue": "\033[34m",
-    "magenta": "\033[35m",
-    "cyan": "\033[36m",
-}
+
+
+_shape_tuple = _tensors.shape_tuple
+_input_shapes = _tensors.input_shapes
+_input_shape_summary = _tensors.input_shape_summary
+_input_stats = _tensors.input_stats
+_score_stats = _tensors.score_stats
+_score_payload_summary = _tensors.score_payload_summary
+_score_chart = _tensors.score_chart
+
+
+def _build_inputs(
+    *,
+    batch: int,
+    samples: int,
+    history: int,
+    horizon: int,
+    action_dim: int,
+    image_size: int,
+    seed: int | None = 7,
+):
+    if horizon <= history:
+        raise SystemExit("horizon must be greater than history for LeWorldModel rollout.")
+    import torch
+
+    return _tensors.build_inputs(
+        torch=torch,
+        batch=batch,
+        samples=samples,
+        history=history,
+        horizon=horizon,
+        action_dim=action_dim,
+        image_size=image_size,
+        seed=seed,
+    )
 
 
 def _checkpoint_path(cache_dir: Path, policy: str) -> Path:
     return cache_dir / f"{policy}_object.ckpt"
-
-
-def _display_path(path: Path) -> str:
-    expanded = path.expanduser()
-    try:
-        relative = expanded.relative_to(Path.home())
-    except ValueError:
-        return str(expanded)
-    if str(relative) == ".":
-        return "~"
-    return f"~/{relative.as_posix()}"
-
-
-def _use_color(mode: str) -> bool:
-    if mode == "always":
-        return True
-    if mode == "never" or os.environ.get("NO_COLOR"):
-        return False
-    return bool(sys.stdout.isatty()) and os.environ.get("TERM") != "dumb"
-
-
-def _paint(text: str, color: str, *, enabled: bool, bold: bool = False) -> str:
-    if not enabled:
-        return text
-    codes = []
-    if bold:
-        codes.append(ANSI_CODES["bold"])
-    codes.append(ANSI_CODES[color])
-    return f"{''.join(codes)}{text}{ANSI_CODES['reset']}"
-
-
-def _status_text(value: object, *, color: bool) -> str:
-    if value is True:
-        return _paint("OK", "green", enabled=color, bold=True)
-    if value is False:
-        return _paint("FAIL", "red", enabled=color, bold=True)
-    return str(value)
 
 
 def _infer_cache_dir_from_checkpoint(checkpoint: Path, policy: str) -> Path:
@@ -141,239 +153,6 @@ def _resolve_checkpoint(
             f"policy '{policy}'. Expected {expected_path}."
         )
     return object_path, resolved_cache_dir
-
-
-def _build_inputs(
-    *,
-    batch: int,
-    samples: int,
-    history: int,
-    horizon: int,
-    action_dim: int,
-    image_size: int,
-    seed: int | None = 7,
-):
-    if horizon <= history:
-        raise SystemExit("horizon must be greater than history for LeWorldModel rollout.")
-    import torch
-
-    if seed is not None and hasattr(torch, "manual_seed"):
-        torch.manual_seed(seed)
-    info = {
-        "pixels": torch.rand(batch, 1, history, 3, image_size, image_size),
-        "goal": torch.rand(batch, 1, history, 3, image_size, image_size),
-        "action": torch.rand(batch, 1, history, action_dim),
-    }
-    action_candidates = torch.rand(batch, samples, horizon, action_dim)
-    return info, action_candidates
-
-
-def _shape_tuple(value: object) -> tuple[int, ...] | None:
-    shape = getattr(value, "shape", None)
-    if shape is None and isinstance(value, dict):
-        shape = value.get("shape")
-    if shape is None:
-        return None
-    try:
-        return tuple(int(part) for part in tuple(shape))
-    except (TypeError, ValueError):
-        return None
-
-
-def _input_shapes(
-    info: dict[str, object], action_candidates: object
-) -> dict[str, tuple[int, ...] | None]:
-    return {
-        "pixels": _shape_tuple(info["pixels"]),
-        "goal": _shape_tuple(info["goal"]),
-        "action_history": _shape_tuple(info["action"]),
-        "action_candidates": _shape_tuple(action_candidates),
-    }
-
-
-def _input_shape_summary(info: dict[str, object], action_candidates: object) -> dict[str, str]:
-    shapes = _input_shapes(info, action_candidates)
-    return {
-        label: " x ".join(str(part) for part in shape) if shape is not None else "unknown"
-        for label, shape in shapes.items()
-    }
-
-
-def _input_stats(shapes: dict[str, tuple[int, ...] | None]) -> dict[str, Any]:
-    tensor_elements = {label: prod(shape) for label, shape in shapes.items() if shape is not None}
-    total_elements = sum(tensor_elements.values())
-    return {
-        "tensor_elements": tensor_elements,
-        "total_tensor_elements": total_elements,
-        "approx_float32_mb": round((total_elements * 4) / (1024 * 1024), 3),
-    }
-
-
-def _score_stats(result: dict[str, Any]) -> dict[str, Any]:
-    scores = [float(score) for score in result.get("scores", [])]
-    if not scores:
-        return {}
-    lower_is_better = bool(result.get("lower_is_better", True))
-    best_index = int(result.get("best_index", 0))
-    ranked = sorted(enumerate(scores), key=lambda item: item[1], reverse=not lower_is_better)
-    runner_up_index = ranked[1][0] if len(ranked) > 1 else None
-    runner_up_score = ranked[1][1] if len(ranked) > 1 else None
-    best_score = scores[best_index]
-    gap = abs(float(runner_up_score) - best_score) if runner_up_score is not None else 0.0
-    return {
-        "score_min": min(scores),
-        "score_max": max(scores),
-        "score_mean": mean(scores),
-        "score_median": median(scores),
-        "score_range": max(scores) - min(scores),
-        "runner_up_index": runner_up_index,
-        "runner_up_score": runner_up_score,
-        "gap_to_runner_up": gap,
-    }
-
-
-def _score_payload_summary(result: dict[str, Any]) -> dict[str, Any]:
-    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
-    scores = result.get("scores") if isinstance(result.get("scores"), list) else []
-    return {
-        "candidate_count": metadata.get("candidate_count", len(scores)),
-        "best_index": result.get("best_index"),
-        "best_score": result.get("best_score"),
-        "lower_is_better": result.get("lower_is_better"),
-        "score_direction": metadata.get("score_direction", "lower_is_better"),
-        "score_shape": metadata.get("score_shape"),
-        "input_shapes": metadata.get("input_shapes"),
-        "runtime_api": metadata.get("runtime_api"),
-    }
-
-
-def _score_chart(result: dict[str, Any], *, color: bool = False) -> list[str]:
-    scores = [float(score) for score in result.get("scores", [])]
-    if not scores:
-        return ["  no scores returned"]
-    lower_is_better = bool(result.get("lower_is_better", True))
-    best_index = int(result.get("best_index", 0))
-    best_score = scores[best_index]
-    ranked = sorted(enumerate(scores), key=lambda item: item[1], reverse=not lower_is_better)
-    deltas = [
-        (score - best_score) if lower_is_better else (best_score - score)
-        for _index, score in ranked
-    ]
-    span = max(deltas) if deltas else 0.0
-    width = 24
-    delta_label = "extra cost" if lower_is_better else "below best"
-    lines = [f"  {'rank':<4} {'candidate':<9} {'score':>12} {delta_label:>12}  landscape"]
-    for rank, (index, score) in enumerate(ranked, start=1):
-        delta = (score - best_score) if lower_is_better else (best_score - score)
-        fill = 0 if span == 0 else round((delta / span) * width)
-        bar = "#" * fill
-        marker = "BEST" if index == best_index else ""
-        marker = _paint(marker, "green", enabled=color, bold=True) if marker else ""
-        lines.append(
-            f"  {rank:<4} #{index:<8} {score:>12.6f} {delta:>+12.6f}  |{bar:<{width}}| {marker}"
-        )
-    return lines
-
-
-def _log_step(
-    index: int,
-    total: int,
-    title: str,
-    rows: list[tuple[str, object]] | None = None,
-    *,
-    color: bool = False,
-) -> None:
-    print(f"\n{_paint(f'[{index}/{total}] {title}', 'cyan', enabled=color, bold=True)}", flush=True)
-    for label, value in rows or []:
-        print(f"  {label:<18} {value}", flush=True)
-
-
-def _print_header(*, color: bool = False) -> None:
-    print(
-        _paint(
-            "WorldForge LeWorldModel real checkpoint inference", "cyan", enabled=color, bold=True
-        ),
-        flush=True,
-    )
-    print("=" * 48, flush=True)
-    print(
-        "Mode: real upstream checkpoint inference, not the injected checkout-safe demo.", flush=True
-    )
-    print("\nWhat this demonstrates", flush=True)
-    print("----------------------", flush=True)
-    print("  - loads a host-owned LeWorldModel object checkpoint", flush=True)
-    print("  - validates the WorldForge LeWorldModelProvider health boundary", flush=True)
-    print("  - builds deterministic PushT-shaped tensor inputs", flush=True)
-    print("  - runs score_actions through the real upstream cost model", flush=True)
-    print("  - ranks action candidates using lower-is-better model costs", flush=True)
-    print(
-        "Boundary: inputs are synthetic tensors for the provider contract; this is not robot "
-        "execution or task-specific image preprocessing.",
-        flush=True,
-    )
-    print("\nPipeline", flush=True)
-    print("--------", flush=True)
-    print(
-        "  checkpoint -> provider -> preflight -> tensors -> real score_actions -> ranking",
-        flush=True,
-    )
-
-
-def _runtime_command(*, checkpoint: Path, device: str) -> str:
-    checkpoint_text = _display_path(checkpoint)
-    return (
-        f"scripts/lewm-real --checkpoint {checkpoint_text} --device {device}\n"
-        "\n"
-        "or, without the wrapper:\n"
-        'uv run --python 3.13 --with "stable-worldmodel @ '
-        'git+https://github.com/galilai-group/stable-worldmodel.git" '
-        '--with "datasets>=2.21" --with "opencv-python" --with "imageio" '
-        f"lewm-real --checkpoint {checkpoint_text} --device {device}"
-    )
-
-
-def _write_json_output(path: Path, payload: dict[str, Any]) -> Path:
-    output_path = path.expanduser()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return output_path
-
-
-def _print_score_stats(stats: dict[str, Any]) -> None:
-    if not stats:
-        return
-    print("\nInference metrics", flush=True)
-    print("-----------------", flush=True)
-    rows = [
-        ("score min", f"{float(stats['score_min']):.6f}"),
-        ("score median", f"{float(stats['score_median']):.6f}"),
-        ("score mean", f"{float(stats['score_mean']):.6f}"),
-        ("score max", f"{float(stats['score_max']):.6f}"),
-        ("score range", f"{float(stats['score_range']):.6f}"),
-        ("gap to runner-up", f"{float(stats['gap_to_runner_up']):.6f}"),
-    ]
-    for label, value in rows:
-        print(f"  {label:<18} {value}", flush=True)
-
-
-def _print_provider_events(events: list[dict[str, Any]]) -> None:
-    print("\nProvider event log", flush=True)
-    print("------------------", flush=True)
-    if not events:
-        print("  no provider events emitted", flush=True)
-        return
-    for event in events:
-        duration = event.get("duration_ms")
-        duration_text = f"{float(duration):.2f} ms" if duration is not None else "n/a"
-        metadata = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
-        metadata_text = " ".join(
-            f"{key}={value}" for key, value in sorted(metadata.items()) if value is not None
-        )
-        print(
-            f"  {event.get('provider')}.{event.get('operation')} "
-            f"{event.get('phase')} duration={duration_text} {metadata_text}".rstrip(),
-            flush=True,
-        )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -452,283 +231,327 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    parser = _parser()
-    args = parser.parse_args()
+def _settings_from_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> _SmokeSettings:
     if args.seed < -1:
         parser.error("--seed must be -1 or a non-negative integer.")
-    seed = None if args.seed == -1 else args.seed
-    color_enabled = _use_color(args.color) and not args.json_only
-    total_started = perf_counter()
-    if not args.json_only:
-        _print_header(color=color_enabled)
-
-    resolve_started = perf_counter()
-    object_path, cache_dir = _resolve_checkpoint(
+    json_only = bool(args.json_only)
+    return _SmokeSettings(
         policy=args.policy,
         stablewm_home=args.stablewm_home,
         cache_dir=args.cache_dir,
         checkpoint=args.checkpoint,
-    )
-    runtime_assets = (
-        leworldmodel_checkpoint_asset(
-            policy=args.policy,
-            checkpoint=object_path,
-            cache_root=cache_dir,
-            exists=object_path.exists(),
-        ),
-    )
-    runtime_asset_refs = [asset.to_reference() for asset in runtime_assets]
-    resolve_latency_ms = (perf_counter() - resolve_started) * 1000
-    if not args.json_only:
-        _log_step(
-            1,
-            6,
-            "Resolve checkpoint and runtime settings",
-            [
-                ("policy", args.policy),
-                ("checkpoint", _display_path(object_path)),
-                ("cache root", _display_path(cache_dir)),
-                ("device", args.device),
-            ],
-            color=color_enabled,
-        )
-
-    if not args.json_only:
-        _log_step(
-            2,
-            6,
-            "Create LeWorldModelProvider",
-            [
-                ("provider", "leworldmodel"),
-                ("capability", "score"),
-                (
-                    "runtime",
-                    "stable_worldmodel.policy.AutoCostModel (official LeWM loading API)",
-                ),
-            ],
-            color=color_enabled,
-        )
-    provider_events = []
-
-    def _record_event(event: object) -> None:
-        to_dict = getattr(event, "to_dict", None)
-        if callable(to_dict):
-            provider_events.append(to_dict())
-
-    provider = LeWorldModelProvider(
-        policy=args.policy,
-        cache_dir=str(cache_dir),
         device=args.device,
-        event_handler=_record_event,
-    )
-    health = provider.health().to_dict()
-    if not args.json_only:
-        _log_step(
-            3,
-            6,
-            "Preflight optional runtime dependencies",
-            [
-                ("healthy", _status_text(health.get("healthy"), color=color_enabled)),
-                ("details", health.get("details")),
-                ("latency ms", f"{float(health.get('latency_ms') or 0.0):.2f}"),
-            ],
-            color=color_enabled,
-        )
-    if not health.get("healthy"):
-        payload = {
-            "checkpoint": str(object_path),
-            "checkpoint_display": _display_path(object_path),
-            "error": "runtime preflight failed",
-            "health": health,
-            "runtime_assets": runtime_asset_refs,
-            "metrics": {
-                "resolve_latency_ms": resolve_latency_ms,
-                "preflight_latency_ms": health.get("latency_ms"),
-                "total_latency_ms": (perf_counter() - total_started) * 1000,
-            },
-        }
-        if args.json_output is not None:
-            _write_json_output(args.json_output, payload)
-        if args.run_manifest is not None:
-            write_run_manifest(
-                args.run_manifest,
-                build_run_manifest(
-                    run_id=args.run_manifest.parent.name,
-                    provider_profile="leworldmodel",
-                    capability="score",
-                    status="failed",
-                    env_vars=("LEWORLDMODEL_CHECKPOINT", "LEWORLDMODEL_POLICY", "STABLEWM_HOME"),
-                    event_count=len(provider_events),
-                    result=payload,
-                    runtime_assets=runtime_assets,
-                    artifact_paths=(
-                        {"summary_json": args.json_output} if args.json_output is not None else {}
-                    ),
-                    artifact_root=args.run_manifest.parent,
-                ),
-            )
-        if args.json_only:
-            print(json.dumps(payload, indent=2, sort_keys=True))
-            return 1
-        print(
-            "\nLeWorldModel runtime preflight failed: "
-            f"{health.get('details')}\n\n"
-            "Run the complete uv-backed task instead:\n"
-            f"{_runtime_command(checkpoint=object_path, device=args.device)}",
-            flush=True,
-        )
-        return 1
-
-    if not args.json_only:
-        _log_step(
-            4,
-            6,
-            "Build synthetic LeWorldModel tensors",
-            [
-                ("batch", args.batch),
-                ("samples", args.samples),
-                ("history", args.history),
-                ("horizon", args.horizon),
-                ("action dim", args.action_dim),
-                ("image size", args.image_size),
-                ("seed", seed if seed is not None else "disabled"),
-                ("data", "synthetic PushT-shaped tensors"),
-            ],
-            color=color_enabled,
-        )
-    tensor_started = perf_counter()
-    info, action_candidates = _build_inputs(
         batch=args.batch,
         samples=args.samples,
         history=args.history,
         horizon=args.horizon,
         action_dim=args.action_dim,
         image_size=args.image_size,
-        seed=seed,
+        seed=None if args.seed == -1 else args.seed,
+        json_output=args.json_output,
+        run_manifest=args.run_manifest,
+        json_only=json_only,
+        color_enabled=_use_color(args.color) and not json_only,
     )
-    tensor_build_latency_ms = (perf_counter() - tensor_started) * 1000
-    input_shapes = _input_shape_summary(info, action_candidates)
-    input_shape_values = _input_shapes(info, action_candidates)
-    input_stats = _input_stats(input_shape_values)
-    if not args.json_only:
-        for label, shape in input_shapes.items():
-            print(f"  {label:<18} {shape}", flush=True)
-        print(
-            f"  {'tensor elements':<18} {input_stats['total_tensor_elements']}",
-            flush=True,
-        )
-        print(
-            f"  {'approx float32 MB':<18} {input_stats['approx_float32_mb']}",
-            flush=True,
-        )
-        print(f"  {'build latency ms':<18} {tensor_build_latency_ms:.2f}", flush=True)
 
-    if not args.json_only:
-        _log_step(
-            5,
-            6,
-            "Run score_actions through the real checkpoint",
-            [
-                ("operation", "leworldmodel.score_actions"),
-                ("candidate count", args.samples),
-                ("contract", "observations + goal + candidate action sequences -> costs"),
-            ],
-            color=color_enabled,
-        )
+
+def _resolve_runtime(settings: _SmokeSettings) -> _ResolvedCheckpoint:
+    resolve_started = perf_counter()
+    object_path, cache_dir = _resolve_checkpoint(
+        policy=settings.policy,
+        stablewm_home=settings.stablewm_home,
+        cache_dir=settings.cache_dir,
+        checkpoint=settings.checkpoint,
+    )
+    runtime_assets = (
+        leworldmodel_checkpoint_asset(
+            policy=settings.policy,
+            checkpoint=object_path,
+            cache_root=cache_dir,
+            exists=object_path.exists(),
+        ),
+    )
+    return _ResolvedCheckpoint(
+        object_path=object_path,
+        cache_dir=cache_dir,
+        runtime_assets=runtime_assets,
+        runtime_asset_refs=[asset.to_reference() for asset in runtime_assets],
+        resolve_latency_ms=(perf_counter() - resolve_started) * 1000,
+    )
+
+
+def _record_provider_event(provider_events: list[dict[str, Any]]):
+    def record(event: object) -> None:
+        to_dict = getattr(event, "to_dict", None)
+        if callable(to_dict):
+            provider_events.append(to_dict())
+
+    return record
+
+
+def _create_provider(
+    settings: _SmokeSettings,
+    runtime: _ResolvedCheckpoint,
+    provider_events: list[dict[str, Any]],
+) -> LeWorldModelProvider:
+    return LeWorldModelProvider(
+        policy=settings.policy,
+        cache_dir=str(runtime.cache_dir),
+        device=settings.device,
+        event_handler=_record_provider_event(provider_events),
+    )
+
+
+def _preflight_failure_payload(
+    *,
+    settings: _SmokeSettings,
+    runtime: _ResolvedCheckpoint,
+    health: dict[str, Any],
+    total_started: float,
+) -> dict[str, Any]:
+    return {
+        "checkpoint": str(runtime.object_path),
+        "checkpoint_display": _display_path(runtime.object_path),
+        "error": "runtime preflight failed",
+        "health": health,
+        "runtime_assets": runtime.runtime_asset_refs,
+        "metrics": {
+            "resolve_latency_ms": runtime.resolve_latency_ms,
+            "preflight_latency_ms": health.get("latency_ms"),
+            "total_latency_ms": (perf_counter() - total_started) * 1000,
+        },
+    }
+
+
+def _write_smoke_outputs(
+    *,
+    settings: _SmokeSettings,
+    runtime: _ResolvedCheckpoint,
+    status: str,
+    payload: dict[str, Any],
+    provider_events: list[dict[str, Any]],
+) -> tuple[Path | None, Path | None]:
+    json_output_path = (
+        _write_json_output(settings.json_output, payload)
+        if settings.json_output is not None
+        else None
+    )
+    if settings.run_manifest is None:
+        return json_output_path, None
+    run_manifest_path = write_run_manifest(
+        settings.run_manifest,
+        build_run_manifest(
+            run_id=settings.run_manifest.parent.name,
+            provider_profile="leworldmodel",
+            capability="score",
+            status=status,
+            env_vars=("LEWORLDMODEL_CHECKPOINT", "LEWORLDMODEL_POLICY", "STABLEWM_HOME"),
+            event_count=len(provider_events),
+            result=payload,
+            runtime_assets=runtime.runtime_assets,
+            artifact_paths=(
+                {"summary_json": json_output_path} if json_output_path is not None else {}
+            ),
+            artifact_root=settings.run_manifest.parent,
+        ),
+    )
+    return json_output_path, run_manifest_path
+
+
+def _handle_preflight_failure(
+    *,
+    settings: _SmokeSettings,
+    runtime: _ResolvedCheckpoint,
+    health: dict[str, Any],
+    provider_events: list[dict[str, Any]],
+    total_started: float,
+) -> int:
+    payload = _preflight_failure_payload(
+        settings=settings,
+        runtime=runtime,
+        health=health,
+        total_started=total_started,
+    )
+    _write_smoke_outputs(
+        settings=settings,
+        runtime=runtime,
+        status="failed",
+        payload=payload,
+        provider_events=provider_events,
+    )
+    if settings.json_only:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 1
+    print(
+        "\nLeWorldModel runtime preflight failed: "
+        f"{health.get('details')}\n\n"
+        "Run the complete uv-backed task instead:\n"
+        f"{_runtime_command(checkpoint=runtime.object_path, device=settings.device)}",
+        flush=True,
+    )
+    return 1
+
+
+def _build_tensor_batch(settings: _SmokeSettings) -> _TensorBatch:
+    tensor_started = perf_counter()
+    info, action_candidates = _build_inputs(
+        batch=settings.batch,
+        samples=settings.samples,
+        history=settings.history,
+        horizon=settings.horizon,
+        action_dim=settings.action_dim,
+        image_size=settings.image_size,
+        seed=settings.seed,
+    )
+    input_shape_values = _input_shapes(info, action_candidates)
+    return _TensorBatch(
+        info=info,
+        action_candidates=action_candidates,
+        input_shapes=_input_shape_summary(info, action_candidates),
+        input_shape_values=input_shape_values,
+        input_stats=_input_stats(input_shape_values),
+        tensor_build_latency_ms=(perf_counter() - tensor_started) * 1000,
+    )
+
+
+def _run_score_actions(
+    *,
+    settings: _SmokeSettings,
+    runtime: _ResolvedCheckpoint,
+    provider: LeWorldModelProvider,
+    health: dict[str, Any],
+    tensor_batch: _TensorBatch,
+    provider_events: list[dict[str, Any]],
+    total_started: float,
+) -> _ScoreRun:
     started = perf_counter()
-    result = provider.score_actions(info=info, action_candidates=action_candidates)
+    result = provider.score_actions(
+        info=tensor_batch.info,
+        action_candidates=tensor_batch.action_candidates,
+    )
     score_latency_ms = (perf_counter() - started) * 1000
     result_payload = result.to_dict()
     score_stats = _score_stats(result_payload)
-    score_payload_summary = _score_payload_summary(result_payload)
     total_latency_ms = (perf_counter() - total_started) * 1000
     metrics = {
-        "resolve_latency_ms": resolve_latency_ms,
+        "resolve_latency_ms": runtime.resolve_latency_ms,
         "preflight_latency_ms": health.get("latency_ms"),
-        "tensor_build_latency_ms": tensor_build_latency_ms,
+        "tensor_build_latency_ms": tensor_batch.tensor_build_latency_ms,
         "score_latency_ms": score_latency_ms,
         "total_latency_ms": total_latency_ms,
         **score_stats,
     }
-    payload = {
-        "checkpoint": str(object_path),
-        "checkpoint_display": _display_path(object_path),
+    payload = _success_payload(
+        settings=settings,
+        runtime=runtime,
+        health=health,
+        tensor_batch=tensor_batch,
+        provider_events=provider_events,
+        metrics=metrics,
+        result_payload=result_payload,
+    )
+    return _ScoreRun(
+        result_payload=result_payload,
+        score_stats=score_stats,
+        score_payload_summary=payload["score_payload_summary"],
+        score_latency_ms=score_latency_ms,
+        total_latency_ms=total_latency_ms,
+        metrics=metrics,
+        payload=payload,
+    )
+
+
+def _success_payload(
+    *,
+    settings: _SmokeSettings,
+    runtime: _ResolvedCheckpoint,
+    health: dict[str, Any],
+    tensor_batch: _TensorBatch,
+    provider_events: list[dict[str, Any]],
+    metrics: dict[str, Any],
+    result_payload: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "checkpoint": str(runtime.object_path),
+        "checkpoint_display": _display_path(runtime.object_path),
         "health": health,
-        "runtime_assets": runtime_asset_refs,
+        "runtime_assets": runtime.runtime_asset_refs,
         "inputs": {
-            "batch": args.batch,
-            "samples": args.samples,
-            "history": args.history,
-            "horizon": args.horizon,
-            "action_dim": args.action_dim,
-            "image_size": args.image_size,
-            "seed": seed,
-            "shapes": input_shape_values,
-            **input_stats,
+            "batch": settings.batch,
+            "samples": settings.samples,
+            "history": settings.history,
+            "horizon": settings.horizon,
+            "action_dim": settings.action_dim,
+            "image_size": settings.image_size,
+            "seed": settings.seed,
+            "shapes": tensor_batch.input_shape_values,
+            **tensor_batch.input_stats,
         },
         "metrics": metrics,
         "provider_events": provider_events,
         "result": result_payload,
-        "score_payload_summary": score_payload_summary,
+        "score_payload_summary": _score_payload_summary(result_payload),
     }
-    if args.json_output is not None:
-        json_output_path = _write_json_output(args.json_output, payload)
-    else:
-        json_output_path = None
-    run_manifest_path = None
-    if args.run_manifest is not None:
-        run_manifest_path = write_run_manifest(
-            args.run_manifest,
-            build_run_manifest(
-                run_id=args.run_manifest.parent.name,
-                provider_profile="leworldmodel",
-                capability="score",
-                status="passed",
-                env_vars=("LEWORLDMODEL_CHECKPOINT", "LEWORLDMODEL_POLICY", "STABLEWM_HOME"),
-                event_count=len(provider_events),
-                result=payload,
-                runtime_assets=runtime_assets,
-                artifact_paths=(
-                    {"summary_json": json_output_path} if json_output_path is not None else {}
-                ),
-                artifact_root=args.run_manifest.parent,
-            ),
-        )
-    if args.json_only:
-        print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0
 
-    metadata = result_payload.get("metadata", {})
-    _log_step(
-        6,
-        6,
-        "Rank action candidates",
-        [
-            ("lower is better", result_payload.get("lower_is_better")),
-            ("best index", result_payload.get("best_index")),
-            ("best score", result_payload.get("best_score")),
-            ("score latency ms", f"{score_latency_ms:.2f}"),
-            ("total latency ms", f"{total_latency_ms:.2f}"),
-            ("score type", metadata.get("score_type", "cost")),
-            ("gap to runner-up", f"{float(score_stats.get('gap_to_runner_up', 0.0)):.6f}"),
-        ],
-        color=color_enabled,
+
+def main() -> int:
+    parser = _parser()
+    settings = _settings_from_args(parser, parser.parse_args())
+    total_started = perf_counter()
+    if not settings.json_only:
+        _print_header(color=settings.color_enabled)
+
+    runtime = _resolve_runtime(settings)
+    _print_resolved_runtime(settings, runtime)
+    _print_provider_setup(settings)
+
+    provider_events: list[dict[str, Any]] = []
+    provider = _create_provider(settings, runtime, provider_events)
+    health = provider.health().to_dict()
+    _print_preflight(settings, health)
+    if not health.get("healthy"):
+        return _handle_preflight_failure(
+            settings=settings,
+            runtime=runtime,
+            health=health,
+            provider_events=provider_events,
+            total_started=total_started,
+        )
+
+    _print_tensor_plan(settings)
+    tensor_batch = _build_tensor_batch(settings)
+    _print_tensor_summary(settings, tensor_batch)
+
+    _print_score_plan(settings)
+    score_run = _run_score_actions(
+        settings=settings,
+        runtime=runtime,
+        provider=provider,
+        health=health,
+        tensor_batch=tensor_batch,
+        provider_events=provider_events,
+        total_started=total_started,
     )
-    print("\nCandidate cost landscape", flush=True)
-    print("------------------------", flush=True)
-    for line in _score_chart(result_payload, color=color_enabled):
-        print(line, flush=True)
-    _print_score_stats(score_stats)
-    _print_provider_events(provider_events)
-    if json_output_path is not None:
-        print("\nArtifacts", flush=True)
-        print("---------", flush=True)
-        print(f"  json summary       {_display_path(json_output_path)}", flush=True)
-        if run_manifest_path is not None:
-            print(f"  run manifest       {_display_path(run_manifest_path)}", flush=True)
-    print("\nCompleted real LeWorldModel checkpoint inference.", flush=True)
-    print("Use --json-only for the machine-readable summary.", flush=True)
+    json_output_path, run_manifest_path = _write_smoke_outputs(
+        settings=settings,
+        runtime=runtime,
+        status="passed",
+        payload=score_run.payload,
+        provider_events=provider_events,
+    )
+    if settings.json_only:
+        print(json.dumps(score_run.payload, indent=2, sort_keys=True))
+        return 0
+    _print_success_report(
+        settings=settings,
+        score_run=score_run,
+        provider_events=provider_events,
+        json_output_path=json_output_path,
+        run_manifest_path=run_manifest_path,
+    )
     return 0
 
 

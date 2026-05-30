@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -431,6 +432,27 @@ def test_jepa_wms_torchhub_runtime_falls_back_to_encode_unroll_distance() -> Non
     assert model.eval_called is True
     assert model.encoded_act_values == [True, False]
     assert isinstance(model.unroll_actions, FakeTensor)
+    assert preprocessor.normalized_actions is not None
+
+
+def test_jepa_wms_torchhub_runtime_uses_model_attached_preprocessor() -> None:
+    payload = _fixture("jepa_wms_success.json")
+    model = FakeHubEncodeUnrollModel()
+    preprocessor = FakePreprocessor()
+    model.preprocessor = preprocessor
+
+    provider = JEPAWMSProvider.from_torch_hub(
+        model_name="jepa_wm_pusht",
+        hub_loader=lambda *_args, **_kwargs: model,
+        torch_module=FakeTorch(),
+    )
+
+    result = provider.score_actions(
+        info={**payload["info"], "actions_are_normalized": False},
+        action_candidates=payload["action_candidates"],
+    )
+
+    assert result.best_index == 1
     assert preprocessor.normalized_actions is not None
 
 
@@ -924,6 +946,18 @@ def test_jepa_wms_prepared_host_smoke_writes_runtime_manifest(
     assert manifest["input_summary"]["runtime_version"]["torch"] == "2.9.0-test"
     assert manifest["input_summary"]["score_summary"]["best_score"] == 0.1
     assert manifest["artifact_paths"]["summary_json"] == "results/summary.json"
+
+
+def test_jepa_wms_json_output_rejects_non_finite_payload_before_touching_disk(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "nested" / "summary.json"
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        jepa_wms._write_json(target, {"score": math.nan})
+
+    assert not target.exists()
+    assert not target.parent.exists()
 
 
 def test_jepa_wms_prepared_host_smoke_records_failed_manifest(

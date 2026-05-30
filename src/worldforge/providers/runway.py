@@ -15,7 +15,6 @@ from worldforge.models import (
     ProviderHealth,
     ProviderRequestPolicy,
     VideoClip,
-    _sanitize_observable_target,
     require_finite_number,
     require_positive_int,
 )
@@ -32,193 +31,38 @@ from .base import (
     ProviderProfileSpec,
     RemoteProvider,
     _field_summary,
-    validate_generation_request,
     validate_transfer_request,
 )
 from .http_utils import (
-    asset_to_uri,
-    clip_to_data_uri,
     request_bytes_with_policy,
     request_json_with_policy,
     validate_remote_url,
 )
+from .runway_requests import (
+    build_runway_generation_request,
+    build_runway_transfer_request,
+    validate_runway_generation_request,
+)
+from .runway_responses import (
+    RunwayOrganizationResponse,
+    RunwayTaskCreationResponse,
+    RunwayTaskStatusResponse,
+)
+from .runway_responses import (
+    artifact_url_summary as _artifact_url_summary,
+)
 
 _RUNWAY_API_VERSION = "2024-11-06"
 _RUNWAY_DEFAULT_RATIO = "1280:720"
-_RUNWAY_DEFAULT_DURATION = 5
 _RUNWAY_MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
 _RUNWAY_ALLOW_LOCAL_ARTIFACT_URLS_ENV_VAR = "RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS"
 _RUNWAY_RESOLVE_ARTIFACT_DNS_ENV_VAR = "RUNWAYML_RESOLVE_ARTIFACT_DNS"
 
 
-def _parse_ratio(ratio: str) -> tuple[int, int]:
-    try:
-        width_text, height_text = ratio.split(":", maxsplit=1)
-        width = int(width_text)
-        height = int(height_text)
-    except ValueError as exc:
-        raise ProviderError(f"Invalid Runway ratio '{ratio}'. Expected WIDTH:HEIGHT.") from exc
-    if width <= 0 or height <= 0:
-        raise ProviderError("Runway ratio width and height must be greater than 0.")
-    return width, height
-
-
-def _payload_message(payload: dict[str, object]) -> str:
-    for key in ("failure", "error", "message"):
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        if isinstance(value, dict):
-            nested_message = value.get("message")
-            if isinstance(nested_message, str) and nested_message.strip():
-                return nested_message.strip()
-    return "no failure detail returned"
-
-
-def _artifact_url_summary(url: str) -> str:
-    sanitized = _sanitize_observable_target(url)
-    if sanitized is None:
-        raise ProviderError("Runway task output URL must be a non-empty string.")
-    return sanitized
-
-
 @dataclass(slots=True, frozen=True)
-class RunwayOrganizationResponse:
-    """Validated response from Runway organization health checks."""
-
-    organization_id: str | None = None
-    name: str | None = None
-
-    @classmethod
-    def from_payload(
-        cls,
-        payload: dict[str, object],
-        *,
-        provider_name: str,
-    ) -> RunwayOrganizationResponse:
-        organization_id = payload.get("id")
-        name = payload.get("name")
-        if organization_id is not None and (
-            not isinstance(organization_id, str) or not organization_id.strip()
-        ):
-            raise ProviderError(
-                f"Provider '{provider_name}' organization response field 'id' "
-                "must be a non-empty string when present."
-            )
-        if name is not None and (not isinstance(name, str) or not name.strip()):
-            raise ProviderError(
-                f"Provider '{provider_name}' organization response field 'name' "
-                "must be a non-empty string when present."
-            )
-        if organization_id is None and name is None:
-            raise ProviderError(
-                f"Provider '{provider_name}' organization response must include 'id' or 'name'."
-            )
-        return cls(
-            organization_id=organization_id.strip() if isinstance(organization_id, str) else None,
-            name=name.strip() if isinstance(name, str) else None,
-        )
-
-    def details(self) -> str:
-        return self.name or self.organization_id or "organization ok"
-
-
-@dataclass(slots=True, frozen=True)
-class RunwayTaskCreationResponse:
-    """Validated response returned when creating a Runway task."""
-
-    task_id: str
-
-    @classmethod
-    def from_payload(
-        cls,
-        payload: dict[str, object],
-        *,
-        provider_name: str,
-        operation_name: str,
-    ) -> RunwayTaskCreationResponse:
-        task_id = payload.get("id")
-        if not isinstance(task_id, str) or not task_id.strip():
-            raise ProviderError(
-                f"Provider '{provider_name}' {operation_name} response field 'id' "
-                "must be a non-empty task id."
-            )
-        return cls(task_id=task_id.strip())
-
-
-@dataclass(slots=True, frozen=True)
-class RunwayTaskStatusResponse:
-    """Validated response returned when polling a Runway task."""
-
-    task_id: str
-    status: str
-    outputs: tuple[str, ...] = ()
-    message: str = ""
-
-    @classmethod
-    def from_payload(
-        cls,
-        payload: dict[str, object],
-        *,
-        provider_name: str,
-        expected_task_id: str,
-    ) -> RunwayTaskStatusResponse:
-        task_id = payload.get("id")
-        if task_id is not None:
-            if not isinstance(task_id, str) or not task_id.strip():
-                raise ProviderError(
-                    f"Provider '{provider_name}' task response field 'id' "
-                    "must be a non-empty string when present."
-                )
-            if task_id.strip() != expected_task_id:
-                raise ProviderError(
-                    f"Provider '{provider_name}' task response id '{task_id}' "
-                    f"does not match requested task '{expected_task_id}'."
-                )
-
-        status = payload.get("status")
-        if not isinstance(status, str) or not status.strip():
-            raise ProviderError(
-                f"Provider '{provider_name}' task {expected_task_id} response field "
-                "'status' must be a non-empty string."
-            )
-
-        outputs_payload = payload.get("output", [])
-        if outputs_payload is None:
-            outputs_payload = []
-        if not isinstance(outputs_payload, list):
-            raise ProviderError(
-                f"Provider '{provider_name}' task {expected_task_id} response field "
-                "'output' must be a list when present."
-            )
-
-        outputs: list[str] = []
-        invalid_indexes: list[int] = []
-        for index, item in enumerate(outputs_payload):
-            if isinstance(item, str) and item.strip():
-                outputs.append(item.strip())
-            else:
-                invalid_indexes.append(index)
-        if invalid_indexes:
-            joined = ", ".join(str(index) for index in invalid_indexes)
-            raise ProviderError(
-                f"Provider '{provider_name}' task {expected_task_id} response field "
-                f"'output' contains invalid entries at index(es): {joined}."
-            )
-
-        return cls(
-            task_id=expected_task_id,
-            status=status.strip().upper(),
-            outputs=tuple(outputs),
-            message=_payload_message(payload),
-        )
-
-    def require_outputs(self, *, provider_name: str) -> tuple[str, ...]:
-        if not self.outputs:
-            raise ProviderError(
-                f"Provider '{provider_name}' task {self.task_id} completed without outputs."
-            )
-        return self.outputs
+class _RunwayDownloadedOutput:
+    clip_bytes: bytes
+    artifact_url: str
 
 
 class RunwayProvider(RemoteProvider):
@@ -494,54 +338,21 @@ class RunwayProvider(RemoteProvider):
             return f"auto; effective resolve_dns={effective}"
         return f"effective resolve_dns={effective}"
 
-    def generate(
+    def _submit_runway_task(
         self,
-        prompt: str,
-        duration_seconds: float,
         *,
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        prompt, duration_seconds, options = validate_generation_request(
-            prompt,
-            duration_seconds,
-            options=options,
-        )
-        self._require_credentials()
-        if options and options.video:
-            raise ProviderError(
-                "Runway image_to_video does not accept `options.video`; "
-                "use transfer() for video inputs."
-            )
-
-        duration = max(2, min(10, round(duration_seconds or _RUNWAY_DEFAULT_DURATION)))
-        ratio = self._ratio(options=options)
-        resolution = _parse_ratio(ratio)
-        model = options.model if options and options.model else self.default_model
-        body: dict[str, object] = {
-            "model": model,
-            "promptText": prompt,
-            "ratio": ratio,
-            "duration": duration,
-        }
-        prompt_image = asset_to_uri(
-            options.image if options else None,
-            default_content_type="image/png",
-        )
-        if prompt_image:
-            body["promptImage"] = prompt_image
-        if options and options.seed is not None:
-            body["seed"] = options.seed
-        if options and options.extras:
-            body.update(options.extras)
-
+        url: str,
+        operation_name: str,
+        body: dict[str, object],
+    ) -> tuple[str, RunwayTaskStatusResponse]:
         request_policy = self._require_request_policy()
         with self._client() as client:
             payload = request_json_with_policy(
                 client,
                 method="POST",
-                url="/v1/image_to_video",
+                url=url,
                 provider_name=self.name,
-                operation_name="generation request",
+                operation_name=operation_name,
                 policy=request_policy.request,
                 emit_event=self._emit_event,
                 json=body,
@@ -549,26 +360,57 @@ class RunwayProvider(RemoteProvider):
             task_id = RunwayTaskCreationResponse.from_payload(
                 payload,
                 provider_name=self.name,
-                operation_name="generation request",
+                operation_name=operation_name,
             ).task_id
             task = self._poll_task(client, task_id)
+        return task_id, task
 
+    def _download_task_output(self, task: RunwayTaskStatusResponse) -> _RunwayDownloadedOutput:
         output_url = task.outputs[0]
-        clip_bytes = self._download_output(output_url)
-        artifact_url = _artifact_url_summary(output_url)
+        return _RunwayDownloadedOutput(
+            clip_bytes=self._download_output(output_url),
+            artifact_url=_artifact_url_summary(output_url),
+        )
+
+    def generate(
+        self,
+        prompt: str,
+        duration_seconds: float,
+        *,
+        options: GenerationOptions | None = None,
+    ) -> VideoClip:
+        prompt, duration_seconds, options = validate_runway_generation_request(
+            prompt,
+            duration_seconds,
+            options=options,
+        )
+        self._require_credentials()
+        request = build_runway_generation_request(
+            prompt=prompt,
+            duration_seconds=duration_seconds,
+            ratio=self._ratio(options=options),
+            options=options,
+            default_model=self.default_model,
+        )
+        task_id, task = self._submit_runway_task(
+            url="/v1/image_to_video",
+            operation_name="generation request",
+            body=request.body,
+        )
+        output = self._download_task_output(task)
         return VideoClip(
-            frames=[clip_bytes],
-            fps=options.fps if options and options.fps is not None else 24.0,
-            resolution=resolution,
-            duration_seconds=float(duration),
+            frames=[output.clip_bytes],
+            fps=request.fps,
+            resolution=request.resolution,
+            duration_seconds=float(request.duration),
             metadata={
                 "provider": self.name,
                 "prompt": prompt,
                 "task_id": task_id,
-                "artifact_url": artifact_url,
+                "artifact_url": output.artifact_url,
                 "content_type": "video/mp4",
-                "model": model,
-                "mode": "image_to_video" if prompt_image else "text_to_video",
+                "model": request.model,
+                "mode": request.mode,
             },
         )
 
@@ -591,53 +433,15 @@ class RunwayProvider(RemoteProvider):
             options=options,
         )
         self._require_credentials()
-        model = options.model if options and options.model else "gen4_aleph"
-        references: list[dict[str, str]] = []
-        if options:
-            references.extend(
-                {"uri": asset_to_uri(reference, default_content_type="image/png") or reference}
-                for reference in options.reference_images
-            )
-
-        body: dict[str, object] = {
-            "model": model,
-            "promptText": prompt or "Re-render the input video while preserving the scene motion.",
-            "videoUri": asset_to_uri(
-                options.video if options and options.video else clip_to_data_uri(clip),
-                default_content_type=clip.content_type(),
-            ),
-        }
-        if references:
-            body["references"] = references
-        if options and options.seed is not None:
-            body["seed"] = options.seed
-        if options and options.extras:
-            body.update(options.extras)
-
-        request_policy = self._require_request_policy()
-        with self._client() as client:
-            payload = request_json_with_policy(
-                client,
-                method="POST",
-                url="/v1/video_to_video",
-                provider_name=self.name,
-                operation_name="transfer request",
-                policy=request_policy.request,
-                emit_event=self._emit_event,
-                json=body,
-            )
-            task_id = RunwayTaskCreationResponse.from_payload(
-                payload,
-                provider_name=self.name,
-                operation_name="transfer request",
-            ).task_id
-            task = self._poll_task(client, task_id)
-
-        output_url = task.outputs[0]
-        clip_bytes = self._download_output(output_url)
-        artifact_url = _artifact_url_summary(output_url)
+        request = build_runway_transfer_request(clip=clip, prompt=prompt, options=options)
+        task_id, task = self._submit_runway_task(
+            url="/v1/video_to_video",
+            operation_name="transfer request",
+            body=request.body,
+        )
+        output = self._download_task_output(task)
         return VideoClip(
-            frames=[clip_bytes],
+            frames=[output.clip_bytes],
             fps=fps,
             resolution=(width, height),
             duration_seconds=clip.duration_seconds,
@@ -645,10 +449,10 @@ class RunwayProvider(RemoteProvider):
                 "provider": self.name,
                 "prompt": prompt,
                 "task_id": task_id,
-                "artifact_url": artifact_url,
+                "artifact_url": output.artifact_url,
                 "content_type": "video/mp4",
-                "model": model,
+                "model": request.model,
                 "mode": "video_to_video",
-                "reference_count": len(references),
+                "reference_count": request.reference_count,
             },
         )

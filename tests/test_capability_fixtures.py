@@ -270,6 +270,60 @@ def test_policy_invalid_fixtures_are_distinct_boundary_cases() -> None:
     assert bad_horizon.payload["info"]["action_horizon"] == -1
 
 
+def _valid_snapshot_entry_payload() -> dict:
+    return {
+        "path": "tests/fixtures/providers/sample.json",
+        "sha256": VALID_SHA256,
+        "size_bytes": 1,
+        "fixture_kind": "provider-payload-fixture",
+        "fixture_schema_version": 1,
+        "review_status": "tracked",
+    }
+
+
+def test_fixture_snapshot_entry_loads_defaults_and_validates_fields() -> None:
+    payload = _valid_snapshot_entry_payload()
+    payload.pop("review_status")
+
+    entry = FixtureSnapshotEntry.from_dict(payload, source="fixture-snapshots.json entries[0]")
+
+    assert entry.path == "tests/fixtures/providers/sample.json"
+    assert entry.review_status == "tracked"
+    assert entry.fixture_schema_version == 1
+
+
+@pytest.mark.parametrize(
+    ("payload", "pattern"),
+    (
+        ([], "must be a JSON object"),
+        ({**_valid_snapshot_entry_payload(), "path": ""}, "'path' must be non-empty"),
+        ({**_valid_snapshot_entry_payload(), "sha256": ""}, "'sha256' must be non-empty"),
+        (
+            {**_valid_snapshot_entry_payload(), "size_bytes": True},
+            "'size_bytes' must be a non-negative integer",
+        ),
+        (
+            {**_valid_snapshot_entry_payload(), "fixture_kind": ""},
+            "'fixture_kind' must be non-empty",
+        ),
+        (
+            {**_valid_snapshot_entry_payload(), "fixture_schema_version": False},
+            "'fixture_schema_version' must be a string",
+        ),
+        (
+            {**_valid_snapshot_entry_payload(), "review_status": "unchecked"},
+            "'review_status' must be one of",
+        ),
+    ),
+)
+def test_fixture_snapshot_entry_rejects_malformed_manifest_fields(
+    payload: object,
+    pattern: str,
+) -> None:
+    with pytest.raises(WorldForgeError, match=pattern):
+        FixtureSnapshotEntry.from_dict(payload, source="fixture-snapshots.json entries[0]")  # type: ignore[arg-type]
+
+
 def test_fixture_snapshot_manifest_loads_and_validates_committed_manifest() -> None:
     manifest = load_fixture_snapshot_manifest(
         ROOT / "tests" / "fixtures" / "fixture-snapshots.json"

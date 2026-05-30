@@ -14,6 +14,8 @@ from worldforge.cli import main as worldforge_main
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest
 from worldforge.runs_prune import (
     RUNS_PRUNE_SCHEMA_VERSION,
+    PruneCandidate,
+    PruneReport,
     RunsRetentionPolicy,
     apply_prune,
     parse_runs_retention,
@@ -289,6 +291,30 @@ def test_plan_prune_rejects_blank_workspace_dir() -> None:
         plan_prune("")
 
 
+def test_runs_prune_report_json_rejects_non_finite_payload() -> None:
+    report = PruneReport(
+        schema_version=RUNS_PRUNE_SCHEMA_VERSION,
+        workspace_dir="/tmp/worldforge",
+        policy=RunsRetentionPolicy(),
+        generated_at="2026-01-01T00:00:00Z",
+        candidates=(
+            PruneCandidate(
+                run_id="bad",
+                run_dir="/tmp/worldforge/runs/bad",
+                kind="eval",
+                created_at="2026-01-01T00:00:00Z",
+                size_bytes=float("nan"),  # type: ignore[arg-type]
+                action="delete",
+                reason="test",
+            ),
+        ),
+        applied=False,
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        report.to_json()
+
+
 def test_apply_prune_refuses_crafted_runs_subpath(tmp_path: Path) -> None:
     """A path that contains ``runs`` as a segment but is not under workspace/runs."""
 
@@ -447,6 +473,41 @@ def test_runs_prune_cli_flag_equals_form_overrides_profile(
     payload = json.loads(capsys.readouterr().out)
     # CLI overrides the profile: 999 days + keep 99 means none are old enough to delete.
     assert payload["delete_count"] == 0
+
+
+def test_runs_retention_profile_rejects_non_finite_payload(tmp_path: Path) -> None:
+    from worldforge.cli_runs import _runs_retention_profile
+
+    profile = tmp_path / "profile.json"
+    profile.write_text(
+        '{"schema_version": 1, "runs_retention": {"max_age_days": 0}, "score": NaN}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        _runs_retention_profile(profile)
+
+
+def test_plan_prune_treats_non_finite_manifest_as_unparseable(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir(parents=True)
+    bad = runs / "20260101T000000Z-bad00005"
+    bad.mkdir()
+    (bad / "run_manifest.json").write_text(
+        '{"schema_version": 1, "kind": "eval", "created_at": "2026-01-01T00:00:00Z", '
+        '"latency_ms": NaN}\n',
+        encoding="utf-8",
+    )
+
+    report = plan_prune(
+        tmp_path,
+        policy=RunsRetentionPolicy(max_age_days=0, keep_latest=0),
+        now=datetime(2026, 5, 1, tzinfo=UTC),
+    )
+
+    assert len(report.candidates) == 1
+    assert report.candidates[0].kind == ""
+    assert report.candidates[0].action == "delete"
 
 
 def test_plan_prune_keeps_runs_with_unparseable_created_at(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -16,6 +17,8 @@ ConnectorStatus = Literal[
     "unhealthy",
     "scaffold",
 ]
+PROVIDER_CONNECTOR_DETAIL_EMPTY_MESSAGE = "No provider selected."
+PROVIDER_CONNECTOR_LAST_CALL_EMPTY_MESSAGE = "No run captured — press p to run mock.predict."
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +82,45 @@ def provider_connector_summary_markdown(rows: tuple[ProviderConnectorSummary, ..
             f"`{row.smoke_command}` |"
         )
     return "\n".join(lines)
+
+
+def provider_connector_detail_text(
+    row: ProviderConnectorSummary | None,
+    *,
+    last_call_summary: Mapping[str, object] | None = None,
+) -> str:
+    """Render one provider connector row for the TUI detail pane."""
+
+    if row is None:
+        return PROVIDER_CONNECTOR_DETAIL_EMPTY_MESSAGE
+    return "\n".join(
+        [
+            f"Provider: {row.name}",
+            f"Status: {row.status} ({row.implementation_status})",
+            f"Capabilities: {_connector_value_list(row.capabilities)}",
+            f"Health: {row.health}",
+            f"Required env vars: {_connector_value_list(row.required_env_vars)}",
+            f"Missing env vars: {_connector_value_list(row.missing_env_vars)}",
+            f"Optional deps: {_connector_value_list(row.optional_dependencies)}",
+            f"Next command: {row.smoke_command}",
+            f"Triage: {' | '.join(row.triage_steps)}",
+            f"Last call: {_connector_last_call_text(last_call_summary)}",
+        ]
+    )
+
+
+def _connector_value_list(values: tuple[str, ...]) -> str:
+    return ", ".join(values) if values else "none"
+
+
+def _connector_last_call_text(summary: Mapping[str, object] | None) -> str:
+    if not summary:
+        return PROVIDER_CONNECTOR_LAST_CALL_EMPTY_MESSAGE
+    return (
+        f"{summary.get('phase')} "
+        f"{float(summary.get('latency_ms') or 0.0):.2f} ms "
+        f"retries={summary.get('retries', 0)}"
+    )
 
 
 def _summary_from_status(

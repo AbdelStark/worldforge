@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,27 @@ from worldforge.harness.flows import (
 JSON = dict[str, Any]
 DEFAULT_WORKSPACE = Path(".worldforge/batch-eval")
 DEFAULT_STATE_DIR = Path(".worldforge/batch-eval/worlds")
+
+
+@dataclass(frozen=True, slots=True)
+class _BenchmarkInputs:
+    inputs: Any | None
+    metadata: JSON | None
+
+
+@dataclass(frozen=True, slots=True)
+class _BenchmarkBudget:
+    gate_report: Any | None
+    metadata: JSON | None
+
+
+@dataclass(frozen=True, slots=True)
+class _BenchmarkArtifacts:
+    run_id: str
+    run_workspace: Path
+    manifest_path: Path
+    manifest: JSON
+    attached_inputs: dict[str, str]
 
 
 def run_eval_job(
@@ -82,77 +104,40 @@ def run_benchmark_job(
     """Run a benchmark job, preserve artifacts, and return a budget-aware summary."""
 
     forge = WorldForge(state_dir=state_dir)
-    inputs = None
-    input_metadata = None
-    if input_file is not None:
-        input_metadata, input_payload = _load_json_file(input_file, label="benchmark input file")
-        inputs = load_benchmark_inputs(input_payload, base_path=input_file.expanduser().parent)
-
-    report = ProviderBenchmarkHarness(forge=forge).run(
-        providers,
+    benchmark_inputs = _benchmark_inputs(input_file)
+    report = _run_provider_benchmark(
+        forge,
+        providers=providers,
         operations=operations,
         iterations=iterations,
         concurrency=concurrency,
-        inputs=inputs,
+        inputs=benchmark_inputs.inputs,
     )
-    if input_metadata is not None:
-        report.run_metadata["input_file"] = input_metadata
-
-    gate_report = None
-    budget_metadata = None
-    if budget_file is not None:
-        budget_metadata, budget_payload = _load_json_file(
-            budget_file,
-            label="benchmark budget file",
-        )
-        report.run_metadata["budget_file"] = budget_metadata
-        gate_report = report.evaluate_budgets(load_benchmark_budgets(budget_payload))
-
-    command = _command_string(
-        [
-            "benchmark",
-            *_repeat_args("--provider", providers),
-            *_repeat_args("--operation", operations or []),
-            "--iterations",
-            str(iterations),
-            "--concurrency",
-            str(concurrency),
-            "--workspace",
-            str(workspace_dir),
-        ]
-    )
-    workspace = preserve_benchmark_run_workspace(
-        workspace_dir,
+    _record_optional_metadata(report, "input_file", benchmark_inputs.metadata)
+    benchmark_budget = _benchmark_budget(report, budget_file)
+    command = _benchmark_command(
         providers=providers,
         operations=operations,
-        artifacts=report.artifacts(),
+        iterations=iterations,
+        concurrency=concurrency,
+        workspace_dir=workspace_dir,
+    )
+    artifacts = _preserve_benchmark_artifacts(
+        workspace_dir=workspace_dir,
+        providers=providers,
+        operations=operations,
         report=report,
         command=command,
-        budget_passed=None if gate_report is None else gate_report.passed,
-    )
-    attached_inputs = _copy_input_artifacts(
-        workspace.path,
+        budget_passed=_budget_passed(benchmark_budget.gate_report),
         input_file=input_file,
         budget_file=budget_file,
     )
-    if attached_inputs:
-        _patch_manifest_artifacts(workspace.manifest_path, attached_inputs)
-    manifest = _manifest_payload(workspace.manifest_path)
-    budget_passed = None if gate_report is None else gate_report.passed
-    status = "passed" if budget_passed is not False else "failed"
-    return {
-        "kind": "benchmark",
-        "status": status,
-        "exit_code": 0 if status == "passed" else 1,
-        "run_id": workspace.run_id,
-        "run_workspace": str(workspace.path),
-        "run_manifest": str(workspace.manifest_path),
-        "report_paths": manifest["artifact_paths"],
-        "summary": manifest["result_summary"],
-        "budget": None if gate_report is None else gate_report.to_dict(),
-        "input_file": input_metadata,
-        "budget_file": budget_metadata,
-    }
+    return _benchmark_result(
+        artifacts=artifacts,
+        gate_report=benchmark_budget.gate_report,
+        input_metadata=benchmark_inputs.metadata,
+        budget_metadata=benchmark_budget.metadata,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -265,6 +250,140 @@ def _command_string(args: list[str]) -> str:
     return "python examples/hosts/batch-eval/app.py " + " ".join(args)
 
 
+def _benchmark_inputs(input_file: Path | None) -> _BenchmarkInputs:
+    if input_file is None:
+        return _BenchmarkInputs(inputs=None, metadata=None)
+    metadata, payload = _load_json_file(input_file, label="benchmark input file")
+    return _BenchmarkInputs(
+        inputs=load_benchmark_inputs(payload, base_path=input_file.expanduser().parent),
+        metadata=metadata,
+    )
+
+
+def _run_provider_benchmark(
+    forge: WorldForge,
+    *,
+    providers: list[str],
+    operations: list[str] | None,
+    iterations: int,
+    concurrency: int,
+    inputs: Any | None,
+) -> Any:
+    return ProviderBenchmarkHarness(forge=forge).run(
+        providers,
+        operations=operations,
+        iterations=iterations,
+        concurrency=concurrency,
+        inputs=inputs,
+    )
+
+
+def _record_optional_metadata(report: Any, key: str, metadata: JSON | None) -> None:
+    if metadata is not None:
+        report.run_metadata[key] = metadata
+
+
+def _benchmark_budget(report: Any, budget_file: Path | None) -> _BenchmarkBudget:
+    if budget_file is None:
+        return _BenchmarkBudget(gate_report=None, metadata=None)
+    metadata, payload = _load_json_file(budget_file, label="benchmark budget file")
+    _record_optional_metadata(report, "budget_file", metadata)
+    return _BenchmarkBudget(
+        gate_report=report.evaluate_budgets(load_benchmark_budgets(payload)),
+        metadata=metadata,
+    )
+
+
+def _budget_passed(gate_report: Any | None) -> bool | None:
+    return None if gate_report is None else bool(gate_report.passed)
+
+
+def _benchmark_command(
+    *,
+    providers: list[str],
+    operations: list[str] | None,
+    iterations: int,
+    concurrency: int,
+    workspace_dir: Path,
+) -> str:
+    return _command_string(
+        [
+            "benchmark",
+            *_repeat_args("--provider", providers),
+            *_repeat_args("--operation", operations or []),
+            "--iterations",
+            str(iterations),
+            "--concurrency",
+            str(concurrency),
+            "--workspace",
+            str(workspace_dir),
+        ]
+    )
+
+
+def _preserve_benchmark_artifacts(
+    *,
+    workspace_dir: Path,
+    providers: list[str],
+    operations: list[str] | None,
+    report: Any,
+    command: str,
+    budget_passed: bool | None,
+    input_file: Path | None,
+    budget_file: Path | None,
+) -> _BenchmarkArtifacts:
+    workspace = preserve_benchmark_run_workspace(
+        workspace_dir,
+        providers=providers,
+        operations=operations,
+        artifacts=report.artifacts(),
+        report=report,
+        command=command,
+        budget_passed=budget_passed,
+    )
+    attached_inputs = _copy_input_artifacts(
+        workspace.path,
+        input_file=input_file,
+        budget_file=budget_file,
+    )
+    if attached_inputs:
+        _patch_manifest_artifacts(workspace.manifest_path, attached_inputs)
+    return _BenchmarkArtifacts(
+        run_id=workspace.run_id,
+        run_workspace=workspace.path,
+        manifest_path=workspace.manifest_path,
+        manifest=_manifest_payload(workspace.manifest_path),
+        attached_inputs=attached_inputs,
+    )
+
+
+def _benchmark_status(gate_report: Any | None) -> str:
+    return "passed" if _budget_passed(gate_report) is not False else "failed"
+
+
+def _benchmark_result(
+    *,
+    artifacts: _BenchmarkArtifacts,
+    gate_report: Any | None,
+    input_metadata: JSON | None,
+    budget_metadata: JSON | None,
+) -> JSON:
+    status = _benchmark_status(gate_report)
+    return {
+        "kind": "benchmark",
+        "status": status,
+        "exit_code": 0 if status == "passed" else 1,
+        "run_id": artifacts.run_id,
+        "run_workspace": str(artifacts.run_workspace),
+        "run_manifest": str(artifacts.manifest_path),
+        "report_paths": artifacts.manifest["artifact_paths"],
+        "summary": artifacts.manifest["result_summary"],
+        "budget": None if gate_report is None else gate_report.to_dict(),
+        "input_file": input_metadata,
+        "budget_file": budget_metadata,
+    }
+
+
 def _load_json_file(path: Path, *, label: str) -> tuple[JSON, object]:
     resolved = path.expanduser()
     try:
@@ -297,6 +416,7 @@ def _copy_input_artifacts(
 ) -> dict[str, str]:
     copied: dict[str, str] = {}
     inputs_dir = run_workspace / "inputs"
+    inputs_dir.mkdir(parents=True, exist_ok=True)
     if input_file is not None:
         target = inputs_dir / "benchmark-inputs.json"
         shutil.copy2(input_file.expanduser(), target)

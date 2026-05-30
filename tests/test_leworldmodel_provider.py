@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import types
 from pathlib import Path
 from typing import Any
 
@@ -353,6 +354,25 @@ def test_leworldmodel_provider_health_reports_transitive_stable_worldmodel_impor
     assert health.healthy is False
     assert "stable_worldmodel import failed" in health.details
     assert "cv2" in health.details
+
+
+def test_leworldmodel_provider_health_reports_missing_autocostmodel(monkeypatch) -> None:
+    provider = LeWorldModelProvider(policy="pusht/lewm", tensor_module=FakeTorch())
+
+    def fake_import(name: str) -> object:
+        if name == "stable_worldmodel":
+            return types.SimpleNamespace(policy=types.SimpleNamespace())
+        return __import__(name)
+
+    monkeypatch.setattr(
+        "worldforge.providers.leworldmodel.importlib.import_module",
+        fake_import,
+    )
+
+    health = provider.health()
+
+    assert health.healthy is False
+    assert "stable_worldmodel.policy.AutoCostModel is unavailable" in health.details
 
 
 def test_leworldmodel_doctor_reports_dependency_issue_after_configuration(

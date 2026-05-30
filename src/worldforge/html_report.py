@@ -25,13 +25,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from html import escape
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from worldforge.models import JSONDict, WorldForgeError
 
 if TYPE_CHECKING:
     from worldforge.benchmark import BenchmarkReport
-    from worldforge.evaluation.suites import EvaluationReport
+    from worldforge.evaluation.report import EvaluationReport
 
 HTML_REPORT_SCHEMA_VERSION = 1
 
@@ -147,20 +147,277 @@ def _claim_boundary_block(claim_boundary: str | None, metric_semantics: str | No
     return "\n".join(parts)
 
 
+def _require_html_payload(payload: object, *, name: str) -> JSONDict:
+    if not isinstance(payload, dict):
+        raise WorldForgeError(f"{name} must be a JSON object.")
+    return cast(JSONDict, payload)
+
+
+def _dict_rows(value: object) -> list[JSONDict]:
+    if not isinstance(value, list):
+        return []
+    return [cast(JSONDict, item) for item in value if isinstance(item, dict)]
+
+
+def _append_table_section(
+    body_parts: list[str],
+    *,
+    title: str,
+    headers: Sequence[str],
+    rows: Sequence[Sequence[object]],
+    numeric_columns: Sequence[int] = (),
+) -> None:
+    if not rows:
+        return
+    body_parts.append(f"<h2>{escape(title)}</h2>")
+    body_parts.append(_table(headers, rows, numeric_columns=numeric_columns))
+
+
+def _comparison_title(payload: JSONDict) -> str:
+    kind = str(payload.get("kind") or "comparison")
+    mode = str(payload.get("mode") or "comparison")
+    if mode == "regression":
+        return f"WorldForge Regression Comparison: {kind}"
+    return f"WorldForge Run Comparison: {kind}"
+
+
+def _comparison_summary_items(payload: JSONDict) -> tuple[tuple[str, object], ...]:
+    return (
+        ("Kind", payload.get("kind")),
+        ("Mode", payload.get("mode") or "comparison"),
+        ("Schema version", payload.get("schema_version")),
+        ("Baseline run id", payload.get("baseline_run_id")),
+        ("Candidate run id", payload.get("candidate_run_id")),
+        ("Run count", payload.get("run_count")),
+        ("Claim boundary", payload.get("claim_boundary")),
+    )
+
+
+def _comparison_run_rows(runs: Sequence[JSONDict]) -> list[tuple[object, ...]]:
+    return [
+        (
+            run.get("run_id", "-"),
+            run.get("created_at", "-"),
+            run.get("status", "-"),
+            run.get("provider", "-"),
+            run.get("operation", "-"),
+            run.get("command", "-"),
+        )
+        for run in runs
+    ]
+
+
+def _comparison_row_keys(rows: Sequence[JSONDict]) -> list[str]:
+    seen_keys: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in seen_keys:
+                seen_keys.append(key)
+    return seen_keys
+
+
+def _evidence_summary_items(manifest: JSONDict) -> tuple[tuple[str, object], ...]:
+    return (
+        ("Schema version", manifest.get("schema_version")),
+        ("Generated at", manifest.get("generated_at")),
+        ("Source workspace", manifest.get("source_workspace")),
+        ("Runs", manifest.get("run_count")),
+        ("Included files", manifest.get("included_count")),
+        ("Excluded files", manifest.get("excluded_count")),
+        ("Safe to attach", manifest.get("safe_to_attach")),
+    )
+
+
+def _evidence_run_rows(runs: Sequence[JSONDict]) -> list[tuple[object, ...]]:
+    return [
+        (
+            run.get("run_id", "-"),
+            run.get("kind") or "-",
+            run.get("status") or "-",
+            run.get("provider") or "-",
+            run.get("operation") or "-",
+            run.get("command") or "-",
+            run.get("skip_reason") or "-",
+        )
+        for run in runs
+    ]
+
+
+def _evidence_file_rows(files: Sequence[JSONDict]) -> list[tuple[object, ...]]:
+    return [
+        (
+            item.get("path", "-"),
+            str(item.get("included", False)).lower(),
+            str(item.get("safe_to_attach", False)).lower(),
+            item.get("sha256") or "-",
+            item.get("reason") or "-",
+        )
+        for item in files
+    ]
+
+
+def _fixture_digest_rows(digests: Sequence[JSONDict]) -> list[tuple[object, ...]]:
+    return [(item.get("path", "-"), item.get("sha256", "-")) for item in digests]
+
+
+def _issue_primary_run(manifest: JSONDict) -> JSONDict:
+    runs = _dict_rows(manifest.get("runs", []))
+    return runs[0] if runs else {}
+
+
+def _append_issue_text_section(
+    body_parts: list[str],
+    *,
+    title: str,
+    value: object,
+    preformatted: bool = False,
+) -> None:
+    body_parts.append(f"<h2>{escape(title)}</h2>")
+    if preformatted:
+        body_parts.append(f"<pre>{escape(str(value or '-'))}</pre>")
+        return
+    body_parts.append(f"<p>{escape(str(value or '-'))}</p>")
+
+
+def _append_validation_errors(body_parts: list[str], run: JSONDict) -> None:
+    validation_errors = run.get("validation_errors")
+    if not isinstance(validation_errors, list) or not validation_errors:
+        return
+    body_parts.append("<h2>Validation Errors</h2><ul>")
+    body_parts.extend(f"  <li>{escape(str(err))}</li>" for err in validation_errors)
+    body_parts.append("</ul>")
+
+
+def _issue_file_rows(files: Sequence[JSONDict]) -> list[tuple[object, ...]]:
+    return [
+        (
+            item.get("path", "-"),
+            str(item.get("included", False)).lower(),
+            str(item.get("safe_to_attach", False)).lower(),
+            item.get("reason") or "-",
+        )
+        for item in files
+    ]
+
+
+def _append_issue_files(body_parts: list[str], manifest: JSONDict) -> None:
+    body_parts.append("<h2>Attached Files</h2>")
+    files = _dict_rows(manifest.get("files"))
+    if not files:
+        body_parts.append("<p>No attached files.</p>")
+        return
+    body_parts.append(
+        _table(
+            ("Path", "Included", "Safe to Attach", "Reason"),
+            _issue_file_rows(files),
+        )
+    )
+
+
+def _append_unsafe_issue_warning(body_parts: list[str], *, safe_to_attach: bool) -> None:
+    if safe_to_attach:
+        return
+    body_parts.append(
+        '<section class="warning"><p><strong>Warning:</strong> some bundle '
+        "files are not safe to attach. Review the file list before sharing "
+        "this report outside the host.</p></section>"
+    )
+
+
+def _evaluation_summary_items(report: EvaluationReport) -> tuple[tuple[str, object], ...]:
+    return (
+        ("Suite ID", report.suite_id),
+        ("Suite", report.suite),
+    )
+
+
+def _evaluation_provider_rows(report: EvaluationReport) -> list[tuple[object, ...]]:
+    return [
+        (
+            summary.provider,
+            f"{summary.average_score:.2f}",
+            f"{summary.passed_scenario_count}/{summary.scenario_count}",
+            summary.scenario_count,
+        )
+        for summary in report.provider_summaries
+    ]
+
+
+def _evaluation_scenario_rows(report: EvaluationReport) -> list[tuple[object, ...]]:
+    return [
+        (
+            result.provider,
+            result.scenario,
+            f"{result.score:.2f}",
+            "yes" if result.passed else "no",
+        )
+        for result in report.results
+    ]
+
+
+def _append_failure_gallery(body_parts: list[str], payload: JSONDict) -> None:
+    failure_payload = payload.get("failure_gallery")
+    if not isinstance(failure_payload, dict) or not failure_payload.get("case_count"):
+        return
+    body_parts.append("<h2>Failure Gallery</h2>")
+    body_parts.append(
+        _table(
+            ("Provider", "Scenario", "Observed Score", "Expected"),
+            [
+                (
+                    case.get("provider", "-"),
+                    case.get("scenario", "-"),
+                    case.get("observed_score") or "-",
+                    case.get("expected_contract") or "-",
+                )
+                for case in _dict_rows(failure_payload.get("cases", []))
+            ],
+        )
+    )
+
+
+def _append_workflow_trace(body_parts: list[str], payload: JSONDict) -> None:
+    workflow_trace = payload.get("workflow_trace")
+    if not isinstance(workflow_trace, dict):
+        return
+    body_parts.append("<h2>Workflow Trace</h2>")
+    body_parts.append(
+        _summary_list(
+            (
+                ("Workflow", workflow_trace.get("name")),
+                ("Status", workflow_trace.get("status")),
+                ("Steps", workflow_trace.get("step_count")),
+            )
+        )
+    )
+    steps = _dict_rows(workflow_trace.get("steps", []))
+    if not steps:
+        return
+    body_parts.append(
+        _table(
+            ("Step", "Parent", "Operation", "Provider", "Capability", "Status"),
+            [
+                (
+                    step.get("step_id", "-"),
+                    step.get("parent_id", "-"),
+                    step.get("operation", "-"),
+                    step.get("provider", "-"),
+                    step.get("capability", "-"),
+                    step.get("status", "-"),
+                )
+                for step in steps
+            ],
+        )
+    )
+
+
 def render_evaluation_html(report: EvaluationReport) -> str:
     """Render an :class:`EvaluationReport` as a self-contained HTML document."""
 
     payload = report.to_dict()
     title = f"WorldForge Evaluation Report: {report.suite}"
     body_parts: list[str] = [f"<h1>{escape(title)}</h1>"]
-    body_parts.append(
-        _summary_list(
-            (
-                ("Suite ID", report.suite_id),
-                ("Suite", report.suite),
-            )
-        )
-    )
+    body_parts.append(_summary_list(_evaluation_summary_items(report)))
     body_parts.append(
         _claim_boundary_block(
             payload.get("claim_boundary"),
@@ -172,15 +429,7 @@ def render_evaluation_html(report: EvaluationReport) -> str:
     body_parts.append(
         _table(
             ("Provider", "Average Score", "Passed", "Scenarios"),
-            (
-                (
-                    summary.provider,
-                    f"{summary.average_score:.2f}",
-                    f"{summary.passed_scenario_count}/{summary.scenario_count}",
-                    summary.scenario_count,
-                )
-                for summary in report.provider_summaries
-            ),
+            _evaluation_provider_rows(report),
             numeric_columns=(1, 2, 3),
         )
     )
@@ -189,70 +438,13 @@ def render_evaluation_html(report: EvaluationReport) -> str:
     body_parts.append(
         _table(
             ("Provider", "Scenario", "Score", "Passed"),
-            (
-                (
-                    result.provider,
-                    result.scenario,
-                    f"{result.score:.2f}",
-                    "yes" if result.passed else "no",
-                )
-                for result in report.results
-            ),
+            _evaluation_scenario_rows(report),
             numeric_columns=(2,),
         )
     )
 
-    failure_payload = payload.get("failure_gallery")
-    if isinstance(failure_payload, dict) and failure_payload.get("case_count"):
-        body_parts.append("<h2>Failure Gallery</h2>")
-        cases = failure_payload.get("cases", [])
-        body_parts.append(
-            _table(
-                ("Provider", "Scenario", "Observed Score", "Expected"),
-                (
-                    (
-                        case.get("provider", "-"),
-                        case.get("scenario", "-"),
-                        case.get("observed_score") or "-",
-                        case.get("expected_contract") or "-",
-                    )
-                    for case in cases
-                    if isinstance(case, dict)
-                ),
-            )
-        )
-
-    workflow_trace = payload.get("workflow_trace")
-    if isinstance(workflow_trace, dict):
-        body_parts.append("<h2>Workflow Trace</h2>")
-        body_parts.append(
-            _summary_list(
-                (
-                    ("Workflow", workflow_trace.get("name")),
-                    ("Status", workflow_trace.get("status")),
-                    ("Steps", workflow_trace.get("step_count")),
-                )
-            )
-        )
-        steps = workflow_trace.get("steps", [])
-        if isinstance(steps, list):
-            body_parts.append(
-                _table(
-                    ("Step", "Parent", "Operation", "Provider", "Capability", "Status"),
-                    (
-                        (
-                            step.get("step_id", "-"),
-                            step.get("parent_id", "-"),
-                            step.get("operation", "-"),
-                            step.get("provider", "-"),
-                            step.get("capability", "-"),
-                            step.get("status", "-"),
-                        )
-                        for step in steps
-                        if isinstance(step, dict)
-                    ),
-                )
-            )
+    _append_failure_gallery(body_parts, payload)
+    _append_workflow_trace(body_parts, payload)
 
     return _document(
         title=title,
@@ -316,76 +508,32 @@ def render_comparison_html(payload: JSONDict) -> str:
     :func:`worldforge.harness.report_compare.compare_preserved_run_reports`.
     """
 
-    if not isinstance(payload, dict):
-        raise WorldForgeError("comparison payload must be a JSON object.")
-    kind = str(payload.get("kind") or "comparison")
-    mode = str(payload.get("mode") or "comparison")
-    title = (
-        f"WorldForge Regression Comparison: {kind}"
-        if mode == "regression"
-        else f"WorldForge Run Comparison: {kind}"
-    )
+    payload = _require_html_payload(payload, name="comparison payload")
+    title = _comparison_title(payload)
     body_parts: list[str] = [f"<h1>{escape(title)}</h1>"]
-    body_parts.append(
-        _summary_list(
-            (
-                ("Kind", payload.get("kind")),
-                ("Mode", mode),
-                ("Schema version", payload.get("schema_version")),
-                ("Baseline run id", payload.get("baseline_run_id")),
-                ("Candidate run id", payload.get("candidate_run_id")),
-                ("Run count", payload.get("run_count")),
-                ("Claim boundary", payload.get("claim_boundary")),
-            )
-        )
-    )
+    body_parts.append(_summary_list(_comparison_summary_items(payload)))
 
     regression_summary = payload.get("regression_summary")
     if isinstance(regression_summary, dict):
         body_parts.append("<h2>Regression Summary</h2>")
         body_parts.append(_summary_list(sorted(regression_summary.items())))
 
-    runs = payload.get("runs")
-    if isinstance(runs, list) and runs:
-        body_parts.append("<h2>Runs</h2>")
-        body_parts.append(
-            _table(
-                ("Run", "Created", "Status", "Provider", "Operation", "Command"),
-                (
-                    (
-                        run.get("run_id", "-"),
-                        run.get("created_at", "-"),
-                        run.get("status", "-"),
-                        run.get("provider", "-"),
-                        run.get("operation", "-"),
-                        run.get("command", "-"),
-                    )
-                    for run in runs
-                    if isinstance(run, dict)
-                ),
-            )
-        )
+    runs = _dict_rows(payload.get("runs"))
+    _append_table_section(
+        body_parts,
+        title="Runs",
+        headers=("Run", "Created", "Status", "Provider", "Operation", "Command"),
+        rows=_comparison_run_rows(runs),
+    )
 
-    rows = payload.get("rows")
-    if isinstance(rows, list) and rows:
-        body_parts.append("<h2>Comparison Rows</h2>")
-        seen_keys: list[str] = []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            for key in row:
-                if key not in seen_keys:
-                    seen_keys.append(key)
-        body_parts.append(
-            _table(
-                tuple(seen_keys),
-                (
-                    tuple(row.get(key, "") for key in seen_keys)
-                    for row in rows
-                    if isinstance(row, dict)
-                ),
-            )
-        )
+    rows = _dict_rows(payload.get("rows"))
+    row_keys = _comparison_row_keys(rows)
+    _append_table_section(
+        body_parts,
+        title="Comparison Rows",
+        headers=tuple(row_keys),
+        rows=[tuple(row.get(key, "") for key in row_keys) for row in rows],
+    )
 
     return _document(title=title, body="\n".join(body_parts))
 
@@ -393,80 +541,29 @@ def render_comparison_html(payload: JSONDict) -> str:
 def render_evidence_bundle_html(manifest: JSONDict) -> str:
     """Render an evidence-bundle manifest as a self-contained HTML document."""
 
-    if not isinstance(manifest, dict):
-        raise WorldForgeError("evidence bundle manifest must be a JSON object.")
+    manifest = _require_html_payload(manifest, name="evidence bundle manifest")
     title = "WorldForge Evidence Bundle"
     body_parts: list[str] = [f"<h1>{escape(title)}</h1>"]
 
-    body_parts.append(
-        _summary_list(
-            (
-                ("Schema version", manifest.get("schema_version")),
-                ("Generated at", manifest.get("generated_at")),
-                ("Source workspace", manifest.get("source_workspace")),
-                ("Runs", manifest.get("run_count")),
-                ("Included files", manifest.get("included_count")),
-                ("Excluded files", manifest.get("excluded_count")),
-                ("Safe to attach", manifest.get("safe_to_attach")),
-            )
-        )
+    body_parts.append(_summary_list(_evidence_summary_items(manifest)))
+    _append_table_section(
+        body_parts,
+        title="Runs",
+        headers=("Run", "Kind", "Status", "Provider", "Operation", "Command", "Skip Reason"),
+        rows=_evidence_run_rows(_dict_rows(manifest.get("runs"))),
     )
-
-    runs = manifest.get("runs")
-    if isinstance(runs, list) and runs:
-        body_parts.append("<h2>Runs</h2>")
-        body_parts.append(
-            _table(
-                ("Run", "Kind", "Status", "Provider", "Operation", "Command", "Skip Reason"),
-                (
-                    (
-                        run.get("run_id", "-"),
-                        run.get("kind") or "-",
-                        run.get("status") or "-",
-                        run.get("provider") or "-",
-                        run.get("operation") or "-",
-                        run.get("command") or "-",
-                        run.get("skip_reason") or "-",
-                    )
-                    for run in runs
-                    if isinstance(run, dict)
-                ),
-            )
-        )
-
-    files = manifest.get("files")
-    if isinstance(files, list) and files:
-        body_parts.append("<h2>Files</h2>")
-        body_parts.append(
-            _table(
-                ("Path", "Included", "Safe to Attach", "SHA-256", "Reason"),
-                (
-                    (
-                        item.get("path", "-"),
-                        str(item.get("included", False)).lower(),
-                        str(item.get("safe_to_attach", False)).lower(),
-                        item.get("sha256") or "-",
-                        item.get("reason") or "-",
-                    )
-                    for item in files
-                    if isinstance(item, dict)
-                ),
-            )
-        )
-
-    digests = manifest.get("fixture_digests")
-    if isinstance(digests, list) and digests:
-        body_parts.append("<h2>Fixture Digests</h2>")
-        body_parts.append(
-            _table(
-                ("Fixture", "SHA-256"),
-                (
-                    (item.get("path", "-"), item.get("sha256", "-"))
-                    for item in digests
-                    if isinstance(item, dict)
-                ),
-            )
-        )
+    _append_table_section(
+        body_parts,
+        title="Files",
+        headers=("Path", "Included", "Safe to Attach", "SHA-256", "Reason"),
+        rows=_evidence_file_rows(_dict_rows(manifest.get("files"))),
+    )
+    _append_table_section(
+        body_parts,
+        title="Fixture Digests",
+        headers=("Fixture", "SHA-256"),
+        rows=_fixture_digest_rows(_dict_rows(manifest.get("fixture_digests"))),
+    )
 
     body_parts.append("<h2>Claim Boundary</h2>")
     body_parts.append(
@@ -482,63 +579,37 @@ def render_evidence_bundle_html(manifest: JSONDict) -> str:
 def render_issue_bundle_html(manifest: JSONDict) -> str:
     """Render an issue-ready bundle manifest as a self-contained HTML document."""
 
-    if not isinstance(manifest, dict):
-        raise WorldForgeError("issue bundle manifest must be a JSON object.")
-    runs = manifest.get("runs", [])
-    run = runs[0] if isinstance(runs, list) and runs else {}
-    if not isinstance(run, dict):
-        run = {}
+    manifest = _require_html_payload(manifest, name="issue bundle manifest")
+    run = _issue_primary_run(manifest)
     safe = bool(manifest.get("safe_to_attach"))
     title = f"WorldForge Run Issue: {run.get('run_id', '-')}"
     body_parts: list[str] = [f"<h1>{escape(title)}</h1>"]
 
-    body_parts.append("<h2>Command</h2>")
-    body_parts.append(f"<pre>{escape(str(run.get('command') or '-'))}</pre>")
-
-    body_parts.append("<h2>Expected Signal</h2>")
-    body_parts.append(f"<p>{escape(str(run.get('expected_signal') or '-'))}</p>")
-
-    body_parts.append("<h2>Observed Failure</h2>")
-    body_parts.append(f"<p>{escape(str(run.get('observed_failure') or '-'))}</p>")
-
-    validation_errors = run.get("validation_errors")
-    if isinstance(validation_errors, list) and validation_errors:
-        body_parts.append("<h2>Validation Errors</h2><ul>")
-        body_parts.extend(f"  <li>{escape(str(err))}</li>" for err in validation_errors)
-        body_parts.append("</ul>")
+    _append_issue_text_section(
+        body_parts,
+        title="Command",
+        value=run.get("command"),
+        preformatted=True,
+    )
+    _append_issue_text_section(
+        body_parts,
+        title="Expected Signal",
+        value=run.get("expected_signal"),
+    )
+    _append_issue_text_section(
+        body_parts,
+        title="Observed Failure",
+        value=run.get("observed_failure"),
+    )
+    _append_validation_errors(body_parts, run)
 
     triage = manifest.get("first_triage_step")
     if isinstance(triage, str) and triage.strip():
         body_parts.append("<h2>First Triage Step</h2>")
         body_parts.append(f"<p>{escape(triage)}</p>")
 
-    body_parts.append("<h2>Attached Files</h2>")
-    files = manifest.get("files")
-    if isinstance(files, list) and files:
-        body_parts.append(
-            _table(
-                ("Path", "Included", "Safe to Attach", "Reason"),
-                (
-                    (
-                        item.get("path", "-"),
-                        str(item.get("included", False)).lower(),
-                        str(item.get("safe_to_attach", False)).lower(),
-                        item.get("reason") or "-",
-                    )
-                    for item in files
-                    if isinstance(item, dict)
-                ),
-            )
-        )
-    else:
-        body_parts.append("<p>No attached files.</p>")
-
-    if not safe:
-        body_parts.append(
-            '<section class="warning"><p><strong>Warning:</strong> some bundle '
-            "files are not safe to attach. Review the file list before sharing "
-            "this report outside the host.</p></section>"
-        )
+    _append_issue_files(body_parts, manifest)
+    _append_unsafe_issue_warning(body_parts, safe_to_attach=safe)
 
     return _document(title=title, body="\n".join(body_parts))
 

@@ -13,7 +13,17 @@ Keys mirror the semantic tokens documented in roadmap section 2.1 plus the
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Final
+
+
+@dataclass(frozen=True, slots=True)
+class HarnessThemeSpec:
+    name: str
+    palette: Mapping[str, str]
+    dark: bool
+
 
 # Palette values were lifted from the original tui.py hex literals (greenish
 # black / cream amber / sage green family) and balanced for both dark and
@@ -67,6 +77,27 @@ WORLDFORGE_HIGH_CONTRAST_PALETTE: Final[dict[str, str]] = {
 THEME_NAME_DARK: Final[str] = "worldforge-dark"
 THEME_NAME_LIGHT: Final[str] = "worldforge-light"
 THEME_NAME_HIGH_CONTRAST: Final[str] = "worldforge-high-contrast"
+THEME_ORDER: Final[tuple[str, ...]] = (
+    THEME_NAME_DARK,
+    THEME_NAME_LIGHT,
+    THEME_NAME_HIGH_CONTRAST,
+)
+THEME_SPECS: Final[tuple[HarnessThemeSpec, ...]] = (
+    HarnessThemeSpec(THEME_NAME_DARK, WORLDFORGE_DARK_PALETTE, True),
+    HarnessThemeSpec(THEME_NAME_LIGHT, WORLDFORGE_LIGHT_PALETTE, False),
+    HarnessThemeSpec(THEME_NAME_HIGH_CONTRAST, WORLDFORGE_HIGH_CONTRAST_PALETTE, True),
+)
+
+
+def next_theme_name(current_theme: str) -> str:
+    """Return the next registered harness theme, falling back to the light theme."""
+
+    try:
+        index = THEME_ORDER.index(current_theme)
+    except ValueError:
+        index = 0
+    return THEME_ORDER[(index + 1) % len(THEME_ORDER)]
+
 
 # Per-flow capability label fallbacks. Source of truth lives on
 # ``HarnessFlow.capability``; this map is only used as a defensive default if

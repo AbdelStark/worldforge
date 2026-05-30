@@ -13,14 +13,19 @@ import pytest
 from worldforge import WorldForge, WorldForgeError, WorldStateError
 from worldforge.evaluation import EvaluationSuite
 from worldforge.harness import available_flows, flow_index, run_flow
+from worldforge.harness.flow_workspace import write_flow_workspace
 from worldforge.harness.flows import (
+    benchmark_report_harness_run,
     benchmark_run_artifacts,
+    eval_report_harness_run,
     eval_run_artifacts,
     flow_to_dicts,
+    preserve_eval_run_workspace,
     recent_report_paths,
     report_run_from_path,
     write_report,
 )
+from worldforge.harness.models import HarnessFlow, HarnessMetric, HarnessRun, HarnessStep
 from worldforge.harness.run_history import (
     RunHistoryFilter,
     list_run_history,
@@ -119,6 +124,42 @@ def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
     assert [event["phase"] for event in events] == ["success", "success"]
     inspector = json.loads((run.workspace_path / "results" / "inspector.json").read_text())
     assert inspector["provider_events"] == events
+
+
+def test_harness_flow_workspace_rejects_non_finite_provider_events_before_event_log(
+    tmp_path: Path,
+) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="flow",
+        command="worldforge harness --flow custom",
+        provider="mock",
+        operation="custom",
+    )
+    run = HarnessRun(
+        flow=HarnessFlow(
+            id="custom",
+            title="Custom",
+            short_title="Custom",
+            focus="diagnostics",
+            provider="mock",
+            capability="diagnostics",
+            command="worldforge harness --flow custom",
+            accent="blue",
+            summary="Custom flow.",
+        ),
+        state_dir=tmp_path,
+        summary={"ok": True},
+        steps=(HarnessStep("Step", "detail", "result"),),
+        metrics=(HarnessMetric("Metric", "1"),),
+        transcript=("line",),
+        provider_events=({"phase": "success", "metadata": {"score": math.nan}},),
+    )
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        write_flow_workspace(workspace, run)
+
+    assert not (workspace.path / "logs" / "provider-events.jsonl").exists()
 
 
 def test_harness_runs_lerobot_flow(tmp_path) -> None:
@@ -491,6 +532,35 @@ def test_harness_loads_groot_replay_artifact(tmp_path) -> None:
     assert len(loaded["policy_output"]["raw_actions"]["eef_9d"][0]) == 40
 
 
+def test_harness_groot_prepared_replay_writer_rejects_non_finite_before_touching_disk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from worldforge.harness import groot_replay_flow
+
+    state_dir = tmp_path / "prepared" / "gr00t"
+    monkeypatch.setattr(
+        groot_replay_flow,
+        "groot_saved_replay_payload",
+        lambda: {"schema_version": 1, "score": math.nan},
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        groot_replay_flow._write_prepared_groot_replay_artifact(state_dir)
+
+    assert not (state_dir / "gr00t-prepared-replay.json").exists()
+    assert not state_dir.exists()
+
+
+def test_harness_groot_replay_payload_uses_deterministic_raw_action_generator() -> None:
+    from worldforge.harness import flows
+    from worldforge.harness.groot_replay_payload import groot_replay_raw_actions
+
+    payload = flows._groot_saved_replay_payload()
+
+    assert payload["policy_output"]["raw_actions"] == groot_replay_raw_actions(action_horizon=40)
+
+
 def test_harness_rejects_groot_replay_schema_drift(tmp_path) -> None:
     from worldforge.harness import flows
 
@@ -701,6 +771,26 @@ def test_harness_loads_cosmos_policy_replay_artifact(tmp_path) -> None:
     assert len(loaded["policy_output"]["actions"]) == 50
 
 
+def test_harness_cosmos_policy_prepared_replay_writer_rejects_non_finite_before_touching_disk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from worldforge.harness import cosmos_policy_flow
+
+    state_dir = tmp_path / "prepared" / "cosmos-policy"
+    monkeypatch.setattr(
+        cosmos_policy_flow,
+        "cosmos_policy_saved_replay_payload",
+        lambda: {"schema_version": 1, "score": math.nan},
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        cosmos_policy_flow._write_prepared_cosmos_policy_replay_artifact(state_dir)
+
+    assert not (state_dir / "cosmos-policy-prepared-replay.json").exists()
+    assert not state_dir.exists()
+
+
 def test_harness_rejects_cosmos_policy_replay_schema_drift(tmp_path) -> None:
     from worldforge.harness import flows
 
@@ -819,6 +909,39 @@ def test_harness_rejects_cosmos_policy_replay_large_base64_before_decode(tmp_pat
         )
 
 
+@pytest.mark.parametrize(
+    ("row_patch", "message"),
+    [
+        ({"__numpy__": ""}, "missing __numpy__"),
+        ({"__numpy__": "!!!!"}, "invalid base64"),
+        ({"dtype": "int32"}, "dtype must be float32 or float64"),
+        (
+            {
+                "__numpy__": base64.b64encode(
+                    struct.pack("<14f", *([0.0] * 13 + [math.inf]))
+                ).decode("ascii")
+            },
+            "must be finite",
+        ),
+    ],
+)
+def test_harness_rejects_malformed_cosmos_policy_json_numpy_rows(
+    tmp_path,
+    row_patch: dict[str, object],
+    message: str,
+) -> None:
+    from worldforge.harness import flows
+
+    payload = flows._cosmos_policy_saved_replay_payload()
+    malformed_row = _copy_json_payload(payload)
+    malformed_row["policy_output"]["actions"][0].update(row_patch)
+
+    with pytest.raises(WorldStateError, match=message):
+        flows._load_cosmos_policy_replay_artifact(
+            _write_cosmos_replay_payload(tmp_path, "malformed-row.json", malformed_row)
+        )
+
+
 def test_harness_accepts_cosmos_policy_replay_float64_dtype(tmp_path) -> None:
     from worldforge.harness import flows
 
@@ -878,6 +1001,10 @@ def test_harness_rejects_cosmos_policy_replay_request_non_json_values(tmp_path) 
     nan_payload = {**outbound_payload, "proprio": [0.0] * 13 + [math.nan]}
     with pytest.raises(WorldStateError, match="JSON-native"):
         flows._validate_cosmos_policy_replay_request(nan_payload, saved_request)
+
+    non_string_key_payload = {**outbound_payload, "metadata": {1: "bad"}}
+    with pytest.raises(WorldStateError, match="keys must be strings"):
+        flows._validate_cosmos_policy_replay_request(non_string_key_payload, saved_request)
 
 
 def test_harness_cosmos_policy_optional_value_prediction_renders(tmp_path) -> None:
@@ -946,6 +1073,27 @@ def test_harness_flow_artifact_descriptors_are_validated(tmp_path) -> None:
             workspace,
             {"harness_artifacts": {"demo": {"path": "results/demo.json"}}},
         )
+    with pytest.raises(ValueError, match="under artifacts"):
+        flows._write_flow_artifacts(
+            workspace,
+            {"harness_artifacts": {"demo": {"path": "artifacts/../results/demo.json"}}},
+        )
+    with pytest.raises(ValueError, match="unsupported keys"):
+        flows._write_flow_artifacts(
+            workspace,
+            {"harness_artifacts": {"demo": {"path": "artifacts/demo.json", "extra": True}}},
+        )
+    with pytest.raises(ValueError, match="JSON-native"):
+        flows._write_flow_artifacts(
+            workspace,
+            {"harness_artifacts": {"demo": {"path": "artifacts/demo.json", "payload": math.nan}}},
+        )
+    assert not (workspace.path / "artifacts" / "demo.json").exists()
+    with pytest.raises(ValueError, match="JSON-native"):
+        flows._write_flow_artifacts(
+            workspace,
+            {"harness_artifacts": {"demo": {"path": "artifacts/demo.json", "payload": object()}}},
+        )
     with pytest.raises(ValueError, match="reserved"):
         flows._write_flow_artifacts(
             workspace,
@@ -953,18 +1101,78 @@ def test_harness_flow_artifact_descriptors_are_validated(tmp_path) -> None:
         )
 
 
+def test_harness_flow_artifact_specs_build_descriptors_without_textual(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved_textual = sys.modules.pop("textual", None)
+    monkeypatch.setitem(sys.modules, "textual", None)
+    try:
+        module = importlib.reload(importlib.import_module("worldforge.harness.flow_artifacts"))
+        descriptor = module.COSMOS_POLICY_REPLAY_ARTIFACT.descriptor({"ok": True})
+
+        assert descriptor == {
+            "path": "artifacts/cosmos-policy-replay.json",
+            "payload": {"ok": True},
+        }
+        assert module.ROBOTICS_COMPARE_REPLAY_ARTIFACTS == (
+            ("cosmos-policy", module.COSMOS_POLICY_REPLAY_ARTIFACT),
+            ("gr00t-replay", module.GROOT_REPLAY_ARTIFACT),
+        )
+    finally:
+        if saved_textual is not None:
+            sys.modules["textual"] = saved_textual
+        else:
+            sys.modules.pop("textual", None)
+
+
 def test_harness_private_helpers_cover_invalid_and_emit_paths(tmp_path, capsys) -> None:
     from worldforge.harness import flows
+    from worldforge.harness.flow_replay_utils import (
+        DEFAULT_ACTION_PREVIEW_COLUMNS,
+        decode_json_numpy_action_row,
+        encode_json_numpy_action_row,
+        preview_action_rows,
+    )
 
     assert flows._preview_action_rows("not rows") == []
     assert flows._preview_action_rows([[1, 2], "bad", [3]]) == [[1.0, 2.0], [3.0]]
+    assert preview_action_rows([[math.inf], ["1.0"], [True], [1, 2, 3]]) == [[1.0, 2.0, 3.0]]
+    assert preview_action_rows([[1, 2, 3, 4, 5, 6, 7]]) == [
+        [float(index) for index in range(1, DEFAULT_ACTION_PREVIEW_COLUMNS + 1)]
+    ]
+    encoded_action_row = encode_json_numpy_action_row([0.0, 1.0, 2.0], action_dim=3)
+    assert decode_json_numpy_action_row(encoded_action_row, row_index=0, action_dim=3) == [
+        0.0,
+        1.0,
+        2.0,
+    ]
+    with pytest.raises(WorldStateError, match=r"shape \[3\]"):
+        encode_json_numpy_action_row([0.0, 1.0], action_dim=3)
+    with pytest.raises(WorldStateError, match="finite numeric"):
+        encode_json_numpy_action_row([0.0, True, 2.0], action_dim=3)
 
     with pytest.raises(ValueError, match="unknown harness flow"):
         flows._steps_for("unknown", {})
+    with pytest.raises(ValueError, match="unknown harness flow"):
+        flows._steps_for("unknown", {"validation_errors": "not-a-list"})
+
+    failure_summary = {
+        "validation_errors": ["first failure", "second failure"],
+        "state_dir": str(tmp_path),
+        "event_phases": ["failure"],
+    }
+    assert flows._steps_for("unknown", failure_summary)[1].result == "first failure"
+    assert flows._metrics_for("unknown", failure_summary)[2].value == "2"
+    assert "first failure | second failure" in "\n".join(
+        flows._transcript_for("unknown", failure_summary)
+    )
 
     forge = WorldForge(state_dir=tmp_path)
     with pytest.raises(ValueError, match="must include a json entry"):
         write_report(forge, "missing-json", {})
+    with pytest.raises(WorldForgeError, match="finite number"):
+        write_report(forge, "non-finite-json", {"json": '{"suite_id": "planning", "score": NaN}'})
+    assert not (forge.state_dir / "reports").exists()
 
     unsupported_path = tmp_path / "unsupported-report.json"
     unsupported_path.write_text("{}", encoding="utf-8")
@@ -989,12 +1197,19 @@ def test_harness_private_helpers_cover_invalid_and_emit_paths(tmp_path, capsys) 
             {"event_phases": ["success"]},
         )
     ] == ["success"]
+    explicit_events = flows._provider_events_for(
+        "diagnostics",
+        {"provider_events": [{"phase": "success", "metadata": {"x": 1}}, "bad"]},
+    )
+    assert explicit_events == ({"phase": "success", "metadata": {"x": 1}},)
+
     events = flows._provider_events_for(
         "diagnostics",
         {
             "benchmark_results": [
                 "bad",
                 {"operation_metrics": "bad"},
+                {"operation_metrics": {"events": "bad"}},
                 {
                     "provider": "mock",
                     "operation": "predict",
@@ -1002,13 +1217,19 @@ def test_harness_private_helpers_cover_invalid_and_emit_paths(tmp_path, capsys) 
                         "events": [
                             "bad",
                             {"request_count": 1, "retry_count": 1, "error_count": 0},
+                            {"request_count": 2, "retry_count": 1, "error_count": 1},
                         ],
                     },
                 },
             ],
         },
     )
-    assert [event["phase"] for event in events] == ["retry"]
+    assert [event["phase"] for event in events] == ["retry", "failure"]
+    assert events[-1]["metadata"] == {
+        "request_count": 2,
+        "retry_count": 1,
+        "error_count": 1,
+    }
 
     flows._run_diagnostics_demo(state_dir=tmp_path / "diagnostics", emit=True)
     flows._run_workbench_demo(state_dir=tmp_path / "workbench", emit=True)
@@ -1115,6 +1336,91 @@ def test_benchmark_run_artifacts_invokes_sample_callback(tmp_path) -> None:
     assert json.loads(artifacts["json"])["results"][0]["iterations"] == 3
 
 
+def test_eval_report_harness_run_matches_live_tui_contract(tmp_path) -> None:
+    path = tmp_path / "reports" / "eval-planning.json"
+    artifacts = {"json": '{"suite_id": "planning"}'}
+    payload = {
+        "suite_id": "planning",
+        "suite": "Planning",
+        "results": [{"passed": True}, {"passed": False}],
+        "provider_summaries": [
+            {
+                "provider": "mock",
+                "passed_scenario_count": 1,
+                "scenario_count": 2,
+                "average_score": 0.5,
+            },
+        ],
+    }
+
+    run = eval_report_harness_run(
+        "planning",
+        artifacts,
+        payload,
+        path=path,
+        state_dir=tmp_path,
+    )
+
+    assert run.kind == "eval"
+    assert run.flow.id == "eval-planning"
+    assert run.flow.focus == "evaluation"
+    assert run.flow.capability == "eval"
+    assert run.flow.provider == "mock"
+    assert run.state_dir == tmp_path
+    assert run.steps[0].title == "Run evaluation"
+    assert run.steps[0].result == "1/2 passed."
+    assert run.metrics[0].label == "mock"
+    assert run.metrics[0].value == "1/2"
+    assert run.metrics[0].detail == "average_score=0.50"
+    assert run.transcript == ("kind: eval", "suite: planning", f"report_path: {path}")
+    assert run.report_path == path
+    assert run.artifacts == artifacts
+
+
+def test_benchmark_report_harness_run_matches_live_tui_contract(tmp_path) -> None:
+    path = tmp_path / "reports" / "benchmark.json"
+    artifacts = {"json": '{"results": []}'}
+    payload = {
+        "results": [
+            {
+                "provider": "mock",
+                "operation": "predict",
+                "average_latency_ms": 12.345,
+                "success_count": 3,
+                "iterations": 3,
+            },
+            {
+                "provider": "mock",
+                "operation": "embed",
+                "average_latency_ms": 1.0,
+                "success_count": 2,
+                "iterations": 2,
+            },
+        ],
+    }
+
+    run = benchmark_report_harness_run(
+        artifacts,
+        payload,
+        path=path,
+        state_dir=tmp_path,
+    )
+
+    assert run.kind == "benchmark"
+    assert run.flow.id == "benchmark"
+    assert run.flow.provider == "mock"
+    assert run.flow.summary == "2 benchmark rows."
+    assert run.state_dir == tmp_path
+    assert run.steps[0].title == "Run benchmark"
+    assert run.steps[0].result == "2 rows."
+    assert [metric.label for metric in run.metrics] == ["mock.predict", "mock.embed"]
+    assert [metric.value for metric in run.metrics] == ["12.35 ms", "1.00 ms"]
+    assert [metric.detail for metric in run.metrics] == ["ok=3/3", "ok=2/2"]
+    assert run.transcript == ("kind: benchmark", f"report_path: {path}", "rows: 2")
+    assert run.report_path == path
+    assert run.artifacts == artifacts
+
+
 def test_write_report_and_recent_report_round_trip(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
     artifacts, _report = eval_run_artifacts(forge, "planning", "mock")
@@ -1147,6 +1453,29 @@ def test_write_benchmark_report_round_trips_canonical_artifacts(tmp_path) -> Non
     assert run.artifacts == artifacts
     assert "Claim boundary:" in run.artifacts["markdown"]
     assert "operation_metrics_json" in run.artifacts["csv"]
+
+
+def test_preserve_eval_run_workspace_prevalidates_report_json_artifacts(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path / "state")
+    artifacts, report = eval_run_artifacts(forge, "planning", "mock")
+    artifacts = {
+        **artifacts,
+        "failure_gallery.json": '{"suite_id": "planning", "score": NaN}',
+    }
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        preserve_eval_run_workspace(
+            tmp_path / "workspace",
+            suite_id="planning",
+            providers=("mock",),
+            artifacts=artifacts,
+            report=report,
+            command="worldforge eval --suite planning --provider mock",
+        )
+
+    report_dirs = list((tmp_path / "workspace" / "runs").glob("*/reports"))
+    assert report_dirs
+    assert all(not any(path.iterdir()) for path in report_dirs)
 
 
 def test_run_history_filters_and_generates_safe_recovery_actions(tmp_path: Path) -> None:
@@ -1212,6 +1541,40 @@ def test_run_history_markdown_and_filter_boundaries(tmp_path: Path) -> None:
         filters=RunHistoryFilter.from_strings(created_to="2025-12-31"),
     )
     assert not list_run_history(tmp_path, filters=RunHistoryFilter(artifact_type="png"))
+
+
+def test_run_history_capabilities_preserve_deduped_source_order(tmp_path: Path) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="benchmark",
+        command="worldforge benchmark",
+        provider="mock",
+        operation="predict",
+        run_id="20260105T000000Z-00000005",
+        input_summary={
+            "capabilities": ["plan", "plan", ""],
+            "operations": ["predict", "not-a-capability"],
+        },
+    )
+    write_run_manifest(
+        workspace,
+        kind="benchmark",
+        command="worldforge benchmark",
+        status="completed",
+        provider="mock",
+        operation="predict",
+        input_summary={
+            "capabilities": ["plan", "plan", ""],
+            "operations": ["predict", "not-a-capability"],
+        },
+        result_summary={},
+        artifact_paths={},
+    )
+
+    record = list_run_history(tmp_path)[0]
+
+    assert record.capabilities == ("plan", "predict")
+    assert record.capability == "plan"
 
 
 def test_preserved_flow_run_opens_from_inspector_without_optional_runtime(tmp_path: Path) -> None:
@@ -1283,6 +1646,15 @@ def test_run_history_rejects_missing_or_invalid_manifests(tmp_path: Path) -> Non
     with pytest.raises(WorldForgeError, match="must be a JSON object"):
         preserved_run_from_path(non_object.parent, state_dir=tmp_path)
 
+    non_finite = tmp_path / "non-finite" / "run_manifest.json"
+    non_finite.parent.mkdir()
+    non_finite.write_text(
+        '{"schema_version": 1, "kind": "flow", "latency_ms": NaN}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(WorldForgeError, match="finite number"):
+        preserved_run_from_path(non_finite.parent, state_dir=tmp_path)
+
 
 def test_run_history_sanitizes_assignments_urls_and_synthesizes_commands(tmp_path: Path) -> None:
     workspace = create_run_workspace(
@@ -1323,8 +1695,21 @@ def test_run_history_module_imports_without_textual(monkeypatch: pytest.MonkeyPa
     saved_textual = sys.modules.pop("textual", None)
     monkeypatch.setitem(sys.modules, "textual", None)
     try:
-        module = importlib.reload(importlib.import_module("worldforge.harness.run_history"))
-        assert hasattr(module, "list_run_history")
+        models_module = importlib.reload(
+            importlib.import_module("worldforge.harness.run_history_models")
+        )
+        rendering_module = importlib.reload(
+            importlib.import_module("worldforge.harness.run_history_rendering")
+        )
+        history_module = importlib.reload(importlib.import_module("worldforge.harness.run_history"))
+        view_module = importlib.reload(
+            importlib.import_module("worldforge.harness.run_history_view")
+        )
+        assert hasattr(history_module, "list_run_history")
+        assert history_module.RunHistoryRecord is models_module.RunHistoryRecord
+        assert history_module.RunHistoryFilter is models_module.RunHistoryFilter
+        assert history_module.run_history_markdown is rendering_module.run_history_markdown
+        assert hasattr(view_module, "run_history_detail_text")
     finally:
         if saved_textual is not None:
             sys.modules["textual"] = saved_textual

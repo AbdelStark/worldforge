@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import NoReturn
 
 from worldforge import GenerationOptions
+from worldforge.artifact_io import write_json_artifact
 from worldforge.models import ProviderEvent, dump_json
 from worldforge.providers import CosmosProvider
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
@@ -75,8 +75,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "event_count": len(events),
     }
     if args.summary_json is not None:
-        args.summary_json.parent.mkdir(parents=True, exist_ok=True)
-        args.summary_json.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+        write_json_artifact(args.summary_json, summary)
     return summary
 
 

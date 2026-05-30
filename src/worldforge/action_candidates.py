@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import cast
 
 from worldforge.models import (
     Action,
@@ -24,20 +25,10 @@ def normalize_action_candidates(
 
     if not _is_sequence(candidate_actions) or not candidate_actions:
         raise WorldForgeError("candidate_actions must be a non-empty sequence.")
-    normalized: ActionCandidatePlans = []
-    for index, candidate in enumerate(candidate_actions):
-        if isinstance(candidate, Action):
-            normalized.append([candidate])
-            continue
-        if not _is_sequence(candidate) or not candidate:
-            raise WorldForgeError(
-                f"candidate_actions[{index}] must be an Action or non-empty sequence of Actions."
-            )
-        actions = list(candidate)
-        if not all(isinstance(action, Action) for action in actions):
-            raise WorldForgeError(f"candidate_actions[{index}] must contain only Action instances.")
-        normalized.append(actions)
-    return normalized
+    return [
+        _normalize_action_candidate(candidate, index=index)
+        for index, candidate in enumerate(candidate_actions)
+    ]
 
 
 def action_candidates_to_score_payload(
@@ -176,27 +167,102 @@ def _normalize_offset_plans(
 ) -> list[list[Position]]:
     if not _is_sequence(offsets) or not offsets:
         raise WorldForgeError("offsets must be a non-empty sequence.")
-    plans: list[list[Position]] = []
-    for index, item in enumerate(offsets):
-        if isinstance(item, Position):
-            plans.append([item])
-            continue
-        if not _is_sequence(item) or not item:
-            raise WorldForgeError(
-                f"offsets[{index}] must be a Position or non-empty sequence of Positions."
-            )
-        offsets_for_plan = list(item)
-        if not all(isinstance(offset, Position) for offset in offsets_for_plan):
-            raise WorldForgeError(f"offsets[{index}] must contain only Position instances.")
-        plans.append(offsets_for_plan)
-    return plans
+    return [_normalize_offset_plan(item, index=index) for index, item in enumerate(offsets)]
+
+
+def _normalize_action_candidate(
+    candidate: Action | Sequence[Action],
+    *,
+    index: int,
+) -> ActionCandidatePlan:
+    return _normalize_single_or_plan(
+        candidate,
+        item_type=Action,
+        collection_name="candidate_actions",
+        item_name="Action",
+        index=index,
+    )
+
+
+def _normalize_offset_plan(
+    item: Position | Sequence[Position],
+    *,
+    index: int,
+) -> list[Position]:
+    return _normalize_single_or_plan(
+        item,
+        item_type=Position,
+        collection_name="offsets",
+        item_name="Position",
+        index=index,
+    )
+
+
+def _normalize_single_or_plan[T](
+    value: T | Sequence[T],
+    *,
+    item_type: type[T],
+    collection_name: str,
+    item_name: str,
+    index: int,
+) -> list[T]:
+    single_item = _single_typed_item(value, item_type)
+    if single_item is not None:
+        return single_item
+    items = _require_non_empty_sequence(
+        value,
+        message=(
+            f"{collection_name}[{index}] must be a {item_name} "
+            f"or non-empty sequence of {item_name}s."
+        ),
+    )
+    return _require_typed_items(
+        items,
+        item_type=item_type,
+        message=f"{collection_name}[{index}] must contain only {item_name} instances.",
+    )
+
+
+def _single_typed_item[T](value: object, item_type: type[T]) -> list[T] | None:
+    if isinstance(value, item_type):
+        return [value]
+    return None
+
+
+def _require_non_empty_sequence(value: object, *, message: str) -> Sequence[object]:
+    if not _is_sequence(value) or not value:
+        raise WorldForgeError(message)
+    return cast(Sequence[object], value)
+
+
+def _require_typed_items[T](
+    values: Sequence[object],
+    *,
+    item_type: type[T],
+    message: str,
+) -> list[T]:
+    items = list(values)
+    if not all(isinstance(item, item_type) for item in items):
+        raise WorldForgeError(message)
+    return cast(list[T], items)
 
 
 def _bounds(value: Sequence[float], *, name: str) -> tuple[float, float]:
+    lower_value, upper_value = _bounds_pair(value, name=name)
+    return _ordered_bounds(
+        require_finite_number(lower_value, name=f"{name}[0]"),
+        require_finite_number(upper_value, name=f"{name}[1]"),
+        name=name,
+    )
+
+
+def _bounds_pair(value: object, *, name: str) -> tuple[object, object]:
     if not _is_sequence(value) or len(value) != 2:
         raise WorldForgeError(f"{name} must contain exactly two finite numbers.")
-    lower = require_finite_number(value[0], name=f"{name}[0]")
-    upper = require_finite_number(value[1], name=f"{name}[1]")
+    return value[0], value[1]
+
+
+def _ordered_bounds(lower: float, upper: float, *, name: str) -> tuple[float, float]:
     if lower > upper:
         raise WorldForgeError(f"{name} lower bound must be less than or equal to upper bound.")
     return lower, upper

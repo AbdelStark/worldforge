@@ -17,8 +17,21 @@ Repository layout:
 ```text
 worldforge/
 |-- src/worldforge/
-|   |-- framework.py       # WorldForge facade, World runtime, planning, persistence
-|   |-- models.py          # public data contracts and validation
+|   |-- framework.py       # WorldForge facade, provider registry, diagnostics, persistence
+|   |-- _world.py          # mutable World runtime, history, planning
+|   |-- _world_prompt_seeders.py # deterministic prompt seed-scene helpers
+|   |-- _results.py        # validated workflow result objects
+|   |-- _model_utils.py    # shared JSON, ID, numeric, and probability validators
+|   |-- models.py          # public compatibility facade and model re-exports
+|   |-- scene_models.py    # geometry, action, scene object, goal, and history contracts
+|   |-- capability_results.py # media, reasoning, embedding, score, and policy results
+|   |-- provider_models.py # compatibility facade for provider-facing contracts
+|   |-- provider_profiles.py # provider capabilities, generation options, and metadata
+|   |-- provider_request_policy.py # retry/backoff and operation timeout policies
+|   |-- provider_events.py # provider event validation and serialization
+|   |-- provider_diagnostics.py # provider health, lifecycle readiness, and doctor reports
+|   |-- provider_redaction.py # shared observable-field sanitization
+|   |-- framework_capabilities.py # capability registry and dispatch internals
 |   |-- capabilities/      # narrow runtime-checkable capability protocols
 |   |-- providers/
 |   |   |-- base.py        # provider interface, ProviderError, PredictionPayload
@@ -34,7 +47,10 @@ worldforge/
 |   |-- observability.py   # ProviderEvent sinks
 |   |-- rerun.py           # optional Rerun event and artifact bridge
 |   |-- benchmark.py       # provider benchmark harness
-|   |-- evaluation/        # built-in suites and report rendering
+|   |-- benchmark_inputs.py # benchmark input fixture contract
+|   |-- benchmark_budgets.py # benchmark budget gate contract
+|   |-- benchmark_reports.py # benchmark result/report rendering contract
+|   |-- evaluation/        # result contracts, reports, failure galleries, and built-in suites
 |   `-- testing/           # reusable provider contract assertions
 |-- docs/
 |-- examples/
@@ -129,16 +145,60 @@ boundaries.
 - `WorldForge`: top-level object for provider registration, diagnostics, persistence helpers, and
   provider-wide operations such as `generate(...)`, `transfer(...)`, `reason(...)`, `embed(...)`,
   `score_actions(...)`, and `select_actions(...)`.
+
+`_world.py`
+
 - `World`: mutable world state with scene objects, history, prediction, comparison, planning, plan
   execution, and evaluation entry points.
+
+`_world_prompt_seeders.py`
+
+- Deterministic seed-scene templates for `create_world_from_prompt(...)`, including prompt
+  matching, fallback object creation, and the prompt-specific history reset.
+
+`_results.py`
+
 - `Prediction`, `Plan`, `PlanExecution`, and `Comparison`: workflow-level result objects.
 
 `models.py`
 
-- Public data contracts such as `Action`, `SceneObject`, `StructuredGoal`, `VideoClip`,
-  `ProviderProfile`, `ProviderHealth`, `ProviderLifecycleStatus`, `ProviderEvent`,
+- Compatibility re-exports for public model contracts, shared validation helpers, public framework
+  errors, and provider contracts. Existing adapter and CLI code can keep importing from
+  `worldforge.models`.
+
+`scene_models.py`
+
+- Public scene-domain contracts such as `Position`, `Rotation`, `Pose`, `BBox`, `Action`,
+  `SceneObjectPatch`, `SceneObject`, `StructuredGoal`, and `HistoryEntry`.
+
+`capability_results.py`
+
+- Public capability return payloads such as `VideoClip`, `ReasoningResult`, `EmbeddingResult`,
   `ActionScoreResult`, and `ActionPolicyResult`.
-- Validation helpers and public framework errors: `WorldForgeError` and `WorldStateError`.
+
+`_model_utils.py`
+
+- Shared validation helpers and public framework errors: `WorldForgeError`, `WorldStateError`,
+  `dump_json`, `require_json_dict`, finite-number checks, probability checks, and deterministic
+  ID/float helpers.
+
+`provider_models.py` and focused provider contract modules
+
+- `provider_models.py` remains a compatibility facade for older imports.
+- `provider_profiles.py` owns `ProviderCapabilities`, `GenerationOptions`, `ProviderInfo`, and
+  `ProviderProfile`.
+- `provider_request_policy.py` owns `RetryPolicy`, `RequestOperationPolicy`, and
+  `ProviderRequestPolicy`.
+- `provider_events.py` owns `ProviderEvent` validation and serialization.
+- `provider_diagnostics.py` owns `ProviderHealth`, `ProviderLifecycleStatus`, and `DoctorReport`.
+- `provider_redaction.py` owns observable-field sanitization shared by provider events, config
+  profiles, logs, traces, and attachable artifacts.
+
+`framework_capabilities.py`
+
+- Internal capability registry used by `WorldForge` to register structural protocol
+  implementations, wrap them with observability, resolve named or direct capability targets, and
+  dispatch calls without bloating the facade.
 
 `providers/base.py`
 
@@ -195,6 +255,9 @@ boundaries.
 `evaluation/` and `benchmark.py`
 
 - Deterministic evaluation suites and capability-aware benchmark reports for adapter comparison.
+- `evaluation/suite_base.py` owns the generic suite runner, custom-suite registry, provenance, and
+  workflow-trace construction; `evaluation/builtin_suites.py` owns only the bundled deterministic
+  scenario implementations.
 
 `harness/`
 
@@ -202,6 +265,8 @@ boundaries.
   live provider events, evaluation, benchmark, and preserved report inspection.
 - `tui.py` is the only Textual import surface; `flows.py`, `models.py`, and helper modules remain
   importable without the `harness` extra.
+- `tui_styles.py` is the compatibility facade for Textual-free CSS constants; screen-family style
+  modules keep `tui.py` focused on widgets, actions, and workers.
 
 ## End-to-End Pipeline
 

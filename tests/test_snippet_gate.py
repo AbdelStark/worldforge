@@ -129,6 +129,69 @@ def test_docs_snippet_gate_preserves_skip_reasons(tmp_path: Path) -> None:
     ]
 
 
+def test_parse_snippet_blocks_reports_marker_failures(tmp_path: Path) -> None:
+    doc = tmp_path / "docs" / "markers.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text(
+        "\n".join(
+            [
+                "# Markers",
+                "",
+                "<!-- worldforge-snippet: typo -->",
+                "```python",
+                "print('ignored')",
+                "```",
+                "",
+                "<!-- worldforge-snippet: execute -->",
+                "not a fence",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = check_docs_snippets.parse_snippet_blocks(doc, root=tmp_path)
+
+    assert parsed["blocks"] == []
+    assert [failure["reason"] for failure in parsed["failures"]] == [
+        "unknown snippet marker action: typo",
+        "snippet marker is not followed by a fenced code block",
+    ]
+    assert [failure["heading"] for failure in parsed["failures"]] == ["Markers", "Markers"]
+
+
+def test_parse_snippet_blocks_reports_unclosed_fence(tmp_path: Path) -> None:
+    doc = tmp_path / "docs" / "unclosed.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text(
+        "\n".join(
+            [
+                "# Unclosed",
+                "",
+                "<!-- worldforge-snippet: execute -->",
+                "```python",
+                "print('missing close')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = check_docs_snippets.parse_snippet_blocks(doc, root=tmp_path)
+
+    assert parsed["blocks"] == []
+    assert parsed["failures"] == [
+        {
+            "path": "docs/unclosed.md",
+            "line": 4,
+            "heading": "Unclosed",
+            "language": "python",
+            "action": "parse",
+            "status": "failed",
+            "reason": "snippet fence is not closed",
+        }
+    ]
+
+
 def test_docs_snippet_gate_cli_outputs_json(capsys) -> None:
     assert check_docs_snippets.main(["--format", "json"]) == 0
 

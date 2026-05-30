@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import worldforge
 import worldforge.observability as observability
+import worldforge.provider_models as provider_models
 import worldforge.rerun as rerun
+import worldforge.scene_models as scene_models
+import worldforge.structured_goals as structured_goals
 import worldforge.testing as testing_helpers
 from worldforge.evaluation import EvaluationSuite
 from worldforge.providers import GrootPolicyClientProvider, MockProvider
@@ -77,6 +80,19 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert observability.provider_event_span_attributes is not None
     assert rerun.RerunArtifactLogger is not None
     assert rerun.create_rerun_event_handler is not None
+
+
+def test_provider_models_compatibility_facade_reexports_leaf_contracts() -> None:
+    assert provider_models.ProviderCapabilities is worldforge.ProviderCapabilities
+    assert provider_models.ProviderEvent is worldforge.ProviderEvent
+    assert provider_models.ProviderRequestPolicy is worldforge.ProviderRequestPolicy
+    assert provider_models.ProviderLifecycleStatus is worldforge.ProviderLifecycleStatus
+    assert provider_models._redact_observable_text("api_key=secret") == "api_key=[redacted]"
+
+
+def test_structured_goal_exports_use_goal_module_with_scene_compatibility() -> None:
+    assert worldforge.StructuredGoal is structured_goals.StructuredGoal
+    assert scene_models.StructuredGoal is structured_goals.StructuredGoal
 
 
 def test_lazy_export_modules_have_expected_dir_and_attribute_errors() -> None:

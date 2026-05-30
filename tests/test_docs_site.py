@@ -468,6 +468,9 @@ def test_gr00t_replay_harness_docs_cover_issue_226_contract() -> None:
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     flows = (ROOT / "src/worldforge/harness/flows.py").read_text(encoding="utf-8")
+    groot_replay_flow = (ROOT / "src/worldforge/harness/groot_replay_flow.py").read_text(
+        encoding="utf-8"
+    )
     fixture = (ROOT / "tests/fixtures/providers/gr00t_policy_replay.json").read_text(
         encoding="utf-8"
     )
@@ -485,6 +488,10 @@ def test_gr00t_replay_harness_docs_cover_issue_226_contract() -> None:
     for implementation_signal in (
         "_run_gr00t_replay_demo",
         "_load_groot_replay_artifact",
+    ):
+        assert implementation_signal in flows
+
+    for implementation_signal in (
         "ReplayPolicyClient",
         "GrootPolicyClientProvider",
         "raw_action_shapes",
@@ -492,7 +499,7 @@ def test_gr00t_replay_harness_docs_cover_issue_226_contract() -> None:
         "gripper_position",
         "joint_position",
     ):
-        assert implementation_signal in flows
+        assert implementation_signal in groot_replay_flow
 
     for test_signal in (
         "test_harness_runs_groot_replay_flow",
@@ -857,6 +864,9 @@ def test_custom_evaluation_suite_authoring_docs_cover_issue_201_contract() -> No
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     expansion = (ROOT / "docs/src/roadmap-expansion.md").read_text(encoding="utf-8")
     suites = (ROOT / "src/worldforge/evaluation/suites.py").read_text(encoding="utf-8")
+    suite_base = (ROOT / "src/worldforge/evaluation/suite_base.py").read_text(encoding="utf-8")
+    results = (ROOT / "src/worldforge/evaluation/results.py").read_text(encoding="utf-8")
+    evaluation_impl = suites + suite_base + results
     evaluation_init = (ROOT / "src/worldforge/evaluation/__init__.py").read_text(encoding="utf-8")
     root_init = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
     example = (ROOT / "examples/custom_evaluation_suite.py").read_text(encoding="utf-8")
@@ -882,7 +892,7 @@ def test_custom_evaluation_suite_authoring_docs_cover_issue_201_contract() -> No
         "_coerce_custom_result",
         "Custom evaluation scenarios must return",
     ):
-        assert implementation_signal in suites
+        assert implementation_signal in evaluation_impl
 
     for export_signal in ("EvaluationContext", "EvaluationScenarioOutcome"):
         assert export_signal in evaluation_init
@@ -1075,8 +1085,20 @@ def test_regression_comparison_docs_cover_issue_248_contract() -> None:
     claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    compare_impl = (ROOT / "src/worldforge/harness/report_compare.py").read_text(encoding="utf-8")
+    compare_impl = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            ROOT / "src/worldforge/harness/report_compare.py",
+            ROOT / "src/worldforge/harness/report_compare_regression.py",
+        )
+    )
     cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    cli_parser = (ROOT / "src/worldforge/cli_parser.py").read_text(encoding="utf-8")
+    cli_args = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / "src/worldforge/cli_args").glob("*.py"))
+    )
+    cli_surface = cli + cli_parser + cli_args
     tests = (ROOT / "tests/test_harness_report_compare.py").read_text(encoding="utf-8")
 
     for signal in (
@@ -1111,7 +1133,7 @@ def test_regression_comparison_docs_cover_issue_248_contract() -> None:
         "regression_to_markdown",
     ):
         assert implementation_signal in compare_impl
-    assert 'choices=("comparison", "regression")' in cli
+    assert 'choices=("comparison", "regression")' in cli_surface
     for test_signal in (
         "test_regression_comparison_reports_improved_candidate",
         "test_regression_comparison_reports_regression_and_excludes_unsafe_artifacts",
@@ -1127,7 +1149,12 @@ def test_scenario_matrix_docs_cover_issue_249_contract() -> None:
     roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     implementation = (ROOT / "src/worldforge/scenarios.py").read_text(encoding="utf-8")
+    scenario_matrix = (ROOT / "src/worldforge/scenario_matrix.py").read_text(encoding="utf-8")
+    scenario_models = (ROOT / "src/worldforge/scenario_models.py").read_text(encoding="utf-8")
     cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    cli_scenario = (ROOT / "src/worldforge/cli_scenario.py").read_text(encoding="utf-8")
+    cli_scenario_args = (ROOT / "src/worldforge/cli_args/workflows.py").read_text(encoding="utf-8")
+    cli_scenario_surface = cli + cli_scenario + cli_scenario_args
     exports = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
     snippet_gate = (ROOT / "scripts/check_docs_snippets.py").read_text(encoding="utf-8")
     tests = (ROOT / "tests/test_scenarios.py").read_text(encoding="utf-8")
@@ -1153,15 +1180,22 @@ def test_scenario_matrix_docs_cover_issue_249_contract() -> None:
         assert checkbox in roadmap
 
     for implementation_signal in (
-        "SCENARIO_MATRIX_MAX_CASES",
-        "class ScenarioMatrix",
-        "class ScenarioMatrixResult",
         "parse_scenario_matrix",
         "run_scenario_matrix",
+    ):
+        assert implementation_signal in implementation
+    for matrix_signal in (
+        "scenario_matrix_from_payload",
         "_matrix_substitution_allowed",
         "_MATRIX_PLACEHOLDER_PATTERN",
     ):
-        assert implementation_signal in implementation
+        assert matrix_signal in scenario_matrix
+    for model_signal in (
+        "SCENARIO_MATRIX_MAX_CASES",
+        "class ScenarioMatrix",
+        "class ScenarioMatrixResult",
+    ):
+        assert model_signal in scenario_models
     for export_signal in (
         "SCENARIO_MATRIX_MAX_CASES",
         "ScenarioMatrix",
@@ -1170,8 +1204,8 @@ def test_scenario_matrix_docs_cover_issue_249_contract() -> None:
         "run_scenario_matrix",
     ):
         assert export_signal in exports
-    assert "load_scenario_matrix" in cli
-    assert "run_scenario_matrix" in cli
+    assert "load_scenario_matrix" in cli_scenario_surface
+    assert "run_scenario_matrix" in cli_scenario_surface
     assert "parse_scenario_matrix(payload)" in snippet_gate
     for test_signal in (
         "test_parse_scenario_matrix_expands_valid_parameter_matrix",
@@ -1238,7 +1272,7 @@ def test_dataset_manifest_docs_cover_issue_250_contract() -> None:
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     implementation = (ROOT / "src/worldforge/dataset_manifests.py").read_text(encoding="utf-8")
     provenance = (ROOT / "src/worldforge/provenance.py").read_text(encoding="utf-8")
-    eval_impl = (ROOT / "src/worldforge/evaluation/suites.py").read_text(encoding="utf-8")
+    eval_impl = (ROOT / "src/worldforge/evaluation/suite_base.py").read_text(encoding="utf-8")
     evidence = (ROOT / "src/worldforge/evidence_bundle.py").read_text(encoding="utf-8")
     cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
     tests = (ROOT / "tests/test_evaluation_suites.py").read_text(encoding="utf-8")
@@ -1301,6 +1335,9 @@ def test_provider_contract_cli_docs_cover_issue_251_contract() -> None:
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     implementation = (ROOT / "src/worldforge/provider_contracts.py").read_text(encoding="utf-8")
     cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    cli_provider = (ROOT / "src/worldforge/cli_provider.py").read_text(encoding="utf-8")
+    cli_provider_args = (ROOT / "src/worldforge/cli_args/provider.py").read_text(encoding="utf-8")
+    cli_provider_surface = cli + cli_provider + cli_provider_args
     exports = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
     tests = (ROOT / "tests/test_provider_contracts.py").read_text(encoding="utf-8")
     entry_tests = (ROOT / "tests/test_provider_entry_points.py").read_text(encoding="utf-8")
@@ -1352,7 +1389,7 @@ def test_provider_contract_cli_docs_cover_issue_251_contract() -> None:
         "load_json_contract_input",
         "provider_from_factory_path",
     ):
-        assert cli_signal in cli
+        assert cli_signal in cli_provider_surface
     for export_signal in (
         "PROVIDER_CONTRACT_EVIDENCE_SCHEMA_VERSION",
         "ProviderContractEvidence",
@@ -1460,6 +1497,7 @@ def test_config_profile_docs_cover_issue_253_contract() -> None:
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     implementation = (ROOT / "src/worldforge/config_profiles.py").read_text(encoding="utf-8")
     cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    cli_args = (ROOT / "src/worldforge/cli_args/common.py").read_text(encoding="utf-8")
     workspace = (ROOT / "src/worldforge/harness/workspace.py").read_text(encoding="utf-8")
     provider_tests = (ROOT / "tests/test_provider_config.py").read_text(encoding="utf-8")
     workspace_tests = (ROOT / "tests/test_harness_workspace.py").read_text(encoding="utf-8")
@@ -1497,7 +1535,7 @@ def test_config_profile_docs_cover_issue_253_contract() -> None:
     ):
         assert implementation_signal in implementation
     assert "_apply_cli_profile" in cli
-    assert "--profile" in cli
+    assert "--profile" in cli_args
     assert "validate_config_profile_provenance" in workspace
     assert '"config_profile"' in workspace
     assert "test_config_profile_loads_non_secret_defaults_and_provenance" in provider_tests
@@ -1576,6 +1614,9 @@ def test_world_migration_preview_docs_cover_issue_255_contract() -> None:
         encoding="utf-8"
     )
     cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
+    cli_world = (ROOT / "src/worldforge/cli_world.py").read_text(encoding="utf-8")
+    cli_world_args = (ROOT / "src/worldforge/cli_args/world.py").read_text(encoding="utf-8")
+    cli_world_surface = cli + cli_world + cli_world_args
     lifecycle_tests = (ROOT / "tests/test_world_lifecycle.py").read_text(encoding="utf-8")
     cli_tests = (ROOT / "tests/test_cli_world_commands.py").read_text(encoding="utf-8")
 
@@ -1611,8 +1652,8 @@ def test_world_migration_preview_docs_cover_issue_255_contract() -> None:
         "can_apply_safely",
     ):
         assert implementation_signal in implementation
-    assert '"migration-preview"' in cli
-    assert "_cmd_world_migration_preview" in cli
+    assert '"migration-preview"' in cli_world_surface
+    assert "_cmd_world_migration_preview" in cli_world_surface
     for test_signal in (
         "test_world_migration_preview_accepts_current_persisted_and_exported_state",
         "test_world_migration_preview_reports_legacy_schema_and_position_changes",
@@ -1631,8 +1672,12 @@ def test_workflow_trace_docs_cover_issue_256_contract() -> None:
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     implementation = (ROOT / "src/worldforge/workflow_trace.py").read_text(encoding="utf-8")
-    framework = (ROOT / "src/worldforge/framework.py").read_text(encoding="utf-8")
-    evaluation = (ROOT / "src/worldforge/evaluation/suites.py").read_text(encoding="utf-8")
+    planning = (ROOT / "src/worldforge/_planning.py").read_text(encoding="utf-8")
+    evaluation_suite_base = (ROOT / "src/worldforge/evaluation/suite_base.py").read_text(
+        encoding="utf-8"
+    )
+    evaluation_report = (ROOT / "src/worldforge/evaluation/report.py").read_text(encoding="utf-8")
+    evaluation = evaluation_suite_base + evaluation_report
     html_report = (ROOT / "src/worldforge/html_report.py").read_text(encoding="utf-8")
     rerun = (ROOT / "src/worldforge/rerun.py").read_text(encoding="utf-8")
     provider_tests = (ROOT / "tests/test_provider_events.py").read_text(encoding="utf-8")
@@ -1674,7 +1719,8 @@ def test_workflow_trace_docs_cover_issue_256_contract() -> None:
         "workflow_trace_from_provider_events",
     ):
         assert implementation_signal in implementation
-    assert '"workflow_trace"' in framework
+    assert '"workflow_trace"' in planning
+    assert "plan_workflow_trace" in planning
     assert '"workflow_trace.json"' in evaluation
     assert "Workflow Trace" in html_report
     assert "log_workflow_trace" in rerun
@@ -2344,7 +2390,7 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
     assert "docs/src/artifact-schemas.md" in changelog
 
     required_rows = (
-        ("World state JSON", "SCHEMA_VERSION", "src/worldforge/framework.py"),
+        ("World state JSON", "SCHEMA_VERSION", "src/worldforge/_state.py"),
         ("Run manifests", "RUN_MANIFEST_SCHEMA_VERSION", "src/worldforge/smoke/run_manifest.py"),
         ("Run workspaces", "RUN_WORKSPACE_SCHEMA_VERSION", "src/worldforge/harness/workspace.py"),
         ("Run index reports", "RUN_INDEX_SCHEMA_VERSION", "src/worldforge/harness/run_index.py"),
@@ -2370,7 +2416,7 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
         ),
         (
             "Benchmark inputs and budgets",
-            "src/worldforge/benchmark.py",
+            "src/worldforge/benchmark_budgets.py",
             "tests/test_benchmark.py",
         ),
         (
@@ -2381,7 +2427,7 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
         (
             "Evaluation reports and provenance",
             "PROVENANCE_SCHEMA_VERSION",
-            "src/worldforge/provenance.py",
+            "src/worldforge/evaluation/report.py",
         ),
         (
             "Dataset manifests",
@@ -2391,7 +2437,7 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
         (
             "Evaluation failure galleries",
             "EVALUATION_FAILURE_GALLERY_SCHEMA_VERSION",
-            "src/worldforge/evaluation/suites.py",
+            "src/worldforge/evaluation/failure_gallery.py",
         ),
         (
             "Capability fixture corpus",
@@ -2976,6 +3022,9 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         encoding="utf-8"
     )
     contract_tests = (ROOT / "tests/test_provider_contracts.py").read_text(encoding="utf-8")
+    provider_gallery_source = (ROOT / "src/worldforge/demos/provider_failure_gallery.py").read_text(
+        encoding="utf-8"
+    )
     assert "Provider Failure Mode Gallery" in summary
     assert "Provider Failure Mode Gallery: provider-failure-gallery.md" in mkdocs
     assert "docs/src/provider-failure-gallery.md" in distribution
@@ -3003,7 +3052,9 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         "genie-scaffold-fail-closed",
         "raw provider request bodies",
     ):
-        assert signal in failure_gallery_docs or signal in script
+        assert (
+            signal in failure_gallery_docs or signal in script or signal in provider_gallery_source
+        )
     assert "test_provider_failure_gallery_matches_remote_provider_failures" in remote_provider_tests
     assert "test_provider_failure_gallery_matches_contract_failures" in contract_tests
 
@@ -3014,7 +3065,10 @@ def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:
     api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    models = (ROOT / "src/worldforge/models.py").read_text(encoding="utf-8")
+    provider_models = (ROOT / "src/worldforge/provider_models.py").read_text(encoding="utf-8")
+    provider_diagnostics = (ROOT / "src/worldforge/provider_diagnostics.py").read_text(
+        encoding="utf-8"
+    )
     base = (ROOT / "src/worldforge/providers/base.py").read_text(encoding="utf-8")
     observable = (ROOT / "src/worldforge/providers/observable.py").read_text(encoding="utf-8")
     provider_tests = (ROOT / "tests/test_provider_profiles.py").read_text(encoding="utf-8")
@@ -3055,7 +3109,10 @@ def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:
         "class ProviderLifecycleResult",
         "class ProviderLifecycleStatus",
     ):
-        assert implementation_signal in models
+        assert (
+            implementation_signal in provider_models
+            or implementation_signal in provider_diagnostics
+        )
     for implementation_signal in (
         "def preflight",
         "def warmup",

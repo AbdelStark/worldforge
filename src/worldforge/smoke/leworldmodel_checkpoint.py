@@ -248,27 +248,47 @@ def _walk_hydra_targets(node: object, path: str = "$") -> None:
 
 
 def _walk_safe_config_values(node: object, path: str = "$") -> None:
+    if _walk_safe_mapping_values(node, path):
+        return
+    if _walk_safe_sequence_values(node, path):
+        return
+    if _is_safe_config_scalar(node, path):
+        return
+    raise WorldStateError(
+        f"LeWorldModel config {path} must contain only JSON-native finite values."
+    )
+
+
+def _walk_safe_mapping_values(node: object, path: str) -> bool:
     if isinstance(node, Mapping):
         for key, value in node.items():
             if not isinstance(key, str) or not key:
                 raise WorldStateError(f"LeWorldModel config {path} contains an invalid key.")
             _walk_safe_config_values(value, _child_path(path, key))
-        return
-    if isinstance(node, Sequence) and not isinstance(node, str | bytes | bytearray):
+        return True
+    return False
+
+
+def _walk_safe_sequence_values(node: object, path: str) -> bool:
+    if _is_config_sequence(node):
         for index, value in enumerate(node):
             _walk_safe_config_values(value, _child_path(path, index))
-        return
+        return True
+    return False
+
+
+def _is_config_sequence(node: object) -> bool:
+    return isinstance(node, Sequence) and not isinstance(node, str | bytes | bytearray)
+
+
+def _is_safe_config_scalar(node: object, path: str) -> bool:
     if isinstance(node, str):
         if "${" in node:
             raise WorldStateError(f"LeWorldModel config {path} must not use interpolation.")
-        return
+        return True
     if isinstance(node, bool) or node is None or isinstance(node, int):
-        return
-    if isinstance(node, float) and math.isfinite(node):
-        return
-    raise WorldStateError(
-        f"LeWorldModel config {path} must contain only JSON-native finite values."
-    )
+        return True
+    return isinstance(node, float) and math.isfinite(node)
 
 
 def _require_mapping_field(config: Mapping[str, object], key: str) -> Mapping[str, object]:

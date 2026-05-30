@@ -77,6 +77,25 @@ def test_live_smoke_registry_rejects_unsafe_entries() -> None:
         validate_live_smoke_entry(entry)
 
 
+def test_live_smoke_registry_rejects_nested_unsafe_values() -> None:
+    entry = {
+        "provider": "runway",
+        "capability": "generate",
+        "command": "uv run worldforge-smoke-runway",
+        "runtime_manifest": "runway:schema-1",
+        "date": "2026-05-05",
+        "version": "0.5.0",
+        "status": "passed",
+        "artifact_path": ".worldforge/runs/runway/run_manifest.json",
+        "skip_reason": None,
+        "known_limitations": ["fixture"],
+        "notes": {"triage": ["Bearer abc123"]},
+    }
+
+    with pytest.raises(WorldForgeError, match="secret-like material"):
+        validate_live_smoke_entry(entry)
+
+
 def test_live_smoke_registry_requires_skip_reasons_and_artifacts() -> None:
     skipped = {
         "provider": "cosmos",
@@ -125,6 +144,29 @@ def test_live_smoke_registry_rejects_stale_skip_or_artifact_state() -> None:
 
     with pytest.raises(WorldForgeError, match="skip_reason must be null"):
         validate_live_smoke_entry(passed)
+
+
+def test_live_smoke_entry_rejects_malformed_dates_and_limitations() -> None:
+    entry = {
+        "provider": "cosmos",
+        "capability": "generate",
+        "command": "uv run worldforge-smoke-cosmos",
+        "runtime_manifest": "cosmos:schema-1",
+        "date": "2026/05/05",
+        "version": "0.5.0",
+        "status": "skipped_missing_runtime",
+        "artifact_path": None,
+        "skip_reason": "requires a prepared Cosmos endpoint",
+        "known_limitations": ["host-owned runtime"],
+    }
+
+    with pytest.raises(WorldForgeError, match="date must use YYYY-MM-DD"):
+        validate_live_smoke_entry(entry)
+
+    entry = {**entry, "date": "2026-05-05", "known_limitations": [""]}
+
+    with pytest.raises(WorldForgeError, match=r"known_limitations\[0\]"):
+        validate_live_smoke_entry(entry)
 
 
 def test_release_evidence_can_include_registry_without_manual_copy_paste(tmp_path: Path) -> None:

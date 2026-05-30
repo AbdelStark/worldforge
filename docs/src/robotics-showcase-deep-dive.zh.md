@@ -740,7 +740,7 @@ robot sensors
 - `src/worldforge/smoke/pusht_showcase_inputs.py`：封装好的 PushT 观测、打分信息、转换器和候选构建器。
 - `src/worldforge/providers/lerobot.py`：LeRobot `policy` 提供方。
 - `src/worldforge/providers/leworldmodel.py`：LeWorldModel `score` 提供方。
-- `src/worldforge/framework.py`：`World.plan(...)` 策略加打分组合。
+- `src/worldforge/_world.py`：`World.plan(...)` 策略加打分组合。
 
 ## 验证命令
 

@@ -64,6 +64,30 @@ def test_provenance_envelope_rejects_invalid_inputs() -> None:
         _stub_evaluation_envelope(budget_file={"path": "x"})  # missing sha256
 
 
+def test_provenance_envelope_validates_dataset_manifest_references() -> None:
+    ref = {
+        "id": "mock-evaluation-fixtures",
+        "name": "Mock evaluation fixtures",
+        "sha256": "sha256:abc123",
+        "license": "MIT",
+        "entry_count": 1,
+        "privacy": {},
+        "safety": {},
+        "path": "examples/dataset-manifests/mock-evaluation-fixtures.json",
+    }
+
+    envelope = _stub_evaluation_envelope(dataset_manifests=(ref,))
+
+    assert envelope.dataset_manifests == (ref,)
+    assert envelope.to_dict()["dataset_manifests"] == [ref]
+
+    with pytest.raises(WorldForgeError, match="entry_count must be greater than zero"):
+        _stub_evaluation_envelope(dataset_manifests=({**ref, "entry_count": 0},))
+
+    with pytest.raises(WorldForgeError, match="'privacy' must be a JSON object"):
+        _stub_evaluation_envelope(dataset_manifests=({**ref, "privacy": None},))
+
+
 def test_provenance_envelope_with_overrides_replaces_fields() -> None:
     envelope = _stub_evaluation_envelope()
     swapped = envelope.with_overrides(command=("worldforge", "eval", "--suite", "physics"))
@@ -109,6 +133,35 @@ def test_evaluation_report_includes_envelope_in_artifacts(tmp_path) -> None:
     assert "## Provenance" in markdown
     assert "WorldForge version" in markdown
     assert "Suite version: evaluation:1" in markdown
+
+
+def test_evaluation_report_markdown_renders_optional_provenance_fields() -> None:
+    dataset_ref = {
+        "id": "mock-evaluation-fixtures",
+        "name": "Mock evaluation fixtures",
+        "sha256": "sha256:abc123",
+        "license": "MIT",
+        "entry_count": 1,
+        "privacy": {},
+        "safety": {},
+        "path": "examples/dataset-manifests/mock-evaluation-fixtures.json",
+    }
+    provenance = _stub_evaluation_envelope(
+        command=("worldforge", "eval", "--suite", "physics"),
+        runtime_manifests={"mock": "mock:schema-1"},
+        budget_file={"path": "examples/benchmark-budget.json", "sha256": "sha256:abc123"},
+        dataset_manifests=(dataset_ref,),
+        notes="release evidence",
+    )
+    report = EvaluationReport("physics", "Physics Evaluation Suite", [], provenance=provenance)
+
+    markdown = report.to_markdown()
+
+    assert "Runtime manifests: mock=mock:schema-1" in markdown
+    assert "Budget file: examples/benchmark-budget.json" in markdown
+    assert "Dataset manifests: mock-evaluation-fixtures (sha256:abc123)" in markdown
+    assert "Command: `worldforge eval --suite physics`" in markdown
+    assert "Notes: release evidence" in markdown
 
 
 def test_evaluation_report_rejects_provenance_kind_mismatch() -> None:

@@ -27,6 +27,7 @@ from worldforge.rerun import (
     RerunSession,
     create_rerun_event_handler,
 )
+from worldforge.rerun_paths import entity_path, entity_segment
 from worldforge.workflow_trace import WorkflowTrace, WorkflowTraceStep
 
 
@@ -123,6 +124,18 @@ def test_rerun_recording_config_validates_sink_and_reserved_names(tmp_path: Path
 
     with pytest.raises(WorldForgeError, match="TCP port"):
         RerunRecordingConfig(spawn_viewer=True, spawn_port=70_000)
+
+
+def test_rerun_path_helpers_sanitize_segments_and_reject_bad_prefixes() -> None:
+    assert entity_segment("artifact download") == "artifact_download"
+    assert entity_segment("__") == "item"
+    assert (
+        entity_path("worldforge/root", "provider A", "nested/value", "", "__reserved")
+        == "worldforge/root/provider_A/nested/value/item/reserved"
+    )
+
+    with pytest.raises(WorldForgeError, match="empty or Rerun-reserved"):
+        entity_path("worldforge//events", "mock")
 
 
 def test_rerun_session_supports_live_sink_modes_and_close_is_idempotent() -> None:
@@ -276,6 +289,36 @@ def test_rerun_artifact_logger_logs_world_plan_and_benchmark(tmp_path: Path) -> 
     assert ("worldforge_benchmark_result", 0) in fake.times
 
 
+def test_rerun_artifact_logger_keeps_action_targets_numeric() -> None:
+    fake = _FakeRerun()
+    logger = RerunArtifactLogger(session=RerunSession(sdk=fake))
+
+    logger.log_plan(
+        {
+            "provider": "mock",
+            "planner": "fixture",
+            "actions": [
+                {
+                    "type": "string_target",
+                    "parameters": {"target": {"x": "0.1", "y": 0.5, "z": 0.0}},
+                },
+                {
+                    "type": "bool_target",
+                    "parameters": {"target": {"x": True, "y": 0.5, "z": 0.0}},
+                },
+                {
+                    "type": "move_to",
+                    "parameters": {"target": {"x": 0.4, "y": 0.5, "z": 0.0}},
+                },
+            ],
+        }
+    )
+
+    target_entity = next(entity for path, entity in fake.logs if path.endswith("/action_targets"))
+    assert target_entity["positions"] == [[0.4, 0.5, 0.0]]
+    assert target_entity["labels"] == ["2:move_to"]
+
+
 def test_rerun_artifact_logger_logs_workflow_trace() -> None:
     fake = _FakeRerun()
     logger = RerunArtifactLogger(session=RerunSession(sdk=fake))
@@ -312,11 +355,17 @@ def test_rerun_artifact_logger_validates_payload_shapes() -> None:
     with pytest.raises(WorldForgeError, match=r"world\.step"):
         logger.log_world({"id": "bad", "step": -1, "scene": {"objects": {}}})
 
+    with pytest.raises(WorldForgeError, match=r"world\.scene"):
+        logger.log_world({"id": "bad", "step": 0, "scene": []})
+
     with pytest.raises(WorldForgeError, match=r"scene\.objects"):
         logger.log_world({"id": "bad", "step": 0, "scene": {"objects": []}})
 
     with pytest.raises(WorldForgeError, match=r"benchmark_report\.results"):
         logger.log_benchmark_report({"results": {}})
+
+    with pytest.raises(WorldForgeError, match=r"benchmark_report\.results entries"):
+        logger.log_benchmark_report({"results": [[]]})
 
 
 def test_rerun_artifact_logger_logs_arbitrary_json_payload() -> None:

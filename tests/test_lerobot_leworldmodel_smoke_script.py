@@ -165,6 +165,30 @@ def _args(**overrides: object) -> argparse.Namespace:
     return argparse.Namespace(**defaults)
 
 
+class _ErrorParser:
+    @staticmethod
+    def error(message: str) -> None:
+        raise SystemExit(message)
+
+
+def _validation_args(**overrides: object) -> argparse.Namespace:
+    defaults: dict[str, object] = {
+        "policy_path": "lerobot/diffusion_pusht",
+        "action_horizon": None,
+        "expected_action_dim": None,
+        "expected_horizon": None,
+        "health_only": False,
+        "score_info_json": "score-info.json",
+        "score_info_npz": None,
+        "score_info_module": None,
+        "action_candidates_json": None,
+        "action_candidates_npz": None,
+        "candidate_builder": "module:build",
+    }
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
 def test_policy_info_loader_adds_bridge_expectations(tmp_path: Path) -> None:
     observation_path = tmp_path / "observation.json"
     observation_path.write_text(json.dumps({"observation.state": [[0.0, 0.5]]}))
@@ -182,6 +206,32 @@ def test_policy_info_loader_adds_bridge_expectations(tmp_path: Path) -> None:
     assert info["mode"] == "select_action"
     assert info["score_bridge"]["expected_action_dim"] == 2
     assert info["score_bridge"]["expected_horizon"] == 4
+
+
+def test_policy_info_loader_preserves_wrapped_observation_factory_payload(tmp_path: Path) -> None:
+    module_path = tmp_path / "policy_info_factory.py"
+    module_path.write_text(
+        "def build():\n"
+        "    return {\n"
+        "        'observation': {'observation.state': [[0.0, 0.5]]},\n"
+        "        'embodiment_tag': 'factory-tag',\n"
+        "        'score_bridge': {'task': 'factory-task'},\n"
+        "    }\n",
+        encoding="utf-8",
+    )
+
+    info = lerobot_leworldmodel._load_policy_info(
+        _args(
+            observation_module=f"{module_path}:build",
+            embodiment_tag="pusht",
+            expected_action_dim=2,
+        )
+    )
+
+    assert info["observation"] == {"observation.state": [[0.0, 0.5]]}
+    assert info["embodiment_tag"] == "factory-tag"
+    assert info["score_bridge"]["task"] == "factory-task"
+    assert info["score_bridge"]["expected_action_dim"] == 2
 
 
 def test_builtin_pusht_candidate_builder_normalizes_and_rejects_mismatch() -> None:
@@ -267,6 +317,95 @@ def test_bridge_defaults_fill_smoke_inputs_without_optional_imports() -> None:
     assert args.translator == "worldforge.smoke.pusht_showcase_inputs:translate_candidates_contract"
     assert args.expected_action_dim == 10
     assert args.expected_horizon == 4
+
+
+def test_bridge_defaults_preserve_explicit_smoke_inputs(tmp_path: Path) -> None:
+    observation_path = tmp_path / "observation.json"
+    score_info_path = tmp_path / "score-info.json"
+    candidates_path = tmp_path / "candidates.npz"
+    args = _args(
+        bridge="pusht",
+        observation_json=observation_path,
+        observation_module=None,
+        policy_info_json=None,
+        score_info_json=score_info_path,
+        score_info_npz=None,
+        score_info_module=None,
+        action_candidates_json=None,
+        action_candidates_npz=candidates_path,
+        candidate_builder=None,
+        translator="custom.module:translate",
+        task="custom-task",
+        expected_action_dim=2,
+        expected_horizon=3,
+    )
+
+    summary = lerobot_leworldmodel._apply_bridge_defaults(args)
+
+    assert summary is not None
+    assert args.observation_module is None
+    assert args.score_info_module is None
+    assert args.candidate_builder is None
+    assert args.translator == "custom.module:translate"
+    assert args.task == "custom-task"
+    assert args.expected_action_dim == 2
+    assert args.expected_horizon == 3
+
+
+def test_main_arg_validation_accepts_health_only_without_planning_inputs() -> None:
+    lerobot_leworldmodel._validate_main_args(
+        _ErrorParser(),  # type: ignore[arg-type]
+        _validation_args(
+            health_only=True,
+            score_info_json=None,
+            action_candidates_json=None,
+            candidate_builder=None,
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "flag"),
+    [
+        ("action_horizon", "--action-horizon"),
+        ("expected_action_dim", "--expected-action-dim"),
+        ("expected_horizon", "--expected-horizon"),
+    ],
+)
+def test_main_arg_validation_rejects_non_positive_dimensions(field: str, flag: str) -> None:
+    with pytest.raises(SystemExit, match=f"{flag} must be greater than 0"):
+        lerobot_leworldmodel._validate_main_args(
+            _ErrorParser(),  # type: ignore[arg-type]
+            _validation_args(**{field: 0}),
+        )
+
+
+def test_main_arg_validation_requires_policy_path() -> None:
+    with pytest.raises(SystemExit, match="requires --policy-path"):
+        lerobot_leworldmodel._validate_main_args(
+            _ErrorParser(),  # type: ignore[arg-type]
+            _validation_args(policy_path=None),
+        )
+
+
+def test_main_arg_validation_requires_planning_score_info() -> None:
+    with pytest.raises(SystemExit, match="planning requires --score-info-json"):
+        lerobot_leworldmodel._validate_main_args(
+            _ErrorParser(),  # type: ignore[arg-type]
+            _validation_args(score_info_json=None, score_info_npz=None, score_info_module=None),
+        )
+
+
+def test_main_arg_validation_requires_action_candidates() -> None:
+    with pytest.raises(SystemExit, match="planning requires --candidate-builder"):
+        lerobot_leworldmodel._validate_main_args(
+            _ErrorParser(),  # type: ignore[arg-type]
+            _validation_args(
+                action_candidates_json=None,
+                action_candidates_npz=None,
+                candidate_builder=None,
+            ),
+        )
 
 
 def test_helper_loaders_and_error_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -630,6 +769,24 @@ def test_main_visual_static_candidate_path_skips_execution(
         "score_summary": "summary.json",
         "report_summary": "summary.json",
     }
+
+
+def test_tabletop_replay_renderer_marks_selected_final_overlap() -> None:
+    lines = lerobot_leworldmodel._tabletop_replay_lines(
+        targets=[
+            {"index": 0, "x": 0.25, "y": 0.5, "z": 0.0},
+            {"index": 1, "x": 0.5, "y": 0.5, "z": 0.0},
+        ],
+        score_result={"best_index": 1},
+        execution_summary={"final_block_position": {"x": 0.5, "y": 0.5, "z": 0.0}},
+    )
+
+    assert lines[0].startswith("  legend:")
+    assert "  selected candidate: #1" in lines
+    assert len([line for line in lines if line.startswith("  |")]) == (
+        lerobot_leworldmodel._TABLETOP_REPLAY_HEIGHT
+    )
+    assert any("X" in line for line in lines)
 
 
 def test_main_preflight_failure_prints_runtime_command(

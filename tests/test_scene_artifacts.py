@@ -136,6 +136,26 @@ def test_scene_artifact_rejects_incoherent_geometry_and_references() -> None:
         validate_scene_artifact(artifact)
 
 
+def test_scene_artifact_rejects_invalid_asset_and_provenance_boundaries() -> None:
+    artifact = _fixture("valid_minimal_scene.json")
+    artifact["assets"].append(dict(artifact["assets"][0]))
+
+    with pytest.raises(WorldForgeError, match="unique"):
+        validate_scene_artifact(artifact)
+
+    artifact = _fixture("valid_minimal_scene.json")
+    artifact["assets"][0]["size_bytes"] = -1
+
+    with pytest.raises(WorldForgeError, match="size_bytes"):
+        validate_scene_artifact(artifact)
+
+    artifact = _fixture("valid_minimal_scene.json")
+    artifact["provenance"]["event_count"] = True
+
+    with pytest.raises(WorldForgeError, match="event_count"):
+        validate_scene_artifact(artifact)
+
+
 def test_scene_artifact_public_exports_are_lazy() -> None:
     import worldforge
 

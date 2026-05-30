@@ -47,43 +47,9 @@ class RuntimeAssetManifest:
     rebuild_command: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "asset_id", _required_text(self.asset_id, "asset_id"))
-        object.__setattr__(self, "provider", _required_text(self.provider, "provider"))
-        object.__setattr__(self, "asset_kind", _required_text(self.asset_kind, "asset_kind"))
-        path = _required_text(str(self.path), "path")
-        source = _safe_text(self.source, "source")
-        object.__setattr__(self, "path", path)
-        object.__setattr__(self, "source", source)
-        if self.revision is not None:
-            object.__setattr__(self, "revision", _safe_text(self.revision, "revision"))
-        if self.checksum is not None and not _CHECKSUM_PATTERN.match(self.checksum):
-            raise WorldForgeError("Runtime asset checksum must use sha256:<64 lowercase hex>.")
-        if self.size_bytes is not None:
-            object.__setattr__(
-                self,
-                "size_bytes",
-                require_non_negative_int(self.size_bytes, name="Runtime asset size_bytes"),
-            )
-        if self.cache_root is not None:
-            object.__setattr__(
-                self,
-                "cache_root",
-                _required_text(str(self.cache_root), "cache_root"),
-            )
-        if not isinstance(self.local_only, bool):
-            raise WorldForgeError("Runtime asset local_only must be a boolean.")
-        if self.exists is not None and not isinstance(self.exists, bool):
-            raise WorldForgeError("Runtime asset exists must be a boolean when provided.")
-        if self.rebuild_command is not None:
-            object.__setattr__(
-                self,
-                "rebuild_command",
-                _safe_text(self.rebuild_command, "rebuild_command"),
-            )
-        if not self.local_only:
-            _validate_attachable_path(path, field="path")
-            if self.cache_root is not None:
-                _validate_attachable_path(str(self.cache_root), field="cache_root")
+        _normalize_runtime_asset_identity(self)
+        _normalize_runtime_asset_metadata_fields(self)
+        _normalize_runtime_asset_local_fields(self)
 
     def to_dict(self, *, include_local_fields: bool = False) -> JSONDict:
         """Return a manifest dict, omitting host-local fields unless explicitly requested."""
@@ -121,6 +87,67 @@ class RuntimeAssetManifest:
         return self.to_dict(include_local_fields=False)
 
 
+def _set_runtime_asset_field(
+    manifest: RuntimeAssetManifest,
+    field: str,
+    value: object,
+) -> None:
+    object.__setattr__(manifest, field, value)
+
+
+def _normalize_runtime_asset_identity(manifest: RuntimeAssetManifest) -> None:
+    _set_runtime_asset_field(manifest, "asset_id", _required_text(manifest.asset_id, "asset_id"))
+    _set_runtime_asset_field(manifest, "provider", _required_text(manifest.provider, "provider"))
+    _set_runtime_asset_field(
+        manifest,
+        "asset_kind",
+        _required_text(manifest.asset_kind, "asset_kind"),
+    )
+    _set_runtime_asset_field(manifest, "path", _required_text(str(manifest.path), "path"))
+    _set_runtime_asset_field(manifest, "source", _safe_text(manifest.source, "source"))
+
+
+def _normalize_runtime_asset_metadata_fields(manifest: RuntimeAssetManifest) -> None:
+    if manifest.revision is not None:
+        _set_runtime_asset_field(
+            manifest,
+            "revision",
+            _safe_text(manifest.revision, "revision"),
+        )
+    if manifest.checksum is not None and not _CHECKSUM_PATTERN.match(manifest.checksum):
+        raise WorldForgeError("Runtime asset checksum must use sha256:<64 lowercase hex>.")
+    if manifest.size_bytes is not None:
+        _set_runtime_asset_field(
+            manifest,
+            "size_bytes",
+            require_non_negative_int(manifest.size_bytes, name="Runtime asset size_bytes"),
+        )
+    if manifest.exists is not None and not isinstance(manifest.exists, bool):
+        raise WorldForgeError("Runtime asset exists must be a boolean when provided.")
+    if manifest.rebuild_command is not None:
+        _set_runtime_asset_field(
+            manifest,
+            "rebuild_command",
+            _safe_text(manifest.rebuild_command, "rebuild_command"),
+        )
+
+
+def _normalize_runtime_asset_local_fields(manifest: RuntimeAssetManifest) -> None:
+    if manifest.cache_root is not None:
+        _set_runtime_asset_field(
+            manifest,
+            "cache_root",
+            _required_text(str(manifest.cache_root), "cache_root"),
+        )
+    if not isinstance(manifest.local_only, bool):
+        raise WorldForgeError("Runtime asset local_only must be a boolean.")
+    if manifest.local_only:
+        return
+    _validate_attachable_path(str(manifest.path), field="path")
+    if manifest.cache_root is not None:
+        _validate_attachable_path(str(manifest.cache_root), field="cache_root")
+
+
 def validate_runtime_asset_manifest(
     payload: Mapping[str, Any],
     *,
@@ -130,23 +157,61 @@ def validate_runtime_asset_manifest(
     """Validate a full runtime asset manifest or safe attachable reference."""
 
     manifest = dict(payload)
+    _validate_runtime_asset_schema(manifest, source=source)
+    _sanitize_runtime_asset_identity(manifest, source=source)
+    local_only = _runtime_asset_local_only(manifest, source=source)
+    _normalize_safe_to_attach(
+        manifest,
+        source=source,
+        include_local_fields=include_local_fields,
+    )
+    _normalize_runtime_asset_metadata(manifest, source=source)
+    _normalize_runtime_asset_paths(
+        manifest,
+        source=source,
+        include_local_fields=include_local_fields,
+        local_only=local_only,
+    )
+    return manifest
+
+
+def _validate_runtime_asset_schema(manifest: JSONDict, *, source: str) -> None:
     schema_version = manifest.get("schema_version")
     if schema_version != RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION:
         raise WorldForgeError(
             f"{source} schema_version must be {RUNTIME_ASSET_MANIFEST_SCHEMA_VERSION}."
         )
+
+
+def _sanitize_runtime_asset_identity(manifest: JSONDict, *, source: str) -> None:
     for field in ("asset_id", "provider", "asset_kind", "source"):
         manifest[field] = _safe_text(manifest.get(field), f"{source} field '{field}'")
+
+
+def _runtime_asset_local_only(manifest: JSONDict, *, source: str) -> bool:
     local_only = manifest.get("local_only")
     if not isinstance(local_only, bool):
         raise WorldForgeError(f"{source} field 'local_only' must be a boolean.")
+    return local_only
+
+
+def _normalize_safe_to_attach(
+    manifest: JSONDict,
+    *,
+    source: str,
+    include_local_fields: bool,
+) -> None:
     safe_to_attach = manifest.get("safe_to_attach")
     if safe_to_attach is None:
         manifest["safe_to_attach"] = not include_local_fields
-    elif not isinstance(safe_to_attach, bool):
+        return
+    if not isinstance(safe_to_attach, bool):
         raise WorldForgeError(f"{source} field 'safe_to_attach' must be a boolean.")
-    elif not include_local_fields and not safe_to_attach:
+    if not include_local_fields and not safe_to_attach:
         raise WorldForgeError(f"{source} safe reference must set safe_to_attach to true.")
+
+
+def _normalize_runtime_asset_metadata(manifest: JSONDict, *, source: str) -> None:
     if manifest.get("revision") is not None:
         manifest["revision"] = _safe_text(manifest["revision"], f"{source} field 'revision'")
     checksum = manifest.get("checksum")
@@ -166,30 +231,39 @@ def validate_runtime_asset_manifest(
             manifest["rebuild_command"],
             f"{source} field 'rebuild_command'",
         )
+
+
+def _normalize_runtime_asset_paths(
+    manifest: JSONDict,
+    *,
+    source: str,
+    include_local_fields: bool,
+    local_only: bool,
+) -> None:
     path = manifest.get("path")
     cache_root = manifest.get("cache_root")
     if include_local_fields:
         manifest["path"] = _required_text(path, f"{source} field 'path'")
         if cache_root is not None:
             manifest["cache_root"] = _required_text(cache_root, f"{source} field 'cache_root'")
-    else:
-        if local_only and (path is not None or cache_root is not None):
-            raise WorldForgeError(
-                f"{source} safe reference must omit path and cache_root for local-only assets."
-            )
-        if path is not None:
-            manifest["path"] = _required_text(path, f"{source} field 'path'")
-            _validate_attachable_path(manifest["path"], field=f"{source} field 'path'")
-        if cache_root is not None:
-            manifest["cache_root"] = _required_text(
-                cache_root,
-                f"{source} field 'cache_root'",
-            )
-            _validate_attachable_path(
-                manifest["cache_root"],
-                field=f"{source} field 'cache_root'",
-            )
-    return manifest
+        return
+
+    if local_only and (path is not None or cache_root is not None):
+        raise WorldForgeError(
+            f"{source} safe reference must omit path and cache_root for local-only assets."
+        )
+    if path is not None:
+        manifest["path"] = _required_text(path, f"{source} field 'path'")
+        _validate_attachable_path(manifest["path"], field=f"{source} field 'path'")
+    if cache_root is not None:
+        manifest["cache_root"] = _required_text(
+            cache_root,
+            f"{source} field 'cache_root'",
+        )
+        _validate_attachable_path(
+            manifest["cache_root"],
+            field=f"{source} field 'cache_root'",
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -101,8 +101,22 @@ or persisted-state incoherence.
 
 Key directories:
 
-- `src/worldforge/models.py`: public data contracts and validation.
-- `src/worldforge/framework.py`: runtime facade, worlds, planning, persistence, and diagnostics.
+- `src/worldforge/models.py`: public compatibility facade and model re-exports.
+- `src/worldforge/_model_utils.py`: shared JSON-native validation helpers and framework errors.
+- `src/worldforge/scene_models.py`: geometry, action, scene object, structured-goal, and history
+  contracts.
+- `src/worldforge/capability_results.py`: media, reasoning, embedding, action-score, and
+  embodied-policy result contracts.
+- `src/worldforge/provider_models.py`: compatibility facade for provider-facing contracts.
+- `src/worldforge/provider_profiles.py`, `provider_request_policy.py`, `provider_events.py`,
+  `provider_diagnostics.py`, and `provider_redaction.py`: focused provider contracts for
+  capabilities/profile metadata, retries/timeouts, events, lifecycle diagnostics, and sanitization.
+- `src/worldforge/framework.py`: runtime facade, provider registry, persistence, and diagnostics.
+- `src/worldforge/framework_capabilities.py`: internal capability-protocol registry and dispatch.
+- `src/worldforge/_world.py`: mutable world state, history, and planning.
+- `src/worldforge/_world_prompt_seeders.py`: prompt-derived local seed-scene helpers.
+- `src/worldforge/harness/tui_styles.py` plus `tui_*_styles.py`: Textual-free CSS constants for
+  TheWorldHarness, grouped by screen family behind a compatibility facade.
 - `src/worldforge/providers/`: provider interfaces, catalog, adapters, and scaffolds.
 - `src/worldforge/testing/`: reusable provider contract helpers, fixture loaders, runtime markers,
   and deterministic artifact test controls.

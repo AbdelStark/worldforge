@@ -99,25 +99,44 @@ def _dataset_manifest_refs(value: object, *, name: str) -> tuple[JSONDict, ...]:
         return ()
     if not isinstance(value, tuple | list):
         raise WorldForgeError(f"{name} must be a sequence of dataset manifest references.")
-    refs = []
-    for index, item in enumerate(value):
-        ref = require_json_dict(item, name=f"{name}[{index}]")
-        for key in ("id", "name", "sha256", "license"):
-            candidate = ref.get(key)
-            if not isinstance(candidate, str) or not candidate.strip():
-                raise WorldForgeError(f"{name}[{index}] '{key}' must be a non-empty string.")
-        _digest_or_none(ref["sha256"], name=f"{name}[{index}] sha256")
-        require_non_negative_int(ref.get("entry_count"), name=f"{name}[{index}] entry_count")
-        if ref["entry_count"] < 1:
-            raise WorldForgeError(f"{name}[{index}] entry_count must be greater than zero.")
-        for section in ("privacy", "safety"):
-            if not isinstance(ref.get(section), dict):
-                raise WorldForgeError(f"{name}[{index}] '{section}' must be a JSON object.")
-        path = ref.get("path")
-        if path is not None and (not isinstance(path, str) or not path.strip()):
-            raise WorldForgeError(f"{name}[{index}] path must be a non-empty string or omitted.")
-        refs.append(ref)
-    return tuple(refs)
+    return tuple(
+        _dataset_manifest_ref(item, name=f"{name}[{index}]") for index, item in enumerate(value)
+    )
+
+
+def _dataset_manifest_ref(item: object, *, name: str) -> JSONDict:
+    ref = require_json_dict(item, name=name)
+    _require_dataset_manifest_text_fields(ref, name=name)
+    _require_positive_dataset_entry_count(ref, name=name)
+    _require_dataset_manifest_sections(ref, name=name)
+    _require_optional_dataset_manifest_path(ref, name=name)
+    return ref
+
+
+def _require_dataset_manifest_text_fields(ref: JSONDict, *, name: str) -> None:
+    for key in ("id", "name", "sha256", "license"):
+        candidate = ref.get(key)
+        if not isinstance(candidate, str) or not candidate.strip():
+            raise WorldForgeError(f"{name} '{key}' must be a non-empty string.")
+    _digest_or_none(ref["sha256"], name=f"{name} sha256")
+
+
+def _require_positive_dataset_entry_count(ref: JSONDict, *, name: str) -> None:
+    require_non_negative_int(ref.get("entry_count"), name=f"{name} entry_count")
+    if ref["entry_count"] < 1:
+        raise WorldForgeError(f"{name} entry_count must be greater than zero.")
+
+
+def _require_dataset_manifest_sections(ref: JSONDict, *, name: str) -> None:
+    for section in ("privacy", "safety"):
+        if not isinstance(ref.get(section), dict):
+            raise WorldForgeError(f"{name} '{section}' must be a JSON object.")
+
+
+def _require_optional_dataset_manifest_path(ref: JSONDict, *, name: str) -> None:
+    path = ref.get("path")
+    if path is not None and (not isinstance(path, str) or not path.strip()):
+        raise WorldForgeError(f"{name} path must be a non-empty string or omitted.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,95 +165,13 @@ class ProvenanceEnvelope:
     notes: str | None = None
 
     def __post_init__(self) -> None:
-        if self.kind not in _SUPPORTED_KINDS:
-            raise WorldForgeError(
-                f"ProvenanceEnvelope kind must be one of: {', '.join(_SUPPORTED_KINDS)}."
-            )
-        object.__setattr__(
-            self, "suite_id", _required_text(self.suite_id, name="ProvenanceEnvelope suite_id")
-        )
-        object.__setattr__(
-            self,
-            "suite_version",
-            _required_text(self.suite_version, name="ProvenanceEnvelope suite_version"),
-        )
-        object.__setattr__(
-            self,
-            "worldforge_version",
-            _required_text(
-                self.worldforge_version,
-                name="ProvenanceEnvelope worldforge_version",
-            ),
-        )
-        object.__setattr__(
-            self,
-            "created_at",
-            _required_text(self.created_at, name="ProvenanceEnvelope created_at"),
-        )
-        if self.schema_version != PROVENANCE_SCHEMA_VERSION:
-            raise WorldForgeError(
-                "ProvenanceEnvelope schema_version must be "
-                f"{PROVENANCE_SCHEMA_VERSION}, got {self.schema_version}."
-            )
-        object.__setattr__(
-            self,
-            "command",
-            _string_tuple(self.command, name="ProvenanceEnvelope command"),
-        )
-        object.__setattr__(
-            self,
-            "providers",
-            _string_tuple(self.providers, name="ProvenanceEnvelope providers"),
-        )
-        object.__setattr__(
-            self,
-            "capabilities",
-            _string_tuple(self.capabilities, name="ProvenanceEnvelope capabilities"),
-        )
-        object.__setattr__(
-            self,
-            "runtime_manifests",
-            _runtime_manifest_map(
-                self.runtime_manifests,
-                name="ProvenanceEnvelope runtime_manifests",
-            ),
-        )
-        object.__setattr__(
-            self,
-            "input_digest",
-            _digest_or_none(self.input_digest, name="ProvenanceEnvelope input_digest"),
-        )
-        object.__setattr__(
-            self,
-            "result_digest",
-            _digest_or_none(self.result_digest, name="ProvenanceEnvelope result_digest"),
-        )
-        object.__setattr__(
-            self,
-            "budget_file",
-            _budget_file_summary(self.budget_file, name="ProvenanceEnvelope budget_file"),
-        )
-        object.__setattr__(
-            self,
-            "dataset_manifests",
-            _dataset_manifest_refs(
-                self.dataset_manifests,
-                name="ProvenanceEnvelope dataset_manifests",
-            ),
-        )
-        require_non_negative_int(self.event_count, name="ProvenanceEnvelope event_count")
-        object.__setattr__(
-            self,
-            "claim_boundary",
-            _required_text(self.claim_boundary, name="ProvenanceEnvelope claim_boundary"),
-        )
-        object.__setattr__(
-            self,
-            "metric_semantics",
-            _required_text(self.metric_semantics, name="ProvenanceEnvelope metric_semantics"),
-        )
-        if self.notes is not None and (not isinstance(self.notes, str) or not self.notes.strip()):
-            raise WorldForgeError("ProvenanceEnvelope notes must be a non-empty string or None.")
+        _validate_provenance_kind(self.kind)
+        _validate_provenance_schema_version(self.schema_version)
+        _normalize_provenance_text_fields(self)
+        _normalize_provenance_collection_fields(self)
+        _normalize_provenance_reference_fields(self)
+        _normalize_provenance_claim_fields(self)
+        _validate_optional_provenance_notes(self.notes)
 
     def to_dict(self) -> JSONDict:
         payload: JSONDict = {
@@ -309,6 +246,123 @@ class ProvenanceEnvelope:
             created_at=str(payload.get("created_at", "")),
             notes=payload.get("notes"),
         )
+
+
+def _set_envelope_attr(envelope: ProvenanceEnvelope, field_name: str, value: object) -> None:
+    object.__setattr__(envelope, field_name, value)
+
+
+def _validate_provenance_kind(kind: object) -> None:
+    if kind in _SUPPORTED_KINDS:
+        return
+    raise WorldForgeError(f"ProvenanceEnvelope kind must be one of: {', '.join(_SUPPORTED_KINDS)}.")
+
+
+def _validate_provenance_schema_version(schema_version: object) -> None:
+    if schema_version == PROVENANCE_SCHEMA_VERSION:
+        return
+    raise WorldForgeError(
+        "ProvenanceEnvelope schema_version must be "
+        f"{PROVENANCE_SCHEMA_VERSION}, got {schema_version}."
+    )
+
+
+def _normalize_provenance_text_fields(envelope: ProvenanceEnvelope) -> None:
+    _set_envelope_attr(
+        envelope,
+        "suite_id",
+        _required_text(envelope.suite_id, name="ProvenanceEnvelope suite_id"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "suite_version",
+        _required_text(envelope.suite_version, name="ProvenanceEnvelope suite_version"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "worldforge_version",
+        _required_text(
+            envelope.worldforge_version,
+            name="ProvenanceEnvelope worldforge_version",
+        ),
+    )
+    _set_envelope_attr(
+        envelope,
+        "created_at",
+        _required_text(envelope.created_at, name="ProvenanceEnvelope created_at"),
+    )
+
+
+def _normalize_provenance_collection_fields(envelope: ProvenanceEnvelope) -> None:
+    _set_envelope_attr(
+        envelope,
+        "command",
+        _string_tuple(envelope.command, name="ProvenanceEnvelope command"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "providers",
+        _string_tuple(envelope.providers, name="ProvenanceEnvelope providers"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "capabilities",
+        _string_tuple(envelope.capabilities, name="ProvenanceEnvelope capabilities"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "runtime_manifests",
+        _runtime_manifest_map(
+            envelope.runtime_manifests,
+            name="ProvenanceEnvelope runtime_manifests",
+        ),
+    )
+
+
+def _normalize_provenance_reference_fields(envelope: ProvenanceEnvelope) -> None:
+    _set_envelope_attr(
+        envelope,
+        "input_digest",
+        _digest_or_none(envelope.input_digest, name="ProvenanceEnvelope input_digest"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "result_digest",
+        _digest_or_none(envelope.result_digest, name="ProvenanceEnvelope result_digest"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "budget_file",
+        _budget_file_summary(envelope.budget_file, name="ProvenanceEnvelope budget_file"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "dataset_manifests",
+        _dataset_manifest_refs(
+            envelope.dataset_manifests,
+            name="ProvenanceEnvelope dataset_manifests",
+        ),
+    )
+
+
+def _normalize_provenance_claim_fields(envelope: ProvenanceEnvelope) -> None:
+    require_non_negative_int(envelope.event_count, name="ProvenanceEnvelope event_count")
+    _set_envelope_attr(
+        envelope,
+        "claim_boundary",
+        _required_text(envelope.claim_boundary, name="ProvenanceEnvelope claim_boundary"),
+    )
+    _set_envelope_attr(
+        envelope,
+        "metric_semantics",
+        _required_text(envelope.metric_semantics, name="ProvenanceEnvelope metric_semantics"),
+    )
+
+
+def _validate_optional_provenance_notes(notes: object) -> None:
+    if notes is None or (isinstance(notes, str) and notes.strip()):
+        return
+    raise WorldForgeError("ProvenanceEnvelope notes must be a non-empty string or None.")
 
 
 def digest_payload(payload: object) -> str:

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from subprocess import CompletedProcess
 
+import pytest
+
+from worldforge.models import WorldForgeError
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 from worldforge.testing import DeterministicClock, stable_snapshot
 
@@ -156,6 +160,28 @@ def test_release_evidence_main_writes_default_shape(tmp_path: Path) -> None:
     assert payload["schema_version"] == 1
     assert payload["validation_summary"]["skipped"] >= 1
     assert payload["live_provider_evidence"][0]["status"] == "host-owned"
+
+
+def test_release_evidence_json_output_rejects_non_finite_payload_before_touching_json_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "release-evidence.md"
+    json_output = tmp_path / "nested" / "release-evidence.json"
+
+    monkeypatch.setattr(generate_release_evidence, "render_release_evidence", lambda **_: "# ok\n")
+    monkeypatch.setattr(
+        generate_release_evidence,
+        "release_evidence_payload",
+        lambda **_: {"schema_version": 1, "duration_ms": math.nan},
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        main(["--output", str(output), "--json-output", str(json_output)])
+
+    assert output.is_file()
+    assert not json_output.exists()
+    assert not json_output.parent.exists()
 
 
 def test_release_evidence_gate_runner_records_pass_fail_and_skip() -> None:
@@ -397,6 +423,22 @@ def test_release_readiness_drill_writes_pass_failure_and_optional_skips(tmp_path
     for artifact in artifacts.values():
         assert (ROOT / artifact["json_path"]).is_file()
         assert (ROOT / artifact["markdown_path"]).is_file()
+
+
+def test_release_readiness_drill_rejects_non_finite_mode_payload_before_json_write(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        release_readiness_drill,
+        "release_evidence_payload",
+        lambda **_: {"schema_version": 1, "duration_ms": math.inf},
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        release_readiness_drill._render_drill_mode(tmp_path, "clean-pass")
+
+    assert not (tmp_path / "clean-pass" / "release-evidence.json").exists()
 
 
 def test_release_readiness_drill_cli_renders_json_summary(tmp_path: Path, capsys) -> None:

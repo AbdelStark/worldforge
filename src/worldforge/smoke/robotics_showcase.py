@@ -30,22 +30,53 @@ DEFAULT_RERUN_OUTPUT = Path("/tmp/worldforge-robotics-showcase/real-run.rrd")
 DEFAULT_TENSORBOARD_OUTPUT = Path(".worldforge/tensorboard")
 DEFAULT_BRIDGE = "pusht"
 
+_PARSER_DESCRIPTION = (
+    "Run the polished WorldForge real robotics showcase: LeRobot proposes "
+    "PushT actions, LeWorldModel scores checkpoint-native candidates, and "
+    "WorldForge ranks and mock-executes the selected action chunk."
+)
+_PARSER_EPILOG = (
+    "Default command:\n"
+    "  scripts/robotics-showcase\n\n"
+    "The lower-level configurable runner remains available as:\n"
+    "  scripts/lewm-lerobot-real --help"
+)
+
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=(
-            "Run the polished WorldForge real robotics showcase: LeRobot proposes "
-            "PushT actions, LeWorldModel scores checkpoint-native candidates, and "
-            "WorldForge ranks and mock-executes the selected action chunk."
-        ),
+        description=_PARSER_DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Default command:\n"
-            "  scripts/robotics-showcase\n\n"
-            "The lower-level configurable runner remains available as:\n"
-            "  scripts/lewm-lerobot-real --help"
-        ),
+        epilog=_PARSER_EPILOG,
     )
+    _add_policy_runtime_args(parser)
+    _add_artifact_args(parser)
+    _add_rerun_args(parser)
+    _add_tensorboard_args(parser)
+    _add_display_args(parser)
+    _add_execution_args(parser)
+    return parser
+
+
+def _default_checkpoint() -> Path | None:
+    raw_checkpoint = os.environ.get("LEWORLDMODEL_CHECKPOINT")
+    if raw_checkpoint is None:
+        return None
+    return Path(raw_checkpoint).expanduser()
+
+
+def _default_stablewm_home() -> Path:
+    return Path(os.environ.get("STABLEWM_HOME", DEFAULT_STABLEWM_HOME)).expanduser()
+
+
+def _default_lewm_asset_cache_dir() -> Path | None:
+    raw_cache_dir = os.environ.get("LEWORLDMODEL_ASSET_CACHE_DIR")
+    if raw_cache_dir is None:
+        return None
+    return Path(raw_cache_dir).expanduser()
+
+
+def _add_policy_runtime_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--policy-path",
         default=_env_value("LEROBOT_POLICY_PATH")
@@ -61,11 +92,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=(
-            Path(os.environ["LEWORLDMODEL_CHECKPOINT"]).expanduser()
-            if os.environ.get("LEWORLDMODEL_CHECKPOINT")
-            else None
-        ),
+        default=_default_checkpoint(),
         help="Exact LeWorldModel <policy>_object.ckpt path.",
     )
     parser.add_argument(
@@ -78,17 +105,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--stablewm-home",
         type=Path,
-        default=Path(os.environ.get("STABLEWM_HOME", DEFAULT_STABLEWM_HOME)).expanduser(),
+        default=_default_stablewm_home(),
     )
     parser.add_argument("--lewm-cache-dir", type=Path, default=None)
     parser.add_argument(
         "--lewm-asset-cache-dir",
         type=Path,
-        default=(
-            Path(os.environ["LEWORLDMODEL_ASSET_CACHE_DIR"]).expanduser()
-            if os.environ.get("LEWORLDMODEL_ASSET_CACHE_DIR")
-            else None
-        ),
+        default=_default_lewm_asset_cache_dir(),
         help=(
             "Directory for downloaded Hugging Face config/weights used when auto-building "
             "a missing LeWorldModel object checkpoint."
@@ -111,6 +134,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--lerobot-cache-dir", default=_env_value("LEROBOT_CACHE_DIR"))
     parser.add_argument("--mode", choices=("select_action", "predict_chunk"), default=DEFAULT_MODE)
     parser.add_argument("--state-dir", type=Path, default=None)
+
+
+def _add_artifact_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--json-output",
         type=Path,
@@ -128,6 +154,9 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip writing the default /tmp JSON artifact.",
     )
+
+
+def _add_rerun_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--rerun",
         action="store_true",
@@ -160,6 +189,9 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable the wrapper's default Rerun recording.",
     )
+
+
+def _add_tensorboard_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--tensorboard",
         action="store_true",
@@ -195,6 +227,9 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable the wrapper's default TensorBoard recording.",
     )
+
+
+def _add_display_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json-only", action="store_true")
     parser.add_argument(
         "--tui",
@@ -225,6 +260,9 @@ def _parser() -> argparse.ArgumentParser:
         help="Control ANSI colors in the human-readable output.",
     )
     parser.add_argument("--no-color", action="store_const", const="never", dest="color")
+
+
+def _add_execution_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--health-only", action="store_true")
     parser.add_argument("--no-execute", action="store_true")
     parser.add_argument(
@@ -235,7 +273,6 @@ def _parser() -> argparse.ArgumentParser:
             "LeWorldModel checkpoint. Use only for trusted weights."
         ),
     )
-    return parser
 
 
 def _append_optional_path(argv: list[str], flag: str, value: Path | str | None) -> None:
@@ -272,8 +309,8 @@ def _ensure_checkpoint(args: argparse.Namespace) -> None:
         raise SystemExit(str(exc)) from exc
 
 
-def _forward_args(args: argparse.Namespace) -> list[str]:
-    forwarded = [
+def _base_forward_args(args: argparse.Namespace) -> list[str]:
+    return [
         "--policy-path",
         args.policy_path,
         "--policy-type",
@@ -295,41 +332,74 @@ def _forward_args(args: argparse.Namespace) -> list[str]:
         "--color",
         args.color,
     ]
+
+
+def _append_json_artifact_args(forwarded: list[str], args: argparse.Namespace) -> None:
+    if args.no_json_output:
+        return
+    _append_optional_path(forwarded, "--json-output", args.json_output)
+    _append_optional_path(forwarded, "--run-manifest", args.run_manifest)
+
+
+def _rerun_forward_args(args: argparse.Namespace) -> list[str]:
+    if args.no_rerun or args.health_only:
+        return []
+    if args.rerun_spawn:
+        return ["--rerun-spawn"]
+    if args.rerun_connect_url is not None:
+        return ["--rerun-connect-url", args.rerun_connect_url]
+    if args.rerun_serve_grpc_port is not None:
+        return ["--rerun-serve-grpc-port", str(args.rerun_serve_grpc_port)]
+    if args.rerun_output is not None:
+        return ["--rerun-output", str(args.rerun_output)]
+    if args.rerun:
+        return ["--rerun-output", str(DEFAULT_RERUN_OUTPUT)]
+    return []
+
+
+def _tensorboard_logdir(args: argparse.Namespace) -> Path | None:
+    if args.no_tensorboard or args.health_only:
+        return None
+    if args.tensorboard_logdir is not None:
+        return args.tensorboard_logdir
+    if args.tensorboard:
+        return DEFAULT_TENSORBOARD_OUTPUT
+    return None
+
+
+def _tensorboard_forward_args(args: argparse.Namespace) -> list[str]:
+    logdir = _tensorboard_logdir(args)
+    if logdir is None:
+        return []
+    forwarded = ["--tensorboard-logdir", str(logdir)]
+    if args.tensorboard_run_name is not None:
+        forwarded.extend(["--tensorboard-run-name", args.tensorboard_run_name])
+    forwarded.extend(["--tensorboard-flush-secs", str(args.tensorboard_flush_secs)])
+    return forwarded
+
+
+def _append_simple_flags(forwarded: list[str], args: argparse.Namespace) -> None:
+    for enabled, flag in (
+        (args.json_only, "--json-only"),
+        (args.health_only, "--health-only"),
+        (args.no_execute, "--no-execute"),
+    ):
+        if enabled:
+            forwarded.append(flag)
+
+
+def _forward_args(args: argparse.Namespace) -> list[str]:
+    forwarded = _base_forward_args(args)
     _append_optional_path(forwarded, "--checkpoint", args.checkpoint)
     _append_optional_path(forwarded, "--lewm-cache-dir", args.lewm_cache_dir)
     _append_optional_path(forwarded, "--lerobot-device", args.lerobot_device)
     _append_optional_path(forwarded, "--lewm-device", args.lewm_device)
     _append_optional_path(forwarded, "--lerobot-cache-dir", args.lerobot_cache_dir)
     _append_optional_path(forwarded, "--state-dir", args.state_dir)
-    if not args.no_json_output:
-        _append_optional_path(forwarded, "--json-output", args.json_output)
-        _append_optional_path(forwarded, "--run-manifest", args.run_manifest)
-    if not args.no_rerun and not args.health_only:
-        if args.rerun_spawn:
-            forwarded.append("--rerun-spawn")
-        elif args.rerun_connect_url is not None:
-            forwarded.extend(["--rerun-connect-url", args.rerun_connect_url])
-        elif args.rerun_serve_grpc_port is not None:
-            forwarded.extend(["--rerun-serve-grpc-port", str(args.rerun_serve_grpc_port)])
-        elif args.rerun_output is not None:
-            forwarded.extend(["--rerun-output", str(args.rerun_output)])
-        elif args.rerun:
-            forwarded.extend(["--rerun-output", str(DEFAULT_RERUN_OUTPUT)])
-    if not args.no_tensorboard and not args.health_only:
-        logdir = args.tensorboard_logdir
-        if logdir is None and args.tensorboard:
-            logdir = DEFAULT_TENSORBOARD_OUTPUT
-        if logdir is not None:
-            forwarded.extend(["--tensorboard-logdir", str(logdir)])
-            if args.tensorboard_run_name is not None:
-                forwarded.extend(["--tensorboard-run-name", args.tensorboard_run_name])
-            forwarded.extend(["--tensorboard-flush-secs", str(args.tensorboard_flush_secs)])
-    if args.json_only:
-        forwarded.append("--json-only")
-    if args.health_only:
-        forwarded.append("--health-only")
-    if args.no_execute:
-        forwarded.append("--no-execute")
+    _append_json_artifact_args(forwarded, args)
+    forwarded.extend(_rerun_forward_args(args))
+    forwarded.extend(_tensorboard_forward_args(args))
+    _append_simple_flags(forwarded, args)
     return forwarded
 
 

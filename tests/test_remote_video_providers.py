@@ -1,33 +1,26 @@
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import httpx
 import pytest
 
 from worldforge import GenerationOptions, ProviderEvent, ProviderRequestPolicy, VideoClip
+from worldforge.demos.provider_failure_gallery import build_provider_failure_gallery_entries
 from worldforge.models import JSONDict, WorldForgeError
-from worldforge.providers import CosmosProvider, ProviderError, RunwayProvider
+from worldforge.providers import (
+    CosmosProvider,
+    ProviderBudgetExceededError,
+    ProviderError,
+    RunwayProvider,
+)
 from worldforge.providers import http_utils as http_utils_module
 from worldforge.providers import runway as runway_module
 from worldforge.providers.http_utils import request_bytes_with_policy, validate_remote_url
 from worldforge.testing import assert_provider_contract
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "providers"
-_ROOT = Path(__file__).resolve().parents[1]
-_DEMO_SCRIPT = _ROOT / "scripts" / "demo_showcases.py"
-_DEMO_SPEC = importlib.util.spec_from_file_location(
-    "demo_showcases_for_remote_provider_tests",
-    _DEMO_SCRIPT,
-)
-assert _DEMO_SPEC is not None
-_demo_showcases = importlib.util.module_from_spec(_DEMO_SPEC)
-assert _DEMO_SPEC.loader is not None
-sys.modules[_DEMO_SPEC.name] = _demo_showcases
-_DEMO_SPEC.loader.exec_module(_demo_showcases)
 
 
 def _fixture(name: str) -> dict[str, object]:
@@ -35,10 +28,7 @@ def _fixture(name: str) -> dict[str, object]:
 
 
 def _gallery_entry(entry_id: str) -> dict[str, object]:
-    entries = {
-        str(entry["id"]): entry
-        for entry in _demo_showcases.build_provider_failure_gallery_entries()
-    }
+    entries = {str(entry["id"]): entry for entry in build_provider_failure_gallery_entries()}
     return entries[entry_id]
 
 
@@ -325,6 +315,21 @@ def test_cosmos_provider_rejects_malformed_response_fixtures() -> None:
     with pytest.raises(ProviderError, match="field 'seed'"):
         provider.generate("drive through the city", duration_seconds=2.0)
 
+    def bad_upsampled_prompt_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/infer":
+            return httpx.Response(
+                200,
+                json={"b64_video": "Y29zbW9zLXZpZGVv", "upsampled_prompt": ["bad"]},
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        transport=httpx.MockTransport(bad_upsampled_prompt_handler),
+    )
+    with pytest.raises(ProviderError, match="field 'upsampled_prompt'"):
+        provider.generate("drive through the city", duration_seconds=2.0)
+
     def failed_task_handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path == "/v1/infer":
             return httpx.Response(200, json=_fixture("cosmos_generate_failed_task.json"))
@@ -335,6 +340,18 @@ def test_cosmos_provider_rejects_malformed_response_fixtures() -> None:
         transport=httpx.MockTransport(failed_task_handler),
     )
     with pytest.raises(ProviderError, match="generation task failed: model rejected prompt"):
+        provider.generate("drive through the city", duration_seconds=2.0)
+
+    def failed_task_reason_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/infer":
+            return httpx.Response(200, json={"status": "error", "reason": "quota exceeded"})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    provider = CosmosProvider(
+        base_url="http://cosmos.test",
+        transport=httpx.MockTransport(failed_task_reason_handler),
+    )
+    with pytest.raises(ProviderError, match="generation task failed: quota exceeded"):
         provider.generate("drive through the city", duration_seconds=2.0)
 
     def unsupported_artifact_handler(request: httpx.Request) -> httpx.Response:
@@ -981,6 +998,39 @@ def test_runway_config_summary_reports_effective_artifact_dns_policy(monkeypatch
         artifact_dns_detail(RunwayProvider(resolve_artifact_dns=False))
         == "effective resolve_dns=false"
     )
+
+
+def test_request_bytes_with_policy_budget_can_fail_before_first_attempt(monkeypatch) -> None:
+    events: list[ProviderEvent] = []
+    attempts = {"count": 0}
+    times = iter([0.0, 2.0, 2.0, 2.0])
+
+    monkeypatch.setattr(http_utils_module, "perf_counter", lambda: next(times))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        return httpx.Response(200, stream=httpx.ByteStream(b"ok"))
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(ProviderBudgetExceededError, match="exceeded budget"),
+    ):
+        request_bytes_with_policy(
+            client,
+            method="GET",
+            url="https://downloads.example.com/generated.mp4",
+            provider_name="runway",
+            operation_name="artifact download",
+            policy=ProviderRequestPolicy.remote_defaults(
+                request_timeout_seconds=1.0,
+                download_max_elapsed_seconds=1.0,
+            ).download,
+            emit_event=events.append,
+        )
+
+    assert attempts["count"] == 0
+    assert events[0].phase == "budget_exceeded"
+    assert events[0].duration_ms == 2000.0
 
 
 def test_request_bytes_with_policy_caps_streamed_body_without_content_length() -> None:

@@ -10,8 +10,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from worldforge.artifact_io import write_json_artifact
 from worldforge.config_profiles import validate_config_profile_provenance
-from worldforge.models import JSONDict
+from worldforge.models import JSONDict, WorldForgeError, require_json_dict
 
 RUN_WORKSPACE_SCHEMA_VERSION = 1
 RUN_ID_PATTERN = re.compile(r"^\d{8}T\d{6}Z-[a-f0-9]{8}$")
@@ -52,12 +53,7 @@ class RunWorkspace:
         """Write a stable JSON artifact below this run workspace."""
 
         target = self._resolve_child(relative_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(payload, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        return target
+        return write_json_artifact(target, payload)
 
     def write_text(self, relative_path: str, text: str) -> Path:
         """Write a text artifact below this run workspace."""
@@ -181,11 +177,7 @@ def write_run_manifest(
     }
     if config_profile is not None:
         payload["config_profile"] = validate_config_profile_provenance(config_profile)
-    workspace.manifest_path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return workspace.manifest_path
+    return write_json_artifact(workspace.manifest_path, payload)
 
 
 def list_run_workspaces(workspace_dir: Path) -> tuple[JSONDict, ...]:
@@ -198,11 +190,9 @@ def list_run_workspaces(workspace_dir: Path) -> tuple[JSONDict, ...]:
     for manifest_path in root.glob("*/run_manifest.json"):
         try:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            payload = require_json_dict(payload, name=f"Run manifest {manifest_path}")
+        except (OSError, json.JSONDecodeError, WorldForgeError):
             continue
-        if not isinstance(payload, dict):
-            continue
-        payload = dict(payload)
         payload["path"] = str(manifest_path.parent)
         runs.append(payload)
     return tuple(sorted(runs, key=lambda item: str(item.get("run_id", "")), reverse=True))

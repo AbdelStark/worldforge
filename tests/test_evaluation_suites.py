@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -20,6 +21,19 @@ ROOT = Path(__file__).resolve().parents[1]
 DATASET_MANIFEST = ROOT / "examples/dataset-manifests/mock-evaluation-fixtures.json"
 CUSTOM_EVAL_EXAMPLE = ROOT / "examples/custom_evaluation_suite.py"
 _DIGEST = "sha256:72b95ee161e971da5eb37a54b426dda56863819d81cd6e4b32f1111f8336c086"
+
+
+def _load_custom_eval_example():
+    spec = importlib.util.spec_from_file_location(
+        "worldforge_custom_evaluation_suite_test",
+        CUSTOM_EVAL_EXAMPLE,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_builtin_evaluation_suite_names_are_stable() -> None:
@@ -218,15 +232,7 @@ def test_custom_evaluation_suite_failure_gallery_uses_custom_claim_boundary(tmp_
 
 
 def test_custom_evaluation_walkthrough_example_writes_report_artifacts(tmp_path) -> None:
-    spec = importlib.util.spec_from_file_location(
-        "worldforge_custom_evaluation_suite_test",
-        CUSTOM_EVAL_EXAMPLE,
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    module = _load_custom_eval_example()
 
     summary = module.run_walkthrough(
         output_dir=tmp_path / "artifacts",
@@ -242,14 +248,52 @@ def test_custom_evaluation_walkthrough_example_writes_report_artifacts(tmp_path)
         artifact_paths
     )
     report_payload = json.loads(Path(artifact_paths["json"]).read_text(encoding="utf-8"))
+    summary_payload = json.loads(
+        Path(artifact_paths["walkthrough-summary.json"]).read_text(encoding="utf-8")
+    )
     gallery_payload = json.loads(
         Path(artifact_paths["failure_gallery.json"]).read_text(encoding="utf-8")
     )
+    assert summary_payload == summary
     assert report_payload["provenance"]["suite_id"] == "custom-empty-world"
     assert gallery_payload["case_count"] == 1
     assert "controlled-failure-gallery" in Path(artifact_paths["markdown"]).read_text(
         encoding="utf-8"
     )
+
+
+def test_custom_evaluation_walkthrough_rejects_non_finite_summary_payload(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_custom_eval_example()
+    output_dir = tmp_path / "artifacts"
+
+    class FakeFailureGallery:
+        case_count = 0
+
+    class FakeReport:
+        def __init__(self) -> None:
+            self.suite_id = "custom-empty-world"
+            self.results: list[object] = []
+            self.provenance = None
+            self.claim_boundary = math.nan
+
+        def artifacts(self) -> dict[str, str]:
+            return {}
+
+        def failure_gallery(self) -> FakeFailureGallery:
+            return FakeFailureGallery()
+
+    class FakeSuite:
+        def run_report(self, _provider: str, *, forge: WorldForge) -> FakeReport:
+            return FakeReport()
+
+    monkeypatch.setattr(module, "build_suite", lambda: FakeSuite())
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        module.run_walkthrough(output_dir=output_dir, state_dir=tmp_path / "worlds")
+
+    assert not (output_dir / "walkthrough-summary.json").exists()
 
 
 def test_custom_evaluation_suite_rejects_invalid_metric_payload(tmp_path) -> None:

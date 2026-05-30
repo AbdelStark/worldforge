@@ -15,7 +15,7 @@ A patch is a single sequenced application of changes to one base snapshot.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,6 +27,8 @@ from worldforge.models import (
     SceneObject,
     WorldForgeError,
     WorldStateError,
+    dump_json,
+    require_json_dict,
 )
 
 if TYPE_CHECKING:
@@ -66,18 +68,9 @@ class ObjectChange:
     field_changes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.kind not in OBJECT_CHANGE_KINDS:
-            options = ", ".join(OBJECT_CHANGE_KINDS)
-            raise WorldForgeError(f"ObjectChange kind must be one of: {options}.")
+        _validate_object_change_kind(self.kind)
         _validate_object_id(self.object_id)
-        if self.kind == "added" and self.after is None:
-            raise WorldForgeError("ObjectChange kind='added' requires an 'after' payload.")
-        if self.kind == "removed" and self.before is None:
-            raise WorldForgeError("ObjectChange kind='removed' requires a 'before' payload.")
-        if self.kind == "updated" and (self.before is None or self.after is None):
-            raise WorldForgeError(
-                "ObjectChange kind='updated' requires both 'before' and 'after' payloads."
-            )
+        _validate_object_change_payloads(self.kind, before=self.before, after=self.after)
 
     def to_dict(self) -> JSONDict:
         return {
@@ -87,6 +80,43 @@ class ObjectChange:
             "after": self.after,
             "field_changes": list(self.field_changes),
         }
+
+
+def _validate_object_change_kind(kind: str) -> None:
+    if kind not in OBJECT_CHANGE_KINDS:
+        options = ", ".join(OBJECT_CHANGE_KINDS)
+        raise WorldForgeError(f"ObjectChange kind must be one of: {options}.")
+
+
+def _validate_object_change_payloads(
+    kind: str,
+    *,
+    before: JSONDict | None,
+    after: JSONDict | None,
+) -> None:
+    if kind == "added":
+        _require_object_change_payload(
+            after, "ObjectChange kind='added' requires an 'after' payload."
+        )
+    if kind == "removed":
+        _require_object_change_payload(
+            before,
+            "ObjectChange kind='removed' requires a 'before' payload.",
+        )
+    if kind == "updated":
+        _require_object_change_payload(
+            before,
+            "ObjectChange kind='updated' requires both 'before' and 'after' payloads.",
+        )
+        _require_object_change_payload(
+            after,
+            "ObjectChange kind='updated' requires both 'before' and 'after' payloads.",
+        )
+
+
+def _require_object_change_payload(payload: JSONDict | None, message: str) -> None:
+    if payload is None:
+        raise WorldForgeError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +141,7 @@ class WorldDiff:
         }
 
     def to_json(self, *, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent, sort_keys=True) + "\n"
+        return dump_json(self.to_dict(), indent=indent) + "\n"
 
     def to_markdown(self) -> str:
         lines = [
@@ -186,7 +216,7 @@ class WorldPatch:
         }
 
     def to_json(self, *, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent, sort_keys=True) + "\n"
+        return dump_json(self.to_dict(), indent=indent) + "\n"
 
 
 def diff_worlds(
@@ -255,8 +285,7 @@ def apply_patch(world_state: JSONDict, patch: WorldPatch) -> JSONDict:
     if not isinstance(patch, WorldPatch):
         raise WorldForgeError("apply_patch patch must be a WorldPatch instance.")
 
-    # Deep enough copy to allow per-key mutation without leaking changes back.
-    new_state = json.loads(json.dumps(dict(world_state)))
+    new_state = _require_patch_base_state(world_state)
     if "scene" not in new_state or not isinstance(new_state["scene"], dict):
         new_state["scene"] = {"objects": {}}
     objects = new_state["scene"].setdefault("objects", {})
@@ -273,19 +302,32 @@ def apply_patch(world_state: JSONDict, patch: WorldPatch) -> JSONDict:
 
 
 def _apply_field_change(state: JSONDict, change: WorldFieldChange) -> None:
-    if change.field == "step":
-        if not isinstance(change.after, int) or change.after < 0:
-            raise WorldStateError("Patch step value must be a non-negative integer.")
-        state["step"] = change.after
-        return
-    if change.field == "metadata":
-        if change.after is not None and not isinstance(change.after, dict):
-            raise WorldStateError("Patch metadata value must be a JSON object or null.")
-        state["metadata"] = dict(change.after or {})
-        return
+    applier = _FIELD_CHANGE_APPLIERS.get(change.field, _apply_text_field_change)
+    applier(state, change)
+
+
+def _apply_step_field_change(state: JSONDict, change: WorldFieldChange) -> None:
+    if not isinstance(change.after, int) or change.after < 0:
+        raise WorldStateError("Patch step value must be a non-negative integer.")
+    state["step"] = change.after
+
+
+def _apply_metadata_field_change(state: JSONDict, change: WorldFieldChange) -> None:
+    if change.after is not None and not isinstance(change.after, dict):
+        raise WorldStateError("Patch metadata value must be a JSON object or null.")
+    state["metadata"] = dict(change.after or {})
+
+
+def _apply_text_field_change(state: JSONDict, change: WorldFieldChange) -> None:
     if change.after is not None and not isinstance(change.after, str):
         raise WorldStateError(f"Patch {change.field} value must be a string or null.")
     state[change.field] = change.after
+
+
+_FIELD_CHANGE_APPLIERS: dict[str, Callable[[JSONDict, WorldFieldChange], None]] = {
+    "step": _apply_step_field_change,
+    "metadata": _apply_metadata_field_change,
+}
 
 
 def _apply_object_change(objects: dict, change: ObjectChange) -> None:
@@ -315,11 +357,11 @@ def _apply_object_change(objects: dict, change: ObjectChange) -> None:
 
 def _coerce_to_dict(value: object, *, name: str) -> JSONDict:
     if isinstance(value, Mapping):
-        return dict(value)
+        return _require_json_object(value, name=f"diff_worlds {name}")
     if hasattr(value, "to_dict") and callable(value.to_dict):
         payload = value.to_dict()
         if isinstance(payload, Mapping):
-            return dict(payload)
+            return _require_json_object(payload, name=f"diff_worlds {name}")
     raise WorldForgeError(f"diff_worlds {name} must be a World instance or a JSON-shaped dict.")
 
 
@@ -333,9 +375,18 @@ def _load_world_payload(path: Path | str, *, name: str) -> JSONDict:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
         raise WorldForgeError(f"{name.title()} world file {target} contains invalid JSON.") from exc
-    if not isinstance(payload, dict):
-        raise WorldForgeError(f"{name.title()} world file {target} must be a JSON object.")
-    return payload
+    return _require_json_object(payload, name=f"{name.title()} world file")
+
+
+def _require_json_object(value: object, *, name: str) -> JSONDict:
+    return require_json_dict(value, name=name)
+
+
+def _require_patch_base_state(value: object) -> JSONDict:
+    try:
+        return require_json_dict(value, name="apply_patch base world_state")
+    except WorldForgeError as exc:
+        raise WorldStateError(str(exc)) from exc
 
 
 def _field_changes(
@@ -420,50 +471,71 @@ def _validate_object_id(object_id: object) -> None:
 def _validate_object_payload(payload: object, *, name: str) -> JSONDict:
     """Round-trip a scene-object payload through :class:`SceneObject` validation."""
 
-    if not isinstance(payload, Mapping):
-        raise WorldStateError(f"{name} payload must be a JSON object.")
     try:
-        pose = payload.get("pose") or {}
-        if not isinstance(pose, Mapping):
-            raise WorldStateError(f"{name} pose must be a JSON object.")
-        position_payload = pose.get("position") or {}
-        if not isinstance(position_payload, Mapping):
-            raise WorldStateError(f"{name} pose.position must be a JSON object.")
-        position = Position(
-            float(position_payload.get("x", 0.0)),
-            float(position_payload.get("y", 0.0)),
-            float(position_payload.get("z", 0.0)),
-        )
-        bbox_payload = payload.get("bbox") or {}
-        if not isinstance(bbox_payload, Mapping):
-            raise WorldStateError(f"{name} bbox must be a JSON object.")
-        bbox_min = bbox_payload.get("min") or {}
-        bbox_max = bbox_payload.get("max") or {}
-        if not isinstance(bbox_min, Mapping) or not isinstance(bbox_max, Mapping):
-            raise WorldStateError(f"{name} bbox.min and bbox.max must be JSON objects.")
-        bbox = BBox(
-            Position(
-                float(bbox_min.get("x", 0.0)),
-                float(bbox_min.get("y", 0.0)),
-                float(bbox_min.get("z", 0.0)),
-            ),
-            Position(
-                float(bbox_max.get("x", 0.0)),
-                float(bbox_max.get("y", 0.0)),
-                float(bbox_max.get("z", 0.0)),
-            ),
-        )
-        scene_object = SceneObject(
-            name=str(payload.get("name", "object")),
-            position=position,
-            bbox=bbox,
-            id=str(payload.get("id")) if payload.get("id") is not None else None,
-            is_graspable=bool(payload.get("is_graspable", False)),
-            metadata=dict(payload.get("metadata") or {}),
-        )
+        object_payload = _scene_object_payload(payload, name=name)
+        scene_object = _scene_object_from_payload(object_payload, name=name)
     except WorldForgeError as exc:
         raise WorldStateError(f"{name} validation failed: {exc}") from exc
     return scene_object.to_dict()
+
+
+def _scene_object_payload(payload: object, *, name: str) -> Mapping[str, object]:
+    if not isinstance(payload, Mapping):
+        raise WorldStateError(f"{name} payload must be a JSON object.")
+    return payload
+
+
+def _scene_object_from_payload(payload: Mapping[str, object], *, name: str) -> SceneObject:
+    return SceneObject(
+        name=str(payload.get("name", "object")),
+        position=_scene_object_position(payload, name=name),
+        bbox=_scene_object_bbox(payload, name=name),
+        id=str(payload.get("id")) if payload.get("id") is not None else None,
+        is_graspable=bool(payload.get("is_graspable", False)),
+        metadata=dict(payload.get("metadata") or {}),
+    )
+
+
+def _scene_object_position(payload: Mapping[str, object], *, name: str) -> Position:
+    pose = _optional_mapping(payload.get("pose"), message=f"{name} pose must be a JSON object.")
+    position = _optional_mapping(
+        pose.get("position"),
+        message=f"{name} pose.position must be a JSON object.",
+    )
+    return _position_from_mapping(position)
+
+
+def _scene_object_bbox(payload: Mapping[str, object], *, name: str) -> BBox:
+    bbox = _optional_mapping(payload.get("bbox"), message=f"{name} bbox must be a JSON object.")
+    bbox_min, bbox_max = _bbox_endpoints(bbox, name=name)
+    return BBox(_position_from_mapping(bbox_min), _position_from_mapping(bbox_max))
+
+
+def _bbox_endpoints(
+    payload: Mapping[str, object],
+    *,
+    name: str,
+) -> tuple[Mapping[str, object], Mapping[str, object]]:
+    bbox_min = payload.get("min") or {}
+    bbox_max = payload.get("max") or {}
+    if not isinstance(bbox_min, Mapping) or not isinstance(bbox_max, Mapping):
+        raise WorldStateError(f"{name} bbox.min and bbox.max must be JSON objects.")
+    return bbox_min, bbox_max
+
+
+def _optional_mapping(value: object, *, message: str) -> Mapping[str, object]:
+    mapping = value or {}
+    if not isinstance(mapping, Mapping):
+        raise WorldStateError(message)
+    return mapping
+
+
+def _position_from_mapping(payload: Mapping[str, object]) -> Position:
+    return Position(
+        float(payload.get("x", 0.0)),
+        float(payload.get("y", 0.0)),
+        float(payload.get("z", 0.0)),
+    )
 
 
 def _format_inline(value: object) -> str:
@@ -471,7 +543,7 @@ def _format_inline(value: object) -> str:
         return "-"
     if isinstance(value, str | int | float | bool):
         return str(value)
-    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return dump_json(value)
 
 
 __all__ = [

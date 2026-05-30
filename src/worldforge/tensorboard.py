@@ -17,7 +17,6 @@ optional ``tensorboard`` extra is missing.
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -32,11 +31,29 @@ from worldforge.models import (
     ProviderEvent,
     WorldForgeError,
     _redact_observable_text,
+    dump_json,
     require_json_dict,
 )
 
 _DEFAULT_NAMESPACE = "worldforge/leworldmodel"
 _TAG_SEGMENT_PATTERN = re.compile(r"[^A-Za-z0-9_.\-/]+")
+_CHECKPOINT_TEXT_FIELDS = (
+    ("checkpoint/path", ("output", "checkpoint")),
+    ("checkpoint/revision", ("revision",)),
+    ("checkpoint/repo", ("repo_id",)),
+    ("checkpoint/policy", ("policy",)),
+)
+_CHECKPOINT_BOOL_FIELDS = ("created",)
+_ROBOTICS_TEXT_FIELDS = ("task", "checkpoint_display", "checkpoint", "state_dir")
+_ROBOTICS_JSON_FIELDS = ("inputs", "health")
+_ROBOTICS_SCORE_STATS = (
+    "score_min",
+    "score_max",
+    "score_mean",
+    "score_median",
+    "score_range",
+    "gap_to_runner_up",
+)
 
 
 def _require_text(value: object, *, name: str) -> str:
@@ -108,10 +125,24 @@ def _sanitize_text(value: str) -> str:
     return _redact_observable_text(value).replace("[redacted]", "[REDACTED]")
 
 
+def _text_value(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
+
+
+def _first_text_value(payload: Mapping[str, object], keys: Iterable[str]) -> str | None:
+    for key in keys:
+        value = _text_value(payload.get(key))
+        if value is not None:
+            return value
+    return None
+
+
 def _pretty_json(payload: JSONDict) -> str:
     try:
-        return json.dumps(payload, sort_keys=True, indent=2, allow_nan=False)
-    except (TypeError, ValueError) as exc:
+        return dump_json(payload, indent=2)
+    except WorldForgeError as exc:
         raise WorldForgeError(
             "TensorBoard text payloads must be JSON-serializable and contain only finite numbers."
         ) from exc
@@ -378,22 +409,8 @@ class TensorBoardCheckpointInspector:
 
         data = require_json_dict(payload, name="checkpoint_summary")
         self.log_json("checkpoint/provenance", data)
-        path = data.get("output") or data.get("checkpoint")
-        if isinstance(path, str) and path.strip():
-            self.log_text("checkpoint/path", path)
-        revision = data.get("revision")
-        if isinstance(revision, str) and revision.strip():
-            self.log_text("checkpoint/revision", revision)
-        repo_id = data.get("repo_id")
-        if isinstance(repo_id, str) and repo_id.strip():
-            self.log_text("checkpoint/repo", repo_id)
-        policy = data.get("policy")
-        if isinstance(policy, str) and policy.strip():
-            self.log_text("checkpoint/policy", policy)
-        for key in ("created",):
-            value = data.get(key)
-            if isinstance(value, bool):
-                self.log_scalar(f"checkpoint/{key}", 1.0 if value else 0.0)
+        self._log_checkpoint_text_fields(data)
+        self._log_boolean_scalars("checkpoint", data, _CHECKPOINT_BOOL_FIELDS)
 
     def log_score_distribution(
         self,
@@ -475,47 +492,13 @@ class TensorBoardCheckpointInspector:
         """Log the robotics showcase summary as text, scalars, and a histogram."""
 
         payload = require_json_dict(summary, name="robotics_showcase_summary")
-        self.log_text(
-            "robotics_showcase/summary",
-            _pretty_json(payload),
-        )
-        for key in ("task", "checkpoint_display", "checkpoint", "state_dir"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                self.log_text(f"robotics_showcase/{key}", value)
-        inputs = payload.get("inputs")
-        if isinstance(inputs, dict):
-            self.log_json("robotics_showcase/inputs", inputs)
-        health = payload.get("health")
-        if isinstance(health, dict):
-            self.log_json("robotics_showcase/health", health)
-        score_result = payload.get("score_result")
-        if isinstance(score_result, dict):
-            self.log_score_distribution(
-                score_result.get("scores", []),
-                best_index=score_result.get("best_index"),
-                best_score=score_result.get("best_score"),
-            )
-        score_stats = payload.get("score_stats")
-        if isinstance(score_stats, dict):
-            mapped = {
-                "score_min": score_stats.get("score_min"),
-                "score_max": score_stats.get("score_max"),
-                "score_mean": score_stats.get("score_mean"),
-                "score_median": score_stats.get("score_median"),
-                "score_range": score_stats.get("score_range"),
-                "gap_to_runner_up": score_stats.get("gap_to_runner_up"),
-            }
-            self.log_metrics(mapped)
-        metrics = payload.get("metrics")
-        if isinstance(metrics, dict):
-            self.log_metrics(metrics)
-        events = payload.get("provider_events")
-        if isinstance(events, list):
-            for entry in events:
-                provider_event = self._coerce_provider_event(entry)
-                if provider_event is not None:
-                    self.log_provider_event(provider_event)
+        self.log_text("robotics_showcase/summary", _pretty_json(payload))
+        self._log_text_fields("robotics_showcase", payload, _ROBOTICS_TEXT_FIELDS)
+        self._log_json_fields("robotics_showcase", payload, _ROBOTICS_JSON_FIELDS)
+        self._log_robotics_score_result(payload.get("score_result"))
+        self._log_robotics_score_stats(payload.get("score_stats"))
+        self._log_mapping_metrics(payload.get("metrics"))
+        self._log_provider_event_entries(payload.get("provider_events"))
 
     def log_state_dict_histograms(
         self,
@@ -588,6 +571,71 @@ class TensorBoardCheckpointInspector:
             return ProviderEvent(**kwargs)  # type: ignore[arg-type]
         except (WorldForgeError, TypeError, ValueError):
             return None
+
+    def _log_checkpoint_text_fields(self, payload: Mapping[str, object]) -> None:
+        for tag, keys in _CHECKPOINT_TEXT_FIELDS:
+            value = _first_text_value(payload, keys)
+            if value is not None:
+                self.log_text(tag, value)
+
+    def _log_text_fields(
+        self,
+        prefix: str,
+        payload: Mapping[str, object],
+        fields: Iterable[str],
+    ) -> None:
+        for key in fields:
+            value = _text_value(payload.get(key))
+            if value is not None:
+                self.log_text(f"{prefix}/{key}", value)
+
+    def _log_json_fields(
+        self,
+        prefix: str,
+        payload: Mapping[str, object],
+        fields: Iterable[str],
+    ) -> None:
+        for key in fields:
+            value = payload.get(key)
+            if isinstance(value, dict):
+                self.log_json(f"{prefix}/{key}", value)
+
+    def _log_boolean_scalars(
+        self,
+        prefix: str,
+        payload: Mapping[str, object],
+        fields: Iterable[str],
+    ) -> None:
+        for key in fields:
+            value = payload.get(key)
+            if isinstance(value, bool):
+                self.log_scalar(f"{prefix}/{key}", 1.0 if value else 0.0)
+
+    def _log_robotics_score_result(self, score_result: object) -> None:
+        if not isinstance(score_result, dict):
+            return
+        self.log_score_distribution(
+            score_result.get("scores", []),
+            best_index=score_result.get("best_index"),
+            best_score=score_result.get("best_score"),
+        )
+
+    def _log_robotics_score_stats(self, score_stats: object) -> None:
+        if not isinstance(score_stats, dict):
+            return
+        self.log_metrics({key: score_stats.get(key) for key in _ROBOTICS_SCORE_STATS})
+
+    def _log_mapping_metrics(self, metrics: object) -> None:
+        if isinstance(metrics, dict):
+            self.log_metrics(metrics)
+
+    def _log_provider_event_entries(self, entries: object) -> None:
+        if not isinstance(entries, list):
+            return
+        for entry in entries:
+            provider_event = self._coerce_provider_event(entry)
+            if provider_event is not None:
+                self.log_provider_event(provider_event)
 
     def _numeric_array(self, values: object) -> Any:
         if _is_tensor_like(values):

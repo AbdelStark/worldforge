@@ -167,6 +167,36 @@ def test_diff_worlds_from_paths_rejects_invalid_json(tmp_path: Path) -> None:
         diff_worlds_from_paths(bad, good)
 
 
+def test_world_diff_rejects_non_finite_json_boundaries(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.json"
+    target_path = tmp_path / "target.json"
+    source_path.write_text('{"name": "source", "metadata": {"score": NaN}}\n', encoding="utf-8")
+    target_path.write_text('{"name": "target", "metadata": {}}\n', encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        diff_worlds_from_paths(source_path, target_path)
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        diff_worlds({"metadata": {"score": float("nan")}}, {"metadata": {}})
+
+    with pytest.raises(WorldStateError, match="finite number"):
+        apply_patch(
+            {"name": "w", "metadata": {"score": float("nan")}},
+            WorldPatch(
+                schema_version=WORLD_DIFF_SCHEMA_VERSION, field_changes=(), object_changes=()
+            ),
+        )
+
+    non_finite_diff = diff_worlds({"metadata": {}}, {"metadata": {}})
+    object.__setattr__(
+        non_finite_diff,
+        "field_changes",
+        (WorldFieldChange(field="metadata", before={}, after={"score": float("nan")}),),
+    )
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        non_finite_diff.to_json()
+
+
 def test_diff_worlds_rejects_invalid_inputs() -> None:
     with pytest.raises(WorldForgeError, match="World instance"):
         diff_worlds("not-a-world", {})  # type: ignore[arg-type]
@@ -323,6 +353,34 @@ def test_apply_patch_validates_step_value() -> None:
     )
     with pytest.raises(WorldStateError, match="step value"):
         apply_patch(state, patch)
+
+
+def test_apply_patch_validates_metadata_and_text_fields() -> None:
+    state = {
+        "name": "w",
+        "provider": "mock",
+        "description": "before",
+        "step": 0,
+        "scene": {"objects": {}},
+        "metadata": {},
+    }
+
+    metadata_patch = WorldPatch(
+        schema_version=WORLD_DIFF_SCHEMA_VERSION,
+        field_changes=(WorldFieldChange(field="metadata", before={}, after="not-json"),),
+        object_changes=(),
+    )
+    description_patch = WorldPatch(
+        schema_version=WORLD_DIFF_SCHEMA_VERSION,
+        field_changes=(WorldFieldChange(field="description", before="before", after=42),),
+        object_changes=(),
+    )
+
+    with pytest.raises(WorldStateError, match="metadata value"):
+        apply_patch(state, metadata_patch)
+
+    with pytest.raises(WorldStateError, match="description value"):
+        apply_patch(state, description_patch)
 
 
 def test_world_field_change_rejects_unknown_field() -> None:

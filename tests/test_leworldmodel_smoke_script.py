@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from worldforge.models import ProviderEvent, WorldStateError
-from worldforge.smoke import leworldmodel, leworldmodel_checkpoint
+from worldforge.models import ProviderEvent, WorldForgeError, WorldStateError
+from worldforge.smoke import leworldmodel, leworldmodel_checkpoint, leworldmodel_output
+from worldforge.smoke.leworldmodel_models import (
+    _ScoreRun,
+    _SmokeSettings,
+)
 
 
 def _load_script() -> ModuleType:
@@ -469,6 +474,14 @@ def test_leworldmodel_config_validation_rejects_non_target_interpolation() -> No
         leworldmodel_checkpoint._validate_leworldmodel_config(object(), config)
 
 
+def test_leworldmodel_config_value_walker_rejects_unsafe_keys_and_scalars() -> None:
+    with pytest.raises(WorldStateError, match="contains an invalid key"):
+        leworldmodel_checkpoint._walk_safe_config_values({"valid": {0: "bad"}})
+
+    with pytest.raises(WorldStateError, match="JSON-native finite values"):
+        leworldmodel_checkpoint._walk_safe_config_values({"valid": float("inf")})
+
+
 def test_leworldmodel_config_validation_rejects_unsafe_vit_parameters() -> None:
     config = {
         "_target_": "stable_worldmodel.wm.lewm.LeWM",
@@ -912,6 +925,87 @@ def test_smoke_main_prints_visual_pipeline_by_default(
     assert payload["score_payload_summary"]["best_index"] == 1
     assert payload["metrics"]["gap_to_runner_up"] == pytest.approx(0.2)
     assert payload["provider_events"][0]["phase"] == "success"
+
+
+def test_leworldmodel_output_renderer_prints_artifacts_and_events(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = _SmokeSettings(
+        policy="pusht/lewm",
+        stablewm_home=tmp_path,
+        cache_dir=tmp_path,
+        checkpoint=tmp_path / "pusht" / "lewm_object.ckpt",
+        device="cpu",
+        batch=1,
+        samples=2,
+        history=3,
+        horizon=4,
+        action_dim=10,
+        image_size=224,
+        seed=7,
+        json_output=tmp_path / "summary.json",
+        run_manifest=tmp_path / "run_manifest.json",
+        json_only=False,
+        color_enabled=False,
+    )
+    score_run = _ScoreRun(
+        result_payload={
+            "best_index": 0,
+            "best_score": 0.1,
+            "lower_is_better": True,
+            "metadata": {"score_type": "cost"},
+            "scores": [0.1, 0.3],
+        },
+        score_stats={
+            "score_min": 0.1,
+            "score_median": 0.2,
+            "score_mean": 0.2,
+            "score_max": 0.3,
+            "score_range": 0.2,
+            "gap_to_runner_up": 0.2,
+        },
+        score_payload_summary={},
+        score_latency_ms=1.2,
+        total_latency_ms=3.4,
+        metrics={},
+        payload={},
+    )
+
+    leworldmodel_output._print_success_report(
+        settings=settings,
+        score_run=score_run,
+        provider_events=[
+            {
+                "provider": "leworldmodel",
+                "operation": "score",
+                "phase": "success",
+                "duration_ms": 1.25,
+                "metadata": {"candidate_count": 2},
+            }
+        ],
+        json_output_path=tmp_path / "summary.json",
+        run_manifest_path=tmp_path / "run_manifest.json",
+    )
+
+    output = capsys.readouterr().out
+    assert "Rank action candidates" in output
+    assert "Candidate cost landscape" in output
+    assert "leworldmodel.score success duration=1.25 ms candidate_count=2" in output
+    assert "json summary" in output
+    assert "run manifest" in output
+
+
+def test_leworldmodel_json_output_rejects_non_finite_payload_before_touching_disk(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "nested" / "summary.json"
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        leworldmodel_output._write_json_output(target, {"score": math.nan})
+
+    assert not target.exists()
+    assert not target.parent.exists()
 
 
 def test_smoke_main_reports_missing_runtime_before_tensor_build(
