@@ -181,6 +181,39 @@ def test_connector_readiness_distinguishes_missing_dependency(monkeypatch, tmp_p
     assert rows["leworldmodel"].missing_env_vars == ()
 
 
+def test_provider_connector_detail_text_formats_readiness_and_last_call() -> None:
+    from worldforge.harness.connectors import (
+        PROVIDER_CONNECTOR_DETAIL_EMPTY_MESSAGE,
+        ProviderConnectorSummary,
+        provider_connector_detail_text,
+    )
+
+    row = ProviderConnectorSummary(
+        name="mock",
+        status="configured",
+        registered=True,
+        health="configured",
+        capabilities=("predict", "embed"),
+        implementation_status="production",
+        required_env_vars=(),
+        missing_env_vars=(),
+        optional_dependencies=(),
+        smoke_command="uv run worldforge provider info mock --format json",
+        triage_steps=("uv run worldforge provider info mock --format json",),
+    )
+
+    detail = provider_connector_detail_text(
+        row,
+        last_call_summary={"phase": "success", "latency_ms": 1.234, "retries": 2},
+    )
+
+    assert "Provider: mock" in detail
+    assert "Capabilities: predict, embed" in detail
+    assert "Required env vars: none" in detail
+    assert "Last call: success 1.23 ms retries=2" in detail
+    assert provider_connector_detail_text(None) == PROVIDER_CONNECTOR_DETAIL_EMPTY_MESSAGE
+
+
 def test_launch_harness_passes_home_when_no_flow(monkeypatch) -> None:
     """No --flow → initial_screen='home', resolved_flow_id falls back to leworldmodel."""
     pytest.importorskip("rich")

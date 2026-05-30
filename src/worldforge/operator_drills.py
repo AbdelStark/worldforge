@@ -65,6 +65,15 @@ class _DrillOutcome:
     event_count: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class _DrillRun:
+    spec: OperatorDrillSpec
+    workspace: RunWorkspace
+    outcome: _DrillOutcome
+    payload: JSONDict
+    artifact_paths: dict[str, str]
+
+
 _SPECS: dict[str, OperatorDrillSpec] = {
     "missing-credentials": OperatorDrillSpec(
         id="missing-credentials",
@@ -191,21 +200,56 @@ def run_operator_drill(
     """Run one deterministic operator drill and preserve the observed failure."""
 
     spec = get_operator_drill(drill_id)
+    run = _execute_operator_drill(spec, workspace_dir=workspace_dir)
+    result = _operator_drill_result(run)
+    if bundle:
+        result["issue_bundle"] = _operator_drill_issue_bundle(run, workspace_dir=workspace_dir)
+    dump_json(result)
+    return result
+
+
+def _execute_operator_drill(
+    spec: OperatorDrillSpec,
+    *,
+    workspace_dir: Path,
+) -> _DrillRun:
     workspace = create_run_workspace(
         workspace_dir,
         kind="operator_drill",
-        command=f"uv run worldforge drills run {drill_id} --workspace-dir <workspace-dir>",
+        command=_operator_drill_command(spec.id),
         provider="fixture",
         operation=spec.failure_mode,
-        input_summary={
-            "drill_id": drill_id,
-            "checkout_safe": spec.checkout_safe,
-            "prepared_host": spec.prepared_host,
-        },
+        input_summary=_operator_drill_input_summary(spec),
     )
-    outcome = _RUNNERS[drill_id](workspace)
-    result_summary: JSONDict = {
-        "drill_id": drill_id,
+    outcome = _RUNNERS[spec.id](workspace)
+    payload = _operator_drill_payload(spec, workspace, outcome)
+    artifact_paths = _operator_drill_artifact_paths(outcome)
+    _write_operator_drill_artifacts(workspace, payload)
+    _write_operator_drill_manifest(spec, workspace, outcome, artifact_paths)
+    return _DrillRun(
+        spec=spec,
+        workspace=workspace,
+        outcome=outcome,
+        payload=payload,
+        artifact_paths=artifact_paths,
+    )
+
+
+def _operator_drill_command(drill_id: str) -> str:
+    return f"uv run worldforge drills run {drill_id} --workspace-dir <workspace-dir>"
+
+
+def _operator_drill_input_summary(spec: OperatorDrillSpec) -> JSONDict:
+    return {
+        "drill_id": spec.id,
+        "checkout_safe": spec.checkout_safe,
+        "prepared_host": spec.prepared_host,
+    }
+
+
+def _operator_drill_result_summary(spec: OperatorDrillSpec, outcome: _DrillOutcome) -> JSONDict:
+    return {
+        "drill_id": spec.id,
         "drill_passed": True,
         "expected_failure_observed": True,
         "expected_failure": spec.expected_failure,
@@ -214,7 +258,14 @@ def run_operator_drill(
         "failure_signal": outcome.failure_signal,
         "recovery_command": spec.recovery_command,
     }
-    drill_payload: JSONDict = {
+
+
+def _operator_drill_payload(
+    spec: OperatorDrillSpec,
+    workspace: RunWorkspace,
+    outcome: _DrillOutcome,
+) -> JSONDict:
+    return {
         "schema_version": 1,
         "status": "passed",
         "run_id": workspace.run_id,
@@ -226,54 +277,68 @@ def run_operator_drill(
         "run_workspace": f"<workspace-dir>/runs/{workspace.run_id}",
         "run_manifest": f"<workspace-dir>/runs/{workspace.run_id}/run_manifest.json",
     }
-    dump_json(drill_payload)
-    outcome_artifacts = dict(outcome.artifacts)
-    outcome_artifacts["drill_json"] = "results/drill.json"
-    outcome_artifacts["drill_markdown"] = "reports/drill.md"
-    workspace.write_json("results/drill.json", drill_payload)
-    workspace.write_text("reports/drill.md", _render_drill_markdown(drill_payload))
+
+
+def _operator_drill_artifact_paths(outcome: _DrillOutcome) -> dict[str, str]:
+    artifact_paths = dict(outcome.artifacts)
+    artifact_paths["drill_json"] = "results/drill.json"
+    artifact_paths["drill_markdown"] = "reports/drill.md"
+    return artifact_paths
+
+
+def _write_operator_drill_artifacts(workspace: RunWorkspace, payload: JSONDict) -> None:
+    dump_json(payload)
+    workspace.write_json("results/drill.json", payload)
+    workspace.write_text("reports/drill.md", _render_drill_markdown(payload))
+
+
+def _write_operator_drill_manifest(
+    spec: OperatorDrillSpec,
+    workspace: RunWorkspace,
+    outcome: _DrillOutcome,
+    artifact_paths: dict[str, str],
+) -> None:
     write_run_manifest(
         workspace,
         kind="operator_drill",
-        command=f"uv run worldforge drills run {drill_id} --workspace-dir <workspace-dir>",
+        command=_operator_drill_command(spec.id),
         provider="fixture",
         operation=spec.failure_mode,
         status="failed",
-        input_summary={
-            "drill_id": drill_id,
-            "checkout_safe": spec.checkout_safe,
-            "prepared_host": spec.prepared_host,
-        },
-        result_summary=result_summary,
-        artifact_paths=outcome_artifacts,
+        input_summary=_operator_drill_input_summary(spec),
+        result_summary=_operator_drill_result_summary(spec, outcome),
+        artifact_paths=artifact_paths,
         event_count=outcome.event_count,
     )
-    result: JSONDict = {
-        **drill_payload,
-        "artifact_paths": outcome_artifacts,
-        "run_workspace": str(workspace.path),
-        "run_manifest": str(workspace.manifest_path),
+
+
+def _operator_drill_result(run: _DrillRun) -> JSONDict:
+    return {
+        **run.payload,
+        "artifact_paths": run.artifact_paths,
+        "run_workspace": str(run.workspace.path),
+        "run_manifest": str(run.workspace.manifest_path),
     }
-    if bundle:
-        bundle_result = generate_issue_bundle(
-            workspace_dir=workspace_dir,
-            run_id=workspace.run_id,
-            output_dir=workspace_dir / "issue-bundles" / workspace.run_id,
-            overwrite=True,
-        )
-        result["issue_bundle"] = {
-            "output_dir": str(bundle_result.output_dir),
-            "manifest_path": str(bundle_result.manifest_path),
-            "summary_path": str(bundle_result.summary_path),
-            "issue_template_path": (
-                str(bundle_result.issue_template_path)
-                if bundle_result.issue_template_path is not None
-                else None
-            ),
-            "safe_to_attach": bundle_result.manifest["safe_to_attach"],
-        }
-    dump_json(result)
-    return result
+
+
+def _operator_drill_issue_bundle(run: _DrillRun, *, workspace_dir: Path) -> JSONDict:
+    bundle_result = generate_issue_bundle(
+        workspace_dir=workspace_dir,
+        run_id=run.workspace.run_id,
+        output_dir=workspace_dir / "issue-bundles" / run.workspace.run_id,
+        overwrite=True,
+    )
+    return {
+        "output_dir": str(bundle_result.output_dir),
+        "manifest_path": str(bundle_result.manifest_path),
+        "summary_path": str(bundle_result.summary_path),
+        "issue_template_path": (
+            str(bundle_result.issue_template_path)
+            if bundle_result.issue_template_path is not None
+            else None
+        ),
+        "safe_to_attach": bundle_result.manifest["safe_to_attach"],
+    }
 
 
 def run_all_operator_drills(

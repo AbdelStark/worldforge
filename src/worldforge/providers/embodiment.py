@@ -101,25 +101,43 @@ class EmbodimentTranslatorContract:
     ) -> tuple[int, ...]:
         """Validate the embodiment tag and raw action tensor shape."""
 
-        raw_tag = info.get("embodiment_tag") or provider_info.get("embodiment_tag")
-        if raw_tag is not None and str(raw_tag).strip() != self.embodiment_tag:
-            raise ProviderError(
-                f"Embodiment translator for '{self.embodiment_tag}' cannot translate "
-                f"actions tagged '{str(raw_tag).strip()}'."
-            )
+        self._validate_embodiment_tag(info, provider_info)
         shape = _action_shape(raw_actions, name=name)
-        if self.action_dim is not None and (not shape or shape[-1] != self.action_dim):
-            actual = shape[-1] if shape else "scalar"
-            raise ProviderError(
-                f"Embodiment translator expected action_dim={self.action_dim}, got {actual}."
-            )
-        if self.action_horizon is not None and (len(shape) < 2 or shape[-2] != self.action_horizon):
-            actual = shape[-2] if len(shape) >= 2 else "scalar"
-            raise ProviderError(
-                "Embodiment translator expected "
-                f"action_horizon={self.action_horizon}, got {actual}."
-            )
+        self._validate_action_dim(shape)
+        self._validate_action_horizon(shape)
         return shape
+
+    def _validate_embodiment_tag(self, info: JSONDict, provider_info: JSONDict) -> None:
+        raw_tag = info.get("embodiment_tag") or provider_info.get("embodiment_tag")
+        if raw_tag is None:
+            return
+        tag = str(raw_tag).strip()
+        if tag == self.embodiment_tag:
+            return
+        raise ProviderError(
+            f"Embodiment translator for '{self.embodiment_tag}' cannot translate "
+            f"actions tagged '{tag}'."
+        )
+
+    def _validate_action_dim(self, shape: tuple[int, ...]) -> None:
+        if self.action_dim is None:
+            return
+        actual = shape[-1] if shape else "scalar"
+        if actual == self.action_dim:
+            return
+        raise ProviderError(
+            f"Embodiment translator expected action_dim={self.action_dim}, got {actual}."
+        )
+
+    def _validate_action_horizon(self, shape: tuple[int, ...]) -> None:
+        if self.action_horizon is None:
+            return
+        actual = shape[-2] if len(shape) >= 2 else "scalar"
+        if actual == self.action_horizon:
+            return
+        raise ProviderError(
+            f"Embodiment translator expected action_horizon={self.action_horizon}, got {actual}."
+        )
 
     def validate_candidates(self, candidates: Sequence[Sequence[Action]]) -> None:
         if self.action_horizon is None:

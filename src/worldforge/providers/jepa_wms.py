@@ -9,7 +9,7 @@ added.
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from time import perf_counter
 from typing import Any, Protocol
 
@@ -41,6 +41,70 @@ REQUIRED_INFO_FIELDS = ("observation", "goal")
 OPTIONAL_NUMERIC_INFO_FIELDS = ("action_history",)
 
 HubLoader = Callable[..., object]
+
+
+def _torchhub_loader(torch: Any, injected_loader: HubLoader | None) -> HubLoader:
+    if injected_loader is not None:
+        return injected_loader
+    hub = getattr(torch, "hub", None)
+    loader = getattr(hub, "load", None)
+    if not callable(loader):
+        raise ProviderError("JEPA-WMS torch module does not expose torch.hub.load().")
+    return loader
+
+
+def _torchhub_load_kwargs(
+    *,
+    pretrained: bool,
+    device: str | None,
+    trust_repo: bool | None,
+) -> dict[str, object]:
+    kwargs: dict[str, object] = {"pretrained": pretrained}
+    if device is not None:
+        kwargs["device"] = device
+    if trust_repo is not None:
+        kwargs["trust_repo"] = trust_repo
+    return kwargs
+
+
+def _load_torchhub_payload(
+    loader: HubLoader,
+    *,
+    hub_repo: str,
+    model_name: str,
+    kwargs: Mapping[str, object],
+) -> object:
+    try:
+        return loader(hub_repo, model_name, **kwargs)
+    except (
+        AttributeError,
+        ImportError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise ProviderError(
+            f"Failed to load JEPA-WMS torch-hub model '{model_name}' from '{hub_repo}': {exc}"
+        ) from exc
+
+
+def _loaded_model_parts(loaded: object) -> tuple[Any, Any | None]:
+    if not isinstance(loaded, tuple):
+        return loaded, getattr(loaded, "preprocessor", None)
+    if not loaded:
+        raise ProviderError("JEPA-WMS torch-hub loader returned an empty tuple.")
+    model = loaded[0]
+    preprocessor = loaded[1] if len(loaded) > 1 else None
+    return model, preprocessor
+
+
+def _prepare_torchhub_model(model: Any, *, device: str | None) -> Any:
+    if device is not None and hasattr(model, "to"):
+        model = model.to(device)
+    if hasattr(model, "eval"):
+        model = model.eval()
+    return model
 
 
 class JEPAWMSRuntime(Protocol):
@@ -108,49 +172,18 @@ class TorchHubJEPAWMSRuntime:
         if self._model is not None:
             return self._model, self._preprocessor
 
-        loader = self._hub_loader
-        if loader is None:
-            hub = getattr(torch, "hub", None)
-            loader = getattr(hub, "load", None)
-        if not callable(loader):
-            raise ProviderError("JEPA-WMS torch module does not expose torch.hub.load().")
-
-        kwargs: dict[str, object] = {
-            "pretrained": self.pretrained,
-        }
-        if self.device is not None:
-            kwargs["device"] = self.device
-        if self.trust_repo is not None:
-            kwargs["trust_repo"] = self.trust_repo
-
-        try:
-            loaded = loader(self.hub_repo, self.model_name, **kwargs)
-        except (
-            AttributeError,
-            ImportError,
-            OSError,
-            RuntimeError,
-            TypeError,
-            ValueError,
-        ) as exc:
-            raise ProviderError(
-                f"Failed to load JEPA-WMS torch-hub model '{self.model_name}' "
-                f"from '{self.hub_repo}': {exc}"
-            ) from exc
-
-        if isinstance(loaded, tuple):
-            if not loaded:
-                raise ProviderError("JEPA-WMS torch-hub loader returned an empty tuple.")
-            model = loaded[0]
-            preprocessor = loaded[1] if len(loaded) > 1 else None
-        else:
-            model = loaded
-            preprocessor = getattr(model, "preprocessor", None)
-
-        if self.device is not None and hasattr(model, "to"):
-            model = model.to(self.device)
-        if hasattr(model, "eval"):
-            model = model.eval()
+        loaded = _load_torchhub_payload(
+            _torchhub_loader(torch, self._hub_loader),
+            hub_repo=self.hub_repo,
+            model_name=self.model_name,
+            kwargs=_torchhub_load_kwargs(
+                pretrained=self.pretrained,
+                device=self.device,
+                trust_repo=self.trust_repo,
+            ),
+        )
+        model, preprocessor = _loaded_model_parts(loaded)
+        model = _prepare_torchhub_model(model, device=self.device)
         self._model = model
         self._preprocessor = preprocessor
         return model, preprocessor
@@ -556,54 +589,25 @@ class JEPAWMSProvider(BaseProvider):
 
     def _parse_runtime_response(self, raw: object, *, candidate_count: int) -> ActionScoreResult:
         if isinstance(raw, ActionScoreResult):
-            if raw.provider != self.name:
-                raise ProviderError(
-                    f"JEPA-WMS runtime result provider must be '{self.name}', got '{raw.provider}'."
-                )
-            if len(raw.scores) != candidate_count:
-                raise ProviderError(
-                    "JEPA-WMS runtime score count must match action candidate sample count."
-                )
-            return raw
-
-        if not isinstance(raw, dict):
-            raise ProviderError("JEPA-WMS runtime response must be a JSON object.")
-        self._parse_error_response(raw)
-
-        scores_value = raw.get("scores")
-        if scores_value is None:
-            raise ProviderError("JEPA-WMS runtime response missing required scores field.")
-        scores = _flatten_numeric(scores_value, name="JEPA-WMS scores")
-        if not scores:
-            raise ProviderError("JEPA-WMS runtime returned no action scores.")
-        if len(scores) != candidate_count:
-            raise ProviderError(
-                "JEPA-WMS runtime score count must match action candidate sample count."
+            return _validated_jepa_wms_score_result(
+                raw,
+                provider_name=self.name,
+                candidate_count=candidate_count,
             )
+        payload = _jepa_wms_runtime_payload(raw)
+        self._parse_error_response(payload)
+        return self._runtime_payload_result(payload, candidate_count=candidate_count)
 
-        lower_is_better = raw.get("lower_is_better", True)
-        if not isinstance(lower_is_better, bool):
-            raise ProviderError("JEPA-WMS runtime lower_is_better must be a boolean.")
-
-        metadata = raw.get("metadata", {})
-        if not isinstance(metadata, dict):
-            raise ProviderError("JEPA-WMS runtime metadata must be a JSON object.")
-
-        best_index_value = raw.get("best_index")
-        if best_index_value is None:
-            selector = min if lower_is_better else max
-            best_score = selector(scores)
-            best_index = scores.index(best_score)
-        elif (
-            isinstance(best_index_value, bool)
-            or not isinstance(best_index_value, int)
-            or best_index_value < 0
-            or best_index_value >= len(scores)
-        ):
-            raise ProviderError("JEPA-WMS runtime best_index is out of range.")
-        else:
-            best_index = best_index_value
-
+    def _runtime_payload_result(
+        self,
+        payload: JSONDict,
+        *,
+        candidate_count: int,
+    ) -> ActionScoreResult:
+        scores = _jepa_wms_runtime_scores(payload, candidate_count=candidate_count)
+        lower_is_better = _jepa_wms_lower_is_better(payload)
+        metadata = _jepa_wms_runtime_metadata(payload)
+        best_index = _jepa_wms_best_index(payload, scores=scores, lower_is_better=lower_is_better)
         return ActionScoreResult(
             provider=self.name,
             scores=scores,
@@ -668,3 +672,81 @@ class JEPAWMSProvider(BaseProvider):
                 metadata={"model_configured": self.model_path is not None},
             )
             raise error from exc
+
+
+def _validated_jepa_wms_score_result(
+    result: ActionScoreResult,
+    *,
+    provider_name: str,
+    candidate_count: int,
+) -> ActionScoreResult:
+    if result.provider != provider_name:
+        raise ProviderError(
+            f"JEPA-WMS runtime result provider must be '{provider_name}', got '{result.provider}'."
+        )
+    _require_jepa_wms_score_count(result.scores, candidate_count=candidate_count)
+    return result
+
+
+def _jepa_wms_runtime_payload(raw: object) -> JSONDict:
+    if not isinstance(raw, dict):
+        raise ProviderError("JEPA-WMS runtime response must be a JSON object.")
+    return raw
+
+
+def _jepa_wms_runtime_scores(payload: JSONDict, *, candidate_count: int) -> list[float]:
+    scores_value = payload.get("scores")
+    if scores_value is None:
+        raise ProviderError("JEPA-WMS runtime response missing required scores field.")
+    scores = _flatten_numeric(scores_value, name="JEPA-WMS scores")
+    if not scores:
+        raise ProviderError("JEPA-WMS runtime returned no action scores.")
+    _require_jepa_wms_score_count(scores, candidate_count=candidate_count)
+    return scores
+
+
+def _require_jepa_wms_score_count(scores: Sequence[float], *, candidate_count: int) -> None:
+    if len(scores) != candidate_count:
+        raise ProviderError(
+            "JEPA-WMS runtime score count must match action candidate sample count."
+        )
+
+
+def _jepa_wms_lower_is_better(payload: JSONDict) -> bool:
+    lower_is_better = payload.get("lower_is_better", True)
+    if not isinstance(lower_is_better, bool):
+        raise ProviderError("JEPA-WMS runtime lower_is_better must be a boolean.")
+    return lower_is_better
+
+
+def _jepa_wms_runtime_metadata(payload: JSONDict) -> JSONDict:
+    metadata = payload.get("metadata", {})
+    if not isinstance(metadata, dict):
+        raise ProviderError("JEPA-WMS runtime metadata must be a JSON object.")
+    return metadata
+
+
+def _jepa_wms_best_index(
+    payload: JSONDict,
+    *,
+    scores: list[float],
+    lower_is_better: bool,
+) -> int:
+    best_index_value = payload.get("best_index")
+    if best_index_value is None:
+        return _selected_jepa_wms_score_index(scores, lower_is_better=lower_is_better)
+    if _invalid_jepa_wms_best_index(best_index_value, score_count=len(scores)):
+        raise ProviderError("JEPA-WMS runtime best_index is out of range.")
+    return best_index_value
+
+
+def _selected_jepa_wms_score_index(scores: list[float], *, lower_is_better: bool) -> int:
+    selector = min if lower_is_better else max
+    best_score = selector(scores)
+    return scores.index(best_score)
+
+
+def _invalid_jepa_wms_best_index(value: object, *, score_count: int) -> bool:
+    return (
+        isinstance(value, bool) or not isinstance(value, int) or value < 0 or value >= score_count
+    )

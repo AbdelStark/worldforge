@@ -82,6 +82,27 @@ def test_world_prediction_compare_and_persistence_flow(tmp_path) -> None:
     assert loaded.object_count == 0
 
 
+def test_worldforge_persistence_facade_delegates_to_world_store(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    import worldforge.framework as framework_module
+
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("delegated-save", provider="mock")
+    captured: dict[str, object] = {}
+
+    def fake_save_world(owner: object, saved_world: object) -> str:
+        captured["owner"] = owner
+        captured["world"] = saved_world
+        return "delegated-world-id"
+
+    monkeypatch.setattr(framework_module, "_save_world", fake_save_world)
+
+    assert forge.save_world(world) == "delegated-world-id"
+    assert captured == {"owner": forge, "world": world}
+
+
 def test_world_delete_validates_id_and_removes_persisted_file(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
     world = forge.create_world("delete-me", provider="mock")
@@ -292,11 +313,31 @@ def test_world_import_and_load_reject_malformed_state(tmp_path) -> None:
     with pytest.raises(WorldStateError, match="not valid JSON"):
         forge.import_world("{broken json")
 
+    non_finite_import = (
+        '{"schema_version": 1, "id": "non_finite_import", "name": "invalid", '
+        '"provider": "mock", "scene": {"objects": {}}, "metadata": {"score": NaN}, '
+        '"step": 0}'
+    )
+    with pytest.raises(WorldStateError, match="finite number"):
+        forge.import_world(non_finite_import)
+
     with pytest.raises(WorldStateError, match="missing required keys"):
         forge.import_world(json.dumps({"state": {"name": "invalid"}}))
 
     with pytest.raises(WorldStateError, match="JSON object"):
         forge.import_world(json.dumps({"state": "not-a-world"}))
+
+    invalid_metadata_state = {
+        "schema_version": 1,
+        "id": "bad_metadata_world",
+        "name": "invalid",
+        "provider": "mock",
+        "scene": {"objects": {}},
+        "metadata": "not-metadata",
+        "step": 0,
+    }
+    with pytest.raises(WorldStateError, match="metadata"):
+        forge.import_world(json.dumps(invalid_metadata_state), name="renamed")
 
     unsafe_state = {
         "schema_version": 1,
@@ -324,6 +365,16 @@ def test_world_import_and_load_reject_malformed_state(tmp_path) -> None:
 
     with pytest.raises(WorldForgeError, match="file-safe identifier"):
         forge.load_world("../outside")
+
+    non_finite_world_path = tmp_path / "non_finite_load.json"
+    non_finite_world_path.write_text(
+        '{"schema_version": 1, "id": "non_finite_load", "name": "invalid", '
+        '"provider": "mock", "scene": {"objects": {}}, "metadata": {"score": NaN}, '
+        '"step": 0}',
+        encoding="utf-8",
+    )
+    with pytest.raises(WorldStateError, match="finite number"):
+        forge.load_world("non_finite_load")
 
     broken_world_path = tmp_path / "broken.json"
     broken_world_path.write_text('{"state": "not-a-world"}', encoding="utf-8")
@@ -452,6 +503,37 @@ def test_world_migration_preview_accepts_current_persisted_and_exported_state(tm
     assert str(tmp_path) not in json.dumps(exported)
 
 
+def test_world_migration_preview_reports_non_finite_source_json_without_rewriting(tmp_path) -> None:
+    source_path = tmp_path / "non-finite-world.json"
+    source_path.write_text(
+        '{"schema_version": 1, "id": "non-finite-world", "scene": {"objects": {}}, '
+        '"history": [], "score": NaN}\n',
+        encoding="utf-8",
+    )
+    before = source_path.read_text(encoding="utf-8")
+
+    report = preview_world_migration_from_path(source_path)
+
+    assert report["status"] == "blocked"
+    assert report["read_only"] is True
+    assert report["safe_to_attach"] is True
+    assert report["invalid_fields"][0]["path"] == "source"
+    assert "finite number" in report["invalid_fields"][0]["message"]
+    assert source_path.read_text(encoding="utf-8") == before
+    assert str(tmp_path) not in json.dumps(report)
+
+
+def test_world_migration_preview_reporting_split_preserves_facade_helpers() -> None:
+    from worldforge import world_migration_preview as facade
+    from worldforge import world_migration_preview_reporting as reporting
+
+    assert facade.render_world_migration_preview_markdown is (
+        reporting.render_world_migration_preview_markdown
+    )
+    assert facade._invalid_field is reporting._invalid_field
+    assert facade._safe_id_value is reporting._safe_id_value
+
+
 def test_world_migration_preview_reports_legacy_schema_and_position_changes(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
     world = forge.create_world("legacy-world", provider="mock")
@@ -502,6 +584,14 @@ def test_world_migration_preview_reports_invalid_fields_and_unsafe_ids(tmp_path)
     assert invalid["status"] == "blocked"
     assert invalid["can_apply_safely"] is False
     assert any("history[0]" in field["message"] for field in invalid["invalid_fields"])
+
+    mismatch = preview_world_migration(
+        world.to_dict(),
+        source={"kind": "world-id", "label": "<state-dir>/expected-id.json"},
+        expected_world_id="expected-id",
+    )
+    assert mismatch["status"] == "blocked"
+    assert any(field["path"] == "state.id" for field in mismatch["invalid_fields"])
 
     unsafe_state = world.to_dict()
     unsafe_state["scene"]["objects"]["../cube"] = {
@@ -564,3 +654,25 @@ def test_world_migration_preview_reports_bbox_correction_without_rewriting(tmp_p
     markdown = render_world_migration_preview_markdown(report)
     assert "# WorldForge World Migration Preview" in markdown
     assert "Bounding Box Corrections" in markdown
+
+
+def test_world_migration_preview_records_unsafe_id_before_skipping_malformed_object() -> None:
+    state = {
+        "schema_version": 1,
+        "id": "safe-world",
+        "name": "Safe",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {"../bad-object": "not an object"}},
+        "history": [],
+    }
+
+    report = preview_world_migration(
+        state,
+        source={"kind": "fixture", "label": "<fixture>/malformed-object.json"},
+    )
+
+    assert report["status"] == "blocked"
+    assert report["counts"]["unsafe_id_count"] == 1
+    assert report["unsafe_ids"][0]["value"] == "<unsafe-object-id>"
+    assert "../bad-object" not in json.dumps(report)

@@ -92,6 +92,17 @@ def test_policy_normalises_whitespace_and_serialises() -> None:
     }
 
 
+def test_policy_normalises_list_fallbacks() -> None:
+    policy = ProviderRoutingPolicy(
+        capability="predict",
+        preferred=" mock ",
+        fallbacks=[" alt ", " backup "],  # type: ignore[arg-type]
+    )
+
+    assert policy.chain() == ("mock", "alt", "backup")
+    assert policy.fallbacks == ("alt", "backup")
+
+
 def test_routing_attempt_validates_status() -> None:
     assert "succeeded" in ROUTING_ATTEMPT_STATUSES
     with pytest.raises(WorldForgeError, match="status must be one of"):

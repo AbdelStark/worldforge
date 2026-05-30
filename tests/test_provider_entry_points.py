@@ -352,7 +352,10 @@ def test_external_entry_point_provider_registers_when_configured(monkeypatch, tm
         def configured(self) -> bool:  # type: ignore[override]
             return True
 
+    captured = {}
+
     def factory(event_handler=None) -> _AlwaysConfigured:
+        captured["event_handler"] = event_handler
         return _AlwaysConfigured(event_handler=event_handler)
 
     monkeypatch.setattr(
@@ -371,7 +374,50 @@ def test_external_entry_point_provider_registers_when_configured(monkeypatch, tm
         ),
     )
 
-    forge = WorldForge(state_dir=tmp_path)
+    events = []
+    handler = events.append
+    forge = WorldForge(state_dir=tmp_path, event_handler=handler)
     assert "external-cfg" in forge.providers()
+    assert captured["event_handler"] is handler
     report = forge.entry_point_discovery()
     assert report.discovered_count == 1
+
+
+def test_external_entry_point_provider_respects_auto_register_remote_false(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    class _ConfiguredExternal(BaseProvider):
+        def __init__(self, *, event_handler=None):
+            super().__init__(
+                name="external-disabled",
+                capabilities=ProviderCapabilities(predict=True),
+                profile=ProviderProfileSpec(description="Configured external provider."),
+                event_handler=event_handler,
+            )
+
+        def configured(self) -> bool:  # type: ignore[override]
+            return True
+
+    monkeypatch.setattr(
+        "worldforge.framework.discover_entry_point_providers",
+        lambda *, enabled=None, catalog=PROVIDER_CATALOG: EntryPointDiscoveryReport(
+            enabled=True,
+            entries=(
+                ProviderCatalogEntry(
+                    name="external-disabled",
+                    factory=lambda event_handler=None: _ConfiguredExternal(
+                        event_handler=event_handler
+                    ),
+                    always_register=False,
+                    runtime_ownership="external entry point (test)",
+                ),
+            ),
+            skipped=(),
+        ),
+    )
+
+    forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
+
+    assert "external-disabled" not in forge.providers()
+    assert forge.entry_point_discovery().discovered_count == 1

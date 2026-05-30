@@ -99,6 +99,21 @@ def _default_entry_points(group: str) -> Iterable[importlib_metadata.EntryPoint]
     return importlib_metadata.entry_points(group=group)
 
 
+def _discovery_report(
+    *,
+    enabled: bool,
+    group: str,
+    entries: Iterable[ProviderCatalogEntry] = (),
+    skipped: Iterable[EntryPointSkip] = (),
+) -> EntryPointDiscoveryReport:
+    return EntryPointDiscoveryReport(
+        enabled=enabled,
+        entries=tuple(entries),
+        skipped=tuple(skipped),
+        group=group,
+    )
+
+
 def _wrap_factory(factory: Callable[..., Any], name: str) -> Callable[..., BaseProvider]:
     def _entry_point_factory(event_handler: ProviderEventHandler = None) -> BaseProvider:
         try:
@@ -123,6 +138,117 @@ def _wrap_factory(factory: Callable[..., Any], name: str) -> Callable[..., BaseP
     return _entry_point_factory
 
 
+def _load_entry_point_candidates(
+    finder: Callable[[str], Iterable[importlib_metadata.EntryPoint]],
+    group: str,
+) -> tuple[importlib_metadata.EntryPoint, ...] | EntryPointSkip:
+    try:  # pragma: no cover - importlib.metadata.entry_points is stable, defensive only
+        return tuple(finder(group))
+    except Exception as exc:  # pragma: no cover - defensive only
+        return EntryPointSkip(name="*", value="", reason=f"discovery failed: {exc}")
+
+
+def _entry_point_name_and_value(ep: importlib_metadata.EntryPoint) -> tuple[str, str]:
+    return (getattr(ep, "name", "") or "", getattr(ep, "value", "") or "")
+
+
+def _skip_for_entry_point_identity(
+    *,
+    name: str,
+    value: str,
+    reserved_names: set[str],
+    seen_names: set[str],
+) -> EntryPointSkip | None:
+    if not name.strip():
+        return EntryPointSkip(name="?", value=value, reason="empty name")
+    if name in reserved_names:
+        return EntryPointSkip(
+            name=name,
+            value=value,
+            reason="duplicate name (in-repo provider already registered)",
+        )
+    if name in seen_names:
+        return EntryPointSkip(
+            name=name,
+            value=value,
+            reason="duplicate name (already discovered earlier in this group)",
+        )
+    return None
+
+
+def _load_entry_point_factory(
+    ep: importlib_metadata.EntryPoint,
+    *,
+    name: str,
+    value: str,
+) -> Callable[..., Any] | EntryPointSkip:
+    try:
+        factory = ep.load()
+    except (ImportError, ModuleNotFoundError) as exc:
+        return EntryPointSkip(
+            name=name,
+            value=value,
+            reason=f"missing dependency: {exc}",
+        )
+    except Exception as exc:
+        return EntryPointSkip(
+            name=name,
+            value=value,
+            reason=f"load failed: {exc}",
+        )
+    if not callable(factory):
+        return EntryPointSkip(
+            name=name,
+            value=value,
+            reason="entry point did not resolve to a callable",
+        )
+    return factory
+
+
+def _entry_point_catalog_entry(
+    *,
+    name: str,
+    value: str,
+    factory: Callable[..., Any],
+) -> ProviderCatalogEntry:
+    return ProviderCatalogEntry(
+        name=name,
+        factory=_wrap_factory(factory, name),
+        always_register=False,
+        runtime_ownership=f"external entry point ({value})",
+    )
+
+
+def _discover_catalog_entries(
+    candidates: Iterable[importlib_metadata.EntryPoint],
+    *,
+    reserved_names: set[str],
+) -> tuple[tuple[ProviderCatalogEntry, ...], tuple[EntryPointSkip, ...]]:
+    seen_names: set[str] = set()
+    entries: list[ProviderCatalogEntry] = []
+    skipped: list[EntryPointSkip] = []
+
+    for ep in candidates:
+        ep_name, ep_value = _entry_point_name_and_value(ep)
+        identity_skip = _skip_for_entry_point_identity(
+            name=ep_name,
+            value=ep_value,
+            reserved_names=reserved_names,
+            seen_names=seen_names,
+        )
+        if identity_skip is not None:
+            skipped.append(identity_skip)
+            continue
+        factory = _load_entry_point_factory(ep, name=ep_name, value=ep_value)
+        if isinstance(factory, EntryPointSkip):
+            skipped.append(factory)
+            continue
+        entries.append(_entry_point_catalog_entry(name=ep_name, value=ep_value, factory=factory))
+        seen_names.add(ep_name)
+
+    return tuple(entries), tuple(skipped)
+
+
 def discover_entry_point_providers(
     *,
     enabled: bool | None = None,
@@ -144,98 +270,18 @@ def discover_entry_point_providers(
     if enabled is None:
         enabled = not _is_disabled(environ)
     if not enabled:
-        return EntryPointDiscoveryReport(
-            enabled=False,
-            entries=(),
-            skipped=(),
-            group=group,
-        )
+        return _discovery_report(enabled=False, group=group)
 
     finder = entry_points_provider or _default_entry_points
-    reserved_names = {entry.name for entry in catalog}
-    seen_names: set[str] = set()
-    entries: list[ProviderCatalogEntry] = []
-    skipped: list[EntryPointSkip] = []
+    candidates = _load_entry_point_candidates(finder, group)
+    if isinstance(candidates, EntryPointSkip):
+        return _discovery_report(enabled=True, group=group, skipped=(candidates,))
 
-    try:  # pragma: no cover - importlib.metadata.entry_points is stable, defensive only
-        candidates = list(finder(group))
-    except Exception as exc:  # pragma: no cover - defensive only
-        return EntryPointDiscoveryReport(
-            enabled=True,
-            entries=(),
-            skipped=(EntryPointSkip(name="*", value="", reason=f"discovery failed: {exc}"),),
-            group=group,
-        )
-
-    for ep in candidates:
-        ep_name = getattr(ep, "name", "") or ""
-        ep_value = getattr(ep, "value", "") or ""
-        if not ep_name.strip():
-            skipped.append(EntryPointSkip(name="?", value=ep_value, reason="empty name"))
-            continue
-        if ep_name in reserved_names:
-            skipped.append(
-                EntryPointSkip(
-                    name=ep_name,
-                    value=ep_value,
-                    reason="duplicate name (in-repo provider already registered)",
-                )
-            )
-            continue
-        if ep_name in seen_names:
-            skipped.append(
-                EntryPointSkip(
-                    name=ep_name,
-                    value=ep_value,
-                    reason="duplicate name (already discovered earlier in this group)",
-                )
-            )
-            continue
-        try:
-            factory = ep.load()
-        except (ImportError, ModuleNotFoundError) as exc:
-            skipped.append(
-                EntryPointSkip(
-                    name=ep_name,
-                    value=ep_value,
-                    reason=f"missing dependency: {exc}",
-                )
-            )
-            continue
-        except Exception as exc:
-            skipped.append(
-                EntryPointSkip(
-                    name=ep_name,
-                    value=ep_value,
-                    reason=f"load failed: {exc}",
-                )
-            )
-            continue
-        if not callable(factory):
-            skipped.append(
-                EntryPointSkip(
-                    name=ep_name,
-                    value=ep_value,
-                    reason="entry point did not resolve to a callable",
-                )
-            )
-            continue
-        entries.append(
-            ProviderCatalogEntry(
-                name=ep_name,
-                factory=_wrap_factory(factory, ep_name),
-                always_register=False,
-                runtime_ownership=f"external entry point ({ep_value})",
-            )
-        )
-        seen_names.add(ep_name)
-
-    return EntryPointDiscoveryReport(
-        enabled=True,
-        entries=tuple(entries),
-        skipped=tuple(skipped),
-        group=group,
+    entries, skipped = _discover_catalog_entries(
+        candidates,
+        reserved_names={entry.name for entry in catalog},
     )
+    return _discovery_report(enabled=True, group=group, entries=entries, skipped=skipped)
 
 
 __all__ = [

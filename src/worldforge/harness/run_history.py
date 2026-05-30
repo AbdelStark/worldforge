@@ -10,8 +10,14 @@ from datetime import date, datetime
 from pathlib import Path
 
 from worldforge.harness.models import HarnessFlow, HarnessMetric, HarnessRun, HarnessStep
+from worldforge.harness.run_history_models import (
+    RunHistoryFilter,
+    RunHistoryRecord,
+    parse_history_date,
+)
+from worldforge.harness.run_history_rendering import run_history_markdown
 from worldforge.harness.workspace import list_run_workspaces
-from worldforge.models import CAPABILITY_NAMES, JSONDict, WorldForgeError
+from worldforge.models import CAPABILITY_NAMES, JSONDict, WorldForgeError, require_json_dict
 
 _SAFE_ARTIFACT_SUFFIXES = {"json", "jsonl", "md", "csv", "txt", "html"}
 _SECRET_FLAG_PATTERN = re.compile(
@@ -26,101 +32,48 @@ _UNSAFE_URL_PATTERN = re.compile(
     r"^https?://[^\s\"']+[?&](token|signature|sig|key|api_key)=",
     re.IGNORECASE,
 )
+_FAILURE_SUMMARY_KEYS: tuple[str, ...] = (
+    "failure_reason",
+    "observed_failure",
+    "error",
+    "error_message",
+    "skip_reason",
+    "reason",
+)
+_FAILURE_STATUS_DEFAULTS: dict[str, str] = {
+    "failed": "Run failed without a structured failure reason.",
+    "cancelled": "Run was cancelled before completion.",
+    "skipped": "Run was skipped without a structured reason.",
+}
 
 
 @dataclass(frozen=True, slots=True)
-class RunHistoryFilter:
-    """Filter values for preserved harness run history."""
-
-    provider: str | None = None
-    capability: str | None = None
-    status: str | None = None
-    created_from: date | None = None
-    created_to: date | None = None
-    artifact_type: str | None = None
-
-    @classmethod
-    def from_strings(
-        cls,
-        *,
-        provider: str | None = None,
-        capability: str | None = None,
-        status: str | None = None,
-        created_from: str | None = None,
-        created_to: str | None = None,
-        artifact_type: str | None = None,
-    ) -> RunHistoryFilter:
-        """Build a filter from CLI/TUI string fields."""
-
-        return cls(
-            provider=_clean_filter(provider),
-            capability=_clean_filter(capability),
-            status=_clean_filter(status),
-            created_from=parse_history_date(created_from),
-            created_to=parse_history_date(created_to),
-            artifact_type=_clean_filter(artifact_type),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class RunHistoryRecord:
-    """A checkout-safe preserved-run summary for CLI and TUI views."""
-
+class _RunRecordIdentity:
     run_id: str
     kind: str
     status: str
     provider: str
     operation: str
-    capability: str
     capabilities: tuple[str, ...]
+    capability: str
     created_at: str
     created_date: date | None
     command: str
-    rerun_command: str
-    failure_summary: str
-    safe_artifact_types: tuple[str, ...]
-    artifact_count: int
-    event_count: int
-    path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class _RunRecordPaths:
+    run_path: Path
     display_path: str
-    issue_bundle_command: str
     issue_bundle_path: str
-    comparison_command: str | None
-    recovery_command: str | None
-
-    def to_dict(self) -> JSONDict:
-        return {
-            "run_id": self.run_id,
-            "kind": self.kind,
-            "status": self.status,
-            "provider": self.provider,
-            "operation": self.operation,
-            "capability": self.capability,
-            "capabilities": list(self.capabilities),
-            "created_at": self.created_at,
-            "command": self.command,
-            "rerun_command": self.rerun_command,
-            "failure_summary": self.failure_summary,
-            "safe_artifact_types": list(self.safe_artifact_types),
-            "artifact_count": self.artifact_count,
-            "event_count": self.event_count,
-            "path": self.display_path,
-            "issue_bundle_command": self.issue_bundle_command,
-            "issue_bundle_path": self.issue_bundle_path,
-            "comparison_command": self.comparison_command,
-            "recovery_command": self.recovery_command,
-        }
 
 
-def parse_history_date(value: str | None) -> date | None:
-    """Parse an ISO date value used by run-history filters."""
-
-    if value is None or not value.strip():
-        return None
-    try:
-        return date.fromisoformat(value.strip())
-    except ValueError as exc:
-        raise WorldForgeError(f"run history date must use YYYY-MM-DD: {value}") from exc
+@dataclass(frozen=True, slots=True)
+class _RunRecordCommands:
+    rerun: str
+    issue_bundle: str
+    comparison: str | None
+    recovery: str | None
 
 
 def list_run_history(
@@ -188,118 +141,154 @@ def preserved_run_from_path(path: Path, *, state_dir: Path) -> HarnessRun:
     )
 
 
-def run_history_markdown(records: tuple[RunHistoryRecord, ...]) -> str:
-    """Render preserved run history as Markdown."""
-
-    lines = [
-        "# TheWorldHarness Run History",
-        "",
-        "| Run | Kind | Status | Provider | Capability | Artifacts | Recovery |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    for record in records:
-        artifacts = ", ".join(record.safe_artifact_types) or "-"
-        recovery = f"`{record.recovery_command}`" if record.recovery_command else "-"
-        lines.append(
-            "| `{run_id}` | {kind} | {status} | {provider} | {capability} | {artifacts} | "
-            "{recovery} |".format(
-                run_id=record.run_id,
-                kind=record.kind or "-",
-                status=record.status or "-",
-                provider=record.provider or "-",
-                capability=record.capability or "-",
-                artifacts=artifacts,
-                recovery=recovery,
-            )
-        )
-    if not records:
-        lines.append("| - | - | - | - | - | - | - |")
-    lines.extend(
-        [
-            "",
-            "## Rerun Commands",
-            "",
-        ]
-    )
-    if records:
-        lines.extend(f"- `{record.run_id}`: `{record.rerun_command}`" for record in records)
-    else:
-        lines.append("- No preserved runs matched the filter.")
-    return "\n".join(lines) + "\n"
-
-
 def _record_from_manifest(manifest: JSONDict, *, workspace_dir: Path) -> RunHistoryRecord:
-    run_id = str(manifest.get("run_id") or Path(str(manifest.get("path", ""))).name)
-    kind = str(manifest.get("kind") or "")
-    status = str(manifest.get("status") or "")
-    provider = _provider_label(manifest)
-    operation = str(manifest.get("operation") or "")
-    capabilities = _capabilities(manifest)
-    capability = capabilities[0] if capabilities else ""
-    created_at = str(manifest.get("created_at") or "")
-    created_date = _date_from_created_at(created_at)
-    command = str(manifest.get("command") or "").strip()
+    identity = _run_record_identity(manifest)
     workspace_display = _workspace_display(workspace_dir)
-    display_path = f"{workspace_display}/runs/{run_id}"
-    issue_bundle_command = (
-        f"worldforge runs bundle {shlex.quote(run_id)} --workspace-dir "
+    paths = _run_record_paths(
+        manifest,
+        workspace_dir=workspace_dir,
+        workspace_display=workspace_display,
+        run_id=identity.run_id,
+    )
+    commands = _run_record_commands(
+        manifest,
+        workspace_display=workspace_display,
+        identity=identity,
+        display_path=paths.display_path,
+    )
+    return RunHistoryRecord(
+        run_id=identity.run_id,
+        kind=identity.kind,
+        status=identity.status,
+        provider=identity.provider,
+        operation=identity.operation,
+        capability=identity.capability,
+        capabilities=identity.capabilities,
+        created_at=identity.created_at,
+        created_date=identity.created_date,
+        command=identity.command,
+        rerun_command=commands.rerun,
+        failure_summary=_failure_summary(manifest),
+        safe_artifact_types=_safe_artifact_types(manifest),
+        artifact_count=_artifact_count(manifest),
+        event_count=_event_count(manifest),
+        path=paths.run_path,
+        display_path=paths.display_path,
+        issue_bundle_command=commands.issue_bundle,
+        issue_bundle_path=paths.issue_bundle_path,
+        comparison_command=commands.comparison,
+        recovery_command=commands.recovery,
+    )
+
+
+def _run_record_identity(manifest: JSONDict) -> _RunRecordIdentity:
+    run_id = str(manifest.get("run_id") or Path(str(manifest.get("path", ""))).name)
+    capabilities = _capabilities(manifest)
+    created_at = str(manifest.get("created_at") or "")
+    return _RunRecordIdentity(
+        run_id=run_id,
+        kind=str(manifest.get("kind") or ""),
+        status=str(manifest.get("status") or ""),
+        provider=_provider_label(manifest),
+        operation=str(manifest.get("operation") or ""),
+        capabilities=capabilities,
+        capability=capabilities[0] if capabilities else "",
+        created_at=created_at,
+        created_date=_date_from_created_at(created_at),
+        command=str(manifest.get("command") or "").strip(),
+    )
+
+
+def _run_record_paths(
+    manifest: JSONDict,
+    *,
+    workspace_dir: Path,
+    workspace_display: str,
+    run_id: str,
+) -> _RunRecordPaths:
+    return _RunRecordPaths(
+        run_path=Path(str(manifest.get("path") or Path(workspace_dir) / "runs" / run_id)),
+        display_path=f"{workspace_display}/runs/{run_id}",
+        issue_bundle_path=f"{workspace_display}/issue-bundles/{run_id}",
+    )
+
+
+def _run_record_commands(
+    manifest: JSONDict,
+    *,
+    workspace_display: str,
+    identity: _RunRecordIdentity,
+    display_path: str,
+) -> _RunRecordCommands:
+    issue_bundle = (
+        f"worldforge runs bundle {shlex.quote(identity.run_id)} --workspace-dir "
         f"{shlex.quote(workspace_display)}"
     )
-    comparison_command = None
-    if kind in {"eval", "benchmark"}:
-        comparison_command = f"worldforge runs compare {shlex.quote(display_path)} <other-run>"
-    failure_summary = _failure_summary(manifest)
-    recovery_command = (
-        issue_bundle_command if status in {"failed", "cancelled", "skipped"} else None
+    return _RunRecordCommands(
+        rerun=_rerun_command(manifest, workspace_display=workspace_display),
+        issue_bundle=issue_bundle,
+        comparison=_comparison_command(identity.kind, display_path),
+        recovery=_recovery_command(identity.status, issue_bundle),
     )
-    run_path = Path(str(manifest.get("path") or Path(workspace_dir) / "runs" / run_id))
-    return RunHistoryRecord(
-        run_id=run_id,
-        kind=kind,
-        status=status,
-        provider=provider,
-        operation=operation,
-        capability=capability,
-        capabilities=capabilities,
-        created_at=created_at,
-        created_date=created_date,
-        command=command,
-        rerun_command=_rerun_command(manifest, workspace_display=workspace_display),
-        failure_summary=failure_summary,
-        safe_artifact_types=_safe_artifact_types(manifest),
-        artifact_count=len(manifest.get("artifact_paths", {}) or {}),
-        event_count=int(manifest.get("event_count", 0) or 0),
-        path=run_path,
-        display_path=display_path,
-        issue_bundle_command=issue_bundle_command,
-        issue_bundle_path=f"{workspace_display}/issue-bundles/{run_id}",
-        comparison_command=comparison_command,
-        recovery_command=recovery_command,
-    )
+
+
+def _comparison_command(kind: str, display_path: str) -> str | None:
+    if kind not in {"eval", "benchmark"}:
+        return None
+    return f"worldforge runs compare {shlex.quote(display_path)} <other-run>"
+
+
+def _recovery_command(status: str, issue_bundle_command: str) -> str | None:
+    if status not in {"failed", "cancelled", "skipped"}:
+        return None
+    return issue_bundle_command
+
+
+def _artifact_count(manifest: JSONDict) -> int:
+    artifact_paths = manifest.get("artifact_paths")
+    if not isinstance(artifact_paths, dict):
+        return 0
+    return len(artifact_paths)
+
+
+def _event_count(manifest: JSONDict) -> int:
+    raw_count = manifest.get("event_count")
+    if raw_count in (None, ""):
+        return 0
+    return int(raw_count)
 
 
 def _matches_filter(record: RunHistoryRecord, filters: RunHistoryFilter) -> bool:
-    if filters.provider and filters.provider.lower() not in record.provider.lower():
-        return False
-    if filters.capability:
-        capability = filters.capability.lower()
-        if capability not in {item.lower() for item in record.capabilities}:
-            return False
-    if filters.status and filters.status.lower() != record.status.lower():
-        return False
-    if filters.created_from and (
-        record.created_date is None or record.created_date < filters.created_from
-    ):
-        return False
-    if filters.created_to and (
-        record.created_date is None or record.created_date > filters.created_to
-    ):
-        return False
-    if filters.artifact_type:
-        artifact_type = filters.artifact_type.lower()
-        if artifact_type not in {item.lower() for item in record.safe_artifact_types}:
-            return False
-    return True
+    return all(
+        (
+            _matches_text_contains(record.provider, filters.provider),
+            _matches_collection_item(record.capabilities, filters.capability),
+            _matches_text_exact(record.status, filters.status),
+            _matches_created_from(record.created_date, filters.created_from),
+            _matches_created_to(record.created_date, filters.created_to),
+            _matches_collection_item(record.safe_artifact_types, filters.artifact_type),
+        )
+    )
+
+
+def _matches_text_contains(value: str, expected: str | None) -> bool:
+    return not expected or expected.lower() in value.lower()
+
+
+def _matches_text_exact(value: str, expected: str | None) -> bool:
+    return not expected or expected.lower() == value.lower()
+
+
+def _matches_collection_item(values: tuple[str, ...], expected: str | None) -> bool:
+    return not expected or expected.lower() in {item.lower() for item in values}
+
+
+def _matches_created_from(created_date: date | None, boundary: date | None) -> bool:
+    return boundary is None or (created_date is not None and created_date >= boundary)
+
+
+def _matches_created_to(created_date: date | None, boundary: date | None) -> bool:
+    return boundary is None or (created_date is not None and created_date <= boundary)
 
 
 def _provider_label(manifest: JSONDict) -> str:
@@ -315,27 +304,56 @@ def _provider_label(manifest: JSONDict) -> str:
 
 
 def _capabilities(manifest: JSONDict) -> tuple[str, ...]:
-    input_summary = manifest.get("input_summary")
-    found: list[str] = []
-    if isinstance(input_summary, dict):
-        raw_capabilities = input_summary.get("capabilities")
-        if isinstance(raw_capabilities, list):
-            found.extend(str(item) for item in raw_capabilities if str(item).strip())
-        raw_operations = input_summary.get("operations")
-        if isinstance(raw_operations, list):
-            found.extend(str(item) for item in raw_operations if str(item) in CAPABILITY_NAMES)
+    kind = str(manifest.get("kind") or "")
     operation = str(manifest.get("operation") or "")
-    if operation in CAPABILITY_NAMES:
-        found.append(operation)
-    if str(manifest.get("kind") or "") == "flow":
-        from worldforge.harness.flows import flow_index
+    found = (
+        *_input_summary_capabilities(manifest.get("input_summary")),
+        *_operation_capabilities(operation),
+        *_flow_capabilities(kind=kind, operation=operation),
+    )
+    if found:
+        return tuple(dict.fromkeys(found))
+    return _default_run_capabilities(kind)
 
-        flow = flow_index().get(operation)
-        if flow is not None and flow.capability:
-            found.append(flow.capability)
-    if not found and str(manifest.get("kind") or "") in {"eval", "benchmark"}:
-        found.append(str(manifest.get("kind")))
-    return tuple(dict.fromkeys(found))
+
+def _input_summary_capabilities(input_summary: object) -> tuple[str, ...]:
+    if not isinstance(input_summary, dict):
+        return ()
+    return (
+        *_string_items(input_summary.get("capabilities")),
+        *_known_capability_items(input_summary.get("operations")),
+    )
+
+
+def _string_items(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(str(item) for item in value if str(item).strip())
+
+
+def _known_capability_items(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(str(item) for item in value if str(item) in CAPABILITY_NAMES)
+
+
+def _operation_capabilities(operation: str) -> tuple[str, ...]:
+    return (operation,) if operation in CAPABILITY_NAMES else ()
+
+
+def _flow_capabilities(*, kind: str, operation: str) -> tuple[str, ...]:
+    if kind != "flow":
+        return ()
+    from worldforge.harness.flow_catalog import flow_index
+
+    flow = flow_index().get(operation)
+    if flow is None or not flow.capability:
+        return ()
+    return (flow.capability,)
+
+
+def _default_run_capabilities(kind: str) -> tuple[str, ...]:
+    return (kind,) if kind in {"eval", "benchmark"} else ()
 
 
 def _safe_artifact_types(manifest: JSONDict) -> tuple[str, ...]:
@@ -357,30 +375,39 @@ def _safe_artifact_types(manifest: JSONDict) -> tuple[str, ...]:
 
 
 def _failure_summary(manifest: JSONDict) -> str:
+    result_summary = _run_result_summary(manifest)
+    return (
+        _structured_failure_summary(result_summary)
+        or _validation_failure_summary(result_summary)
+        or _status_failure_summary(manifest)
+    )
+
+
+def _run_result_summary(manifest: JSONDict) -> JSONDict:
     result_summary = manifest.get("result_summary")
     if isinstance(result_summary, dict):
-        for key in (
-            "failure_reason",
-            "observed_failure",
-            "error",
-            "error_message",
-            "skip_reason",
-            "reason",
-        ):
-            value = result_summary.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        errors = result_summary.get("validation_errors")
-        if isinstance(errors, list) and errors:
-            return "; ".join(str(error) for error in errors if str(error).strip())
-    status = str(manifest.get("status") or "unknown")
-    if status == "failed":
-        return "Run failed without a structured failure reason."
-    if status == "cancelled":
-        return "Run was cancelled before completion."
-    if status == "skipped":
-        return "Run was skipped without a structured reason."
+        return result_summary
+    return {}
+
+
+def _structured_failure_summary(result_summary: JSONDict) -> str:
+    for key in _FAILURE_SUMMARY_KEYS:
+        value = result_summary.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     return ""
+
+
+def _validation_failure_summary(result_summary: JSONDict) -> str:
+    errors = result_summary.get("validation_errors")
+    if isinstance(errors, list) and errors:
+        return "; ".join(str(error).strip() for error in errors if str(error).strip())
+    return ""
+
+
+def _status_failure_summary(manifest: JSONDict) -> str:
+    status = str(manifest.get("status") or "unknown")
+    return _FAILURE_STATUS_DEFAULTS.get(status, "")
 
 
 def _rerun_command(manifest: JSONDict, *, workspace_display: str) -> str:
@@ -471,9 +498,7 @@ def _load_manifest(run_path: Path) -> JSONDict:
         payload = json.loads((run_path / "run_manifest.json").read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise WorldForgeError(f"Preserved run manifest contains invalid JSON: {run_path}") from exc
-    if not isinstance(payload, dict):
-        raise WorldForgeError(f"Preserved run manifest must be a JSON object: {run_path}")
-    payload = dict(payload)
+    payload = require_json_dict(payload, name=f"Preserved run manifest {run_path}")
     payload["path"] = str(run_path)
     return payload
 
@@ -493,19 +518,41 @@ def _report_json_path(run_path: Path, manifest: JSONDict) -> Path | None:
 
 
 def _flow_from_record(record: RunHistoryRecord, inspector: JSONDict | None) -> HarnessFlow:
-    if inspector and isinstance(inspector.get("flow"), dict):
-        flow_payload = inspector["flow"]
-        return HarnessFlow(
-            id=str(flow_payload.get("id") or record.operation or record.run_id),
-            title=str(flow_payload.get("title") or record.operation or record.run_id),
-            short_title=str(flow_payload.get("short_title") or record.operation or record.kind),
-            focus=str(flow_payload.get("focus") or record.kind),
-            provider=str(flow_payload.get("provider") or record.provider),
-            capability=str(flow_payload.get("capability") or record.capability),
-            command=record.rerun_command,
-            accent=str(flow_payload.get("accent") or ""),
-            summary=str(flow_payload.get("summary") or record.failure_summary or record.status),
-        )
+    flow_payload = _flow_payload_from_inspector(inspector)
+    if flow_payload is not None:
+        return _flow_from_inspector_payload(record, flow_payload)
+    return _fallback_flow_from_record(record)
+
+
+def _flow_payload_from_inspector(inspector: JSONDict | None) -> JSONDict | None:
+    if inspector is None:
+        return None
+    flow_payload = inspector.get("flow")
+    return flow_payload if isinstance(flow_payload, dict) else None
+
+
+def _flow_field(flow_payload: JSONDict, key: str, fallback: str) -> str:
+    return str(flow_payload.get(key) or fallback)
+
+
+def _flow_from_inspector_payload(
+    record: RunHistoryRecord,
+    flow_payload: JSONDict,
+) -> HarnessFlow:
+    return HarnessFlow(
+        id=_flow_field(flow_payload, "id", record.operation or record.run_id),
+        title=_flow_field(flow_payload, "title", record.operation or record.run_id),
+        short_title=_flow_field(flow_payload, "short_title", record.operation or record.kind),
+        focus=_flow_field(flow_payload, "focus", record.kind),
+        provider=_flow_field(flow_payload, "provider", record.provider),
+        capability=_flow_field(flow_payload, "capability", record.capability),
+        command=record.rerun_command,
+        accent=_flow_field(flow_payload, "accent", ""),
+        summary=_flow_field(flow_payload, "summary", record.failure_summary or record.status),
+    )
+
+
+def _fallback_flow_from_record(record: RunHistoryRecord) -> HarnessFlow:
     return HarnessFlow(
         id=record.operation or record.run_id,
         title=f"Preserved Run: {record.run_id}",
@@ -618,16 +665,9 @@ def _transcript_from_record(record: RunHistoryRecord) -> tuple[str, ...]:
 def _read_json(path: Path) -> JSONDict | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        return require_json_dict(payload, name=f"Preserved run JSON {path}")
+    except (OSError, json.JSONDecodeError, WorldForgeError):
         return None
-    return payload if isinstance(payload, dict) else None
-
-
-def _clean_filter(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned = value.strip()
-    return cleaned or None
 
 
 __all__ = [

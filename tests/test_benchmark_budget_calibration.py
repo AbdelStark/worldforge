@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+import worldforge.benchmark_calibration as benchmark_calibration
 from worldforge import ProviderBenchmarkHarness, WorldForge
 from worldforge.benchmark import BenchmarkReport, load_benchmark_budgets
 from worldforge.benchmark_calibration import calibrate_benchmark_budgets
@@ -112,6 +114,30 @@ def test_budget_calibration_writes_reviewable_candidate_artifacts(tmp_path: Path
     assert "hardware cohort review" in markdown
 
 
+@pytest.mark.parametrize(
+    ("payload", "candidate_budgets"),
+    (
+        ({"schema_version": 1, "bad_metric": math.nan}, {"budgets": []}),
+        ({"schema_version": 1}, {"budgets": [], "bad_metric": math.nan}),
+    ),
+)
+def test_budget_calibration_artifact_writer_rejects_non_finite_before_touching_disk(
+    tmp_path: Path,
+    payload: dict[str, object],
+    candidate_budgets: dict[str, object],
+) -> None:
+    output_dir = tmp_path / "calibration"
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        benchmark_calibration._write_calibration_artifacts(
+            output_dir=output_dir,
+            payload=payload,
+            candidate_budgets=candidate_budgets,
+        )
+
+    assert not output_dir.exists()
+
+
 def test_budget_calibration_preserves_current_budget_and_existing_failure_behavior(
     tmp_path: Path,
 ) -> None:
@@ -190,6 +216,26 @@ def test_budget_calibration_rejects_malformed_reports(
 
     with pytest.raises(WorldForgeError, match=match):
         calibrate_benchmark_budgets((report_path,))
+
+
+def test_budget_calibration_rejects_non_utf8_report(tmp_path: Path) -> None:
+    report_path = tmp_path / "bad-report.json"
+    report_path.write_bytes(b"\xff\xfe")
+
+    with pytest.raises(WorldForgeError, match="Benchmark report must be UTF-8 JSON"):
+        calibrate_benchmark_budgets((report_path,))
+
+
+def test_budget_calibration_accepts_string_command_provenance(tmp_path: Path) -> None:
+    report_path = tmp_path / "benchmark-report.json"
+    _write_benchmark_report(report_path, state_dir=tmp_path / "worlds")
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["provenance"]["command"] = "worldforge benchmark --provider mock"
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = calibrate_benchmark_budgets((report_path,))
+
+    assert result.payload["source_reports"][0]["command"] == "worldforge benchmark --provider mock"
 
 
 def test_budget_calibration_rejects_invalid_review_inputs(tmp_path: Path) -> None:

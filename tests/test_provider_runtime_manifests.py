@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from importlib import resources
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +14,7 @@ from worldforge.providers.leworldmodel import LeWorldModelProvider
 from worldforge.providers.runtime_manifest import (
     MANIFEST_PACKAGE,
     ProviderRuntimeManifest,
+    RuntimeAssetManifest,
     load_runtime_manifests,
     missing_optional_dependency_detail,
 )
@@ -87,6 +89,38 @@ def test_runtime_manifest_validation_rejects_weak_records() -> None:
 
     with pytest.raises(WorldForgeError, match="minimum_smoke_command"):
         ProviderRuntimeManifest.from_json(payload, source="example.json")
+
+
+def test_runtime_asset_manifest_dataclass_normalizes_local_path_fields(tmp_path: Path) -> None:
+    asset = RuntimeAssetManifest(
+        asset_id="pusht-score-checkpoint",
+        provider="leworldmodel",
+        asset_kind="checkpoint",
+        path=tmp_path / "policy.ckpt",
+        source="fixture cache",
+        cache_root=tmp_path,
+        exists=False,
+        rebuild_command="uv run worldforge-smoke-leworldmodel",
+    )
+
+    local_payload = asset.to_dict(include_local_fields=True)
+
+    assert local_payload["path"] == str(tmp_path / "policy.ckpt")
+    assert local_payload["cache_root"] == str(tmp_path)
+    assert local_payload["exists"] is False
+    assert "path" not in asset.to_reference()
+
+
+def test_runtime_asset_manifest_dataclass_rejects_unsafe_attachable_paths() -> None:
+    with pytest.raises(WorldForgeError, match="local_only=True"):
+        RuntimeAssetManifest(
+            asset_id="unsafe-checkpoint",
+            provider="leworldmodel",
+            asset_kind="checkpoint",
+            path="/tmp/worldforge/checkpoint.ckpt",
+            source="fixture cache",
+            local_only=False,
+        )
 
 
 def test_manifest_backed_dependency_health_messages_are_actionable(monkeypatch) -> None:

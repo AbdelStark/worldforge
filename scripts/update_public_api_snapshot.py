@@ -13,9 +13,10 @@ The snapshot test (``tests/test_public_api_snapshot.py``) will fail otherwise.
 from __future__ import annotations
 
 import importlib
-import json
 import sys
 from pathlib import Path
+
+from worldforge.artifact_io import write_json_artifact
 
 MODULES: tuple[str, ...] = (
     "worldforge",
@@ -43,11 +44,7 @@ def main() -> int:
         "schema_version": 1,
         "modules": {name: _module_exports(name) for name in MODULES},
     }
-    SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT_PATH.write_text(
-        json.dumps(snapshot, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_json_artifact(SNAPSHOT_PATH, snapshot)
     if SNAPSHOT_PATH.is_relative_to(Path.cwd()):
         relative = SNAPSHOT_PATH.relative_to(Path.cwd())
     else:

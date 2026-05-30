@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from worldforge.models import (
@@ -19,13 +19,38 @@ from worldforge.models import (
     ReasoningResult,
     SceneObject,
     VideoClip,
-    WorldForgeError,
-    dump_json,
-    require_finite_number,
-    require_positive_int,
-    require_probability,
 )
-from worldforge.providers import BaseProvider, PredictionPayload, ProviderError
+from worldforge.providers import BaseProvider, PredictionPayload
+from worldforge.testing.provider_contract_validation import (
+    contract_check as _contract_check,
+)
+from worldforge.testing.provider_contract_validation import (
+    expect_provider_error as _expect_provider_error,
+)
+from worldforge.testing.provider_contract_validation import (
+    invoke_contract as _invoke_contract,
+)
+from worldforge.testing.provider_contract_validation import (
+    validate_action_policy as _validate_action_policy,
+)
+from worldforge.testing.provider_contract_validation import (
+    validate_action_scores as _validate_action_scores,
+)
+from worldforge.testing.provider_contract_validation import (
+    validate_clip as _validate_clip,
+)
+from worldforge.testing.provider_contract_validation import (
+    validate_embedding as _validate_embedding,
+)
+from worldforge.testing.provider_contract_validation import (
+    validate_prediction as _validate_prediction,
+)
+from worldforge.testing.provider_contract_validation import (
+    validate_provider_events as _validate_provider_events,
+)
+from worldforge.testing.provider_contract_validation import (
+    validate_reasoning as _validate_reasoning,
+)
 
 
 def sample_contract_action() -> Action:
@@ -94,257 +119,13 @@ class ProviderContractReport:
         }
 
 
-def _expect_provider_error[T](operation_name: str, call: Callable[[], T]) -> None:
-    try:
-        call()
-    except ProviderError:
-        return
-    msg = f"Provider contract expected '{operation_name}' to raise ProviderError when unavailable."
-    raise AssertionError(msg)
-
-
-def _contract_check(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def _contract_json(value: object, message: str) -> None:
-    try:
-        dump_json(value)
-    except WorldForgeError as exc:
-        raise AssertionError(message) from exc
-
-
-def _contract_finite_number(value: object, *, name: str, message: str) -> float:
-    try:
-        return require_finite_number(value, name=name)
-    except WorldForgeError as exc:
-        raise AssertionError(message) from exc
-
-
-def _contract_probability(value: object, *, name: str, message: str) -> float:
-    try:
-        return require_probability(value, name=name)
-    except WorldForgeError as exc:
-        raise AssertionError(message) from exc
-
-
-def _contract_positive_int(value: object, *, name: str, message: str) -> int:
-    try:
-        return require_positive_int(value, name=name)  # type: ignore[arg-type]
-    except WorldForgeError as exc:
-        raise AssertionError(message) from exc
-
-
-def _contract_finite_float_sequence(
-    values: Sequence[object],
-    *,
-    name: str,
-    message: str,
-) -> None:
-    for value in values:
-        _contract_check(isinstance(value, float), message)
-        _contract_finite_number(value, name=name, message=message)
-
-
-def _invoke_contract[T](
-    operation_name: str,
-    result_name: str,
-    call: Callable[[], T],
-) -> T:
-    try:
-        return call()
-    except ProviderError as exc:
-        raise AssertionError(
-            f"{operation_name} must return a valid {result_name}; provider raised ProviderError: "
-            f"{exc}"
-        ) from exc
-    except WorldForgeError as exc:
-        raise AssertionError(f"{operation_name} must return a valid {result_name}: {exc}") from exc
-
-
-def _validate_prediction(provider: str, payload: PredictionPayload) -> None:
-    _contract_check(
-        isinstance(payload, PredictionPayload),
-        "predict must return PredictionPayload.",
-    )
-    try:
-        from worldforge.framework import _validate_world_state_payload
-
-        _validate_world_state_payload(payload.state, context="Provider contract prediction state")
-    except WorldForgeError as exc:
-        raise AssertionError("predict returned invalid world state.") from exc
-    _contract_check(isinstance(payload.metadata, dict), "predict metadata must be a JSON object.")
-    _contract_json(payload.metadata, "predict metadata must be JSON serializable.")
-    _contract_check(isinstance(payload.frames, list), "predict frames must be a list.")
-    _contract_check(
-        all(isinstance(frame, bytes) for frame in payload.frames),
-        "predict frames must contain only bytes.",
-    )
-    _contract_probability(
-        payload.confidence,
-        name="predict confidence",
-        message="predict confidence must be a probability float.",
-    )
-    _contract_probability(
-        payload.physics_score,
-        name="predict physics_score",
-        message="predict physics_score must be a probability float.",
-    )
-    latency_ms = _contract_finite_number(
-        payload.latency_ms,
-        name="predict latency_ms",
-        message="predict latency_ms must be finite.",
-    )
-    _contract_check(latency_ms >= 0.0, "predict latency_ms must be non-negative.")
-    _contract_check(
-        payload.metadata.get("provider") == provider,
-        "predict metadata provider must match provider name.",
-    )
-
-
-def _validate_reasoning(provider: str, result: ReasoningResult) -> None:
-    _contract_check(isinstance(result, ReasoningResult), "reason must return ReasoningResult.")
-    _contract_check(result.provider == provider, "reason provider must match provider name.")
-    _contract_check(
-        isinstance(result.answer, str) and bool(result.answer),
-        "reason answer required.",
-    )
-    _contract_probability(
-        result.confidence,
-        name="reason confidence",
-        message="reason confidence must be a probability.",
-    )
-    _contract_check(isinstance(result.evidence, list), "reason evidence must be a list.")
-    _contract_check(
-        all(isinstance(item, str) for item in result.evidence),
-        "reason evidence must contain only strings.",
-    )
-
-
-def _validate_embedding(provider: str, result: EmbeddingResult) -> None:
-    _contract_check(isinstance(result, EmbeddingResult), "embed must return EmbeddingResult.")
-    _contract_check(result.provider == provider, "embed provider must match provider name.")
-    _contract_check(isinstance(result.model, str) and bool(result.model), "embed model required.")
-    _contract_check(isinstance(result.vector, list), "embed vector must be a list.")
-    _contract_check(len(result.vector) >= 1, "embed vector must not be empty.")
-    _contract_finite_float_sequence(
-        result.vector,
-        name="embed vector value",
-        message="embed vector values must be finite floats.",
-    )
-
-
-def _validate_clip(clip: VideoClip) -> None:
-    _contract_check(isinstance(clip, VideoClip), "media operation must return VideoClip.")
-    _contract_check(isinstance(clip.frames, list), "VideoClip frames must be a list.")
-    _contract_check(
-        all(isinstance(frame, bytes) for frame in clip.frames),
-        "VideoClip frames must contain only bytes.",
-    )
-    fps = _contract_finite_number(
-        clip.fps,
-        name="VideoClip fps",
-        message="VideoClip fps must be a finite number.",
-    )
-    _contract_check(fps > 0.0, "VideoClip fps must be positive.")
-    try:
-        width, height = clip.resolution
-    except (TypeError, ValueError) as exc:
-        raise AssertionError("VideoClip resolution must contain width and height.") from exc
-    _contract_check(
-        isinstance(width, int) and not isinstance(width, bool) and width > 0,
-        "VideoClip width must be positive.",
-    )
-    _contract_check(
-        isinstance(height, int) and not isinstance(height, bool) and height > 0,
-        "VideoClip height must be positive.",
-    )
-    duration_seconds = _contract_finite_number(
-        clip.duration_seconds,
-        name="VideoClip duration_seconds",
-        message="VideoClip duration_seconds must be finite.",
-    )
-    _contract_check(duration_seconds >= 0.0, "VideoClip duration must be non-negative.")
-    _contract_check(isinstance(clip.metadata, dict), "VideoClip metadata must be a JSON object.")
-    _contract_json(clip.metadata, "VideoClip metadata must be JSON serializable.")
-
-
-def _validate_action_scores(provider: str, result: ActionScoreResult) -> None:
-    _contract_check(isinstance(result, ActionScoreResult), "score must return ActionScoreResult.")
-    _contract_check(result.provider == provider, "score provider must match provider name.")
-    _contract_check(isinstance(result.scores, list), "score scores must be a list.")
-    _contract_check(bool(result.scores), "score scores must not be empty.")
-    _contract_finite_float_sequence(
-        result.scores,
-        name="score value",
-        message="score values must be finite floats.",
-    )
-    _contract_check(
-        isinstance(result.best_index, int) and not isinstance(result.best_index, bool),
-        "score best_index must be an integer.",
-    )
-    _contract_check(
-        0 <= result.best_index < len(result.scores),
-        "score best_index must point at a score.",
-    )
-    _contract_check(
-        result.best_score == result.scores[result.best_index],
-        "score best_score must match scores[best_index].",
-    )
-    _contract_check(isinstance(result.lower_is_better, bool), "score direction flag must be bool.")
-    expected_best_score = min(result.scores) if result.lower_is_better else max(result.scores)
-    _contract_check(
-        result.best_score == expected_best_score,
-        "score best_index must match lower_is_better direction.",
-    )
-    _contract_check(isinstance(result.metadata, dict), "score metadata must be a JSON object.")
-    _contract_json(result.to_dict(), "score result must be JSON serializable.")
-
-
-def _validate_action_policy(provider: str, result: ActionPolicyResult) -> None:
-    _contract_check(
-        isinstance(result, ActionPolicyResult),
-        "policy must return ActionPolicyResult.",
-    )
-    _contract_check(result.provider == provider, "policy provider must match provider name.")
-    _contract_check(isinstance(result.actions, list), "policy actions must be a list.")
-    _contract_check(bool(result.actions), "policy actions must not be empty.")
-    _contract_check(
-        all(isinstance(action, Action) for action in result.actions),
-        "policy actions must contain only Action objects.",
-    )
-    _contract_check(
-        isinstance(result.raw_actions, dict),
-        "policy raw_actions must be a JSON object.",
-    )
-    if result.action_horizon is not None:
-        _contract_positive_int(
-            result.action_horizon,
-            name="policy action_horizon",
-            message="policy action_horizon must be positive when provided.",
-        )
-    if result.embodiment_tag is not None:
-        _contract_check(
-            isinstance(result.embodiment_tag, str) and bool(result.embodiment_tag.strip()),
-            "policy embodiment_tag must be a non-empty string when provided.",
-        )
-    _contract_check(isinstance(result.metadata, dict), "policy metadata must be a JSON object.")
-    _contract_check(
-        isinstance(result.action_candidates, list),
-        "policy action_candidates must be a list.",
-    )
-    _contract_check(bool(result.action_candidates), "policy action_candidates must not be empty.")
-    for candidate in result.action_candidates:
-        _contract_check(
-            isinstance(candidate, list) and bool(candidate),
-            "policy action candidate plans must be non-empty lists.",
-        )
-        _contract_check(
-            all(isinstance(action, Action) for action in candidate),
-            "policy action candidate plans must contain only Action objects.",
-        )
-    _contract_json(result.to_dict(), "policy result must be JSON serializable.")
+@dataclass(slots=True)
+class _ProviderContractInputs:
+    world_state: JSONDict
+    action: Action
+    policy_info: JSONDict | None
+    score_info: JSONDict | None
+    score_action_candidates: object | None
 
 
 def assert_predict_conformance(
@@ -493,24 +274,7 @@ def assert_provider_events_conform(
 ) -> None:
     """Assert that captured provider events are JSON-native and redaction-safe."""
 
-    for index, event in enumerate(events):
-        _contract_check(
-            isinstance(event, ProviderEvent),
-            f"provider event {index} must be a ProviderEvent.",
-        )
-        payload = event.to_dict()
-        _contract_json(payload, f"provider event {index} must be JSON serializable.")
-        if provider is not None:
-            _contract_check(
-                payload["provider"] == provider,
-                f"provider event {index} provider must match {provider}.",
-            )
-        rendered = dump_json(payload).lower()
-        for forbidden in ("api-secret", "api_secret", "raw-secret", "bearer-secret"):
-            _contract_check(
-                forbidden not in rendered,
-                f"provider event {index} appears to expose secret material.",
-            )
+    _validate_provider_events(events, provider=provider)
 
 
 def assert_provider_contract(
@@ -530,115 +294,208 @@ def assert_provider_contract(
     """
 
     report = assert_provider_metadata_conformance(provider)
-    profile = report.profile
-    configured = report.configured
+    inputs = _provider_contract_inputs(
+        world_state=world_state,
+        action=action,
+        policy_info=policy_info,
+        score_info=score_info,
+        score_action_candidates=score_action_candidates,
+    )
+    can_invoke = report.configured
 
-    sample_state = world_state or sample_contract_world_state()
-    sample_action = action or sample_contract_action()
-    can_invoke = configured
-
-    if profile.capabilities.predict:
-        if can_invoke:
-            assert_predict_conformance(
-                provider,
-                world_state=sample_state,
-                action=sample_action,
-                steps=2,
-            )
-            report.exercised_operations.append("predict")
-        else:
-            _expect_provider_error(
-                "predict",
-                lambda: provider.predict(sample_state, sample_action, 2),
-            )
-
-    if profile.capabilities.reason:
-        if can_invoke:
-            assert_reason_conformance(
-                provider,
-                query="How many objects are in the scene?",
-                world_state=sample_state,
-            )
-            report.exercised_operations.append("reason")
-        else:
-            _expect_provider_error(
-                "reason",
-                lambda: provider.reason(
-                    "How many objects are in the scene?",
-                    world_state=sample_state,
-                ),
-            )
-
-    if profile.capabilities.embed:
-        if can_invoke:
-            assert_embed_conformance(provider, text="contract vector")
-            report.exercised_operations.append("embed")
-        else:
-            _expect_provider_error("embed", lambda: provider.embed(text="contract vector"))
-
-    generated_clip: VideoClip | None = None
-    if profile.capabilities.generate:
-        if can_invoke:
-            generated_clip = assert_generate_conformance(provider)
-            report.exercised_operations.append("generate")
-        else:
-            _expect_provider_error(
-                "generate",
-                lambda: provider.generate("contract prompt", duration_seconds=1.0),
-            )
-
-    if profile.capabilities.transfer:
-        if can_invoke:
-            assert_transfer_conformance(provider, clip=generated_clip)
-            report.exercised_operations.append("transfer")
-        else:
-            transfer_input = generated_clip or VideoClip(
-                frames=[b"contract-frame"],
-                fps=8.0,
-                resolution=(64, 64),
-                duration_seconds=0.125,
-                metadata={"provider": provider.name},
-            )
-            _expect_provider_error(
-                "transfer",
-                lambda: provider.transfer(transfer_input, width=48, height=48, fps=12.0),
-            )
-
-    if profile.capabilities.score:
-        if can_invoke:
-            if score_info is None or score_action_candidates is None:
-                raise AssertionError(
-                    "Provider contract requires score_info and score_action_candidates for "
-                    "configured score providers."
-                )
-            assert_score_conformance(
-                provider,
-                info=score_info,
-                action_candidates=score_action_candidates,
-            )
-            report.exercised_operations.append("score")
-        else:
-            _expect_provider_error(
-                "score",
-                lambda: provider.score_actions(
-                    info=score_info or {},
-                    action_candidates=[]
-                    if score_action_candidates is None
-                    else score_action_candidates,
-                ),
-            )
-
-    if profile.capabilities.policy:
-        if can_invoke:
-            assert_policy_conformance(provider, info=policy_info or sample_contract_policy_info())
-            report.exercised_operations.append("policy")
-        else:
-            _expect_provider_error(
-                "policy",
-                lambda: provider.select_actions(info=policy_info or sample_contract_policy_info()),
-            )
+    _check_predict_contract(provider, report, inputs, can_invoke=can_invoke)
+    _check_reason_contract(provider, report, inputs, can_invoke=can_invoke)
+    _check_embed_contract(provider, report, can_invoke=can_invoke)
+    generated_clip = _check_generate_contract(provider, report, can_invoke=can_invoke)
+    _check_transfer_contract(provider, report, generated_clip, can_invoke=can_invoke)
+    _check_score_contract(provider, report, inputs, can_invoke=can_invoke)
+    _check_policy_contract(provider, report, inputs, can_invoke=can_invoke)
 
     return report
+
+
+def _provider_contract_inputs(
+    *,
+    world_state: JSONDict | None,
+    action: Action | None,
+    policy_info: JSONDict | None,
+    score_info: JSONDict | None,
+    score_action_candidates: object | None,
+) -> _ProviderContractInputs:
+    return _ProviderContractInputs(
+        world_state=world_state or sample_contract_world_state(),
+        action=action or sample_contract_action(),
+        policy_info=policy_info,
+        score_info=score_info,
+        score_action_candidates=score_action_candidates,
+    )
+
+
+def _check_predict_contract(
+    provider: BaseProvider,
+    report: ProviderContractReport,
+    inputs: _ProviderContractInputs,
+    *,
+    can_invoke: bool,
+) -> None:
+    if not report.profile.capabilities.predict:
+        return
+    if can_invoke:
+        assert_predict_conformance(
+            provider,
+            world_state=inputs.world_state,
+            action=inputs.action,
+            steps=2,
+        )
+        report.exercised_operations.append("predict")
+        return
+    _expect_provider_error(
+        "predict",
+        lambda: provider.predict(inputs.world_state, inputs.action, 2),
+    )
+
+
+def _check_reason_contract(
+    provider: BaseProvider,
+    report: ProviderContractReport,
+    inputs: _ProviderContractInputs,
+    *,
+    can_invoke: bool,
+) -> None:
+    if not report.profile.capabilities.reason:
+        return
+    query = "How many objects are in the scene?"
+    if can_invoke:
+        assert_reason_conformance(provider, query=query, world_state=inputs.world_state)
+        report.exercised_operations.append("reason")
+        return
+    _expect_provider_error(
+        "reason",
+        lambda: provider.reason(query, world_state=inputs.world_state),
+    )
+
+
+def _check_embed_contract(
+    provider: BaseProvider,
+    report: ProviderContractReport,
+    *,
+    can_invoke: bool,
+) -> None:
+    if not report.profile.capabilities.embed:
+        return
+    if can_invoke:
+        assert_embed_conformance(provider, text="contract vector")
+        report.exercised_operations.append("embed")
+        return
+    _expect_provider_error("embed", lambda: provider.embed(text="contract vector"))
+
+
+def _check_generate_contract(
+    provider: BaseProvider,
+    report: ProviderContractReport,
+    *,
+    can_invoke: bool,
+) -> VideoClip | None:
+    if not report.profile.capabilities.generate:
+        return None
+    if can_invoke:
+        generated_clip = assert_generate_conformance(provider)
+        report.exercised_operations.append("generate")
+        return generated_clip
+    _expect_provider_error(
+        "generate",
+        lambda: provider.generate("contract prompt", duration_seconds=1.0),
+    )
+    return None
+
+
+def _check_transfer_contract(
+    provider: BaseProvider,
+    report: ProviderContractReport,
+    generated_clip: VideoClip | None,
+    *,
+    can_invoke: bool,
+) -> None:
+    if not report.profile.capabilities.transfer:
+        return
+    if can_invoke:
+        assert_transfer_conformance(provider, clip=generated_clip)
+        report.exercised_operations.append("transfer")
+        return
+    transfer_input = generated_clip or _sample_transfer_clip(provider.name)
+    _expect_provider_error(
+        "transfer",
+        lambda: provider.transfer(transfer_input, width=48, height=48, fps=12.0),
+    )
+
+
+def _sample_transfer_clip(provider_name: str) -> VideoClip:
+    return VideoClip(
+        frames=[b"contract-frame"],
+        fps=8.0,
+        resolution=(64, 64),
+        duration_seconds=0.125,
+        metadata={"provider": provider_name},
+    )
+
+
+def _check_score_contract(
+    provider: BaseProvider,
+    report: ProviderContractReport,
+    inputs: _ProviderContractInputs,
+    *,
+    can_invoke: bool,
+) -> None:
+    if not report.profile.capabilities.score:
+        return
+    if can_invoke:
+        _require_score_contract_inputs(inputs)
+        assert_score_conformance(
+            provider,
+            info=inputs.score_info,
+            action_candidates=inputs.score_action_candidates,
+        )
+        report.exercised_operations.append("score")
+        return
+    _expect_provider_error(
+        "score",
+        lambda: provider.score_actions(
+            info=inputs.score_info or {},
+            action_candidates=_score_action_candidates_or_empty(inputs),
+        ),
+    )
+
+
+def _require_score_contract_inputs(inputs: _ProviderContractInputs) -> None:
+    if inputs.score_info is not None and inputs.score_action_candidates is not None:
+        return
+    raise AssertionError(
+        "Provider contract requires score_info and score_action_candidates for "
+        "configured score providers."
+    )
+
+
+def _score_action_candidates_or_empty(inputs: _ProviderContractInputs) -> object:
+    if inputs.score_action_candidates is None:
+        return []
+    return inputs.score_action_candidates
+
+
+def _check_policy_contract(
+    provider: BaseProvider,
+    report: ProviderContractReport,
+    inputs: _ProviderContractInputs,
+    *,
+    can_invoke: bool,
+) -> None:
+    if not report.profile.capabilities.policy:
+        return
+    info = inputs.policy_info or sample_contract_policy_info()
+    if can_invoke:
+        assert_policy_conformance(provider, info=info)
+        report.exercised_operations.append("policy")
+        return
+    _expect_provider_error("policy", lambda: provider.select_actions(info=info))
 
 
 def assert_provider_metadata_conformance(provider: BaseProvider) -> ProviderContractReport:

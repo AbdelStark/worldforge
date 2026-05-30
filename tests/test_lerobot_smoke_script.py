@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -34,6 +35,7 @@ def _args(**overrides: object) -> argparse.Namespace:
         "cache_dir": None,
         "translator": None,
         "health_only": False,
+        "run_manifest": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -54,6 +56,58 @@ def test_smoke_script_loads_file_callables(tmp_path: Path) -> None:
         {"observation": {}},
         {},
     )
+
+
+def test_smoke_script_health_only_main_writes_skipped_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    script = _load_script()
+    run_manifest = tmp_path / "run" / "run_manifest.json"
+    provider_kwargs: dict[str, object] = {}
+
+    class FakeHealth:
+        healthy = True
+        details = "configured"
+
+        def to_dict(self) -> dict[str, object]:
+            return {"name": "lerobot", "healthy": True, "details": self.details}
+
+    class FakeProvider:
+        def __init__(self, **kwargs: object) -> None:
+            provider_kwargs.update(kwargs)
+
+        def health(self) -> FakeHealth:
+            return FakeHealth()
+
+        def select_actions(self, *, info: dict[str, object]) -> object:
+            raise AssertionError("health-only smoke must not run policy inference")
+
+    monkeypatch.setattr(script, "LeRobotPolicyProvider", FakeProvider)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "smoke_lerobot_policy.py",
+            "--policy-path",
+            "lerobot/act_aloha_sim_transfer_cube_human",
+            "--health-only",
+            "--run-manifest",
+            str(run_manifest),
+        ],
+    )
+
+    assert script.main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["health"]["healthy"] is True
+    assert provider_kwargs["action_translator"] is None
+    manifest = json.loads(run_manifest.read_text())
+    assert manifest["provider_profile"] == "lerobot"
+    assert manifest["capability"] == "policy"
+    assert manifest["status"] == "skipped"
+    assert manifest["event_count"] == 0
 
 
 def test_smoke_script_builds_policy_info_from_json_files(tmp_path: Path) -> None:

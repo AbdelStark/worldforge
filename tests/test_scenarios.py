@@ -15,6 +15,7 @@ from worldforge.scenarios import (
     SCENARIO_SCHEMA_VERSION,
     Scenario,
     ScenarioAction,
+    ScenarioExpectationCheck,
     ScenarioExpectedArtifact,
     load_scenario,
     load_scenario_matrix,
@@ -123,6 +124,30 @@ def test_parse_scenario_rejects_invalid_json(tmp_path: Path) -> None:
         load_scenario(bad)
 
 
+def test_load_scenario_rejects_non_finite_json_file(tmp_path: Path) -> None:
+    payload = _clone_payload(_VALID_PAYLOAD)
+    payload["metadata"] = {"bad": float("nan")}
+    target = _scenario_file(tmp_path, payload)
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        load_scenario(target)
+
+
+def test_load_scenario_rejects_non_finite_extends_parent(tmp_path: Path) -> None:
+    parent_payload = _clone_payload(_VALID_PAYLOAD)
+    parent_payload["metadata"] = {"bad": float("inf")}
+    parent = tmp_path / "parent.json"
+    parent.write_text(json.dumps(parent_payload), encoding="utf-8")
+    child = tmp_path / "child.json"
+    child.write_text(
+        json.dumps({"schema_version": SCENARIO_SCHEMA_VERSION, "extends": "parent.json"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        load_scenario(child)
+
+
 def test_scenario_cli_error_contract_for_invalid_json(
     tmp_path: Path,
     monkeypatch,
@@ -185,6 +210,28 @@ def test_parse_scenario_rejects_non_array_actions() -> None:
 def test_parse_scenario_rejects_non_object_world() -> None:
     payload = {**_VALID_PAYLOAD, "world": "scene"}
     with pytest.raises(WorldForgeError, match="'world' must be a JSON object"):
+        parse_scenario(payload)
+
+
+def test_parse_scenario_rejects_non_object_metadata() -> None:
+    payload = {**_VALID_PAYLOAD, "metadata": ["not", "an", "object"]}
+    with pytest.raises(WorldForgeError, match="'metadata' must be a JSON object"):
+        parse_scenario(payload)
+
+
+def test_parse_scenario_rejects_non_finite_mapping_payload() -> None:
+    payload = _clone_payload(_VALID_PAYLOAD)
+    payload["actions"][0]["parameters"]["x"] = float("nan")
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        parse_scenario(payload)
+
+
+def test_parse_scenario_rejects_non_boolean_object_flags() -> None:
+    payload = _clone_payload(_VALID_PAYLOAD)
+    payload["world"]["objects"][0]["is_graspable"] = "yes"
+
+    with pytest.raises(WorldForgeError, match="is_graspable"):
         parse_scenario(payload)
 
 
@@ -254,6 +301,37 @@ def test_parse_scenario_matrix_expands_valid_parameter_matrix(tmp_path: Path) ->
     assert result.all_cases_passed() is True
 
 
+def test_parse_scenario_matrix_allows_documented_substitution_paths() -> None:
+    payload = _valid_matrix_payload()
+    payload["world"]["objects"][0]["id"] = "cube-1"
+    payload["world"]["objects"][0]["position"] = "${object_position}"
+    payload["actions"][0]["parameters"]["object_id"] = "${object_id}"
+    payload["expected_artifacts"][1]["value"] = {
+        "object_id": "${object_id}",
+        "position": {
+            "x": "${target_x}",
+            "y": 0.5,
+            "z": 0.0,
+        },
+    }
+    payload["matrix"]["parameters"].update(
+        {
+            "object_id": ["cube-1"],
+            "object_position": [{"x": 0.1, "y": 0.5, "z": 0.0}],
+        }
+    )
+
+    matrix = parse_scenario_matrix(payload)
+    scenario = matrix.cases[0].scenario
+
+    assert scenario.objects[0].position.x == 0.1
+    assert scenario.actions[0].parameters["object_id"] == "cube-1"
+    assert scenario.expected_artifacts[1].value == {
+        "object_id": "cube-1",
+        "position": {"x": 0.25, "y": 0.5, "z": 0.0},
+    }
+
+
 def test_parse_scenario_matrix_rejects_invalid_substitution_location() -> None:
     payload = _valid_matrix_payload()
     payload["world"]["objects"][0]["name"] = "${object_name}"
@@ -284,6 +362,14 @@ def test_parse_scenario_matrix_rejects_non_json_native_values() -> None:
     payload["matrix"]["parameters"]["target_x"] = [(0.25, 0.5)]
 
     with pytest.raises(WorldForgeError, match="JSON-native"):
+        parse_scenario_matrix(payload)
+
+
+def test_parse_scenario_matrix_rejects_non_object_metadata() -> None:
+    payload = _valid_matrix_payload()
+    payload["metadata"] = "not-metadata"
+
+    with pytest.raises(WorldForgeError, match="'metadata' must be a JSON object"):
         parse_scenario_matrix(payload)
 
 
@@ -387,7 +473,25 @@ def test_run_scenario_supports_object_position_expectation(tmp_path: Path) -> No
     forge = WorldForge(state_dir=tmp_path)
     payload = {
         **_VALID_PAYLOAD,
+        "actions": [],
+        "world": {
+            **_VALID_PAYLOAD["world"],
+            "objects": [
+                {
+                    **_VALID_PAYLOAD["world"]["objects"][0],
+                    "id": "cube-1",
+                }
+            ],
+        },
         "expected_artifacts": [
+            {
+                "label": "cube-position",
+                "kind": "object_position",
+                "value": {
+                    "object_id": "cube-1",
+                    "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+                },
+            },
             {
                 "label": "any-position",
                 "kind": "object_position",
@@ -395,11 +499,13 @@ def test_run_scenario_supports_object_position_expectation(tmp_path: Path) -> No
                     "object_id": "obj_missing",
                     "position": {"x": 0.0, "y": 0.0, "z": 0.0},
                 },
-            }
+            },
         ],
     }
     result = run_scenario(forge, parse_scenario(payload))
-    assert result.expectation_checks[0].passed is False
+    assert result.expectation_checks[0].passed is True
+    assert result.expectation_checks[0].observed == {"x": 0.0, "y": 0.5, "z": 0.0}
+    assert result.expectation_checks[1].passed is False
 
 
 def test_run_scenario_rejects_non_scenario_argument(tmp_path: Path) -> None:
@@ -421,9 +527,25 @@ def test_scenario_action_kind_validation() -> None:
         ScenarioAction(kind="weird", parameters={})
 
 
+def test_scenario_action_rejects_non_finite_direct_parameters() -> None:
+    with pytest.raises(WorldForgeError, match="finite number"):
+        ScenarioAction(kind="predict", parameters={"x": float("nan")})
+
+
 def test_scenario_expected_artifact_kind_validation() -> None:
     with pytest.raises(WorldForgeError, match="kind must be one of"):
         ScenarioExpectedArtifact(label="x", kind="bogus", value=1)
+
+
+def test_scenario_expectation_check_rejects_non_finite_direct_values() -> None:
+    with pytest.raises(WorldForgeError, match="finite number"):
+        ScenarioExpectationCheck(
+            label="bad",
+            kind="step",
+            expected=float("nan"),
+            observed=1,
+            passed=False,
+        )
 
 
 def test_scenario_validate_cli(tmp_path: Path, monkeypatch, capsys) -> None:

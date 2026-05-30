@@ -8,6 +8,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -18,10 +19,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from worldforge import WorldForge  # noqa: E402
+from worldforge.artifact_io import write_json_artifact  # noqa: E402
 from worldforge.benchmark import load_benchmark_inputs  # noqa: E402
 from worldforge.evaluation import EvaluationSuite  # noqa: E402
 from worldforge.evidence_bundle import generate_evidence_bundle  # noqa: E402
 from worldforge.harness.workspace import create_run_workspace, write_run_manifest  # noqa: E402
+from worldforge.models import dump_json  # noqa: E402
 
 DEFAULT_BUDGETS_MS = {
     "world_persistence": 250.0,
@@ -62,12 +65,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     budgets = _load_budgets(args.budget_file) if args.budget_file else DEFAULT_BUDGETS_MS
     payload = run_core_performance_budgets(budgets=budgets, workspace_dir=args.workspace_dir)
-    rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(rendered, encoding="utf-8")
+        write_json_artifact(args.output, payload)
     else:
-        print(rendered, end="")
+        print(dump_json(payload, indent=2))
     return 0 if payload["passed"] else 1
 
 
@@ -106,10 +107,7 @@ def _run(workspace: Path, *, budgets: dict[str, float], preserve: bool) -> dict[
         ),
     }
     if preserve:
-        (workspace / "core-performance.json").write_text(
-            json.dumps(payload, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        write_json_artifact(workspace / "core-performance.json", payload)
     return payload
 
 
@@ -158,7 +156,7 @@ def _provider_catalog(workspace: Path) -> str | None:
     if report.provider_count < 1:
         raise RuntimeError("doctor returned no providers")
     path = workspace / "doctor-report.json"
-    path.write_text(report.to_json(), encoding="utf-8")
+    write_json_artifact(path, report.to_dict())
     return str(path)
 
 
@@ -212,9 +210,12 @@ def _load_budgets(path: Path) -> dict[str, float]:
             not isinstance(key, str)
             or isinstance(value, bool)
             or not isinstance(value, int | float)
+            or not isfinite(value)
             or value < 0
         ):
-            raise SystemExit("core performance budgets must map operation names to non-negative ms")
+            raise SystemExit(
+                "core performance budgets must map operation names to finite non-negative ms"
+            )
         budgets[key] = float(value)
     return budgets
 

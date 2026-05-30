@@ -1,15 +1,60 @@
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from worldforge import (
     DoctorReport,
+    ProviderDoctorStatus,
     ProviderLifecycleResult,
+    ProviderLifecycleStatus,
     ReasoningResult,
     WorldForge,
     WorldForgeError,
 )
 from worldforge.providers import BaseProvider, ProviderError, ProviderProfileSpec
+from worldforge.providers.base import build_provider_lifecycle_status
+
+
+def test_provider_base_reexports_lifecycle_builder() -> None:
+    import worldforge.providers.base as base_module
+    import worldforge.providers.lifecycle as lifecycle_module
+
+    assert base_module.build_provider_lifecycle_status is (
+        lifecycle_module.build_provider_lifecycle_status
+    )
+
+
+def test_worldforge_doctor_facade_delegates_to_diagnostics_helper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    import worldforge.framework as framework_module
+
+    forge = WorldForge(state_dir=tmp_path)
+    expected = DoctorReport(state_dir=str(tmp_path), world_count=0, providers=[], issues=[])
+    captured: dict[str, object] = {}
+
+    def fake_doctor_report(
+        host: object,
+        *,
+        capability: str | None,
+        registered_only: bool,
+    ) -> DoctorReport:
+        captured["host"] = host
+        captured["capability"] = capability
+        captured["registered_only"] = registered_only
+        return expected
+
+    monkeypatch.setattr(framework_module, "_doctor_report", fake_doctor_report)
+
+    assert forge.doctor(capability="score", registered_only=True) is expected
+    assert captured == {
+        "host": forge,
+        "capability": "score",
+        "registered_only": True,
+    }
 
 
 def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, monkeypatch) -> None:
@@ -127,6 +172,24 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         forge.doctor(capability="generation")
 
 
+def test_doctor_capability_filter_includes_known_unregistered_providers(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    for env_var in ("LEWORLDMODEL_POLICY", "LEWM_POLICY", "JEPA_MODEL_NAME"):
+        monkeypatch.delenv(env_var, raising=False)
+
+    report = WorldForge(state_dir=tmp_path).doctor(capability="score")
+    statuses = {status.profile.name: status for status in report.providers}
+
+    assert "leworldmodel" in statuses
+    assert statuses["leworldmodel"].registered is False
+    assert statuses["leworldmodel"].health.healthy is False
+    assert "jepa" in statuses
+    assert "mock" not in statuses
+    assert any("LEWORLDMODEL_POLICY" in issue for issue in report.issues)
+
+
 class _LifecycleReadyReasoner:
     name = "lifecycle-ready"
     profile = ProviderProfileSpec(
@@ -186,6 +249,236 @@ class _FailingTeardownProvider(BaseProvider):
 
     def teardown(self) -> ProviderLifecycleResult:
         raise RuntimeError("socket close failed")
+
+
+def _lifecycle_result(
+    *,
+    provider: str = "lifecycle-fixture",
+    hook: str = "preflight",
+    status: str = "ready",
+    ready: bool = True,
+    details: str = "",
+    skip_reason: str = "",
+    evidence: dict[str, object] | None = None,
+) -> ProviderLifecycleResult:
+    return ProviderLifecycleResult(
+        provider=provider,
+        hook=hook,
+        status=status,
+        ready=ready,
+        latency_ms=0.1,
+        details=details,
+        skip_reason=skip_reason,
+        evidence=evidence or {},
+    )
+
+
+def test_doctor_report_models_validate_and_redact_payloads(tmp_path) -> None:
+    provider = BaseProvider("doctor-fixture")
+    lifecycle = ProviderLifecycleStatus(
+        provider="doctor-fixture",
+        status="ready",
+        ready=True,
+        preflight=_lifecycle_result(provider="doctor-fixture"),
+    )
+    status = ProviderDoctorStatus(
+        registered=True,
+        profile=provider.profile(),
+        health=provider.health(),
+        lifecycle=lifecycle,
+    )
+    report = DoctorReport(
+        state_dir=f" {tmp_path} ",
+        world_count=1,
+        providers=[status],
+        issues=["api_key=abc123"],
+    )
+
+    assert report.state_dir == str(tmp_path)
+    assert report.provider_count == 1
+    assert report.issues == ["api_key=[redacted]"]
+    assert report.to_dict()["providers"][0]["registered"] is True
+
+    with pytest.raises(WorldForgeError, match="registered"):
+        ProviderDoctorStatus(
+            registered="yes",  # type: ignore[arg-type]
+            profile=provider.profile(),
+            health=provider.health(),
+            lifecycle=lifecycle,
+        )
+    with pytest.raises(WorldForgeError, match="world_count"):
+        DoctorReport(state_dir=str(tmp_path), world_count=math.nan, providers=[])
+    with pytest.raises(WorldForgeError, match="providers"):
+        DoctorReport(
+            state_dir=str(tmp_path),
+            world_count=0,
+            providers=[object()],  # type: ignore[list-item]
+        )
+    with pytest.raises(WorldForgeError, match="issues"):
+        DoctorReport(
+            state_dir=str(tmp_path),
+            world_count=0,
+            providers=[],
+            issues=[object()],  # type: ignore[list-item]
+        )
+
+
+class _MixedLifecycleProvider(BaseProvider):
+    def __init__(
+        self,
+        *,
+        name: str,
+        preflight: ProviderLifecycleResult,
+        warmup: ProviderLifecycleResult | None = None,
+        teardown: ProviderLifecycleResult | None = None,
+    ) -> None:
+        super().__init__(name)
+        self._preflight_result = preflight
+        self._warmup_result = warmup
+        self._teardown_result = teardown
+
+    def preflight(self) -> ProviderLifecycleResult:
+        return self._preflight_result
+
+    def warmup(self) -> ProviderLifecycleResult:
+        if self._warmup_result is None:
+            return super().warmup()
+        return self._warmup_result
+
+    def teardown(self) -> ProviderLifecycleResult:
+        if self._teardown_result is None:
+            return super().teardown()
+        return self._teardown_result
+
+
+def test_provider_lifecycle_status_validates_hook_contract_and_redacts_evidence() -> None:
+    preflight = _lifecycle_result()
+
+    with pytest.raises(WorldForgeError, match="warmup hook must be 'warmup'"):
+        ProviderLifecycleStatus(
+            provider="lifecycle-fixture",
+            status="ready",
+            ready=True,
+            preflight=preflight,
+            warmup=_lifecycle_result(hook="teardown"),
+        )
+
+    with pytest.raises(WorldForgeError, match="hook result providers must match"):
+        ProviderLifecycleStatus(
+            provider="lifecycle-fixture",
+            status="ready",
+            ready=True,
+            preflight=_lifecycle_result(provider="other-fixture"),
+        )
+
+    status = ProviderLifecycleStatus(
+        provider=" lifecycle-fixture ",
+        status="ready",
+        ready=True,
+        preflight=preflight,
+        details="runtime returned api_key=abc123",
+        skip_reason="Bearer secret-token",
+        evidence={"token": "abc123", "url": "https://example.test/run?sig=secret"},
+    )
+
+    assert status.provider == "lifecycle-fixture"
+    assert status.details == "runtime returned api_key=[redacted]"
+    assert status.skip_reason == "Bearer [redacted]"
+    assert status.evidence == {
+        "token": "[redacted]",
+        "url": "https://example.test/run",
+    }
+
+
+def test_provider_lifecycle_status_uses_highest_severity_issue_details() -> None:
+    provider_name = "lifecycle-mixed"
+    provider = _MixedLifecycleProvider(
+        name=provider_name,
+        preflight=_lifecycle_result(
+            provider=provider_name,
+            hook="preflight",
+            status="ready",
+            ready=True,
+            details="runtime reachable",
+            evidence={"runtime": "ready"},
+        ),
+        warmup=_lifecycle_result(
+            provider=provider_name,
+            hook="warmup",
+            status="skipped",
+            ready=False,
+            details="warmup skipped",
+            skip_reason="cache missing",
+            evidence={"cache": "missing"},
+        ),
+        teardown=_lifecycle_result(
+            provider=provider_name,
+            hook="teardown",
+            status="teardown-failed",
+            ready=False,
+            details="teardown socket close failed",
+            evidence={"socket": "leaked"},
+        ),
+    )
+
+    status = provider.lifecycle_status(run_warmup=True, run_teardown=True)
+
+    assert status.status == "teardown-failed"
+    assert status.ready is False
+    assert status.details == "teardown socket close failed"
+    assert status.skip_reason == ""
+    assert status.evidence == {
+        "preflight": {"runtime": "ready"},
+        "warmup": {"cache": "missing"},
+        "teardown": {"socket": "leaked"},
+    }
+
+
+def test_provider_lifecycle_hook_invocation_normalizes_invalid_results() -> None:
+    invalid_status = build_provider_lifecycle_status(
+        provider="lifecycle-fixture",
+        preflight=lambda: object(),  # type: ignore[return-value]
+    )
+
+    assert invalid_status.status == "failed"
+    assert invalid_status.ready is False
+    assert "expected ProviderLifecycleResult" in invalid_status.details
+
+    mismatched_status = build_provider_lifecycle_status(
+        provider="lifecycle-fixture",
+        preflight=lambda: _lifecycle_result(provider="other-fixture"),
+    )
+
+    assert mismatched_status.status == "failed"
+    assert mismatched_status.ready is False
+    assert "provider 'other-fixture'" in mismatched_status.details
+
+
+def test_provider_lifecycle_hook_invocation_promotes_failed_teardown() -> None:
+    status = build_provider_lifecycle_status(
+        provider="lifecycle-fixture",
+        preflight=lambda: _lifecycle_result(
+            provider="lifecycle-fixture",
+            hook="preflight",
+            status="ready",
+            ready=True,
+        ),
+        teardown=lambda: _lifecycle_result(
+            provider="lifecycle-fixture",
+            hook="teardown",
+            status="failed",
+            ready=False,
+            details="close failed",
+            evidence={"socket": "open"},
+        ),
+    )
+
+    assert status.status == "teardown-failed"
+    assert status.ready is False
+    assert status.teardown is not None
+    assert status.teardown.status == "teardown-failed"
+    assert status.teardown.details == "close failed"
+    assert status.evidence == {"teardown": {"socket": "open"}}
 
 
 def test_provider_lifecycle_status_covers_noop_ready_skipped_failed_and_teardown(

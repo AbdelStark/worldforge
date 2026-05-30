@@ -96,6 +96,19 @@ def _robotics_summary() -> dict[str, object]:
     }
 
 
+def test_robotics_tabletop_map_renderer_marks_selected_final_overlap() -> None:
+    pytest.importorskip("textual")
+
+    import worldforge.harness.tui as tui
+
+    lines = tui._robotics_tabletop_map_lines(_robotics_summary())
+
+    assert lines[0] == "+" + "-" * tui.ROBOTICS_TABLETOP_WIDTH + "+"
+    assert len([line for line in lines if line.startswith("|")]) == tui.ROBOTICS_TABLETOP_HEIGHT
+    assert any("X" in line for line in lines)
+    assert lines[-1].startswith("x=0.00")
+
+
 def test_robotics_showcase_app_renders_visual_report(tmp_path) -> None:
     pytest.importorskip("textual")
 
@@ -919,6 +932,58 @@ def test_command_palette_lists_screens_and_flows(tmp_path) -> None:
     asyncio.run(scenario())
 
 
+def test_runs_detail_text_formats_run_recovery_fields() -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.run_history import RunHistoryRecord
+    from worldforge.harness.tui import (
+        _RUNS_DETAIL_EMPTY_MESSAGE,
+        _run_history_detail_text,
+        _run_history_table_row,
+    )
+
+    record = RunHistoryRecord(
+        run_id="20260102T000000Z-00000002",
+        kind="benchmark",
+        status="",
+        provider="mock",
+        operation="predict",
+        capability="",
+        capabilities=("predict",),
+        created_at="2026-01-02T00:00:00Z",
+        created_date=None,
+        command="worldforge benchmark --provider mock",
+        rerun_command="worldforge runs open 20260102T000000Z-00000002",
+        failure_summary="budget failed",
+        safe_artifact_types=("json",),
+        artifact_count=1,
+        event_count=1,
+        path=Path("/tmp/worldforge/runs/20260102T000000Z-00000002"),
+        display_path="runs/20260102T000000Z-00000002",
+        issue_bundle_command="worldforge runs bundle 20260102T000000Z-00000002",
+        issue_bundle_path="runs/20260102T000000Z-00000002/issue-bundle.md",
+        comparison_command="worldforge runs compare base candidate",
+        recovery_command="worldforge benchmark --help",
+    )
+
+    detail = _run_history_detail_text(record)
+
+    assert "status: -" in detail
+    assert "capability: -" in detail
+    assert "rerun: [dim]worldforge runs open 20260102T000000Z-00000002[/]" in detail
+    assert "compare: [dim]worldforge runs compare base candidate[/]" in detail
+    assert "recovery: [bold]worldforge benchmark --help[/]" in detail
+    assert "failure: budget failed" in detail
+    assert _run_history_detail_text(None) == _RUNS_DETAIL_EMPTY_MESSAGE
+    assert _run_history_table_row(record) == (
+        "20260102T000000Z-00000002",
+        "-",
+        "mock",
+        "-",
+        "json",
+    )
+
+
 def test_runs_screen_filters_and_opens_preserved_run(tmp_path) -> None:
     pytest.importorskip("textual")
 
@@ -1438,8 +1503,20 @@ def test_worlds_jump_palette_command_switches_screen(tmp_path) -> None:
             app.action_switch_screen("worlds")
             await pilot.pause()
             assert isinstance(app.screen, WorldsScreen)
+            app.action_switch_screen("missing")
+            await pilot.pause()
+            assert isinstance(app.screen, WorldsScreen)
 
     asyncio.run(scenario())
+
+
+def test_app_screen_registry_matches_route_specs() -> None:
+    pytest.importorskip("textual")
+
+    from worldforge.harness.tui import TheWorldHarnessApp
+    from worldforge.harness.tui_app_view import APP_SCREEN_NAMES
+
+    assert tuple(TheWorldHarnessApp.SCREENS) == APP_SCREEN_NAMES
 
 
 def test_new_world_modal_inline_validation_blocks_unsafe_id(tmp_path) -> None:

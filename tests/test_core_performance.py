@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import sys
 from pathlib import Path
+
+import pytest
+
+from worldforge.models import WorldForgeError
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_core_performance.py"
@@ -87,3 +92,57 @@ def test_core_performance_script_writes_json_and_exits_nonzero_on_violation(
 
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["passed"] is False
+
+
+def test_core_performance_main_rejects_non_finite_payload_before_touching_output(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "nested" / "core-performance.json"
+    monkeypatch.setattr(
+        check_core_performance,
+        "run_core_performance_budgets",
+        lambda **_: {
+            "schema_version": 1,
+            "passed": True,
+            "duration_ms": math.nan,
+            "results": [],
+        },
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        check_core_performance.main(["--output", str(output)])
+
+    assert not output.exists()
+    assert not output.parent.exists()
+
+
+def test_core_performance_preserved_workspace_rejects_non_finite_payload_before_write(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def non_finite_measure(name, budgets, operation):
+        return check_core_performance.CorePerformanceResult(
+            name=name,
+            duration_ms=math.inf,
+            budget_ms=budgets.get(name),
+            passed=False,
+        )
+
+    monkeypatch.setattr(check_core_performance, "_measure", non_finite_measure)
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        check_core_performance.run_core_performance_budgets(
+            budgets=dict.fromkeys(check_core_performance.DEFAULT_BUDGETS_MS, 10_000.0),
+            workspace_dir=tmp_path,
+        )
+
+    assert not (tmp_path / "core-performance.json").exists()
+
+
+def test_core_performance_budget_file_rejects_non_finite_values(tmp_path: Path) -> None:
+    budget_file = tmp_path / "budgets.json"
+    budget_file.write_text(json.dumps({"world_persistence": math.inf}), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="finite non-negative ms"):
+        check_core_performance._load_budgets(budget_file)

@@ -46,6 +46,21 @@ from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
 
 DEFAULT_DEVICE = "cpu"
 DEFAULT_MODE = "select_action"
+_RUNTIME_ENV_VARS = (
+    "LEROBOT_POLICY_PATH",
+    "LEROBOT_POLICY",
+    "LEROBOT_POLICY_TYPE",
+    "LEROBOT_DEVICE",
+    "LEROBOT_CACHE_DIR",
+)
+
+
+class _SmokeRun:
+    __slots__ = ("provider", "provider_events")
+
+    def __init__(self, *, provider: LeRobotPolicyProvider, provider_events: list[Any]) -> None:
+        self.provider = provider
+        self.provider_events = provider_events
 
 
 def _env_value(name: str) -> str | None:
@@ -104,35 +119,119 @@ def _load_callable(spec: str, *, name: str) -> Callable[..., Any]:
     return loaded
 
 
-def _load_policy_info(args: argparse.Namespace) -> JSONDict:
-    if args.policy_info_json is not None:
-        info = _load_json_file(args.policy_info_json, name="policy-info")
-    elif args.observation_json is not None:
-        info = {"observation": _load_json_file(args.observation_json, name="observation")}
-    elif args.observation_module is not None:
-        factory = _load_callable(args.observation_module, name="observation factory")
-        try:
-            produced = factory()
-        except Exception as exc:
-            raise SystemExit(f"Observation factory failed: {exc}") from exc
-        if not isinstance(produced, dict):
-            raise SystemExit("Observation factory must return a dictionary.")
-        info = dict(produced) if "observation" in produced else {"observation": dict(produced)}
-    else:
-        raise SystemExit(
-            "Live policy smoke requires --policy-info-json, --observation-json, "
-            "or --observation-module."
-        )
+def _policy_info_from_observation_factory(module_spec: str) -> JSONDict:
+    factory = _load_callable(module_spec, name="observation factory")
+    try:
+        produced = factory()
+    except Exception as exc:
+        raise SystemExit(f"Observation factory failed: {exc}") from exc
+    if not isinstance(produced, dict):
+        raise SystemExit("Observation factory must return a dictionary.")
+    return dict(produced) if "observation" in produced else {"observation": dict(produced)}
 
+
+def _base_policy_info(args: argparse.Namespace) -> JSONDict:
+    if args.policy_info_json is not None:
+        return _load_json_file(args.policy_info_json, name="policy-info")
+    if args.observation_json is not None:
+        return {"observation": _load_json_file(args.observation_json, name="observation")}
+    if args.observation_module is not None:
+        return _policy_info_from_observation_factory(args.observation_module)
+    raise SystemExit(
+        "Live policy smoke requires --policy-info-json, --observation-json, "
+        "or --observation-module."
+    )
+
+
+def _apply_policy_info_overrides(info: JSONDict, args: argparse.Namespace) -> JSONDict:
+    updated = dict(info)
     if args.options_json is not None:
-        info["options"] = _load_json_file(args.options_json, name="options")
+        updated["options"] = _load_json_file(args.options_json, name="options")
     if args.embodiment_tag is not None:
-        info.setdefault("embodiment_tag", args.embodiment_tag)
+        updated.setdefault("embodiment_tag", args.embodiment_tag)
     if args.action_horizon is not None:
-        info["action_horizon"] = args.action_horizon
+        updated["action_horizon"] = args.action_horizon
     if args.mode is not None:
-        info["mode"] = args.mode
-    return info
+        updated["mode"] = args.mode
+    return updated
+
+
+def _load_policy_info(args: argparse.Namespace) -> JSONDict:
+    return _apply_policy_info_overrides(_base_policy_info(args), args)
+
+
+def _validate_smoke_args(args: argparse.Namespace) -> None:
+    if not args.policy_path:
+        raise SystemExit("Live LeRobot smoke requires --policy-path or LEROBOT_POLICY_PATH.")
+    if args.action_horizon is not None and args.action_horizon <= 0:
+        raise SystemExit("--action-horizon must be greater than 0.")
+    if not args.health_only and args.translator is None:
+        raise SystemExit("--translator is required unless --health-only is set.")
+
+
+def _load_translator(args: argparse.Namespace) -> Callable[..., Any] | None:
+    if args.translator is None:
+        return None
+    return _load_callable(args.translator, name="translator")
+
+
+def _create_smoke_run(args: argparse.Namespace) -> _SmokeRun:
+    provider_events: list[Any] = []
+    provider = LeRobotPolicyProvider(
+        policy_path=args.policy_path,
+        policy_type=args.policy_type,
+        device=args.device,
+        cache_dir=args.cache_dir,
+        embodiment_tag=args.embodiment_tag,
+        action_translator=_load_translator(args),
+        event_handler=provider_events.append,
+    )
+    return _SmokeRun(provider=provider, provider_events=provider_events)
+
+
+def _healthy_provider_output(provider: LeRobotPolicyProvider) -> JSONDict:
+    health = provider.health()
+    if not health.healthy:
+        raise SystemExit(f"LeRobot provider is not healthy: {health.details}")
+    return {"health": health.to_dict()}
+
+
+def _execute_smoke(args: argparse.Namespace, run: _SmokeRun) -> JSONDict:
+    output = _healthy_provider_output(run.provider)
+    if not args.health_only:
+        result = run.provider.select_actions(info=_load_policy_info(args))
+        output["result"] = result.to_dict()
+    return output
+
+
+def _manifest_input_fixture(args: argparse.Namespace) -> Path | None:
+    return args.policy_info_json or args.observation_json
+
+
+def _write_smoke_manifest(args: argparse.Namespace, run: _SmokeRun, output: JSONDict) -> None:
+    if args.run_manifest is None:
+        return
+    write_run_manifest(
+        args.run_manifest,
+        build_run_manifest(
+            run_id=args.run_manifest.parent.name,
+            provider_profile="lerobot",
+            capability="policy",
+            status="skipped" if args.health_only else "passed",
+            env_vars=_RUNTIME_ENV_VARS,
+            event_count=len(run.provider_events),
+            input_fixture=_manifest_input_fixture(args),
+            result=output,
+        ),
+    )
+
+
+def _run_smoke(args: argparse.Namespace) -> JSONDict:
+    _validate_smoke_args(args)
+    run = _create_smoke_run(args)
+    output = _execute_smoke(args, run)
+    _write_smoke_manifest(args, run, output)
+    return output
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -221,55 +320,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
-    if not args.policy_path:
-        raise SystemExit("Live LeRobot smoke requires --policy-path or LEROBOT_POLICY_PATH.")
-    if args.action_horizon is not None and args.action_horizon <= 0:
-        raise SystemExit("--action-horizon must be greater than 0.")
-    if not args.health_only and args.translator is None:
-        raise SystemExit("--translator is required unless --health-only is set.")
-
-    translator = (
-        None if args.translator is None else _load_callable(args.translator, name="translator")
-    )
-    provider_events = []
-    provider = LeRobotPolicyProvider(
-        policy_path=args.policy_path,
-        policy_type=args.policy_type,
-        device=args.device,
-        cache_dir=args.cache_dir,
-        embodiment_tag=args.embodiment_tag,
-        action_translator=translator,
-        event_handler=provider_events.append,
-    )
-    health = provider.health()
-    if not health.healthy:
-        raise SystemExit(f"LeRobot provider is not healthy: {health.details}")
-
-    output: JSONDict = {"health": health.to_dict()}
-    if not args.health_only:
-        result = provider.select_actions(info=_load_policy_info(args))
-        output["result"] = result.to_dict()
-    if args.run_manifest is not None:
-        input_fixture = args.policy_info_json or args.observation_json
-        write_run_manifest(
-            args.run_manifest,
-            build_run_manifest(
-                run_id=args.run_manifest.parent.name,
-                provider_profile="lerobot",
-                capability="policy",
-                status="skipped" if args.health_only else "passed",
-                env_vars=(
-                    "LEROBOT_POLICY_PATH",
-                    "LEROBOT_POLICY",
-                    "LEROBOT_POLICY_TYPE",
-                    "LEROBOT_DEVICE",
-                    "LEROBOT_CACHE_DIR",
-                ),
-                event_count=len(provider_events),
-                input_fixture=input_fixture,
-                result=output,
-            ),
-        )
+    output = _run_smoke(args)
     print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 

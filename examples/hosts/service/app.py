@@ -6,11 +6,12 @@ import argparse
 import json
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from uuid import uuid4
 
 from worldforge import Action, BBox, Position, SceneObject, WorldForge, WorldForgeError
@@ -19,6 +20,7 @@ from worldforge.observability import JsonLoggerSink
 from worldforge.providers import ProviderError
 
 JSON = dict[str, Any]
+BodyReader = Callable[[], JSON]
 DEFAULT_PROVIDER = os.environ.get("WORLDFORGE_SERVICE_PROVIDER", "mock")
 DEFAULT_STATE_DIR = os.environ.get("WORLDFORGE_SERVICE_STATE_DIR", ".worldforge/service-worlds")
 DEFAULT_HOST = os.environ.get("WORLDFORGE_SERVICE_HOST", "127.0.0.1")
@@ -31,6 +33,92 @@ class ServiceConfig:
 
     provider: str = DEFAULT_PROVIDER
     state_dir: Path = Path(DEFAULT_STATE_DIR)
+
+
+GetRoute = Callable[[WorldForge, ServiceConfig, str], JSON]
+PostRoute = Callable[[WorldForge, ServiceConfig, str, JSON], JSON]
+
+
+class WorldForgeServiceHandler(BaseHTTPRequestHandler):
+    """HTTP boundary for the stdlib reference service host."""
+
+    server_version = "WorldForgeServiceHost/0.1"
+    config: ClassVar[ServiceConfig] = ServiceConfig()
+
+    def do_GET(self) -> None:
+        self._dispatch("GET")
+
+    def do_POST(self) -> None:
+        self._dispatch("POST")
+
+    def log_message(self, format: str, *args: object) -> None:
+        logging.getLogger("worldforge.service_host").info(format, *args)
+
+    def _dispatch(self, method: str) -> None:
+        request_id = self.headers.get("x-request-id") or uuid4().hex
+        forge = _build_forge(self.config, request_id)
+        try:
+            payload = _route_request(
+                method,
+                self.path,
+                forge,
+                self.config,
+                request_id,
+                self._read_json_body,
+            )
+            self._send_json(payload, request_id=request_id)
+        except (WorldForgeError, ProviderError) as exc:
+            self._send_json(
+                public_error_payload(
+                    exc,
+                    request_id=request_id,
+                    status=HTTPStatus.BAD_REQUEST,
+                ),
+                request_id=request_id,
+                status=HTTPStatus.BAD_REQUEST,
+            )
+        except Exception as exc:  # pragma: no cover - defensive service boundary
+            logging.getLogger("worldforge.service_host").exception("request failed")
+            self._send_json(
+                public_error_payload(
+                    exc,
+                    request_id=request_id,
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                ),
+                request_id=request_id,
+                status=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    def _read_json_body(self) -> JSON:
+        length_header = self.headers.get("content-length", "0")
+        try:
+            length = int(length_header)
+        except ValueError as exc:
+            raise WorldForgeError("content-length must be an integer") from exc
+        if length == 0:
+            return {}
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise WorldForgeError("request body must be a JSON object") from exc
+        if not isinstance(payload, dict):
+            raise WorldForgeError("request body must be a JSON object")
+        return payload
+
+    def _send_json(
+        self,
+        payload: JSON,
+        *,
+        request_id: str,
+        status: HTTPStatus = HTTPStatus.OK,
+    ) -> None:
+        body = json.dumps(payload, sort_keys=True).encode("utf-8")
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.send_header("x-request-id", request_id)
+        self.end_headers()
+        self.wfile.write(body)
 
 
 def readiness_snapshot(forge: WorldForge, provider: str) -> JSON:
@@ -209,103 +297,90 @@ def _build_forge(config: ServiceConfig, request_id: str) -> WorldForge:
     )
 
 
+def _route_request(
+    method: str,
+    path: str,
+    forge: WorldForge,
+    config: ServiceConfig,
+    request_id: str,
+    read_json_body: BodyReader,
+) -> JSON:
+    if method == "GET":
+        return _route_get(path, forge, config, request_id)
+    if method == "POST":
+        return _route_post(path, forge, config, request_id, read_json_body)
+    raise WorldForgeError(f"Unknown route: {method} {path}")
+
+
+def _route_get(path: str, forge: WorldForge, config: ServiceConfig, request_id: str) -> JSON:
+    handler = _GET_ROUTES.get(path)
+    if handler is None:
+        raise WorldForgeError(f"Unknown route: GET {path}")
+    return handler(forge, config, request_id)
+
+
+def _route_post(
+    path: str,
+    forge: WorldForge,
+    config: ServiceConfig,
+    request_id: str,
+    read_json_body: BodyReader,
+) -> JSON:
+    handler = _POST_ROUTES.get(path)
+    if handler is None:
+        raise WorldForgeError(f"Unknown route: POST {path}")
+    return handler(forge, config, request_id, read_json_body())
+
+
+def _healthz_payload(_forge: WorldForge, _config: ServiceConfig, request_id: str) -> JSON:
+    return {"status": "live", "request_id": request_id}
+
+
+def _readyz_payload(forge: WorldForge, config: ServiceConfig, request_id: str) -> JSON:
+    return {"request_id": request_id, **readiness_snapshot(forge, config.provider)}
+
+
+def _providers_payload(forge: WorldForge, _config: ServiceConfig, request_id: str) -> JSON:
+    return {"request_id": request_id, **provider_list_payload(forge)}
+
+
+def _mock_predict_workflow_payload(
+    forge: WorldForge,
+    _config: ServiceConfig,
+    request_id: str,
+    _body: JSON,
+) -> JSON:
+    return mock_prediction_payload(forge, request_id=request_id)
+
+
+def _generate_workflow_payload(
+    forge: WorldForge,
+    config: ServiceConfig,
+    request_id: str,
+    body: JSON,
+) -> JSON:
+    provider = str(body.get("provider") or config.provider)
+    return generate_payload(forge, body, provider=provider, request_id=request_id)
+
+
+_GET_ROUTES: dict[str, GetRoute] = {
+    "/healthz": _healthz_payload,
+    "/readyz": _readyz_payload,
+    "/providers": _providers_payload,
+}
+
+_POST_ROUTES: dict[str, PostRoute] = {
+    "/workflows/mock-predict": _mock_predict_workflow_payload,
+    "/workflows/generate": _generate_workflow_payload,
+}
+
+
 def _handler_factory(config: ServiceConfig) -> type[BaseHTTPRequestHandler]:
-    class WorldForgeServiceHandler(BaseHTTPRequestHandler):
-        server_version = "WorldForgeServiceHost/0.1"
-
-        def do_GET(self) -> None:
-            self._dispatch("GET")
-
-        def do_POST(self) -> None:
-            self._dispatch("POST")
-
-        def log_message(self, format: str, *args: object) -> None:
-            logging.getLogger("worldforge.service_host").info(format, *args)
-
-        def _dispatch(self, method: str) -> None:
-            request_id = self.headers.get("x-request-id") or uuid4().hex
-            forge = _build_forge(config, request_id)
-            try:
-                payload = self._route(method, forge, request_id)
-                self._send_json(payload, request_id=request_id)
-            except (WorldForgeError, ProviderError) as exc:
-                self._send_json(
-                    public_error_payload(
-                        exc,
-                        request_id=request_id,
-                        status=HTTPStatus.BAD_REQUEST,
-                    ),
-                    request_id=request_id,
-                    status=HTTPStatus.BAD_REQUEST,
-                )
-            except Exception as exc:  # pragma: no cover - defensive service boundary
-                logging.getLogger("worldforge.service_host").exception("request failed")
-                self._send_json(
-                    public_error_payload(
-                        exc,
-                        request_id=request_id,
-                        status=HTTPStatus.INTERNAL_SERVER_ERROR,
-                    ),
-                    request_id=request_id,
-                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
-                )
-
-        def _route(self, method: str, forge: WorldForge, request_id: str) -> JSON:
-            if method == "GET" and self.path == "/healthz":
-                return {"status": "live", "request_id": request_id}
-            if method == "GET" and self.path == "/readyz":
-                return {
-                    "request_id": request_id,
-                    **readiness_snapshot(forge, config.provider),
-                }
-            if method == "GET" and self.path == "/providers":
-                return {"request_id": request_id, **provider_list_payload(forge)}
-            if method == "POST" and self.path == "/workflows/mock-predict":
-                self._read_json_body()
-                return mock_prediction_payload(forge, request_id=request_id)
-            if method == "POST" and self.path == "/workflows/generate":
-                body = self._read_json_body()
-                provider = str(body.get("provider") or config.provider)
-                return generate_payload(
-                    forge,
-                    body,
-                    provider=provider,
-                    request_id=request_id,
-                )
-            raise WorldForgeError(f"Unknown route: {method} {self.path}")
-
-        def _read_json_body(self) -> JSON:
-            length_header = self.headers.get("content-length", "0")
-            try:
-                length = int(length_header)
-            except ValueError as exc:
-                raise WorldForgeError("content-length must be an integer") from exc
-            if length == 0:
-                return {}
-            try:
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise WorldForgeError("request body must be a JSON object") from exc
-            if not isinstance(payload, dict):
-                raise WorldForgeError("request body must be a JSON object")
-            return payload
-
-        def _send_json(
-            self,
-            payload: JSON,
-            *,
-            request_id: str,
-            status: HTTPStatus = HTTPStatus.OK,
-        ) -> None:
-            body = json.dumps(payload, sort_keys=True).encode("utf-8")
-            self.send_response(status)
-            self.send_header("content-type", "application/json")
-            self.send_header("content-length", str(len(body)))
-            self.send_header("x-request-id", request_id)
-            self.end_headers()
-            self.wfile.write(body)
-
-    return WorldForgeServiceHandler
+    return type(
+        "ConfiguredWorldForgeServiceHandler",
+        (WorldForgeServiceHandler,),
+        {"__module__": __name__, "config": config},
+    )
 
 
 def _parse_args() -> argparse.Namespace:

@@ -113,6 +113,24 @@ def test_benchmark_comparison_refuses_incompatible_run_context(
         compare_preserved_run_reports([baseline.path, candidate.path])
 
 
+def test_comparison_rejects_unknown_mode(tmp_path: Path) -> None:
+    baseline = _benchmark_run(
+        tmp_path,
+        run_id="20260101T000000Z-00000001",
+        provider="mock",
+        average_latency_ms=10.0,
+    )
+    candidate = _benchmark_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        provider="manual-mock",
+        average_latency_ms=12.0,
+    )
+
+    with pytest.raises(WorldForgeError, match="comparison or regression"):
+        compare_preserved_run_reports([baseline.path, candidate.path], mode="invalid")
+
+
 def test_cross_provider_evaluation_comparison_uses_suite_context(tmp_path: Path) -> None:
     baseline = _evaluation_run(
         tmp_path,
@@ -207,6 +225,34 @@ def test_regression_comparison_reports_improved_candidate(tmp_path: Path) -> Non
     assert "Regression Summary" in html
     csv_output = comparison_artifact(payload, output_format="csv")
     assert "metric,average_latency_ms,improved" in csv_output
+
+
+def test_regression_comparison_sums_benchmark_request_counts(tmp_path: Path) -> None:
+    baseline = _benchmark_run(
+        tmp_path,
+        run_id="20260101T000000Z-00000001",
+        provider="mock",
+        average_latency_ms=10.0,
+        request_count=3,
+    )
+    candidate = _benchmark_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        provider="manual-mock",
+        average_latency_ms=10.0,
+        request_count=7,
+    )
+
+    payload = compare_preserved_run_reports(
+        [baseline.path, candidate.path],
+        mode="regression",
+    )
+
+    request_count = _metric(payload, "request_count")
+    assert request_count["baseline"] == 3.0
+    assert request_count["candidate"] == 7.0
+    assert request_count["delta"] == 4.0
+    assert request_count["status"] == "regressed"
 
 
 def test_regression_comparison_reports_regression_and_excludes_unsafe_artifacts(
@@ -382,6 +428,29 @@ def test_regression_comparison_rejects_incompatible_run_schema(tmp_path: Path) -
         compare_preserved_run_regression([baseline.path, candidate.path])
 
 
+def test_comparison_rejects_non_finite_report_payload_at_load_boundary(tmp_path: Path) -> None:
+    baseline = _benchmark_run(
+        tmp_path,
+        run_id="20260101T000000Z-00000001",
+        provider="mock",
+        average_latency_ms=10.0,
+    )
+    candidate = _benchmark_run(
+        tmp_path,
+        run_id="20260102T000000Z-00000002",
+        provider="manual-mock",
+        average_latency_ms=12.0,
+    )
+    (candidate.path / "reports" / "report.json").write_text(
+        '{"results": [{"provider": "manual-mock", "operation": "predict", '
+        '"average_latency_ms": NaN}]}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        compare_preserved_run_reports([baseline.path, candidate.path])
+
+
 def _benchmark_run(
     workspace_dir: Path,
     *,
@@ -395,6 +464,7 @@ def _benchmark_run(
     suite_version: str = "benchmark:1",
     budget_passed: bool | None = True,
     errors: list[object] | None = None,
+    request_count: int = 3,
     unsafe_artifact: bool = False,
 ):
     workspace = create_run_workspace(
@@ -448,7 +518,7 @@ def _benchmark_run(
                 "average_latency_ms": average_latency_ms,
                 "p95_latency_ms": average_latency_ms,
                 "throughput_per_second": 4.0,
-                "operation_metrics": {"events": [{"request_count": 3}]},
+                "operation_metrics": {"events": [{"request_count": request_count}]},
                 "errors": resolved_errors,
             }
         ],

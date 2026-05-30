@@ -11,8 +11,21 @@ WorldForge 是围绕可测试的物理 AI 世界模型工作流的 Python 集成
 ```text
 worldforge/
 |-- src/worldforge/
-|   |-- framework.py       # WorldForge 门面、World 运行时、规划、持久化
-|   |-- models.py          # 公共数据契约与验证
+|   |-- framework.py       # WorldForge 门面、提供方注册、诊断、持久化
+|   |-- _world.py          # 可变 World 运行时、历史、规划
+|   |-- _world_prompt_seeders.py # 确定性的提示词种子场景辅助工具
+|   |-- _results.py        # 经验证的工作流结果对象
+|   |-- _model_utils.py    # 共享 JSON、ID、数值与概率验证辅助工具
+|   |-- models.py          # 公共兼容门面与模型重导出
+|   |-- scene_models.py    # 几何、动作、场景对象、目标与历史契约
+|   |-- capability_results.py # 媒体、推理、嵌入、评分与策略结果
+|   |-- provider_models.py # 提供方面向契约的兼容门面
+|   |-- provider_profiles.py # 提供方能力、生成选项与元数据
+|   |-- provider_request_policy.py # 重试/退避与操作超时策略
+|   |-- provider_events.py # 提供方事件验证与序列化
+|   |-- provider_diagnostics.py # 提供方健康、生命周期就绪与 doctor 报告
+|   |-- provider_redaction.py # 共享的可观测字段脱敏
+|   |-- framework_capabilities.py # 能力注册表与分发内部实现
 |   |-- capabilities/      # 窄范围的运行时可检查能力协议
 |   |-- providers/
 |   |   |-- base.py        # 提供方接口、ProviderError、PredictionPayload
@@ -28,7 +41,10 @@ worldforge/
 |   |-- observability.py   # ProviderEvent 数据汇
 |   |-- rerun.py           # 可选的 Rerun 事件与工件桥接
 |   |-- benchmark.py       # 提供方基准测试框架
-|   |-- evaluation/        # 内置评估套件与报告渲染
+|   |-- benchmark_inputs.py # 基准测试输入夹具契约
+|   |-- benchmark_budgets.py # 基准测试预算门禁契约
+|   |-- benchmark_reports.py # 基准测试结果/报告渲染契约
+|   |-- evaluation/        # 结果契约、报告、失败图集与内置评估套件
 |   `-- testing/           # 可复用的提供方契约断言
 |-- docs/
 |-- examples/
@@ -120,13 +136,47 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 `framework.py`
 
 - `WorldForge`：用于提供方注册、诊断、持久化辅助工具，以及提供方范围操作（如 `generate(...)`、`transfer(...)`、`reason(...)`、`embed(...)`、`score_actions(...)` 和 `select_actions(...)`）的顶层对象。
+
+`_world.py`
+
 - `World`：可变的世界状态，包含场景对象、历史记录、预测、比较、规划、计划执行和评估入口点。
+
+`_world_prompt_seeders.py`
+
+- `create_world_from_prompt(...)` 使用的确定性种子场景模板，包括提示词匹配、兜底对象创建和提示词专用历史重置。
+
+`_results.py`
+
 - `Prediction`、`Plan`、`PlanExecution` 和 `Comparison`：工作流级别的结果对象。
 
 `models.py`
 
-- 公共数据契约，如 `Action`、`SceneObject`、`StructuredGoal`、`VideoClip`、`ProviderProfile`、`ProviderHealth`、`ProviderLifecycleStatus`、`ProviderEvent`、`ActionScoreResult` 和 `ActionPolicyResult`。
-- 验证辅助工具及公共框架错误：`WorldForgeError` 和 `WorldStateError`。
+- 对公共模型契约、共享验证辅助工具、公共框架错误和提供方契约的兼容性再导出。现有适配器与 CLI 代码可以继续从 `worldforge.models` 导入。
+
+`scene_models.py`
+
+- 公共场景域契约，如 `Position`、`Rotation`、`Pose`、`BBox`、`Action`、`SceneObjectPatch`、`SceneObject`、`StructuredGoal` 和 `HistoryEntry`。
+
+`capability_results.py`
+
+- 公共能力返回载荷，如 `VideoClip`、`ReasoningResult`、`EmbeddingResult`、`ActionScoreResult` 和 `ActionPolicyResult`。
+
+`_model_utils.py`
+
+- 共享验证辅助工具和公共框架错误：`WorldForgeError`、`WorldStateError`、`dump_json`、`require_json_dict`、有限数值检查、概率检查，以及确定性 ID/浮点辅助工具。
+
+`provider_models.py` 与聚焦的提供方契约模块
+
+- `provider_models.py` 保留为旧导入路径的兼容门面。
+- `provider_profiles.py` 拥有 `ProviderCapabilities`、`GenerationOptions`、`ProviderInfo` 和 `ProviderProfile`。
+- `provider_request_policy.py` 拥有 `RetryPolicy`、`RequestOperationPolicy` 和 `ProviderRequestPolicy`。
+- `provider_events.py` 拥有 `ProviderEvent` 验证与序列化。
+- `provider_diagnostics.py` 拥有 `ProviderHealth`、`ProviderLifecycleStatus` 和 `DoctorReport`。
+- `provider_redaction.py` 拥有供提供方事件、配置、日志、追踪和可附加工件共享的可观测字段脱敏辅助工具。
+
+`framework_capabilities.py`
+
+- `WorldForge` 使用的内部能力注册表，负责注册结构化协议实现、添加可观测包装、解析具名或直接能力目标，并在不膨胀门面的情况下分发调用。
 
 `providers/base.py`
 
@@ -173,11 +223,15 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 `evaluation/` 和 `benchmark.py`
 
 - 用于适配器比较的确定性评估套件和能力感知基准测试报告。
+- `evaluation/suite_base.py` 负责通用套件运行器、自定义套件注册表、来源信息和工作流追踪构建；
+  `evaluation/builtin_suites.py` 只负责内置的确定性场景实现。
 
 `harness/`
 
 - 针对相同 API 的可选 Textual 前端界面：世界的增删改查、提供方能力检查、实时提供方事件、评估、基准测试及已保存报告的查看。
 - `tui.py` 是唯一的 Textual 导入界面；`flows.py`、`models.py` 及辅助模块无需 `harness` 扩展包即可导入。
+- `tui_styles.py` 是无 Textual 依赖 CSS 常量的兼容门面；按屏幕族拆分的样式模块让
+  `tui.py` 专注于控件、动作和 worker。
 
 ## 端到端流水线
 

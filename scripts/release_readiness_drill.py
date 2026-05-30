@@ -8,7 +8,6 @@ packages, signing artifacts, or running host-owned optional runtimes.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,6 +26,9 @@ from generate_release_evidence import (  # noqa: E402
     release_evidence_payload,
     render_release_evidence,
 )
+
+from worldforge.artifact_io import write_json_artifact  # noqa: E402
+from worldforge.models import dump_json  # noqa: E402
 
 DEFAULT_WORKSPACE = ROOT / ".worldforge" / "release-readiness-drill"
 DRILL_MODES = ("clean-pass", "controlled-failure")
@@ -84,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     result = run_release_readiness_drill(args.workspace_dir, mode=args.mode)
     if args.format == "json":
-        print(json.dumps(result, indent=2, sort_keys=True))
+        print(dump_json(result, indent=2))
     else:
         print(render_drill_summary_markdown(result))
     return 0 if result["status"] == "passed" else 1
@@ -117,7 +119,7 @@ def run_release_readiness_drill(workspace_dir: Path, *, mode: str = "all") -> di
         "artifacts": [artifact.to_dict(root=ROOT) for artifact in artifacts],
     }
     summary_path = workspace / "release-readiness-drill.json"
-    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_json_artifact(summary_path, summary)
     markdown_path = workspace / "release-readiness-drill.md"
     markdown_path.write_text(render_drill_summary_markdown(summary), encoding="utf-8")
     summary["summary_json"] = _display_path(summary_path, ROOT)
@@ -158,7 +160,7 @@ def _render_drill_mode(workspace: Path, mode: str) -> DrillArtifact:
         known_limitations=limitations,
         now_utc=now,
     )
-    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_json_artifact(json_path, payload)
     return DrillArtifact(
         mode=mode,
         status=_fixture_status(payload),

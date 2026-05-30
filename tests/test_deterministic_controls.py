@@ -102,6 +102,23 @@ def test_stable_snapshot_normalizes_paths_and_volatile_fields(tmp_path: Path) ->
     )
 
 
+def test_stable_snapshot_normalizes_sequences_and_rejects_invalid_values(
+    tmp_path: Path,
+) -> None:
+    snapshot = stable_snapshot(
+        (tmp_path / "reports" / "report.json", ["kept", None, 3.5]),
+        path_roots={tmp_path: "<tmp>"},
+    )
+
+    assert snapshot == ["<tmp>/reports/report.json", ["kept", None, 3.5]]
+
+    with pytest.raises(WorldForgeError, match="mapping keys must be strings"):
+        stable_snapshot({1: "invalid"})
+
+    with pytest.raises(WorldForgeError, match="unsupported type: object"):
+        stable_snapshot({"value": object()})
+
+
 def test_stable_json_rejects_non_finite_values() -> None:
     with pytest.raises(WorldForgeError, match="finite numbers"):
         stable_json_dumps({"latency_ms": math.nan})

@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from worldforge import Action, BenchmarkInputs, ProviderBenchmarkHarness, WorldForge
 from worldforge.models import JSONDict, WorldForgeError
@@ -18,6 +20,32 @@ from worldforge.rerun import (
 )
 
 from . import BLUE_CUBE_GOAL, blue_cube_goal, make_blue_cube
+
+
+@dataclass(frozen=True, slots=True)
+class _ShowcaseRuntime:
+    state_dir: Path
+    config: RerunRecordingConfig
+    session: RerunSession
+    artifacts: RerunArtifactLogger
+    metrics: ProviderMetricsSink
+    forge: WorldForge
+
+
+@dataclass(frozen=True, slots=True)
+class _ShowcaseWorkflow:
+    cube_id: str
+    final_world: Any
+    plan: Any
+    benchmark: Any
+    saved_world_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _RecordingStatus:
+    server_uri: str | None
+    recording_written: bool | None
+    recording_size_bytes: int | None
 
 
 def _default_save_path() -> Path:
@@ -69,7 +97,33 @@ def run_demo(
 ) -> JSONDict:
     """Run a deterministic workflow and log it to Rerun."""
 
-    resolved_state_dir = state_dir or Path(tempfile.mkdtemp(prefix="worldforge-rerun-demo-"))
+    runtime = _create_showcase_runtime(
+        state_dir=state_dir,
+        save_path=save_path,
+        spawn=spawn,
+        connect_url=connect_url,
+        serve_grpc_port=serve_grpc_port,
+        rerun_module=rerun_module,
+    )
+    workflow = _run_showcase_workflow(runtime, iterations=iterations)
+    recording = _close_recording(runtime, rerun_module=rerun_module)
+    return _showcase_summary(runtime, workflow, recording)
+
+
+def _resolve_state_dir(state_dir: Path | None) -> Path:
+    return state_dir or Path(tempfile.mkdtemp(prefix="worldforge-rerun-demo-"))
+
+
+def _create_showcase_runtime(
+    *,
+    state_dir: Path | None,
+    save_path: Path | None,
+    spawn: bool,
+    connect_url: str | None,
+    serve_grpc_port: int | None,
+    rerun_module: object | None,
+) -> _ShowcaseRuntime:
+    resolved_state_dir = _resolve_state_dir(state_dir)
     config = _make_config(
         save_path=save_path,
         spawn=spawn,
@@ -85,19 +139,47 @@ def run_demo(
         auto_register_remote=False,
         event_handler=compose_event_handlers(rerun_events, metrics),
     )
+    return _ShowcaseRuntime(
+        state_dir=resolved_state_dir,
+        config=config,
+        session=session,
+        artifacts=artifacts,
+        metrics=metrics,
+        forge=forge,
+    )
 
-    world = forge.create_world("rerun-observability-showcase", provider="mock")
+
+def _run_showcase_workflow(runtime: _ShowcaseRuntime, *, iterations: int) -> _ShowcaseWorkflow:
+    world = runtime.forge.create_world("rerun-observability-showcase", provider="mock")
     cube = make_blue_cube(world)
-    artifacts.log_world(world, label="initial tabletop scene")
+    runtime.artifacts.log_world(world, label="initial tabletop scene")
 
     goal = blue_cube_goal(cube)
     plan = world.plan(goal_spec=goal, provider="mock")
-    artifacts.log_plan(plan, label="predictive plan to the blue cube goal")
+    runtime.artifacts.log_plan(plan, label="predictive plan to the blue cube goal")
     execution = world.execute_plan(plan, provider="mock")
     final_world = execution.final_world()
-    artifacts.log_world(final_world, label="executed plan result")
+    runtime.artifacts.log_world(final_world, label="executed plan result")
 
-    benchmark_inputs = BenchmarkInputs(
+    benchmark = ProviderBenchmarkHarness(forge=runtime.forge).run(
+        "mock",
+        operations=["predict"],
+        iterations=iterations,
+        inputs=_benchmark_inputs(),
+    )
+    runtime.artifacts.log_benchmark_report(benchmark)
+
+    return _ShowcaseWorkflow(
+        cube_id=cube.id,
+        final_world=final_world,
+        plan=plan,
+        benchmark=benchmark,
+        saved_world_id=runtime.forge.save_world(final_world),
+    )
+
+
+def _benchmark_inputs() -> BenchmarkInputs:
+    return BenchmarkInputs(
         prediction_action=Action.move_to(
             BLUE_CUBE_GOAL.x,
             BLUE_CUBE_GOAL.y,
@@ -105,52 +187,71 @@ def run_demo(
         ),
         prediction_steps=1,
     )
-    benchmark = ProviderBenchmarkHarness(forge=forge).run(
-        "mock",
-        operations=["predict"],
-        iterations=iterations,
-        inputs=benchmark_inputs,
-    )
-    artifacts.log_benchmark_report(benchmark)
 
-    saved_world_id = forge.save_world(final_world)
-    server_uri = session.server_uri
-    session.close()
-    recording_written, recording_size_bytes = _recording_file_status(config.save_path)
-    if config.save_path is not None and rerun_module is None and not recording_written:
+
+def _close_recording(
+    runtime: _ShowcaseRuntime,
+    *,
+    rerun_module: object | None,
+) -> _RecordingStatus:
+    server_uri = runtime.session.server_uri
+    runtime.session.close()
+    recording_written, recording_size_bytes = _recording_file_status(runtime.config.save_path)
+    if runtime.config.save_path is not None and rerun_module is None and not recording_written:
         raise WorldForgeError(
             "Rerun save_path was configured, but no .rrd recording was written. "
             "Check that the optional rerun-sdk runtime is enabled and that RERUN is not set to off."
         )
-    summary: JSONDict = {
+    return _RecordingStatus(
+        server_uri=server_uri,
+        recording_written=recording_written,
+        recording_size_bytes=recording_size_bytes,
+    )
+
+
+def _showcase_summary(
+    runtime: _ShowcaseRuntime,
+    workflow: _ShowcaseWorkflow,
+    recording: _RecordingStatus,
+) -> JSONDict:
+    return {
         "demo_kind": "rerun_observability_showcase",
-        "state_dir": str(resolved_state_dir),
-        "rerun": {
-            "application_id": config.application_id,
-            "recording_name": config.recording_name,
-            "save_path": str(config.save_path) if config.save_path is not None else None,
-            "spawn_viewer": config.spawn_viewer,
-            "connect_url": config.connect_url,
-            "serve_grpc_port": config.serve_grpc_port,
-            "server_uri": server_uri,
-            "recording_written": recording_written,
-            "recording_size_bytes": recording_size_bytes,
-        },
-        "world_id": final_world.id,
-        "saved_world_id": saved_world_id,
-        "final_cube_position": final_world.get_object_by_id(cube.id).position.to_dict()
-        if final_world.get_object_by_id(cube.id)
-        else None,
+        "state_dir": str(runtime.state_dir),
+        "rerun": _rerun_summary(runtime.config, recording),
+        "world_id": workflow.final_world.id,
+        "saved_world_id": workflow.saved_world_id,
+        "final_cube_position": _final_cube_position(workflow),
         "plan": {
-            "provider": plan.provider,
-            "planner": plan.planner,
-            "action_count": plan.action_count,
-            "success_probability": plan.success_probability,
+            "provider": workflow.plan.provider,
+            "planner": workflow.plan.planner,
+            "action_count": workflow.plan.action_count,
+            "success_probability": workflow.plan.success_probability,
         },
-        "provider_metrics": metrics.to_dict(),
-        "benchmark": benchmark.to_dict(),
+        "provider_metrics": runtime.metrics.to_dict(),
+        "benchmark": workflow.benchmark.to_dict(),
     }
-    return summary
+
+
+def _rerun_summary(
+    config: RerunRecordingConfig,
+    recording: _RecordingStatus,
+) -> JSONDict:
+    return {
+        "application_id": config.application_id,
+        "recording_name": config.recording_name,
+        "save_path": str(config.save_path) if config.save_path is not None else None,
+        "spawn_viewer": config.spawn_viewer,
+        "connect_url": config.connect_url,
+        "serve_grpc_port": config.serve_grpc_port,
+        "server_uri": recording.server_uri,
+        "recording_written": recording.recording_written,
+        "recording_size_bytes": recording.recording_size_bytes,
+    }
+
+
+def _final_cube_position(workflow: _ShowcaseWorkflow) -> JSONDict | None:
+    cube = workflow.final_world.get_object_by_id(workflow.cube_id)
+    return cube.position.to_dict() if cube is not None else None
 
 
 def _render_markdown(summary: JSONDict) -> str:

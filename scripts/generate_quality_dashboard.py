@@ -13,10 +13,19 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
+SRC = ROOT / "src"
+for path in (SCRIPTS, SRC):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
-from generate_release_evidence import CHECKOUT_SAFE_GATES, LIVE_PROVIDER_ENV  # noqa: E402
+from generate_release_evidence import (  # noqa: E402
+    CHECKOUT_SAFE_GATES,
+    LIVE_PROVIDER_ENV,
+    ReleaseGate,
+)
+
+from worldforge.artifact_io import write_json_artifact  # noqa: E402
+from worldforge.models import dump_json  # noqa: E402
 
 QUALITY_DASHBOARD_SCHEMA_VERSION = 1
 DEFAULT_OUTPUT_DIR = ROOT / ".worldforge" / "quality-dashboard"
@@ -25,7 +34,27 @@ DEFAULT_MARKDOWN_OUTPUT = DEFAULT_OUTPUT_DIR / "quality-dashboard.md"
 DEFAULT_RELEASE_EVIDENCE = ROOT / ".worldforge" / "release-evidence" / "release-evidence.json"
 DEFAULT_DEPENDENCY_AUDIT = ROOT / ".worldforge" / "dependency-audit" / "dependency-audit.json"
 DEFAULT_CORE_PERFORMANCE = ROOT / ".worldforge" / "core-performance" / "core-performance.json"
+CORE_PERFORMANCE_COMMAND = (
+    "uv run python scripts/check_core_performance.py "
+    "--workspace-dir .worldforge/core-performance "
+    "--output .worldforge/core-performance/core-performance.json"
+)
+CORE_PERFORMANCE_REGENERATE_STEP = (
+    "Regenerate the artifact with `uv run python scripts/check_core_performance.py "
+    "--output <path>`."
+)
+LIVE_PROVIDER_EVIDENCE_COMMAND = (
+    "uv run python scripts/generate_release_evidence.py --run-manifest <path>"
+)
 DASHBOARD_STATUSES = ("passed", "failed", "warning", "skipped", "not-run")
+GATE_CATEGORY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("docs", ("doc", "provider catalog")),
+    ("tests", ("test", "coverage")),
+    ("package", ("package", "build")),
+    ("security", ("dependency",)),
+    ("performance", ("performance",)),
+    ("quality", ("import", "wrapper", "lint", "format")),
+)
 
 SECRET_PATTERN = re.compile(
     r"(api[_-]?key|authorization|bearer\s+[a-z0-9._~-]+|password|secret|signature|token=|"
@@ -134,9 +163,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     json_output = args.json_output.expanduser().resolve()
     markdown_output = args.markdown_output.expanduser().resolve()
-    json_output.parent.mkdir(parents=True, exist_ok=True)
+    write_json_artifact(json_output, dashboard)
     markdown_output.parent.mkdir(parents=True, exist_ok=True)
-    json_output.write_text(json.dumps(dashboard, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     markdown_output.write_text(render_quality_dashboard_markdown(dashboard), encoding="utf-8")
     print(f"wrote {_display_path(json_output)}")
     print(f"wrote {_display_path(markdown_output)}")
@@ -195,9 +223,19 @@ def build_quality_dashboard(
 def render_quality_dashboard_markdown(payload: dict[str, Any]) -> str:
     """Render a quality dashboard payload as Markdown."""
 
+    lines = _dashboard_header_lines(payload)
+    lines.extend(_dashboard_summary_lines(payload))
+    lines.extend(_dashboard_gate_table_lines(payload))
+    lines.extend(_dashboard_raw_failure_lines(payload))
+    lines.extend(_dashboard_skipped_check_lines(payload))
+    lines.extend(["", "## Claim Boundary", "", payload["claim_boundary"], ""])
+    return "\n".join(lines)
+
+
+def _dashboard_header_lines(payload: dict[str, Any]) -> list[str]:
     first_failed = payload.get("first_failed_gate")
     first_failed_text = first_failed["name"] if isinstance(first_failed, dict) else "-"
-    lines = [
+    return [
         "# WorldForge Quality Dashboard",
         "",
         f"- Schema version: `{payload['schema_version']}`",
@@ -210,6 +248,11 @@ def render_quality_dashboard_markdown(payload: dict[str, Any]) -> str:
         "evidence. Release evidence remains the artifact for release claims, artifact hashes, and "
         "linked live-smoke manifests; this dashboard is the at-a-glance quality index.",
         "",
+    ]
+
+
+def _dashboard_summary_lines(payload: dict[str, Any]) -> list[str]:
+    lines = [
         "## Summary",
         "",
         "| Status | Count |",
@@ -218,200 +261,321 @@ def render_quality_dashboard_markdown(payload: dict[str, Any]) -> str:
     lines.extend(
         f"| `{status}` | {payload['summary'].get(status, 0)} |" for status in DASHBOARD_STATUSES
     )
+    return lines
 
-    lines.extend(
-        [
-            "",
-            "## Gates",
-            "",
-            "| Gate | Category | Status | Command | Source | First triage step |",
-            "| --- | --- | --- | --- | --- | --- |",
-        ]
-    )
-    for gate in payload["gates"]:
-        command = f"`{gate['command']}`" if gate["command"] else "-"
-        source = gate["source"] or "-"
-        lines.append(
-            f"| {gate['name']} | {gate['category']} | `{gate['status']}` | {command} | "
-            f"{source} | {gate['first_triage_step']} |"
-        )
 
-    lines.extend(["", "## Raw Failure Details", ""])
-    issue_gates = [
-        gate for gate in payload["gates"] if gate["status"] in {"failed", "warning", "not-run"}
+def _dashboard_gate_table_lines(payload: dict[str, Any]) -> list[str]:
+    lines = [
+        "",
+        "## Gates",
+        "",
+        "| Gate | Category | Status | Command | Source | First triage step |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
+    lines.extend(_dashboard_gate_table_row(gate) for gate in payload["gates"])
+    return lines
+
+
+def _dashboard_gate_table_row(gate: dict[str, Any]) -> str:
+    command = f"`{gate['command']}`" if gate["command"] else "-"
+    source = gate["source"] or "-"
+    return (
+        f"| {gate['name']} | {gate['category']} | `{gate['status']}` | {command} | "
+        f"{source} | {gate['first_triage_step']} |"
+    )
+
+
+def _dashboard_raw_failure_lines(payload: dict[str, Any]) -> list[str]:
+    lines = ["", "## Raw Failure Details", ""]
+    issue_gates = _dashboard_issue_gates(payload)
     if issue_gates:
         for gate in issue_gates:
-            lines.extend(
-                [
-                    f"### {gate['name']}",
-                    "",
-                    f"- Status: `{gate['status']}`",
-                    f"- Source: {gate['source'] or '-'}",
-                    f"- Summary: {gate['summary']}",
-                    f"- First triage step: {gate['first_triage_step']}",
-                    "",
-                    "```json",
-                    json.dumps(gate["raw_details"], indent=2, sort_keys=True),
-                    "```",
-                    "",
-                ]
-            )
+            lines.extend(_dashboard_issue_gate_lines(gate))
     else:
         lines.append("- No failed, warning, or not-run gates.")
+    return lines
 
-    skipped = [gate for gate in payload["gates"] if gate["status"] == "skipped"]
-    lines.extend(["", "## Skipped Checks", ""])
+
+def _dashboard_issue_gates(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return [gate for gate in payload["gates"] if gate["status"] in {"failed", "warning", "not-run"}]
+
+
+def _dashboard_issue_gate_lines(gate: dict[str, Any]) -> list[str]:
+    return [
+        f"### {gate['name']}",
+        "",
+        f"- Status: `{gate['status']}`",
+        f"- Source: {gate['source'] or '-'}",
+        f"- Summary: {gate['summary']}",
+        f"- First triage step: {gate['first_triage_step']}",
+        "",
+        "```json",
+        dump_json(gate["raw_details"], indent=2),
+        "```",
+        "",
+    ]
+
+
+def _dashboard_skipped_check_lines(payload: dict[str, Any]) -> list[str]:
+    lines = ["", "## Skipped Checks", ""]
+    skipped = _dashboard_skipped_gates(payload)
     if skipped:
-        for gate in skipped:
-            host_owned = " host-owned" if gate.get("host_owned") else ""
-            lines.append(f"- `{gate['name']}`:{host_owned} {gate['summary']}")
+        lines.extend(_dashboard_skipped_gate_line(gate) for gate in skipped)
     else:
         lines.append("- No skipped checks.")
+    return lines
 
-    lines.extend(["", "## Claim Boundary", "", payload["claim_boundary"], ""])
-    return "\n".join(lines)
+
+def _dashboard_skipped_gates(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return [gate for gate in payload["gates"] if gate["status"] == "skipped"]
+
+
+def _dashboard_skipped_gate_line(gate: dict[str, Any]) -> str:
+    host_owned = " host-owned" if gate.get("host_owned") else ""
+    return f"- `{gate['name']}`:{host_owned} {gate['summary']}"
 
 
 def _release_gate_records(path: Path, payload: dict[str, Any] | None) -> list[GateRecord]:
-    expected = {gate.name: gate for gate in CHECKOUT_SAFE_GATES}
-    records_by_name: dict[str, dict[str, Any]] = {}
-    if payload is not None:
-        raw_gates = payload.get("validation_gates", [])
-        if isinstance(raw_gates, list):
-            records_by_name = {
-                str(gate.get("name")): gate
-                for gate in raw_gates
-                if isinstance(gate, dict) and gate.get("name")
-            }
+    expected = _expected_release_gates()
+    records_by_name = _validation_gate_rows_by_name(payload)
 
     records: list[GateRecord] = []
     for gate in CHECKOUT_SAFE_GATES:
         raw = records_by_name.pop(gate.name, None)
-        if raw is None:
-            source = _display_path(path) if payload is not None else ""
-            records.append(
-                GateRecord(
-                    name=gate.name,
-                    status="not-run",
-                    command=gate.command,
-                    source=source,
-                    summary=(
-                        "Release evidence is missing."
-                        if payload is None
-                        else "No release evidence row was found for this expected gate."
-                    ),
-                    first_triage_step=(
-                        "Run `uv run python scripts/generate_release_evidence.py --run-gates`."
-                    ),
-                    category=_gate_category(gate.name),
-                    raw_details={
-                        "expected_command": gate.command,
-                        "source_path": _display_path(path),
-                        "reason": "missing-release-evidence" if payload is None else "missing-row",
-                    },
-                )
+        records.append(
+            _release_gate_record_for_expected_gate(
+                path,
+                gate,
+                raw,
+                payload_available=payload is not None,
             )
-            continue
-        records.append(_release_gate_record(path, raw, expected.get(gate.name, gate)))
+        )
 
     for name, raw in sorted(records_by_name.items()):
         records.append(_release_gate_record(path, raw, expected.get(name)))
     return records
 
 
-def _release_gate_record(path: Path, raw: dict[str, Any], expected: Any | None) -> GateRecord:
-    raw_status = str(raw.get("status") or "")
+def _expected_release_gates() -> dict[str, ReleaseGate]:
+    return {gate.name: gate for gate in CHECKOUT_SAFE_GATES}
+
+
+def _validation_gate_rows_by_name(payload: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if payload is None:
+        return {}
+    raw_gates = payload.get("validation_gates", [])
+    if not isinstance(raw_gates, list):
+        return {}
+    return {
+        str(gate.get("name")): gate
+        for gate in raw_gates
+        if isinstance(gate, dict) and gate.get("name")
+    }
+
+
+def _release_gate_record_for_expected_gate(
+    path: Path,
+    gate: ReleaseGate,
+    raw: dict[str, Any] | None,
+    *,
+    payload_available: bool,
+) -> GateRecord:
+    if raw is not None:
+        return _release_gate_record(path, raw, gate)
+    return _missing_release_gate_record(path, gate, payload_available=payload_available)
+
+
+def _missing_release_gate_record(
+    path: Path,
+    gate: ReleaseGate,
+    *,
+    payload_available: bool,
+) -> GateRecord:
+    return GateRecord(
+        name=gate.name,
+        status="not-run",
+        command=gate.command,
+        source=_display_path(path) if payload_available else "",
+        summary=(
+            "No release evidence row was found for this expected gate."
+            if payload_available
+            else "Release evidence is missing."
+        ),
+        first_triage_step="Run `uv run python scripts/generate_release_evidence.py --run-gates`.",
+        category=_gate_category(gate.name),
+        raw_details={
+            "expected_command": gate.command,
+            "source_path": _display_path(path),
+            "reason": "missing-row" if payload_available else "missing-release-evidence",
+        },
+    )
+
+
+def _release_gate_record(
+    path: Path,
+    raw: dict[str, Any],
+    expected: ReleaseGate | None,
+) -> GateRecord:
+    raw_status = _release_gate_raw_status(raw)
     status = _normalize_release_status(raw_status)
-    command = str(raw.get("command") or getattr(expected, "command", ""))
-    triage = str(raw.get("triage_step") or getattr(expected, "triage_step", "Inspect source."))
-    name = str(raw.get("name") or getattr(expected, "name", "Unknown gate"))
-    exit_code = raw.get("exit_code")
-    summary_parts = [f"release gate reported `{raw_status or status}`"]
-    if exit_code is not None:
-        summary_parts.append(f"exit code {exit_code}")
-    if raw.get("duration_ms") is not None:
-        summary_parts.append(f"duration {raw['duration_ms']} ms")
+    command = _release_gate_command(raw, expected)
+    triage = _release_gate_triage_step(raw, expected)
+    name = _release_gate_name(raw, expected)
     return GateRecord(
         name=name,
         status=status,
         command=command,
         source=_display_path(path),
-        summary=", ".join(summary_parts),
+        summary=_release_gate_summary(raw, raw_status=raw_status, status=status),
         first_triage_step=triage,
         category=_gate_category(name),
         started_at=_optional_str(raw.get("started_at")),
         finished_at=_optional_str(raw.get("finished_at")),
-        raw_details={
-            "source_path": _display_path(path),
-            "release_status": raw_status,
-            "exit_code": exit_code,
-            "duration_ms": raw.get("duration_ms"),
-            "stdout_tail": raw.get("stdout_tail", ""),
-            "stderr_tail": raw.get("stderr_tail", ""),
-            "triage_step": triage,
-        },
+        raw_details=_release_gate_raw_details(path, raw, raw_status=raw_status, triage=triage),
     )
+
+
+def _release_gate_raw_status(raw: dict[str, Any]) -> str:
+    return str(raw.get("status") or "")
+
+
+def _release_gate_command(raw: dict[str, Any], expected: ReleaseGate | None) -> str:
+    return str(raw.get("command") or _expected_release_gate_command(expected))
+
+
+def _expected_release_gate_command(expected: ReleaseGate | None) -> str:
+    if expected is None:
+        return ""
+    return expected.command
+
+
+def _release_gate_triage_step(raw: dict[str, Any], expected: ReleaseGate | None) -> str:
+    return str(raw.get("triage_step") or _expected_release_gate_triage_step(expected))
+
+
+def _expected_release_gate_triage_step(expected: ReleaseGate | None) -> str:
+    if expected is None:
+        return "Inspect source."
+    return expected.triage_step
+
+
+def _release_gate_name(raw: dict[str, Any], expected: ReleaseGate | None) -> str:
+    return str(raw.get("name") or _expected_release_gate_name(expected))
+
+
+def _expected_release_gate_name(expected: ReleaseGate | None) -> str:
+    if expected is None:
+        return "Unknown gate"
+    return expected.name
+
+
+def _release_gate_summary(
+    raw: dict[str, Any],
+    *,
+    raw_status: str,
+    status: str,
+) -> str:
+    summary_parts = [f"release gate reported `{raw_status or status}`"]
+    if raw.get("exit_code") is not None:
+        summary_parts.append(f"exit code {raw['exit_code']}")
+    if raw.get("duration_ms") is not None:
+        summary_parts.append(f"duration {raw['duration_ms']} ms")
+    return ", ".join(summary_parts)
+
+
+def _release_gate_raw_details(
+    path: Path,
+    raw: dict[str, Any],
+    *,
+    raw_status: str,
+    triage: str,
+) -> dict[str, Any]:
+    return {
+        "source_path": _display_path(path),
+        "release_status": raw_status,
+        "exit_code": raw.get("exit_code"),
+        "duration_ms": raw.get("duration_ms"),
+        "stdout_tail": raw.get("stdout_tail", ""),
+        "stderr_tail": raw.get("stderr_tail", ""),
+        "triage_step": triage,
+    }
 
 
 def _live_provider_records(path: Path, payload: dict[str, Any] | None) -> list[GateRecord]:
     if payload is None:
-        return [
-            GateRecord(
-                name=f"Optional live provider: {provider}",
-                status="skipped",
-                command="uv run python scripts/generate_release_evidence.py --run-manifest <path>",
-                source="",
-                summary="No release evidence was available; host-owned live evidence was not read.",
-                first_triage_step=(
-                    "Link a prepared-host run_manifest.json through release evidence."
-                ),
-                category="optional-runtime",
-                host_owned=True,
-                raw_details={
-                    "provider": provider,
-                    "reason": "missing-release-evidence",
-                    "source_path": _display_path(path),
-                },
-            )
-            for provider in sorted(LIVE_PROVIDER_ENV)
-        ]
+        return _missing_live_provider_records(path)
+    return [_live_provider_record(path, row) for row in _live_provider_rows(payload)]
 
+
+def _missing_live_provider_records(path: Path) -> list[GateRecord]:
+    return [_missing_live_provider_record(path, provider) for provider in sorted(LIVE_PROVIDER_ENV)]
+
+
+def _missing_live_provider_record(path: Path, provider: str) -> GateRecord:
+    return GateRecord(
+        name=f"Optional live provider: {provider}",
+        status="skipped",
+        command=LIVE_PROVIDER_EVIDENCE_COMMAND,
+        source="",
+        summary="No release evidence was available; host-owned live evidence was not read.",
+        first_triage_step="Link a prepared-host run_manifest.json through release evidence.",
+        category="optional-runtime",
+        host_owned=True,
+        raw_details={
+            "provider": provider,
+            "reason": "missing-release-evidence",
+            "source_path": _display_path(path),
+        },
+    )
+
+
+def _live_provider_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for key in ("live_provider_evidence", "extra_live_provider_evidence"):
-        value = payload.get(key, [])
-        if isinstance(value, list):
-            rows.extend(item for item in value if isinstance(item, dict))
-    records: list[GateRecord] = []
-    for row in rows:
-        provider = str(row.get("provider") or "unknown")
-        provider_status = str(row.get("status") or "")
-        status, host_owned = _normalize_live_provider_status(provider_status)
-        reason = str(row.get("reason") or "")
-        records.append(
-            GateRecord(
-                name=f"Optional live provider: {provider}",
-                status=status,
-                command="uv run python scripts/generate_release_evidence.py --run-manifest <path>",
-                source=_display_path(path),
-                summary=reason or f"release evidence reported `{provider_status}`",
-                first_triage_step=(
-                    "Link a prepared-host run_manifest.json or keep the host-owned skip explicit."
-                    if host_owned or status == "skipped"
-                    else "Inspect the linked run_manifest.json and provider smoke output."
-                ),
-                category="optional-runtime",
-                host_owned=host_owned,
-                raw_details={
-                    "source_path": _display_path(path),
-                    "provider": provider,
-                    "release_status": provider_status,
-                    "reason": reason,
-                    "manifests": row.get("manifests", []),
-                },
-            )
-        )
-    return records
+        rows.extend(_dict_rows(payload.get(key, [])))
+    return rows
+
+
+def _dict_rows(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _live_provider_record(path: Path, row: dict[str, Any]) -> GateRecord:
+    provider = str(row.get("provider") or "unknown")
+    provider_status = str(row.get("status") or "")
+    status, host_owned = _normalize_live_provider_status(provider_status)
+    reason = str(row.get("reason") or "")
+    return GateRecord(
+        name=f"Optional live provider: {provider}",
+        status=status,
+        command=LIVE_PROVIDER_EVIDENCE_COMMAND,
+        source=_display_path(path),
+        summary=_live_provider_summary(reason, provider_status, status),
+        first_triage_step=_live_provider_triage_step(status, host_owned),
+        category="optional-runtime",
+        host_owned=host_owned,
+        raw_details={
+            "source_path": _display_path(path),
+            "provider": provider,
+            "release_status": provider_status,
+            "reason": reason,
+            "manifests": row.get("manifests", []),
+        },
+    )
+
+
+def _live_provider_summary(reason: str, provider_status: str, status: str) -> str:
+    if reason:
+        return reason
+    return f"release evidence reported `{provider_status or status}`"
+
+
+def _live_provider_triage_step(status: str, host_owned: bool) -> str:
+    if host_owned or status == "skipped":
+        return "Link a prepared-host run_manifest.json or keep the host-owned skip explicit."
+    return "Inspect the linked run_manifest.json and provider smoke output."
 
 
 def _dependency_audit_record(path: Path, payload: dict[str, Any] | None) -> GateRecord:
@@ -467,85 +631,39 @@ def _dependency_audit_record(path: Path, payload: dict[str, Any] | None) -> Gate
 
 
 def _core_performance_record(path: Path, payload: dict[str, Any] | None) -> GateRecord:
-    command = (
-        "uv run python scripts/check_core_performance.py "
-        "--workspace-dir .worldforge/core-performance "
-        "--output .worldforge/core-performance/core-performance.json"
-    )
     if payload is None:
-        return GateRecord(
-            name="Core performance artifact",
-            status="not-run",
-            command=command,
-            source="",
-            summary="Core performance JSON was not found.",
-            first_triage_step=(
-                "Run `uv run python scripts/check_core_performance.py --output <path>`."
-            ),
-            category="performance",
-            raw_details={"source_path": _display_path(path), "reason": "missing-artifact"},
-        )
-    results = payload.get("results", [])
+        return _missing_core_performance_record(path)
+    shape_error = _core_performance_shape_error(path, payload)
+    if shape_error is not None:
+        return shape_error
+    return _valid_core_performance_record(path, payload)
+
+
+def _core_performance_shape_error(path: Path, payload: dict[str, Any]) -> GateRecord | None:
     if payload.get("status") == "invalid-json" or not isinstance(payload.get("passed"), bool):
-        return GateRecord(
-            name="Core performance artifact",
-            status="warning",
-            command=command,
-            source=_display_path(path),
-            summary="Core performance JSON is missing a boolean passed field.",
-            first_triage_step=(
-                "Regenerate the artifact with `uv run python scripts/check_core_performance.py "
-                "--output <path>`."
-            ),
-            category="performance",
-            raw_details={
-                "source_path": _display_path(path),
-                "reason": "invalid-shape",
-                "error": payload.get("error"),
-                "passed": payload.get("passed"),
-            },
-        )
+        return _invalid_core_performance_passed_record(path, payload)
+    results = payload.get("results", [])
     if not isinstance(results, list):
-        return GateRecord(
-            name="Core performance artifact",
-            status="warning",
-            command=command,
-            source=_display_path(path),
-            summary="Core performance JSON is missing a results list.",
-            first_triage_step=(
-                "Regenerate the artifact with `uv run python scripts/check_core_performance.py "
-                "--output <path>`."
-            ),
-            category="performance",
-            raw_details={
-                "source_path": _display_path(path),
-                "reason": "invalid-shape",
-                "results_type": type(results).__name__,
-            },
-        )
-    passed = payload["passed"]
-    failed_results = [
-        result for result in results if isinstance(result, dict) and result.get("passed") is False
-    ]
+        return _invalid_core_performance_results_record(path, results)
+    return None
+
+
+def _valid_core_performance_record(path: Path, payload: dict[str, Any]) -> GateRecord:
+    results = _core_performance_results(payload)
+    passed = payload.get("passed") is True
+    failed_results = _failed_core_performance_results(results)
     incoherent_pass = passed and bool(failed_results)
     incoherent_failure = not passed and not failed_results
-    if incoherent_pass:
-        summary = (
-            f"top-level passed=true contradicted by {len(failed_results)} failed performance "
-            "budget rows"
-        )
-    elif failed_results:
-        summary = f"{len(failed_results)} performance budget rows failed"
-    elif incoherent_failure:
-        summary = "top-level passed=false without failed performance budget rows"
-    else:
-        summary = "all recorded core performance rows passed"
     return GateRecord(
         name="Core performance artifact",
-        status="failed" if failed_results or not passed else "passed",
-        command=command,
+        status=_core_performance_status(passed=passed, failed_results=failed_results),
+        command=CORE_PERFORMANCE_COMMAND,
         source=_display_path(path),
-        summary=summary,
+        summary=_core_performance_summary(
+            failed_results=failed_results,
+            incoherent_pass=incoherent_pass,
+            incoherent_failure=incoherent_failure,
+        ),
         first_triage_step="Inspect the failing result row before changing budgets.",
         category="performance",
         raw_details={
@@ -558,6 +676,94 @@ def _core_performance_record(path: Path, payload: dict[str, Any] | None) -> Gate
             "preserved_workspace": payload.get("preserved_workspace"),
         },
     )
+
+
+def _core_performance_results(payload: dict[str, Any]) -> list[Any]:
+    results = payload.get("results", [])
+    return results if isinstance(results, list) else []
+
+
+def _missing_core_performance_record(path: Path) -> GateRecord:
+    return GateRecord(
+        name="Core performance artifact",
+        status="not-run",
+        command=CORE_PERFORMANCE_COMMAND,
+        source="",
+        summary="Core performance JSON was not found.",
+        first_triage_step="Run `uv run python scripts/check_core_performance.py --output <path>`.",
+        category="performance",
+        raw_details={"source_path": _display_path(path), "reason": "missing-artifact"},
+    )
+
+
+def _invalid_core_performance_passed_record(
+    path: Path,
+    payload: dict[str, Any],
+) -> GateRecord:
+    return GateRecord(
+        name="Core performance artifact",
+        status="warning",
+        command=CORE_PERFORMANCE_COMMAND,
+        source=_display_path(path),
+        summary="Core performance JSON is missing a boolean passed field.",
+        first_triage_step=CORE_PERFORMANCE_REGENERATE_STEP,
+        category="performance",
+        raw_details={
+            "source_path": _display_path(path),
+            "reason": "invalid-shape",
+            "error": payload.get("error"),
+            "passed": payload.get("passed"),
+        },
+    )
+
+
+def _invalid_core_performance_results_record(path: Path, results: object) -> GateRecord:
+    return GateRecord(
+        name="Core performance artifact",
+        status="warning",
+        command=CORE_PERFORMANCE_COMMAND,
+        source=_display_path(path),
+        summary="Core performance JSON is missing a results list.",
+        first_triage_step=CORE_PERFORMANCE_REGENERATE_STEP,
+        category="performance",
+        raw_details={
+            "source_path": _display_path(path),
+            "reason": "invalid-shape",
+            "results_type": type(results).__name__,
+        },
+    )
+
+
+def _failed_core_performance_results(results: list[Any]) -> list[dict[str, Any]]:
+    return [
+        result for result in results if isinstance(result, dict) and result.get("passed") is False
+    ]
+
+
+def _core_performance_status(
+    *,
+    passed: bool,
+    failed_results: list[dict[str, Any]],
+) -> str:
+    return "failed" if failed_results or not passed else "passed"
+
+
+def _core_performance_summary(
+    *,
+    failed_results: list[dict[str, Any]],
+    incoherent_pass: bool,
+    incoherent_failure: bool,
+) -> str:
+    if incoherent_pass:
+        return (
+            f"top-level passed=true contradicted by {len(failed_results)} failed performance "
+            "budget rows"
+        )
+    if failed_results:
+        return f"{len(failed_results)} performance budget rows failed"
+    if incoherent_failure:
+        return "top-level passed=false without failed performance budget rows"
+    return "all recorded core performance rows passed"
 
 
 def _load_json_artifact(path: Path) -> dict[str, Any] | None:
@@ -601,18 +807,9 @@ def _normalize_live_provider_status(status: str) -> tuple[str, bool]:
 
 def _gate_category(name: str) -> str:
     lower = name.lower()
-    if "doc" in lower or "provider catalog" in lower:
-        return "docs"
-    if "test" in lower or "coverage" in lower:
-        return "tests"
-    if "package" in lower or "build" in lower:
-        return "package"
-    if "dependency" in lower:
-        return "security"
-    if "performance" in lower:
-        return "performance"
-    if "import" in lower or "wrapper" in lower or "lint" in lower or "format" in lower:
-        return "quality"
+    for category, keywords in GATE_CATEGORY_RULES:
+        if any(keyword in lower for keyword in keywords):
+            return category
     return "release"
 
 

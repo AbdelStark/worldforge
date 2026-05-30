@@ -31,7 +31,7 @@ def test_cosmos_smoke_writes_artifact_summary_and_manifest(
 
     monkeypatch.setattr(cosmos, "CosmosProvider", StubCosmosProvider)
     output_path = tmp_path / "artifacts" / "cosmos.mp4"
-    summary_path = tmp_path / "summary.json"
+    summary_path = tmp_path / "results" / "summary.json"
     manifest_path = tmp_path / "run_manifest.json"
 
     assert (
@@ -102,7 +102,7 @@ def test_runway_smoke_writes_sanitized_artifact_summary_and_manifest(
 
     monkeypatch.setattr(runway, "RunwayProvider", StubRunwayProvider)
     output_path = tmp_path / "artifacts" / "runway.mp4"
-    summary_path = tmp_path / "summary.json"
+    summary_path = tmp_path / "results" / "summary.json"
     manifest_path = tmp_path / "run_manifest.json"
 
     assert (

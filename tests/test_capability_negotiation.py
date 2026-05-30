@@ -24,6 +24,7 @@ from worldforge import (
     negotiate_capabilities,
 )
 from worldforge.capability_negotiation import negotiate
+from worldforge.models import ProviderHealth
 from worldforge.providers import BaseProvider, ProviderProfileSpec
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -229,6 +230,25 @@ def test_negotiate_capabilities_alias_matches(tmp_path, monkeypatch) -> None:
     assert via_alias.to_dict() == via_module.to_dict()
 
 
+def test_negotiate_accepts_workflow_specs_and_names_in_order(tmp_path, monkeypatch) -> None:
+    _clear_remote_env(monkeypatch)
+    forge = WorldForge(state_dir=tmp_path)
+    custom = WorkflowSpec(
+        name="custom-predict",
+        title="Custom predict workflow",
+        description="Custom predict-only surface.",
+        required_capabilities=("predict",),
+    )
+
+    report = negotiate([custom, "predict-only"], forge=forge)
+
+    assert [negotiation.workflow.name for negotiation in report.workflows] == [
+        "custom-predict",
+        "predict-only",
+    ]
+    assert all(negotiation.ready for negotiation in report.workflows)
+
+
 def test_unsupported_capability_classified_when_provider_does_not_advertise() -> None:
     """A provider without the capability is classified ``unsupported``."""
 
@@ -267,6 +287,52 @@ def test_unsupported_capability_classified_when_provider_does_not_advertise() ->
     )
     assert status.readiness == "unsupported"
     assert status.capability_compatible is False
+
+
+def test_registered_unhealthy_provider_classified_as_missing_dependency() -> None:
+    class _UnhealthyScoreProvider(BaseProvider):
+        def __init__(self) -> None:
+            super().__init__(
+                name="unhealthy-score",
+                capabilities=ProviderCapabilities(score=True),
+                profile=ProviderProfileSpec(
+                    description="Stub score provider with unhealthy runtime.",
+                    is_local=True,
+                    deterministic=True,
+                    requires_credentials=False,
+                ),
+            )
+
+        def health(self) -> ProviderHealth:
+            return ProviderHealth(
+                name=self.name,
+                healthy=False,
+                latency_ms=0.0,
+                details="missing optional scoring runtime",
+            )
+
+    from worldforge.capability_negotiation import _classify_provider
+
+    provider = _UnhealthyScoreProvider()
+
+    class _Forge:
+        def _require_provider(self, name):
+            assert name == provider.name
+            return provider
+
+    status = _classify_provider(
+        name=provider.name,
+        capability="score",
+        capabilities=provider.profile().capabilities,
+        registered=True,
+        forge=_Forge(),  # type: ignore[arg-type]
+        environ={},
+    )
+
+    assert status.readiness == "missing-dependency"
+    assert status.configured is True
+    assert status.healthy is False
+    assert status.reason == "provider 'unhealthy-score' health check is unhealthy"
 
 
 def test_cli_negotiate_lists_workflows(monkeypatch, capsys) -> None:

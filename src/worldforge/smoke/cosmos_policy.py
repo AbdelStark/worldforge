@@ -9,14 +9,32 @@ import json
 import math
 import os
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from worldforge.models import JSONDict, _redact_observable_text
+from worldforge.models import JSONDict, ProviderHealth, _redact_observable_text
 from worldforge.providers import CosmosPolicyProvider
 from worldforge.providers.cosmos_policy import DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
+
+_COSMOS_POLICY_MANIFEST_ENV_VARS = (
+    "COSMOS_POLICY_BASE_URL",
+    "COSMOS_POLICY_API_TOKEN",
+    "COSMOS_POLICY_TIMEOUT_SECONDS",
+    "COSMOS_POLICY_EMBODIMENT_TAG",
+    "COSMOS_POLICY_MODEL",
+    "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
+    "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
+    "COSMOS_POLICY_ALLOWED_HOSTS",
+)
+
+
+@dataclass(slots=True)
+class _SmokeRunState:
+    provider_events: list[object] = field(default_factory=list)
+    output: JSONDict = field(default_factory=dict)
 
 
 def _load_json_file(path: Path, *, name: str) -> JSONDict:
@@ -48,25 +66,42 @@ def _module_from_path(path: Path, *, allow_code: bool) -> ModuleType:
     return module
 
 
-def _load_callable(spec: str, *, name: str, allow_code: bool = False) -> Callable[..., Any]:
+def _require_local_code_allowed(*, name: str, allow_code: bool) -> None:
     if not allow_code:
         raise SystemExit(
             f"Loading {name} imports and executes local Python; pass --allow-translator-code "
             "only for trusted translator code."
         )
+
+
+def _split_callable_spec(spec: str, *, name: str) -> tuple[str, str]:
     if ":" not in spec:
         raise SystemExit(f"{name} must be formatted as module_or_file:function.")
     module_ref, function_name = spec.rsplit(":", 1)
     if not module_ref.strip() or not function_name.strip():
         raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-    candidate_path = Path(module_ref)
-    if candidate_path.exists() or module_ref.endswith(".py") or "/" in module_ref:
-        module = _module_from_path(candidate_path, allow_code=allow_code)
-    else:
-        try:
-            module = importlib.import_module(module_ref)
-        except ImportError as exc:
-            raise SystemExit(f"Could not import {name} module '{module_ref}': {exc}") from exc
+    return module_ref, function_name
+
+
+def _looks_like_module_path(module_ref: str) -> bool:
+    return Path(module_ref).exists() or module_ref.endswith(".py") or "/" in module_ref
+
+
+def _load_callable_module(
+    module_ref: str,
+    *,
+    name: str,
+    allow_code: bool,
+) -> ModuleType:
+    if _looks_like_module_path(module_ref):
+        return _module_from_path(Path(module_ref), allow_code=allow_code)
+    try:
+        return importlib.import_module(module_ref)
+    except ImportError as exc:
+        raise SystemExit(f"Could not import {name} module '{module_ref}': {exc}") from exc
+
+
+def _callable_attribute(module: ModuleType, function_name: str, *, name: str) -> Callable[..., Any]:
     try:
         loaded = getattr(module, function_name)
     except AttributeError as exc:
@@ -76,18 +111,24 @@ def _load_callable(spec: str, *, name: str, allow_code: bool = False) -> Callabl
     return loaded
 
 
-def _load_policy_info(args: argparse.Namespace) -> JSONDict:
+def _load_callable(spec: str, *, name: str, allow_code: bool = False) -> Callable[..., Any]:
+    _require_local_code_allowed(name=name, allow_code=allow_code)
+    module_ref, function_name = _split_callable_spec(spec, name=name)
+    module = _load_callable_module(module_ref, name=name, allow_code=allow_code)
+    return _callable_attribute(module, function_name, name=name)
+
+
+def _load_base_policy_info(args: argparse.Namespace) -> JSONDict:
     if args.policy_info_json is not None:
-        info = _load_json_file(args.policy_info_json, name="policy-info")
-    elif args.observation_json is not None:
-        info = {
+        return _load_json_file(args.policy_info_json, name="policy-info")
+    if args.observation_json is not None:
+        return {
             "observation": _load_json_file(args.observation_json, name="observation"),
         }
-    else:
-        raise SystemExit(
-            "Live Cosmos-Policy smoke requires --policy-info-json or --observation-json."
-        )
+    raise SystemExit("Live Cosmos-Policy smoke requires --policy-info-json or --observation-json.")
 
+
+def _apply_policy_info_overrides(info: JSONDict, args: argparse.Namespace) -> None:
     if args.task_description is not None:
         info["task_description"] = args.task_description
     if args.embodiment_tag is not None:
@@ -96,6 +137,11 @@ def _load_policy_info(args: argparse.Namespace) -> JSONDict:
         info["action_horizon"] = args.action_horizon
     if args.return_all_query_results is not None:
         info["return_all_query_results"] = args.return_all_query_results
+
+
+def _load_policy_info(args: argparse.Namespace) -> JSONDict:
+    info = _load_base_policy_info(args)
+    _apply_policy_info_overrides(info, args)
     return info
 
 
@@ -192,6 +238,68 @@ def _redacted_exit_message(exc: BaseException) -> str:
     return _redact_observable_text(str(exc))
 
 
+def _validate_smoke_args(args: argparse.Namespace) -> None:
+    if args.action_horizon is not None and args.action_horizon <= 0:
+        raise SystemExit("--action-horizon must be greater than 0.")
+    if not args.health_only and args.translator is None:
+        raise SystemExit("--translator is required unless --health-only is set.")
+
+
+def _load_translator_from_args(args: argparse.Namespace) -> Callable[..., Any] | None:
+    if args.translator is None:
+        return None
+    return _load_callable(
+        args.translator,
+        name="translator",
+        allow_code=args.allow_translator_code,
+    )
+
+
+def _build_provider(
+    args: argparse.Namespace,
+    *,
+    timeout_seconds: float,
+    translator: Callable[..., Any] | None,
+    provider_events: list[object],
+) -> CosmosPolicyProvider:
+    return CosmosPolicyProvider(
+        base_url=args.base_url,
+        api_token=args.api_token,
+        timeout_seconds=timeout_seconds,
+        embodiment_tag=args.embodiment_tag,
+        model=args.model,
+        return_all_query_results=args.return_all_query_results,
+        action_translator=translator,
+        event_handler=provider_events.append,
+    )
+
+
+def _require_healthy_provider(health: ProviderHealth) -> None:
+    if not health.healthy:
+        raise SystemExit(f"Cosmos-Policy provider is not healthy: {health.details}")
+
+
+def _success_status(args: argparse.Namespace) -> str:
+    return "skipped" if args.health_only else "passed"
+
+
+def _run_smoke(args: argparse.Namespace, state: _SmokeRunState) -> None:
+    _validate_smoke_args(args)
+    provider = _build_provider(
+        args,
+        timeout_seconds=_parse_timeout_seconds(args.timeout_seconds),
+        translator=_load_translator_from_args(args),
+        provider_events=state.provider_events,
+    )
+    health = provider.health()
+    state.output["health"] = health.to_dict()
+    _require_healthy_provider(health)
+    if args.health_only:
+        return
+    result = provider.select_actions(info=_load_policy_info(args))
+    state.output["result"] = result.to_dict()
+
+
 def _write_manifest_if_requested(
     args: argparse.Namespace,
     *,
@@ -211,16 +319,7 @@ def _write_manifest_if_requested(
             provider_profile="cosmos-policy",
             capability="policy",
             status=status,
-            env_vars=(
-                "COSMOS_POLICY_BASE_URL",
-                "COSMOS_POLICY_API_TOKEN",
-                "COSMOS_POLICY_TIMEOUT_SECONDS",
-                "COSMOS_POLICY_EMBODIMENT_TAG",
-                "COSMOS_POLICY_MODEL",
-                "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
-                "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
-                "COSMOS_POLICY_ALLOWED_HOSTS",
-            ),
+            env_vars=_COSMOS_POLICY_MANIFEST_ENV_VARS,
             event_count=len(provider_events),
             input_fixture=input_fixture,
             result=output,
@@ -228,59 +327,41 @@ def _write_manifest_if_requested(
     )
 
 
+def _write_success_manifest(args: argparse.Namespace, state: _SmokeRunState) -> None:
+    _write_manifest_if_requested(
+        args,
+        provider_events=state.provider_events,
+        output=state.output,
+        status=_success_status(args),
+    )
+
+
+def _write_failure_manifest(
+    args: argparse.Namespace,
+    state: _SmokeRunState,
+    *,
+    error: str,
+) -> None:
+    state.output.setdefault("error", error)
+    _write_manifest_if_requested(
+        args,
+        provider_events=state.provider_events,
+        output=state.output,
+        status="failed",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    provider_events = []
-    output: JSONDict = {}
+    state = _SmokeRunState()
     try:
-        timeout_seconds = _parse_timeout_seconds(args.timeout_seconds)
-        if args.action_horizon is not None and args.action_horizon <= 0:
-            raise SystemExit("--action-horizon must be greater than 0.")
-        if not args.health_only and args.translator is None:
-            raise SystemExit("--translator is required unless --health-only is set.")
-        translator = (
-            None
-            if args.translator is None
-            else _load_callable(
-                args.translator,
-                name="translator",
-                allow_code=args.allow_translator_code,
-            )
-        )
-        provider = CosmosPolicyProvider(
-            base_url=args.base_url,
-            api_token=args.api_token,
-            timeout_seconds=timeout_seconds,
-            embodiment_tag=args.embodiment_tag,
-            model=args.model,
-            return_all_query_results=args.return_all_query_results,
-            action_translator=translator,
-            event_handler=provider_events.append,
-        )
-        health = provider.health()
-        output["health"] = health.to_dict()
-        if not health.healthy:
-            raise SystemExit(f"Cosmos-Policy provider is not healthy: {health.details}")
-        if not args.health_only:
-            result = provider.select_actions(info=_load_policy_info(args))
-            output["result"] = result.to_dict()
-        _write_manifest_if_requested(
-            args,
-            provider_events=provider_events,
-            output=output,
-            status="skipped" if args.health_only else "passed",
-        )
+        _run_smoke(args, state)
+        _write_success_manifest(args, state)
     except (Exception, SystemExit) as exc:
         redacted_error = _redacted_exit_message(exc)
-        output.setdefault("error", redacted_error)
-        _write_manifest_if_requested(
-            args,
-            provider_events=provider_events,
-            output=output,
-            status="failed",
-        )
+        _write_failure_manifest(args, state, error=redacted_error)
         raise SystemExit(redacted_error) from None
-    print(json.dumps(output, indent=2, sort_keys=True))
+    print(json.dumps(state.output, indent=2, sort_keys=True))
     return 0
 
 

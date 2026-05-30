@@ -42,6 +42,35 @@ class DatasetManifestEntry:
     license: str | None = None
     metadata: JSONDict = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _required_text(self.id, name="DatasetManifestEntry id"))
+        object.__setattr__(
+            self,
+            "kind",
+            _entry_kind(self.kind, name="DatasetManifestEntry kind"),
+        )
+        object.__setattr__(
+            self,
+            "description",
+            _required_text(self.description, name="DatasetManifestEntry description"),
+        )
+        object.__setattr__(
+            self,
+            "sha256",
+            _sha256_digest(self.sha256, name="DatasetManifestEntry sha256"),
+        )
+        object.__setattr__(
+            self,
+            "license",
+            _optional_text(self.license, name="DatasetManifestEntry license"),
+        )
+        object.__setattr__(
+            self,
+            "metadata",
+            _json_mapping(self.metadata, name="DatasetManifestEntry metadata"),
+        )
+        _normalize_entry_reference_fields(self)
+
     def to_dict(self) -> JSONDict:
         payload: JSONDict = {
             "id": self.id,
@@ -129,6 +158,54 @@ class DatasetManifest:
     metadata: JSONDict = field(default_factory=dict)
     schema_version: int = DATASET_MANIFEST_SCHEMA_VERSION
 
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "schema_version",
+            _schema_version(self.schema_version, source="direct construction"),
+        )
+        object.__setattr__(self, "id", _required_text(self.id, name="DatasetManifest id"))
+        object.__setattr__(self, "name", _required_text(self.name, name="DatasetManifest name"))
+        object.__setattr__(
+            self,
+            "description",
+            _required_text(self.description, name="DatasetManifest description"),
+        )
+        object.__setattr__(
+            self,
+            "license",
+            _required_text(self.license, name="DatasetManifest license"),
+        )
+        object.__setattr__(
+            self,
+            "provenance",
+            _provenance_payload(self.provenance, source="DatasetManifest"),
+        )
+        object.__setattr__(
+            self,
+            "privacy",
+            _privacy_payload(self.privacy, source="DatasetManifest"),
+        )
+        object.__setattr__(
+            self,
+            "safety",
+            _safety_payload(self.safety, source="DatasetManifest"),
+        )
+        object.__setattr__(
+            self,
+            "host_acquisition_steps",
+            _string_tuple(
+                self.host_acquisition_steps,
+                name="DatasetManifest host_acquisition_steps",
+            ),
+        )
+        object.__setattr__(self, "entries", _manifest_entries(self.entries))
+        object.__setattr__(
+            self,
+            "metadata",
+            _json_mapping(self.metadata, name="DatasetManifest metadata"),
+        )
+
     @classmethod
     def from_dict(
         cls,
@@ -139,12 +216,7 @@ class DatasetManifest:
     ) -> DatasetManifest:
         if not isinstance(payload, Mapping):
             raise WorldForgeError(f"Dataset manifest {source} must be a JSON object.")
-        schema_version = payload.get("schema_version")
-        if schema_version != DATASET_MANIFEST_SCHEMA_VERSION:
-            raise WorldForgeError(
-                f"Dataset manifest {source} schema_version must be "
-                f"{DATASET_MANIFEST_SCHEMA_VERSION}, got {schema_version!r}."
-            )
+        schema_version = _schema_version(payload.get("schema_version"), source=source)
         entries_payload = payload.get("entries")
         if not isinstance(entries_payload, list) or not entries_payload:
             raise WorldForgeError(f"Dataset manifest {source} entries must be a non-empty list.")
@@ -203,7 +275,7 @@ class DatasetManifest:
         }
 
     def to_json(self, *, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent, sort_keys=True) + "\n"
+        return dump_json(self.to_dict(), indent=indent) + "\n"
 
     def digest(self) -> str:
         encoded = dump_json(self.to_dict()).encode("utf-8")
@@ -274,8 +346,16 @@ def parse_dataset_manifest(
             ) from exc
         if not isinstance(decoded, dict):
             raise WorldForgeError("Dataset manifest <string> must be a JSON object.")
-        return DatasetManifest.from_dict(decoded, source="<string>", root=root)
-    return DatasetManifest.from_dict(payload, source=source, root=root)
+        return DatasetManifest.from_dict(
+            _require_manifest_payload(decoded, source="<string>"),
+            source="<string>",
+            root=root,
+        )
+    return DatasetManifest.from_dict(
+        _require_manifest_payload(payload, source=source),
+        source=source,
+        root=root,
+    )
 
 
 def dataset_manifest_reference(
@@ -338,6 +418,88 @@ def _sha256_digest(value: object, *, name: str) -> str:
     return digest
 
 
+def _schema_version(value: object, *, source: str) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value != DATASET_MANIFEST_SCHEMA_VERSION
+    ):
+        raise WorldForgeError(
+            f"Dataset manifest {source} schema_version must be "
+            f"{DATASET_MANIFEST_SCHEMA_VERSION}, got {value!r}."
+        )
+    return DATASET_MANIFEST_SCHEMA_VERSION
+
+
+def _entry_kind(value: object, *, name: str) -> str:
+    kind = _required_text(value, name=name)
+    if kind not in DATASET_MANIFEST_ENTRY_KINDS:
+        allowed = ", ".join(DATASET_MANIFEST_ENTRY_KINDS)
+        raise WorldForgeError(f"{name} must be one of: {allowed}.")
+    return kind
+
+
+def _normalize_entry_reference_fields(entry: DatasetManifestEntry) -> None:
+    if entry.kind == "local-fixture":
+        _normalize_local_fixture_entry(entry)
+        return
+    if entry.kind == "remote-reference":
+        _normalize_remote_reference_entry(entry)
+        return
+    _normalize_host_asset_entry(entry)
+
+
+def _normalize_local_fixture_entry(entry: DatasetManifestEntry) -> None:
+    object.__setattr__(
+        entry,
+        "path",
+        _safe_relative_path(entry.path, name="DatasetManifestEntry path"),
+    )
+    if entry.uri is not None or entry.asset_id is not None:
+        raise WorldForgeError(
+            "DatasetManifestEntry local fixtures must not include uri or asset_id."
+        )
+
+
+def _normalize_remote_reference_entry(entry: DatasetManifestEntry) -> None:
+    object.__setattr__(
+        entry,
+        "uri",
+        _safe_remote_uri(entry.uri, name="DatasetManifestEntry uri"),
+    )
+    if entry.path is not None or entry.asset_id is not None:
+        raise WorldForgeError(
+            "DatasetManifestEntry remote references must not include path or asset_id."
+        )
+
+
+def _normalize_host_asset_entry(entry: DatasetManifestEntry) -> None:
+    object.__setattr__(
+        entry,
+        "asset_id",
+        _required_text(entry.asset_id, name="DatasetManifestEntry asset_id"),
+    )
+    if entry.path is not None or entry.uri is not None:
+        raise WorldForgeError("DatasetManifestEntry host assets must not include path or uri.")
+
+
+def _manifest_entries(value: object) -> tuple[DatasetManifestEntry, ...]:
+    if not isinstance(value, tuple) or not value:
+        raise WorldForgeError("DatasetManifest entries must be a non-empty tuple.")
+    if not all(isinstance(entry, DatasetManifestEntry) for entry in value):
+        raise WorldForgeError("DatasetManifest entries must contain only DatasetManifestEntry.")
+    return value
+
+
+def _require_manifest_payload(value: object, *, source: str) -> JSONDict:
+    try:
+        return require_json_dict(value, name=f"Dataset manifest {source}")
+    except WorldForgeError as exc:
+        if not isinstance(value, dict):
+            raise WorldForgeError(f"Dataset manifest {source} must be a JSON object.") from exc
+        raise
+
+
 def _json_mapping(value: object, *, name: str) -> JSONDict:
     return require_json_dict(value, name=name)
 
@@ -381,7 +543,7 @@ def _safety_payload(value: object, *, source: str) -> JSONDict:
 
 
 def _string_tuple(value: object, *, name: str) -> tuple[str, ...]:
-    if not isinstance(value, list) or not value:
+    if not isinstance(value, list | tuple) or not value:
         raise WorldForgeError(f"{name} must be a non-empty list of strings.")
     out = []
     for index, item in enumerate(value):

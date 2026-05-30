@@ -20,6 +20,24 @@ from worldforge.benchmark_presets import (
 )
 
 
+def _preset_kwargs(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "name": "custom",
+        "title": "Custom",
+        "summary": "Custom preset",
+        "category": "checkout-safe",
+        "providers": ("mock",),
+        "operations": ("predict",),
+        "iterations": 1,
+        "concurrency": 1,
+        "inputs_file": None,
+        "budget_file": None,
+        "failure_tolerance": "fail-on-violation",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_preset_catalogue_covers_required_categories() -> None:
     categories = {preset.category for preset in list_presets()}
     assert {"checkout-safe", "remote-media", "prepared-host", "release"} <= categories
@@ -113,47 +131,30 @@ def test_preset_payloads_round_trip() -> None:
 
 def test_invalid_preset_construction_is_rejected() -> None:
     with pytest.raises(WorldForgeError, match="non-empty string"):
-        BenchmarkPreset(
-            name="",
-            title="",
-            summary="",
-            category="checkout-safe",
-            providers=("mock",),
-            operations=("predict",),
-            iterations=1,
-            concurrency=1,
-            inputs_file=None,
-            budget_file=None,
-            failure_tolerance="fail-on-violation",
-        )
+        BenchmarkPreset(**_preset_kwargs(name=""))  # type: ignore[arg-type]
     with pytest.raises(WorldForgeError, match="category"):
-        BenchmarkPreset(
-            name="bogus",
-            title="bogus",
-            summary="bogus",
-            category="not-a-category",
-            providers=("mock",),
-            operations=("predict",),
-            iterations=1,
-            concurrency=1,
-            inputs_file=None,
-            budget_file=None,
-            failure_tolerance="fail-on-violation",
-        )
+        BenchmarkPreset(**_preset_kwargs(category="not-a-category"))  # type: ignore[arg-type]
     with pytest.raises(WorldForgeError, match="failure_tolerance"):
-        BenchmarkPreset(
-            name="bogus",
-            title="bogus",
-            summary="bogus",
-            category="checkout-safe",
-            providers=("mock",),
-            operations=("predict",),
-            iterations=1,
-            concurrency=1,
-            inputs_file=None,
-            budget_file=None,
-            failure_tolerance="other",
-        )
+        BenchmarkPreset(**_preset_kwargs(failure_tolerance="other"))  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    (
+        ({"providers": ()}, "at least one provider"),
+        ({"operations": ()}, "at least one operation"),
+        ({"operations": ("not-real",)}, "unknown operations"),
+        ({"iterations": 0}, "iterations must be greater than 0"),
+        ({"concurrency": 0}, "concurrency must be greater than 0"),
+        ({"requires_provider_profiles": ("not-real",)}, "unknown provider runtime profiles"),
+    ),
+)
+def test_invalid_preset_boundary_values_are_rejected(
+    overrides: dict[str, object],
+    match: str,
+) -> None:
+    with pytest.raises(WorldForgeError, match=match):
+        BenchmarkPreset(**_preset_kwargs(**overrides))  # type: ignore[arg-type]
 
 
 def test_cli_lists_presets_in_json(monkeypatch, capsys) -> None:

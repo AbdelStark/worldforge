@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from worldforge.cli import main as worldforge_main
 from worldforge.harness.run_history import RunHistoryFilter
 from worldforge.harness.run_index import (
     RUN_INDEX_SCHEMA_VERSION,
+    RunIndex,
     RunIndexIssue,
     build_run_index,
 )
@@ -113,6 +115,24 @@ def test_build_run_index_flags_invalid_json(tmp_path: Path) -> None:
     assert index.entries == ()
     assert len(index.issues) == 1
     assert index.issues[0].reason == "manifest-invalid-json"
+
+
+def test_build_run_index_flags_non_finite_manifest_payload(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    bad = runs_dir / "20260101T000000Z-bad00004"
+    bad.mkdir()
+    (bad / "run_manifest.json").write_text(
+        '{"schema_version": 1, "latency_ms": NaN}\n',
+        encoding="utf-8",
+    )
+
+    index = build_run_index(tmp_path)
+
+    assert index.entries == ()
+    assert len(index.issues) == 1
+    assert index.issues[0].reason == "manifest-invalid-json"
+    assert "finite number" in index.issues[0].detail
 
 
 def test_build_run_index_flags_non_object_payload(tmp_path: Path) -> None:
@@ -240,6 +260,20 @@ def test_to_json_payload_is_safe_to_attach(tmp_path: Path) -> None:
     # No raw artifact contents leaked into the payload — only labelled paths and metadata.
     serialized = json.dumps(payload)
     assert "raw" not in serialized.lower() or "raw_artifact" not in serialized.lower()
+
+
+def test_to_json_rejects_non_finite_payloads() -> None:
+    index = RunIndex(
+        schema_version=RUN_INDEX_SCHEMA_VERSION,
+        workspace_dir="/tmp/worldforge",
+        generated_at="2026-01-01T00:00:00Z",
+        entries=(),
+        issues=(),
+        filter_applied={"latency_ms": math.nan},
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        index.to_json()
 
 
 def test_to_markdown_includes_envelope_and_table(tmp_path: Path) -> None:

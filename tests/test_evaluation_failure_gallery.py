@@ -123,6 +123,14 @@ def test_failure_gallery_selects_representative_lowest_score_cases() -> None:
         for case in gallery.cases
     )
 
+    full_gallery = report.failure_gallery(max_cases_per_provider=None)
+    assert [case.scenario for case in full_gallery.cases] == [
+        "case-b",
+        "case-c",
+        "case-a",
+        "case-e",
+    ]
+
 
 def test_failure_gallery_handles_passing_reports_and_invalid_limits() -> None:
     report = EvaluationReport(
@@ -155,3 +163,7 @@ def test_failure_gallery_handles_passing_reports_and_invalid_limits() -> None:
 
     with pytest.raises(WorldForgeError, match="max_cases_per_provider"):
         report.failure_gallery(max_cases_per_provider=0)
+    with pytest.raises(WorldForgeError, match="max_cases_per_provider"):
+        report.failure_gallery(max_cases_per_provider=True)  # type: ignore[arg-type]
+    with pytest.raises(WorldForgeError, match="max_cases_per_provider"):
+        report.failure_gallery(max_cases_per_provider="3")  # type: ignore[arg-type]

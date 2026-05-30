@@ -12,13 +12,35 @@ evaluation harnesses, and testable prototypes.
 
 ## Architecture Map
 
-- `src/worldforge/models.py`: domain models, serialization helpers, validation errors, request
-  policies, provider metadata, media/result types, and structured planning goals.
+- `src/worldforge/models.py`: public compatibility facade that re-exports model contracts,
+  validation errors, shared helpers, provider contracts, scene models, and capability results.
+- `src/worldforge/_model_utils.py`: shared JSON-native validation helpers, framework errors,
+  deterministic IDs, and numeric/probability checks re-exported through `models.py`.
+- `src/worldforge/scene_models.py`: geometry primitives, actions, scene objects, scene patches,
+  structured planning goals, and local world-history entries.
+- `src/worldforge/capability_results.py`: media, reasoning, embedding, action-score, and
+  embodied-policy result payload contracts.
+- `src/worldforge/provider_models.py`: public compatibility facade for provider-facing contracts.
+- `src/worldforge/provider_profiles.py`: provider capabilities, generation options, provider info,
+  and profile metadata.
+- `src/worldforge/provider_request_policy.py`: retry/backoff and operation timeout policies for
+  HTTP-backed providers.
+- `src/worldforge/provider_events.py`: structured provider events and event-field validation.
+- `src/worldforge/provider_diagnostics.py`: provider health, lifecycle readiness, and doctor
+  report models.
+- `src/worldforge/provider_redaction.py`: observable-field sanitization shared by provider events,
+  diagnostics, manifests, routing, and reports.
 - `src/worldforge/capabilities/__init__.py`: runtime-checkable capability protocols for narrow
   `Cost`, `Policy`, `Generator`, `Predictor`, `Reasoner`, `Embedder`, `Transferer`, and
   `RunnableModel` integrations.
-- `src/worldforge/framework.py`: `WorldForge`, `World`, persistence, planning, prediction,
-  comparison, diagnostics, and top-level evaluation helpers.
+- `src/worldforge/framework_capabilities.py`: internal capability-protocol registry, structural
+  dispatch, observable-wrapper ownership, and direct/named capability target resolution.
+- `src/worldforge/framework.py`: `WorldForge`, provider registration, persistence, diagnostics,
+  provider operations, and top-level evaluation helpers.
+- `src/worldforge/_world.py`: mutable `World` runtime, scene/history mutation, prediction,
+  comparison, planning, plan execution, and evaluation entry points.
+- `src/worldforge/_world_prompt_seeders.py`: deterministic prompt-to-seed-scene helpers used by
+  `WorldForge.create_world_from_prompt(...)`, kept separate from mutable runtime behavior.
 - `src/worldforge/providers/base.py`: provider interfaces, `ProviderError`, remote-provider
   base behavior, and `PredictionPayload`.
 - `src/worldforge/providers/observable.py`: internal wrapper that adds `ProviderEvent`, health,
@@ -87,6 +109,8 @@ evaluation harnesses, and testable prototypes.
   LeWorldModel score planning, LeRobot policy-plus-score planning, Cosmos-Policy ALOHA replay,
   GR00T PolicyClient replay, provider diagnostics plus benchmark comparison, and the adapter author
   workbench.
+- `src/worldforge/harness/tui_styles.py`: Textual-free CSS constants consumed by `tui.py`; keep
+  styling declarations here instead of embedding large CSS strings in widget classes.
 - `src/worldforge/smoke/`: packaged optional-runtime smoke entry points exposed through `uv run`
   console scripts.
 - `src/worldforge/smoke/lerobot_leworldmodel.py`: optional host-owned real robotics showcase that

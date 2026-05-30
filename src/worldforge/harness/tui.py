@@ -4,21 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import queue
-import shlex
-import statistics
-import subprocess
-import time
-import webbrowser
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar
 
-from rich import box
-from rich.align import Align
-from rich.console import Group, RenderableType
-from rich.panel import Panel
-from rich.table import Table
+from rich.console import RenderableType
 from rich.text import Text
 from textual import events, on, work
 from textual.app import App, ComposeResult, SystemCommand
@@ -48,9 +39,6 @@ from textual.worker import get_current_worker
 
 from worldforge import (
     Action,
-    BBox,
-    Position,
-    SceneObject,
     World,
     WorldForge,
     WorldForgeError,
@@ -58,53 +46,251 @@ from worldforge import (
     list_eval_suites,
 )
 from worldforge.benchmark import BENCHMARKABLE_OPERATIONS
-from worldforge.harness import tensorboard_launcher
+from worldforge.harness import robotics_launch as _robotics_launch
+from worldforge.harness import robotics_view as _robotics_view
+from worldforge.harness import tui_styles as _tui_styles
 from worldforge.harness.connectors import (
     ProviderConnectorSummary,
+    provider_connector_detail_text,
     provider_connector_summaries,
 )
+from worldforge.harness.flow_catalog import available_flows
 from worldforge.harness.flows import (
-    available_flows,
+    benchmark_report_harness_run,
     benchmark_run_artifacts,
+    eval_report_harness_run,
     eval_run_artifacts,
     recent_report_paths,
     report_run_from_path,
     run_flow,
     write_report,
 )
-from worldforge.harness.models import HarnessFlow, HarnessMetric, HarnessRun, HarnessStep
+from worldforge.harness.models import HarnessFlow, HarnessRun, HarnessStep
+from worldforge.harness.robotics_tui_rendering import (
+    ROBOTICS_ARM_FRAMES,
+    robotics_arm_panel,
+    robotics_arm_target_line,
+    robotics_candidate_panel,
+    robotics_event_panel,
+    robotics_help_section_renderable,
+    robotics_hero_panel,
+    robotics_metrics_panel,
+    robotics_pipeline_panel,
+    robotics_progress_panel,
+    robotics_report_guide_panel,
+    robotics_rerun_panel,
+    robotics_tabletop_panel,
+    robotics_tensorboard_panel,
+)
 from worldforge.harness.run_history import (
     RunHistoryFilter,
     RunHistoryRecord,
     list_run_history,
     preserved_run_from_path,
 )
+from worldforge.harness.run_history_view import (
+    RUN_ARTIFACT_FILTER_ID,
+    RUN_CAPABILITY_FILTER_ID,
+    RUN_CREATED_FROM_FILTER_ID,
+    RUN_FILTER_INPUT_SELECTORS,
+    RUN_HISTORY_BINDING_SPECS,
+    RUN_HISTORY_DETAIL_SELECTOR,
+    RUN_HISTORY_EMPTY_SELECTOR,
+    RUN_HISTORY_SCREEN_SPEC,
+    RUN_HISTORY_TABLE_SELECTOR,
+    RUN_PROVIDER_FILTER_ID,
+    RUN_STATUS_FILTER_ID,
+    RUNS_DETAIL_EMPTY_MESSAGE,
+    RunHistoryFilterForm,
+    first_visible_run_id,
+    run_history_filter_from_form,
+    selected_run_provider_label,
+    selected_run_record,
+)
+from worldforge.harness.run_history_view import (
+    run_history_detail_text as _run_history_detail_text,
+)
+from worldforge.harness.run_history_view import (
+    run_history_table_row as _run_history_table_row,
+)
 from worldforge.harness.theme import (
-    FLOW_CAPABILITY_FALLBACKS,
     THEME_NAME_DARK,
-    THEME_NAME_HIGH_CONTRAST,
-    THEME_NAME_LIGHT,
-    WORLDFORGE_DARK_PALETTE,
-    WORLDFORGE_HIGH_CONTRAST_PALETTE,
-    WORLDFORGE_LIGHT_PALETTE,
+    THEME_SPECS,
+    next_theme_name,
+)
+from worldforge.harness.tui_app_view import (
+    APP_BINDING_SPECS,
+    SYSTEM_COMMAND_SPECS,
+    AppScreenName,
+    PaletteItemSpec,
+    SystemCommandSpec,
+    app_screen_name,
+    flow_system_command_help,
+    flow_system_command_title,
+    initial_screen_name,
+    palette_item_specs,
+    screen_needs_run_inspector_refresh,
+)
+from worldforge.harness.tui_benchmark_view import (
+    BENCHMARK_BINDING_SPECS,
+    BENCHMARK_LOG_SELECTOR,
+    BENCHMARK_RUN_BUTTON_ID,
+    BENCHMARK_SCREEN_SPEC,
+    DEFAULT_BENCHMARK_ITERATIONS,
+    benchmark_request_from_form,
+    benchmark_sample_progress,
+)
+from worldforge.harness.tui_chrome_view import (
+    BREADCRUMB_ID,
+    BREADCRUMB_SELECTOR,
+    CHROME_CONTAINER_ID,
+    PROVIDER_PILL_ID,
+    PROVIDER_PILL_SELECTOR,
+    ScreenChrome,
+    flow_provider_label,
+    provider_capability_label,
+    run_inspector_fixed_chrome,
+    run_inspector_flow_chrome,
+    screen_chrome,
+)
+from worldforge.harness.tui_eval_view import (
+    EVAL_BINDING_SPECS,
+    EVAL_LOG_SELECTOR,
+    EVAL_RUN_BUTTON_ID,
+    EVAL_SCREEN_SPEC,
+    eval_request_from_form,
+    eval_running_log_line,
+)
+from worldforge.harness.tui_help_view import (
+    HELP_BINDING_SPECS,
+    HELP_MODAL_SPEC,
+    HELP_TABLE_SELECTOR,
+    PLACEHOLDER_BINDING_SPECS,
+    PLACEHOLDER_MODAL_SPEC,
+    help_binding_rows,
+    placeholder_title,
+)
+from worldforge.harness.tui_home_view import (
+    HOME_INITIAL_FOCUS_WIDGET_ID,
+    HOME_JUMP_CARD_BINDING_SPECS,
+    HOME_JUMP_SPECS,
+    HOME_RECENT_SELECTOR,
+    HOME_SCREEN_BINDING_SPECS,
+    HOME_SCREEN_SPEC,
+    home_jump_target_screen,
+    home_recent_text,
+    recent_world_ids,
+)
+from worldforge.harness.tui_provider_events import (
+    format_provider_event as _format_provider_event,
+)
+from worldforge.harness.tui_provider_events import (
+    provider_event_failure as _provider_event_failure,
+)
+from worldforge.harness.tui_provider_events import (
+    provider_event_summary as _event_summary,
+)
+from worldforge.harness.tui_provider_view import (
+    PROVIDER_ACTION_SPECS,
+    PROVIDER_BINDING_SPECS,
+    PROVIDER_CANCEL_BUTTON_ID,
+    PROVIDER_DETAIL_SELECTOR,
+    PROVIDER_EMPTY_SELECTOR,
+    PROVIDER_FIELD_LABEL_CLASS,
+    PROVIDER_LOG_SELECTOR,
+    PROVIDER_REGISTER_BUTTON_ID,
+    PROVIDER_RUN_BUTTON_ID,
+    PROVIDER_SCREEN_SPEC,
+    PROVIDER_TABLE_SELECTOR,
+    REGISTER_PROVIDER_BINDING_SPECS,
+    REGISTER_PROVIDER_MODAL_SPEC,
+    provider_cancel_target,
+    provider_predict_target,
+    provider_registration_from_form,
+    provider_success_summary,
+    provider_table_row,
+)
+from worldforge.harness.tui_rendering import (
+    TuiRenderColors,
+    empty_inspector_panel,
+    empty_transcript_panel,
+    export_preview_panel,
+    flow_card_panel,
+    hero_panel,
+    run_inspector_panel,
+    run_transcript_panel,
+    timeline_panel,
+)
+from worldforge.harness.tui_report_view import ReportCompletionSpec, ReportRunControlSpec
+from worldforge.harness.tui_run_inspector_view import (
+    RUN_INSPECTOR_BINDING_SPECS,
+    RUN_INSPECTOR_DEFAULT_FLOW_ID,
+    RUN_INSPECTOR_DEFAULT_STEP_DELAY_SECONDS,
+    RUN_INSPECTOR_EXPORT_PREVIEW_ID,
+    RUN_INSPECTOR_FLOW_SELECT_ID,
+    RUN_INSPECTOR_INSPECTOR_ID,
+    RUN_INSPECTOR_READY_STEPS,
+    RUN_INSPECTOR_RUN_BUTTON_ID,
+    RUN_INSPECTOR_SCREEN_SPEC,
+    RUN_INSPECTOR_TIMELINE_ID,
+    RUN_INSPECTOR_TRANSCRIPT_ID,
+    resolve_run_inspector_flow_id,
+    run_inspector_flow_bindings,
+    run_inspector_flow_card_id,
+    run_inspector_flow_options,
 )
 from worldforge.harness.workspace import workspace_root_for_state_dir
 from worldforge.harness.worlds_view import (
+    CONFIRM_DELETE_BINDING_SPECS,
+    CONFIRM_DIALOG_SPEC,
+    EDIT_OBJECT_BINDING_SPECS,
+    EDIT_OBJECT_MODAL_SPEC,
+    FORM_FIELD_LABEL_CLASS,
+    FORM_HIDDEN_CLASS,
+    NEW_WORLD_BINDING_SPECS,
+    NEW_WORLD_MODAL_SPEC,
+    WORLD_EDIT_BINDING_SPECS,
+    WORLD_EDIT_NAME_ID,
+    WORLD_EDIT_OBJECTS_SELECTOR,
+    WORLD_EDIT_PREVIEW_BODY_SELECTOR,
+    WORLD_EDIT_PREVIEW_CAPTION_SELECTOR,
+    WORLD_EDIT_PREVIEW_SELECTOR,
+    WORLD_EDIT_PROVIDER_ID,
+    WORLD_EDIT_SCREEN_SPEC,
+    WORLD_EDIT_TITLE_SELECTOR,
+    WORLDS_BINDING_SPECS,
+    WORLDS_DETAIL_SELECTOR,
+    WORLDS_EMPTY_SELECTOR,
+    WORLDS_FILTER_ID,
+    WORLDS_FILTER_SELECTOR,
+    WORLDS_SCREEN_SPEC,
+    WORLDS_TABLE_SELECTOR,
     SceneObjectSpec,
     WorldSpec,
+    add_scene_object_from_spec,
+    apply_world_name_edit,
+    apply_world_provider_edit,
+    clone_world,
+    default_scene_object_spec,
+    edit_preview_caption,
     filter_world_ids,
     format_detail_summary,
     is_dirty,
-    validate_id_or_reason,
+    remove_scene_object_by_id,
+    scene_object_options,
+    scene_object_spec_from_form,
+    world_edit_title,
+    world_spec_from_form,
 )
-from worldforge.models import CAPABILITY_NAMES, JSONDict, ProviderEvent
+from worldforge.models import JSONDict, ProviderEvent
 from worldforge.providers.base import ProviderError
 from worldforge.providers.mock import MockProvider
 
-InitialScreen = Literal["home", "run-inspector", "worlds", "providers", "eval", "benchmark", "runs"]
+InitialScreen = AppScreenName
+_RUNS_DETAIL_EMPTY_MESSAGE = RUNS_DETAIL_EMPTY_MESSAGE
 
 
-def _build_theme(name: str, palette: dict[str, str], *, dark: bool) -> Theme:
+def _build_theme(name: str, palette: Mapping[str, str], *, dark: bool) -> Theme:
     """Construct a Textual ``Theme`` from a palette mapping.
 
     Keeping this builder local lets ``tui.py`` stay free of literal hex strings;
@@ -128,6 +314,26 @@ def _build_theme(name: str, palette: dict[str, str], *, dark: bool) -> Theme:
     )
 
 
+def _register_worldforge_themes(app: App[Any]) -> None:
+    for spec in THEME_SPECS:
+        app.register_theme(_build_theme(spec.name, spec.palette, dark=spec.dark))
+
+
+def _apply_chrome(node: Any, chrome: ScreenChrome) -> None:
+    breadcrumb = _maybe_query(node, BREADCRUMB_SELECTOR, Breadcrumb)
+    if breadcrumb is not None:
+        breadcrumb.path = chrome.path
+    pill = _maybe_query(node, PROVIDER_PILL_SELECTOR, ProviderStatusPill)
+    if pill is not None:
+        pill.label = chrome.provider_label
+
+
+def _compose_chrome() -> ComposeResult:
+    with Horizontal(id=CHROME_CONTAINER_ID):
+        yield Breadcrumb(id=BREADCRUMB_ID)
+        yield ProviderStatusPill(id=PROVIDER_PILL_ID)
+
+
 class _ThemedRenderer:
     """Mixin that resolves semantic-token names against the active theme.
 
@@ -143,6 +349,17 @@ class _ThemedRenderer:
     def _color(self, token: str) -> str:
         variables = self.app.get_css_variables()
         return variables.get(token, variables.get("foreground", ""))
+
+    def _render_colors(self) -> TuiRenderColors:
+        return TuiRenderColors(
+            foreground=self._color("foreground"),
+            accent=self._color("accent"),
+            success=self._color("success"),
+            warning=self._color("warning"),
+            error=self._color("error"),
+            muted=self._color("muted"),
+            panel=self._color("panel"),
+        )
 
 
 def _set_form_error(node, selector: str, message: str | None) -> None:
@@ -193,14 +410,7 @@ class Breadcrumb(Static):
     trail (worlds, runs) without changing the rendering surface.
     """
 
-    DEFAULT_CSS = """
-    Breadcrumb {
-        height: 1;
-        padding: 0 2;
-        background: $boost;
-        color: $foreground;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.BREADCRUMB_DEFAULT_CSS
 
     path: reactive[tuple[str, ...]] = reactive((), layout=True)
 
@@ -225,15 +435,7 @@ class ProviderStatusPill(Static):
     flow change updates the pill before the next user interaction.
     """
 
-    DEFAULT_CSS = """
-    ProviderStatusPill {
-        height: 1;
-        padding: 0 2;
-        background: $boost;
-        color: $foreground;
-        text-style: bold;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.PROVIDER_STATUS_PILL_DEFAULT_CSS
 
     label: reactive[str] = reactive("")
 
@@ -245,51 +447,14 @@ class HeroPane(Static, _ThemedRenderer):
     """Top-level harness identity panel."""
 
     def compose_panel(self, flow: HarnessFlow | None, running: bool) -> RenderableType:
-        title = Text("TheWorldHarness", style="bold")
-        title.append("  /  visual WorldForge integration reference", style="dim")
-        command = flow.command if flow else "select a flow"
-        status = "RUNNING" if running else "READY"
-        accent = self._color("accent")
-        success = self._color("success")
-        status_style = f"black on {accent}" if running else f"black on {success}"
-        border = accent if running else success
-        return Panel(
-            Group(
-                title,
-                Text(""),
-                Text(
-                    flow.summary if flow else "Run an E2E flow and inspect every boundary.",
-                    style="dim",
-                ),
-                Text(""),
-                Text(f"Command: {command}", style=f"bold {accent}"),
-                Text(f"Status: {status}", style=status_style),
-            ),
-            title="WORLD FORGE / HARNESS",
-            border_style=border,
-        )
+        return hero_panel(flow, running=running, colors=self._render_colors())
 
 
 class FlowCard(Static, _ThemedRenderer):
     """Flow selection card."""
 
     def render_flow(self, flow: HarnessFlow, selected: bool) -> None:
-        marker = ">>" if selected else "  "
-        accent = self._color("accent")
-        body = self._color("foreground")
-        success = self._color("success")
-        panel = self._color("panel")
-        style = f"bold {accent}" if selected else body
-        self.update(
-            Panel(
-                Group(
-                    Text(f"{marker} {flow.short_title}", style=style),
-                    Text(flow.focus, style="dim"),
-                    Text(flow.provider, style=success),
-                ),
-                border_style=accent if selected else panel,
-            )
-        )
+        self.update(flow_card_panel(flow, selected=selected, colors=self._render_colors()))
 
 
 class TimelinePane(Static, _ThemedRenderer):
@@ -302,33 +467,13 @@ class TimelinePane(Static, _ThemedRenderer):
         active_index: int,
         complete_count: int,
     ) -> None:
-        rows: list[RenderableType] = []
-        accent = self._color("accent")
-        success = self._color("success")
-        muted = self._color("muted")
-        body = self._color("foreground")
-        for index, step in enumerate(steps):
-            if index < complete_count:
-                symbol = "OK"
-                color = success
-            elif index == active_index:
-                symbol = ">>"
-                color = accent
-            else:
-                symbol = "--"
-                color = muted
-            rows.append(Text(f"{symbol} {index + 1:02d}. {step.title}", style=f"bold {color}"))
-            rows.append(Text(f"    {step.detail}", style="dim"))
-            if index < complete_count:
-                rows.append(Text(f"    {step.result}", style=body))
-                if step.artifact:
-                    rows.append(Text(f"    {step.artifact}", style=success))
-            rows.append(Text(""))
         self.update(
-            Panel(
-                Group(*rows),
-                title=f"{flow.title} / execution trace",
-                border_style=accent,
+            timeline_panel(
+                flow,
+                steps,
+                active_index=active_index,
+                complete_count=complete_count,
+                colors=self._render_colors(),
             )
         )
 
@@ -337,77 +482,20 @@ class InspectorPane(Static, _ThemedRenderer):
     """Run metrics and state summary."""
 
     def render_empty(self) -> None:
-        self.update(
-            Panel(
-                Align.center(
-                    Text(
-                        "Run a flow to populate metrics, state, and provider events.", style="dim"
-                    ),
-                    vertical="middle",
-                ),
-                title="Inspector",
-                border_style=self._color("panel"),
-            )
-        )
+        self.update(empty_inspector_panel(self._render_colors()))
 
     def render_run(self, run: HarnessRun) -> None:
-        accent = self._color("accent")
-        success = self._color("success")
-        warning = self._color("warning")
-        error = self._color("error")
-        table = Table.grid(expand=True)
-        table.add_column(justify="left", ratio=1)
-        table.add_column(justify="right", ratio=1)
-        for metric in run.metrics:
-            table.add_row(
-                Text(metric.label, style="dim"), Text(metric.value, style=f"bold {accent}")
-            )
-            if metric.detail:
-                table.add_row("", Text(metric.detail, style=success))
-        if run.provider_events:
-            table.add_row(Text(""), Text(""))
-            table.add_row(Text("Provider events", style="dim"), Text(str(len(run.provider_events))))
-            for provider_event in run.provider_events[:6]:
-                phase = str(provider_event.get("phase", "event"))
-                phase_style = {
-                    "success": success,
-                    "retry": warning,
-                    "failure": error,
-                    "cancelled": warning,
-                    "budget_exceeded": error,
-                }.get(phase, accent)
-                provider = str(provider_event.get("provider", "provider"))
-                operation = str(provider_event.get("operation", "operation"))
-                attempt = provider_event.get("attempt")
-                duration = provider_event.get("duration_ms")
-                suffix = []
-                if attempt is not None:
-                    suffix.append(f"attempt={attempt}")
-                if duration is not None:
-                    suffix.append(f"{float(duration):.1f} ms")
-                table.add_row(
-                    Text(phase, style=f"bold {phase_style}"),
-                    Text(f"{provider}.{operation} {' '.join(suffix)}".strip()),
-                )
-        if run.validation_errors:
-            table.add_row(Text(""), Text(""))
-            table.add_row(Text("Validation errors", style=f"bold {error}"), Text(""))
-            for validation_error in run.validation_errors[:3]:
-                table.add_row("", Text(validation_error, style=error))
-        self.update(Panel(table, title="Inspector", border_style=accent))
+        self.update(run_inspector_panel(run, colors=self._render_colors()))
 
 
 class TranscriptPane(Static, _ThemedRenderer):
     """Structured transcript from the completed flow."""
 
     def render_empty(self) -> None:
-        self.update(Panel(Text("Awaiting run output.", style="dim"), title="Run Transcript"))
+        self.update(empty_transcript_panel())
 
     def render_run(self, run: HarnessRun) -> None:
-        body = self._color("foreground")
-        accent = self._color("accent")
-        lines = [Text(line, style=body) for line in run.transcript]
-        self.update(Panel(Group(*lines), title="Run Transcript", border_style=accent))
+        self.update(run_transcript_panel(run, colors=self._render_colors()))
 
 
 class ExportPane(Static, _ThemedRenderer):  # pragma: no cover - exercised by Pilot tests.
@@ -427,25 +515,11 @@ class ExportPane(Static, _ThemedRenderer):  # pragma: no cover - exercised by Pi
         self._refresh()
 
     def _refresh(self) -> None:
-        panel = self._color("panel")
-        accent = self._color("accent")
-        if not self._artifacts:
-            self.update(
-                Panel(
-                    Align.center(Text("No report captured yet.", style="dim"), vertical="middle"),
-                    title="Export Preview",
-                    border_style=panel,
-                )
-            )
-            return
-        text = self._artifacts.get(self.report_format) or self._artifacts.get("markdown", "")
-        if len(text) > 5000:
-            text = f"{text[:5000]}\n... truncated preview ..."
         self.update(
-            Panel(
-                Text(text),
-                title=f"Export Preview / {self.report_format}",
-                border_style=accent,
+            export_preview_panel(
+                self._artifacts,
+                report_format=self.report_format,
+                colors=self._render_colors(),
             )
         )
 
@@ -492,40 +566,6 @@ class CapabilityMismatch(Message):
         self.error = error
 
 
-def _format_provider_event(event: ProviderEvent) -> Text:
-    phase_styles = {
-        "success": "bold green",
-        "failure": "bold red",
-        "retry": "bold yellow",
-        "cancelled": "bold yellow",
-    }
-    duration = f"{event.duration_ms:.1f} ms" if event.duration_ms is not None else "n/a"
-    timestamp = time.strftime("%H:%M:%S")
-    text = Text()
-    text.append(f"{timestamp} ", style="dim")
-    text.append(f"{event.phase:<9}", style=phase_styles.get(event.phase, "bold"))
-    text.append(f" {event.provider}.{event.operation} ")
-    text.append(f"({duration})", style="dim")
-    return text
-
-
-def _provider_event_failure(provider: str, operation: str, exc: Exception) -> ProviderEvent:
-    return ProviderEvent(
-        provider=provider,
-        operation=operation,
-        phase="failure",
-        message=str(exc),
-    )
-
-
-def _event_summary(event: ProviderEvent) -> dict[str, Any]:
-    return {
-        "phase": event.phase,
-        "latency_ms": event.duration_ms,
-        "retries": max(0, event.attempt - 1),
-    }
-
-
 # ---------------------------------------------------------------------------
 # Jump cards & messages (Home screen)
 # ---------------------------------------------------------------------------
@@ -548,23 +588,11 @@ class JumpCard(Static, _ThemedRenderer):
     reach-across" rule.
     """
 
-    DEFAULT_CSS = """
-    JumpCard {
-        height: 7;
-        padding: 1 2;
-        margin-bottom: 1;
-        border: round $panel;
-        background: $surface;
-        color: $foreground;
-    }
-    JumpCard:focus, JumpCard:focus-within {
-        border: round $accent;
-        background: $boost;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.JUMP_CARD_DEFAULT_CSS
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("enter", "activate", "Activate", show=False),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in HOME_JUMP_CARD_BINDING_SPECS
     ]
 
     can_focus = True
@@ -610,102 +638,39 @@ class HomeScreen(Screen):
     """Landing screen with a 30-second intro and three jump cards."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("n", "jump('worlds')", "Create a world", show=True),
-        Binding("p", "jump('providers')", "Run a provider", show=True),
-        Binding("e", "jump('eval')", "Run an eval", show=True),
-        Binding("u", "jump('runs')", "Review runs", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in HOME_SCREEN_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    HomeScreen {
-        background: $background;
-        color: $foreground;
-    }
-
-    #home-root {
-        padding: 1 2;
-        height: 1fr;
-    }
-
-    #home-intro {
-        height: auto;
-        padding: 1 2;
-        margin-bottom: 1;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #home-cards {
-        height: auto;
-    }
-
-    #home-recent {
-        height: auto;
-        margin-top: 1;
-        padding: 1 2;
-        border: round $panel;
-        background: $surface;
-        color: $text-muted;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.HOME_SCREEN_DEFAULT_CSS
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal(id="chrome"):
-            yield Breadcrumb(id="breadcrumb")
-            yield ProviderStatusPill(id="provider-pill")
-        with Container(id="home-root"):
+        yield from _compose_chrome()
+        with Container(id=HOME_SCREEN_SPEC.root_id):
             yield Static(
-                Text.from_markup(
-                    "[bold]TheWorldHarness[/] is the visual integration reference for "
-                    "WorldForge.\n"
-                    "It runs the same provider, planning, evaluation, and persistence APIs "
-                    "you would use in a script — wired into a keyboard-first workspace so "
-                    "you can see every boundary as it executes.\n\n"
-                    "Pick a jump target below, press [bold]Ctrl+P[/] to search every action, "
-                    "or [bold]?[/] to see this screen's bindings."
-                ),
-                id="home-intro",
+                Text.from_markup(HOME_SCREEN_SPEC.intro.text),
+                id=HOME_SCREEN_SPEC.intro.widget_id,
             )
-            with Vertical(id="home-cards"):
-                yield JumpCard(
-                    target="worlds",
-                    title="Create a world",
-                    binding="n",
-                    description="Open the Worlds screen — create, edit, save, fork.",
-                    widget_id="jump-create-world",
-                )
-                yield JumpCard(
-                    target="providers",
-                    title="Run a provider",
-                    binding="p",
-                    description="Stream live provider events with cancellable workers.",
-                    widget_id="jump-run-provider",
-                )
-                yield JumpCard(
-                    target="eval",
-                    title="Run an eval",
-                    binding="e",
-                    description="Execute a deterministic evaluation suite against a provider.",
-                    widget_id="jump-run-eval",
-                )
-                yield JumpCard(
-                    target="runs",
-                    title="Review runs",
-                    binding="u",
-                    description="Filter preserved runs and open recovery actions.",
-                    widget_id="jump-review-runs",
-                )
+            with Vertical(id=HOME_SCREEN_SPEC.cards_id):
+                for spec in HOME_JUMP_SPECS:
+                    yield JumpCard(
+                        target=spec.target,
+                        title=spec.title,
+                        binding=spec.binding,
+                        description=spec.description,
+                        widget_id=spec.widget_id,
+                    )
             yield Static(
-                "No recent items yet — jump targets will appear here once you open them.",
-                id="home-recent",
+                HOME_SCREEN_SPEC.recent.text,
+                id=HOME_SCREEN_SPEC.recent.widget_id,
             )
         yield Footer()
 
     def on_mount(self) -> None:
         self._update_chrome()
         self._refresh_recent()
-        first_card = _maybe_query(self, "#jump-create-world", JumpCard)
+        first_card = _maybe_query(self, f"#{HOME_INITIAL_FOCUS_WIDGET_ID}", JumpCard)
         if first_card is not None:
             first_card.focus()
 
@@ -714,138 +679,46 @@ class HomeScreen(Screen):
         self._refresh_recent()
 
     def _update_chrome(self) -> None:
-        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-        if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", "home")
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            pill.label = ""
+        _apply_chrome(self, screen_chrome("home"))
 
     def action_jump(self, target: str) -> None:
         self.post_message(JumpRequested(target))
 
     def on_jump_requested(self, event: JumpRequested) -> None:
         event.stop()
-        if event.target == "worlds":
-            self.app.action_switch_screen("worlds")
-            return
-        if event.target == "providers":
-            self.app.action_switch_screen("providers")
-            return
-        if event.target == "eval":
-            self.app.action_switch_screen("eval")
-            return
-        if event.target == "runs":
-            self.app.action_switch_screen("runs")
+        screen_name = home_jump_target_screen(event.target)
+        if screen_name is not None:
+            self.app.action_switch_screen(screen_name)
             return
         self.app.push_screen(
             PlaceholderScreen(target_milestone="?", next_action="Target not yet routed.")
         )
 
     def _refresh_recent(self) -> None:
-        target = _maybe_query(self, "#home-recent", Static)
+        target = _maybe_query(self, HOME_RECENT_SELECTOR, Static)
         if target is None or not hasattr(self.app, "_get_forge"):
             return
         forge = self.app._get_forge()  # type: ignore[attr-defined]
-        world_ids = forge.list_worlds()
-        world_ids = sorted(
-            world_ids,
-            key=lambda world_id: (
-                (forge.state_dir / f"{world_id}.json").stat().st_mtime
-                if (forge.state_dir / f"{world_id}.json").exists()
-                else 0
-            ),
-            reverse=True,
-        )[:5]
-        reports = recent_report_paths(forge.state_dir, limit=5)
-        runs = list_run_history(workspace_root_for_state_dir(forge.state_dir), limit=5)
-        if not world_ids and not reports and not runs:
-            target.update(
-                "No recent worlds or runs — press [b]n[/] to create a world "
-                "or [b]e[/] to run an eval."
+        target.update(
+            home_recent_text(
+                world_ids=recent_world_ids(forge.list_worlds(), state_dir=forge.state_dir),
+                report_paths=recent_report_paths(forge.state_dir, limit=5),
+                run_records=list_run_history(
+                    workspace_root_for_state_dir(forge.state_dir), limit=5
+                ),
             )
-            return
-        lines = ["Recent"]
-        if world_ids:
-            lines.append("Worlds: " + ", ".join(world_ids))
-        else:
-            lines.append("Worlds: none yet")
-        if reports:
-            lines.append("Reports: " + ", ".join(path.name for path in reports))
-        else:
-            lines.append("Reports: none yet")
-        if runs:
-            lines.append("Runs: " + ", ".join(record.run_id for record in runs))
-        else:
-            lines.append("Runs: none yet")
-        target.update("\n".join(lines))
+        )
 
 
 class RunsScreen(Screen):
     """Filter and open preserved run workspaces."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("enter", "open_selected", "Open", show=True),
-        Binding("f", "focus_provider_filter", "Filter", show=True),
-        Binding("escape", "clear_filters", "Clear", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in RUN_HISTORY_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    RunsScreen {
-        background: $background;
-        color: $foreground;
-    }
-
-    #runs-root {
-        padding: 1 2;
-        height: 1fr;
-    }
-
-    #runs-filter-row {
-        height: auto;
-        margin-bottom: 1;
-    }
-
-    #runs-filter-row Input, #runs-filter-row Select {
-        width: 1fr;
-        margin-right: 1;
-    }
-
-    #runs-body {
-        height: 1fr;
-    }
-
-    #runs-table-wrap {
-        width: 2fr;
-        margin-right: 1;
-    }
-
-    #runs-table {
-        height: 1fr;
-    }
-
-    #runs-empty {
-        height: 1fr;
-        align: center middle;
-        color: $text-muted;
-    }
-
-    #runs-empty.hidden {
-        display: none;
-    }
-
-    #runs-table.hidden {
-        display: none;
-    }
-
-    #runs-detail {
-        width: 1fr;
-        padding: 1 2;
-        border: round $panel;
-        background: $surface;
-        color: $foreground;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.RUNS_SCREEN_DEFAULT_CSS
 
     selected_run_id: reactive[str | None] = reactive(None, init=False)
 
@@ -857,44 +730,58 @@ class RunsScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal(id="chrome"):
-            yield Breadcrumb(id="breadcrumb")
-            yield ProviderStatusPill(id="provider-pill")
-        with Container(id="runs-root"):
-            with Horizontal(id="runs-filter-row"):
-                yield Input(placeholder="provider", id="runs-provider-filter")
-                yield Input(placeholder="capability", id="runs-capability-filter")
-                yield Select(
-                    [
-                        ("any status", ""),
-                        ("completed", "completed"),
-                        ("failed", "failed"),
-                        ("skipped", "skipped"),
-                        ("cancelled", "cancelled"),
-                    ],
-                    value="",
-                    allow_blank=False,
-                    id="runs-status-filter",
+        yield from _compose_chrome()
+        with Container(id=RUN_HISTORY_SCREEN_SPEC.root_id):
+            with Horizontal(id=RUN_HISTORY_SCREEN_SPEC.filter_row_id):
+                yield Input(
+                    placeholder=RUN_HISTORY_SCREEN_SPEC.provider_filter.placeholder,
+                    id=RUN_HISTORY_SCREEN_SPEC.provider_filter.widget_id,
                 )
-                yield Input(placeholder="from YYYY-MM-DD", id="runs-created-from-filter")
-                yield Input(placeholder="artifact type", id="runs-artifact-filter")
-            with Horizontal(id="runs-body"):
-                with Container(id="runs-table-wrap"):
-                    yield DataTable(zebra_stripes=True, cursor_type="row", id="runs-table")
-                    yield Static("No preserved runs match the active filters.", id="runs-empty")
-                yield Static("Select a run to see recovery commands.", id="runs-detail")
+                yield Input(
+                    placeholder=RUN_HISTORY_SCREEN_SPEC.capability_filter.placeholder,
+                    id=RUN_HISTORY_SCREEN_SPEC.capability_filter.widget_id,
+                )
+                yield Select(
+                    list(RUN_HISTORY_SCREEN_SPEC.status_filter.options),
+                    value=RUN_HISTORY_SCREEN_SPEC.status_filter.default,
+                    allow_blank=False,
+                    id=RUN_HISTORY_SCREEN_SPEC.status_filter.widget_id,
+                )
+                yield Input(
+                    placeholder=RUN_HISTORY_SCREEN_SPEC.created_from_filter.placeholder,
+                    id=RUN_HISTORY_SCREEN_SPEC.created_from_filter.widget_id,
+                )
+                yield Input(
+                    placeholder=RUN_HISTORY_SCREEN_SPEC.artifact_filter.placeholder,
+                    id=RUN_HISTORY_SCREEN_SPEC.artifact_filter.widget_id,
+                )
+            with Horizontal(id=RUN_HISTORY_SCREEN_SPEC.body_id):
+                with Container(id=RUN_HISTORY_SCREEN_SPEC.table_wrap_id):
+                    yield DataTable(
+                        zebra_stripes=True,
+                        cursor_type="row",
+                        id=RUN_HISTORY_SCREEN_SPEC.table_id,
+                    )
+                    yield Static(
+                        RUN_HISTORY_SCREEN_SPEC.empty.empty_message,
+                        id=RUN_HISTORY_SCREEN_SPEC.empty.widget_id,
+                    )
+                yield Static(
+                    RUN_HISTORY_SCREEN_SPEC.detail.empty_message,
+                    id=RUN_HISTORY_SCREEN_SPEC.detail.widget_id,
+                )
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one("#runs-table", DataTable)
-        table.add_columns("run", "status", "provider", "capability", "artifacts")
+        table = self.query_one(RUN_HISTORY_TABLE_SELECTOR, DataTable)
+        table.add_columns(*RUN_HISTORY_SCREEN_SPEC.table_columns)
         table.focus()
         self._update_chrome()
         self.refresh_runs()
 
     def on_screen_resume(self) -> None:
         self._update_chrome()
-        table = _maybe_query(self, "#runs-table", DataTable)
+        table = _maybe_query(self, RUN_HISTORY_TABLE_SELECTOR, DataTable)
         if table is not None:
             table.focus()
 
@@ -903,13 +790,11 @@ class RunsScreen(Screen):
         self._update_chrome()
 
     def _update_chrome(self) -> None:
-        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-        if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", "runs")
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            record = self._records.get(self.selected_run_id or "")
-            pill.label = record.provider if record else ""
+        record = selected_run_record(self._records, self.selected_run_id)
+        _apply_chrome(
+            self,
+            screen_chrome("runs", provider_label=selected_run_provider_label(record)),
+        )
 
     def refresh_runs(self) -> None:
         filters = self._filters()
@@ -922,121 +807,108 @@ class RunsScreen(Screen):
         self._rebuild_table_rows()
 
     def _filters(self) -> RunHistoryFilter:
-        status = _select_value(_maybe_query(self, "#runs-status-filter", Select))
-        try:
-            return RunHistoryFilter.from_strings(
-                provider=_input_value(_maybe_query(self, "#runs-provider-filter", Input)),
-                capability=_input_value(_maybe_query(self, "#runs-capability-filter", Input)),
+        status = _select_value(
+            _maybe_query(self, RUN_HISTORY_SCREEN_SPEC.status_filter.selector, Select)
+        )
+        result = run_history_filter_from_form(
+            RunHistoryFilterForm(
+                provider=_input_value(
+                    _maybe_query(self, RUN_HISTORY_SCREEN_SPEC.provider_filter.selector, Input)
+                ),
+                capability=_input_value(
+                    _maybe_query(self, RUN_HISTORY_SCREEN_SPEC.capability_filter.selector, Input)
+                ),
                 status=status,
-                created_from=_input_value(_maybe_query(self, "#runs-created-from-filter", Input)),
-                artifact_type=_input_value(_maybe_query(self, "#runs-artifact-filter", Input)),
+                created_from=_input_value(
+                    _maybe_query(self, RUN_HISTORY_SCREEN_SPEC.created_from_filter.selector, Input)
+                ),
+                artifact_type=_input_value(
+                    _maybe_query(self, RUN_HISTORY_SCREEN_SPEC.artifact_filter.selector, Input)
+                ),
             )
-        except WorldForgeError as exc:
-            self.notify(str(exc), severity="error", title="Run filter")
-            return RunHistoryFilter()
+        )
+        if result.error is not None:
+            self.notify(result.error, severity="error", title="Run filter")
+        return result.filters
 
     def _rebuild_table_rows(self) -> None:
-        table = _maybe_query(self, "#runs-table", DataTable)
-        empty = _maybe_query(self, "#runs-empty", Static)
+        table = _maybe_query(self, RUN_HISTORY_TABLE_SELECTOR, DataTable)
+        empty = _maybe_query(self, RUN_HISTORY_EMPTY_SELECTOR, Static)
         if table is None:
             return
         table.clear()
         for run_id in self._ordered_ids:
-            record = self._records[run_id]
-            table.add_row(
-                record.run_id,
-                record.status or "-",
-                record.provider or "-",
-                record.capability or "-",
-                ", ".join(record.safe_artifact_types) or "-",
-                key=record.run_id,
-            )
-        if not self._ordered_ids:
-            if empty is not None:
-                empty.remove_class("hidden")
-            table.add_class("hidden")
-            self.selected_run_id = None
-        else:
+            table.add_row(*_run_history_table_row(self._records[run_id]), key=run_id)
+        self._sync_empty_state(table, empty)
+
+    def _sync_empty_state(self, table: DataTable, empty: Static | None) -> None:
+        if self._ordered_ids:
             if empty is not None:
                 empty.add_class("hidden")
             table.remove_class("hidden")
-            self.selected_run_id = self._ordered_ids[0]
+            self.selected_run_id = first_visible_run_id(self._ordered_ids)
+            return
+        if empty is not None:
+            empty.remove_class("hidden")
+        table.add_class("hidden")
+        self.selected_run_id = None
 
     def _refresh_detail(self) -> None:
-        detail = _maybe_query(self, "#runs-detail", Static)
+        detail = _maybe_query(self, RUN_HISTORY_DETAIL_SELECTOR, Static)
         if detail is None:
             return
-        record = self._records.get(self.selected_run_id or "")
-        if record is None:
-            detail.update("Select a run to see recovery commands.")
-            return
-        lines = [
-            f"[bold]{record.run_id}[/]",
-            f"status: {record.status or '-'}",
-            f"kind: {record.kind or '-'}",
-            f"provider: {record.provider or '-'}",
-            f"capability: {record.capability or '-'}",
-            f"rerun: [dim]{record.rerun_command}[/]",
-            f"issue bundle: [dim]{record.issue_bundle_command}[/]",
-        ]
-        if record.comparison_command:
-            lines.append(f"compare: [dim]{record.comparison_command}[/]")
-        if record.recovery_command:
-            lines.append(f"recovery: [bold]{record.recovery_command}[/]")
-        if record.failure_summary:
-            lines.append(f"failure: {record.failure_summary}")
-        detail.update("\n".join(lines))
+        record = selected_run_record(self._records, self.selected_run_id)
+        detail.update(_run_history_detail_text(record))
 
-    @on(DataTable.RowHighlighted, "#runs-table")
+    @on(DataTable.RowHighlighted, RUN_HISTORY_TABLE_SELECTOR)
     def _on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         key = event.row_key.value if event.row_key else None
         if isinstance(key, str):
             self.selected_run_id = key
 
-    @on(DataTable.RowSelected, "#runs-table")
+    @on(DataTable.RowSelected, RUN_HISTORY_TABLE_SELECTOR)
     def _on_row_selected(self, event: DataTable.RowSelected) -> None:
         key = event.row_key.value if event.row_key else None
         if isinstance(key, str):
             self.selected_run_id = key
             self.action_open_selected()
 
-    @on(Input.Changed, "#runs-provider-filter")
-    @on(Input.Changed, "#runs-capability-filter")
-    @on(Input.Changed, "#runs-created-from-filter")
-    @on(Input.Changed, "#runs-artifact-filter")
+    @on(Input.Changed, f"#{RUN_PROVIDER_FILTER_ID}")
+    @on(Input.Changed, f"#{RUN_CAPABILITY_FILTER_ID}")
+    @on(Input.Changed, f"#{RUN_CREATED_FROM_FILTER_ID}")
+    @on(Input.Changed, f"#{RUN_ARTIFACT_FILTER_ID}")
     def _on_filter_changed(self, event: Input.Changed) -> None:
         del event
         self.refresh_runs()
 
-    @on(Select.Changed, "#runs-status-filter")
+    @on(Select.Changed, f"#{RUN_STATUS_FILTER_ID}")
     def _on_status_changed(self) -> None:
         self.refresh_runs()
 
     def action_focus_provider_filter(self) -> None:
-        provider_filter = _maybe_query(self, "#runs-provider-filter", Input)
+        provider_filter = _maybe_query(
+            self,
+            RUN_HISTORY_SCREEN_SPEC.provider_filter.selector,
+            Input,
+        )
         if provider_filter is not None:
             provider_filter.focus()
 
     def action_clear_filters(self) -> None:
-        for selector in (
-            "#runs-provider-filter",
-            "#runs-capability-filter",
-            "#runs-created-from-filter",
-            "#runs-artifact-filter",
-        ):
+        for selector in RUN_FILTER_INPUT_SELECTORS:
             field = _maybe_query(self, selector, Input)
             if field is not None:
                 field.value = ""
-        status = _maybe_query(self, "#runs-status-filter", Select)
+        status = _maybe_query(self, RUN_HISTORY_SCREEN_SPEC.status_filter.selector, Select)
         if status is not None:
-            status.value = ""
+            status.value = RUN_HISTORY_SCREEN_SPEC.status_filter.default
         self.refresh_runs()
-        table = _maybe_query(self, "#runs-table", DataTable)
+        table = _maybe_query(self, RUN_HISTORY_TABLE_SELECTOR, DataTable)
         if table is not None:
             table.focus()
 
     def action_open_selected(self) -> None:
-        record = self._records.get(self.selected_run_id or "")
+        record = selected_run_record(self._records, self.selected_run_id)
         if record is None:
             return
         if hasattr(self.app, "_open_run_workspace"):
@@ -1047,70 +919,19 @@ class RunInspectorScreen(Screen):
     """Hosts the existing flow visualisation (hero, rail, timeline, inspector, transcript)."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("r", "run_selected", "Run", show=True),
-        Binding("1", "select_flow('leworldmodel')", "LeWorldModel", show=True),
-        Binding("2", "select_flow('lerobot')", "LeRobot", show=True),
-        Binding("3", "select_flow('cosmos-policy')", "Cosmos", show=True),
-        Binding("4", "select_flow('gr00t-replay')", "GR00T", show=True),
-        Binding("5", "select_flow('robotics-compare')", "Compare", show=True),
-        Binding("6", "select_flow('diagnostics')", "Diagnostics", show=True),
-        Binding("7", "select_flow('workbench')", "Workbench", show=True),
+        *(
+            Binding(spec.key, spec.action, spec.description, show=spec.show)
+            for spec in RUN_INSPECTOR_BINDING_SPECS
+        ),
+        *(
+            Binding(spec.key, spec.action, spec.description, show=spec.show)
+            for spec in run_inspector_flow_bindings(available_flows())
+        ),
     ]
 
-    DEFAULT_CSS = """
-    RunInspectorScreen {
-        background: $background;
-        color: $foreground;
-    }
+    DEFAULT_CSS = _tui_styles.RUN_INSPECTOR_SCREEN_DEFAULT_CSS
 
-    #root {
-        height: 1fr;
-        padding: 1 2;
-    }
-
-    #hero {
-        height: 10;
-        margin-bottom: 1;
-    }
-
-    #body {
-        height: 1fr;
-    }
-
-    #rail {
-        width: 30;
-        margin-right: 1;
-    }
-
-    #timeline {
-        width: 1fr;
-        margin-right: 1;
-    }
-
-    #inspector-column {
-        width: 42;
-    }
-
-    FlowCard {
-        height: 6;
-        margin-bottom: 1;
-    }
-
-    Select {
-        margin-bottom: 1;
-    }
-
-    Button {
-        margin-bottom: 1;
-    }
-
-    #transcript {
-        height: 14;
-        margin-top: 1;
-    }
-    """
-
-    selected_flow_id: reactive[str] = reactive("leworldmodel", init=False)
+    selected_flow_id: reactive[str] = reactive(RUN_INSPECTOR_DEFAULT_FLOW_ID, init=False)
     current_provider: reactive[str] = reactive("", init=False)
     running: reactive[bool] = reactive(False, init=False)
     last_run: reactive[HarnessRun | None] = reactive(None, init=False)
@@ -1118,19 +939,19 @@ class RunInspectorScreen(Screen):
     def __init__(
         self,
         *,
-        initial_flow_id: str = "leworldmodel",
+        initial_flow_id: str = RUN_INSPECTOR_DEFAULT_FLOW_ID,
         state_dir: Path | None = None,
-        step_delay: float = 0.18,
+        step_delay: float = RUN_INSPECTOR_DEFAULT_STEP_DELAY_SECONDS,
         run: HarnessRun | None = None,
     ) -> None:
         super().__init__()
         self._fixed_run = run
         self.flows = {flow.id: flow for flow in available_flows()}
-        resolved_id = initial_flow_id if initial_flow_id in self.flows else "leworldmodel"
+        resolved_id = resolve_run_inspector_flow_id(initial_flow_id, self.flows)
         self.set_reactive(RunInspectorScreen.selected_flow_id, resolved_id)
         self.set_reactive(
             RunInspectorScreen.current_provider,
-            self._provider_label(self.flows[resolved_id]),
+            flow_provider_label(self.flows[resolved_id]),
         )
         self.state_dir = state_dir
         self.step_delay = step_delay
@@ -1139,37 +960,42 @@ class RunInspectorScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal(id="chrome"):
-            yield Breadcrumb(id="breadcrumb")
-            yield ProviderStatusPill(id="provider-pill")
+        yield from _compose_chrome()
         if self._fixed_run is not None and self._fixed_run.kind != "flow":
-            with Container(id="root"), Horizontal(id="body"):
-                with Vertical(id="timeline"):
-                    yield InspectorPane(id="inspector")
-                    yield TranscriptPane(id="transcript")
+            with (
+                Container(id=RUN_INSPECTOR_SCREEN_SPEC.root_id),
+                Horizontal(id=RUN_INSPECTOR_SCREEN_SPEC.body_id),
+            ):
+                with Vertical(id=RUN_INSPECTOR_SCREEN_SPEC.report_column_id):
+                    yield InspectorPane(id=RUN_INSPECTOR_SCREEN_SPEC.inspector_id)
+                    yield TranscriptPane(id=RUN_INSPECTOR_SCREEN_SPEC.transcript_id)
                 yield ExportPane(
                     artifacts=self._fixed_run.artifacts or {},
-                    widget_id="export-preview",
+                    widget_id=RUN_INSPECTOR_SCREEN_SPEC.export_preview_id,
                 )
             yield Footer()
             return
-        with Container(id="root"):
-            yield HeroPane(id="hero")
-            with Horizontal(id="body"):
-                with Vertical(id="rail"):
+        with Container(id=RUN_INSPECTOR_SCREEN_SPEC.root_id):
+            yield HeroPane(id=RUN_INSPECTOR_SCREEN_SPEC.hero_id)
+            with Horizontal(id=RUN_INSPECTOR_SCREEN_SPEC.body_id):
+                with Vertical(id=RUN_INSPECTOR_SCREEN_SPEC.rail_id):
                     yield Select(
-                        [(flow.title, flow.id) for flow in self.flows.values()],
+                        list(run_inspector_flow_options(tuple(self.flows.values()))),
                         value=self.selected_flow_id,
                         allow_blank=False,
-                        id="flow-select",
+                        id=RUN_INSPECTOR_SCREEN_SPEC.flow_select_id,
                     )
-                    yield Button("Run selected flow", id="run-button", variant="warning")
+                    yield Button(
+                        RUN_INSPECTOR_SCREEN_SPEC.run.label,
+                        id=RUN_INSPECTOR_SCREEN_SPEC.run.widget_id,
+                        variant=RUN_INSPECTOR_SCREEN_SPEC.run.variant,
+                    )
                     for flow in self.flows.values():
-                        yield FlowCard(id=f"flow-card-{flow.id}")
-                yield TimelinePane(id="timeline")
-                with Vertical(id="inspector-column"):
-                    yield InspectorPane(id="inspector")
-                    yield TranscriptPane(id="transcript")
+                        yield FlowCard(id=run_inspector_flow_card_id(flow))
+                yield TimelinePane(id=RUN_INSPECTOR_SCREEN_SPEC.flow_timeline_id)
+                with Vertical(id=RUN_INSPECTOR_SCREEN_SPEC.inspector_column_id):
+                    yield InspectorPane(id=RUN_INSPECTOR_SCREEN_SPEC.inspector_id)
+                    yield TranscriptPane(id=RUN_INSPECTOR_SCREEN_SPEC.transcript_id)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -1180,19 +1006,19 @@ class RunInspectorScreen(Screen):
         self._update_chrome()
         self._refresh_static()
 
-    @on(Select.Changed, "#flow-select")
+    @on(Select.Changed, f"#{RUN_INSPECTOR_FLOW_SELECT_ID}")
     def _on_flow_changed(self, event: Select.Changed) -> None:
         if isinstance(event.value, str):
             self.selected_flow_id = event.value
 
-    @on(Button.Pressed, "#run-button")
+    @on(Button.Pressed, f"#{RUN_INSPECTOR_RUN_BUTTON_ID}")
     async def _on_run_pressed(self) -> None:
         await self.action_run_selected()
 
     def action_select_flow(self, flow_id: str) -> None:
         if flow_id in self.flows:
             self.selected_flow_id = flow_id
-            select = _maybe_query(self, "#flow-select", Select)
+            select = _maybe_query(self, f"#{RUN_INSPECTOR_FLOW_SELECT_ID}", Select)
             if select is not None and select.value != flow_id:
                 select.value = flow_id
 
@@ -1205,14 +1031,13 @@ class RunInspectorScreen(Screen):
     def watch_selected_flow_id(self, _old: str, new: str) -> None:
         if new not in self.flows:
             return
-        self.current_provider = self._provider_label(self.flows[new])
+        self.current_provider = flow_provider_label(self.flows[new])
         self._update_chrome()
         self._refresh_static()
 
     def watch_current_provider(self, _old: str, new: str) -> None:
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            pill.label = new
+        del new
+        self._update_chrome()
 
     async def action_run_selected(self) -> None:
         if self.running:
@@ -1222,48 +1047,33 @@ class RunInspectorScreen(Screen):
     async def _run_flow(self, flow_id: str) -> None:
         self.running = True
         flow = self.flows[flow_id]
-        self.query_one("#run-button", Button).disabled = True
+        self.query_one(f"#{RUN_INSPECTOR_RUN_BUTTON_ID}", Button).disabled = True
         self._refresh_static()
         run = run_flow(flow_id, state_dir=self.state_dir)
         self.last_run = run
-        timeline = self.query_one("#timeline", TimelinePane)
+        timeline = self.query_one(f"#{RUN_INSPECTOR_TIMELINE_ID}", TimelinePane)
         for index, _step in enumerate(run.steps):
             timeline.render_steps(flow, run.steps, active_index=index, complete_count=index)
             await asyncio.sleep(self.step_delay)
             timeline.render_steps(flow, run.steps, active_index=index, complete_count=index + 1)
-        self.query_one("#inspector", InspectorPane).render_run(run)
-        self.query_one("#transcript", TranscriptPane).render_run(run)
+        self.query_one(f"#{RUN_INSPECTOR_INSPECTOR_ID}", InspectorPane).render_run(run)
+        self.query_one(f"#{RUN_INSPECTOR_TRANSCRIPT_ID}", TranscriptPane).render_run(run)
         self.running = False
-        self.query_one("#run-button", Button).disabled = False
+        self.query_one(f"#{RUN_INSPECTOR_RUN_BUTTON_ID}", Button).disabled = False
         self._refresh_static()
 
     def _update_chrome(self) -> None:
         if self._fixed_run is not None and self._fixed_run.kind != "flow":
-            breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-            if breadcrumb is not None:
-                breadcrumb.path = ("worldforge", "run-inspector", self._fixed_run.flow.short_title)
-            pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-            if pill is not None:
-                pill.label = self._fixed_run.flow.capability
+            _apply_chrome(self, run_inspector_fixed_chrome(self._fixed_run))
             return
         flow = self.flows[self.selected_flow_id]
-        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-        if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", "run-inspector", flow.short_title)
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            pill.label = self.current_provider
-
-    def _provider_label(self, flow: HarnessFlow) -> str:
-        capability = flow.capability or FLOW_CAPABILITY_FALLBACKS.get(flow.id, "")
-        suffix = f" · {capability}" if capability else ""
-        return f"{flow.provider}{suffix}"
+        _apply_chrome(self, run_inspector_flow_chrome(flow, self.current_provider))
 
     def _refresh_static(self) -> None:
         if self._fixed_run is not None and self._fixed_run.kind != "flow":
-            inspector = _maybe_query(self, "#inspector", InspectorPane)
-            transcript = _maybe_query(self, "#transcript", TranscriptPane)
-            export = _maybe_query(self, "#export-preview", ExportPane)
+            inspector = _maybe_query(self, f"#{RUN_INSPECTOR_INSPECTOR_ID}", InspectorPane)
+            transcript = _maybe_query(self, f"#{RUN_INSPECTOR_TRANSCRIPT_ID}", TranscriptPane)
+            export = _maybe_query(self, f"#{RUN_INSPECTOR_EXPORT_PREVIEW_ID}", ExportPane)
             if inspector is not None:
                 inspector.render_run(self._fixed_run)
             if transcript is not None:
@@ -1272,104 +1082,119 @@ class RunInspectorScreen(Screen):
                 export.set_artifacts(self._fixed_run.artifacts or {})
             return
         selected = self.flows[self.selected_flow_id]
-        hero = _maybe_query(self, "#hero", HeroPane)
+        hero = _maybe_query(self, f"#{RUN_INSPECTOR_SCREEN_SPEC.hero_id}", HeroPane)
         if hero is None:
             return
         hero.update(hero.compose_panel(selected, self.running))
         for flow in self.flows.values():
-            self.query_one(f"#flow-card-{flow.id}", FlowCard).render_flow(
+            self.query_one(f"#{run_inspector_flow_card_id(flow)}", FlowCard).render_flow(
                 flow,
                 selected=flow.id == self.selected_flow_id,
             )
         if self.last_run is None:
-            self.query_one("#timeline", TimelinePane).render_steps(
+            self.query_one(f"#{RUN_INSPECTOR_TIMELINE_ID}", TimelinePane).render_steps(
                 selected,
-                (
-                    HarnessStep(
-                        "Ready",
-                        "Select a flow and press Run to visualize the integration path.",
-                        "Waiting for execution.",
-                    ),
-                ),
+                RUN_INSPECTOR_READY_STEPS,
                 active_index=0,
                 complete_count=0,
             )
-            self.query_one("#inspector", InspectorPane).render_empty()
-            self.query_one("#transcript", TranscriptPane).render_empty()
+            self.query_one(f"#{RUN_INSPECTOR_INSPECTOR_ID}", InspectorPane).render_empty()
+            self.query_one(f"#{RUN_INSPECTOR_TRANSCRIPT_ID}", TranscriptPane).render_empty()
+
+
+def _complete_report_run(
+    screen: Screen,
+    *,
+    forge: WorldForge,
+    completion: ReportCompletionSpec,
+    run: HarnessRun,
+    artifacts: dict[str, str],
+    path: Path,
+) -> None:
+    export = _maybe_query(screen, completion.export_selector, ExportPane)
+    if export is not None:
+        export.set_artifacts(artifacts)
+    status = _maybe_query(screen, completion.status_selector, Static)
+    if status is not None:
+        status.update(completion.saved_message(path))
+    screen.post_message(ReportExported(path=path, kind=completion.kind))
+    screen.app.push_screen(RunInspectorScreen(state_dir=forge.state_dir, run=run))
+
+
+def _cancel_report_or_back(
+    screen: Screen,
+    *,
+    running: bool,
+    run_control: ReportRunControlSpec,
+) -> bool:
+    if not running:
+        screen.app.action_switch_screen("home")
+        return False
+    screen.workers.cancel_group(screen, run_control.worker_group)
+    screen.app.notify(
+        run_control.cancel_message,
+        severity="warning",
+        title=run_control.notify_title,
+    )
+    return True
+
+
+def _handle_capability_mismatch(
+    screen: Screen,
+    event: CapabilityMismatch,
+    *,
+    run_control: ReportRunControlSpec,
+    log_selector: str,
+) -> None:
+    event.stop()
+    message = str(event.error)
+    screen.app.notify(message, severity="error", title=run_control.mismatch_title)
+    log = _maybe_query(screen, log_selector, RichLog)
+    if log is not None:
+        log.write(Text(message, style=run_control.mismatch_log_style))
 
 
 class HelpScreen(ModalScreen[None]):
     """Modal overlay that lists the bindings of the screen below it."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "dismiss", "Close", show=True),
-        Binding("q", "dismiss", "Close", show=False),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in HELP_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    HelpScreen {
-        align: center middle;
-    }
-
-    HelpScreen > #help-card {
-        width: 70%;
-        max-width: 90;
-        height: auto;
-        max-height: 80%;
-        padding: 1 2;
-        border: round $accent;
-        background: $surface;
-    }
-
-    HelpScreen #help-title {
-        height: auto;
-        padding: 0 0 1 0;
-        text-style: bold;
-        color: $accent;
-    }
-
-    HelpScreen DataTable {
-        height: auto;
-        max-height: 30;
-        background: $surface;
-    }
-
-    HelpScreen #help-footnote {
-        height: auto;
-        padding: 1 0 0 0;
-        color: $text-muted;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.HELP_SCREEN_DEFAULT_CSS
 
     def __init__(self, source_screen: Screen | None = None) -> None:
         super().__init__()
         self._source_screen = source_screen
 
     def compose(self) -> ComposeResult:
-        with Container(id="help-card"):
-            yield Static("Bindings on this screen", id="help-title")
-            yield DataTable(id="help-table", cursor_type="row", zebra_stripes=True)
+        with Container(id=HELP_MODAL_SPEC.card_id):
             yield Static(
-                "Press [bold]Esc[/] or [bold]q[/] to close. "
-                "[bold]Ctrl+P[/] opens the command palette.",
-                id="help-footnote",
+                HELP_MODAL_SPEC.title.text,
+                id=HELP_MODAL_SPEC.title.widget_id,
+            )
+            yield DataTable(
+                id=HELP_MODAL_SPEC.table.widget_id,
+                cursor_type="row",
+                zebra_stripes=True,
+            )
+            yield Static(
+                HELP_MODAL_SPEC.footnote.text,
+                id=HELP_MODAL_SPEC.footnote.widget_id,
             )
 
     def on_mount(self) -> None:
         # Update breadcrumb (sits on the screen below this modal) and
         # populate the table from that same source screen.
-        breadcrumb = _maybe_query(self.app, "#breadcrumb", Breadcrumb)
+        breadcrumb = _maybe_query(self.app, BREADCRUMB_SELECTOR, Breadcrumb)
         if breadcrumb is not None:
             breadcrumb.path = ("worldforge", "help")
-        table = self.query_one("#help-table", DataTable)
-        table.add_columns("Key", "Description", "Action")
+        table = self.query_one(HELP_TABLE_SELECTOR, DataTable)
+        table.add_columns(*HELP_MODAL_SPEC.table.columns)
         source = self._source_screen or self._previous_screen()
-        for binding in self._iter_bindings(source):
-            table.add_row(
-                binding.key,
-                binding.description or "",
-                binding.action,
-            )
+        for row in help_binding_rows(source):
+            table.add_row(row.key, row.description, row.action)
 
     def _previous_screen(self) -> Screen | None:
         """Return the screen below this modal on the stack, if any."""
@@ -1378,74 +1203,16 @@ class HelpScreen(ModalScreen[None]):
             stack.remove(self)
         return stack[-1] if stack else None
 
-    @staticmethod
-    def _iter_bindings(screen: Screen | None) -> Iterable[Binding]:
-        if screen is None:
-            return ()
-        # Surface every binding declared on the source screen — discovery is
-        # the whole point of this overlay, so ``show=False`` entries are
-        # included alongside footer-visible ones. We also fold in App-level
-        # bindings so the user can see "Help / Quit / Ctrl+P" alongside the
-        # screen-local ones.
-        seen: set[tuple[str, str]] = set()
-        bindings: list[Binding] = []
-        sources = (screen, screen.app)
-        for source in sources:
-            try:
-                items = source._bindings.key_to_bindings.items()  # type: ignore[attr-defined]
-            except AttributeError:  # pragma: no cover - defensive
-                continue
-            for _key, binding_list in items:
-                for binding in binding_list:
-                    fingerprint = (binding.key, binding.action)
-                    if fingerprint in seen:
-                        continue
-                    seen.add(fingerprint)
-                    bindings.append(binding)
-        return bindings
-
 
 class PlaceholderScreen(ModalScreen[None]):
     """Modal explaining a jump target that lands in a later milestone."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "dismiss", "Close", show=True),
-        Binding("q", "dismiss", "Close", show=False),
-        Binding("enter", "dismiss", "Close", show=False),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in PLACEHOLDER_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    PlaceholderScreen {
-        align: center middle;
-    }
-
-    PlaceholderScreen > #placeholder-card {
-        width: 60%;
-        max-width: 80;
-        height: auto;
-        padding: 1 2;
-        border: round $warning;
-        background: $surface;
-    }
-
-    PlaceholderScreen #placeholder-title {
-        height: auto;
-        padding: 0 0 1 0;
-        text-style: bold;
-        color: $warning;
-    }
-
-    PlaceholderScreen #placeholder-body {
-        height: auto;
-        color: $foreground;
-    }
-
-    PlaceholderScreen #placeholder-footnote {
-        height: auto;
-        padding: 1 0 0 0;
-        color: $text-muted;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.PLACEHOLDER_SCREEN_DEFAULT_CSS
 
     def __init__(self, *, target_milestone: str, next_action: str) -> None:
         super().__init__()
@@ -1453,19 +1220,19 @@ class PlaceholderScreen(ModalScreen[None]):
         self._next_action = next_action
 
     def compose(self) -> ComposeResult:
-        with Container(id="placeholder-card"):
+        with Container(id=PLACEHOLDER_MODAL_SPEC.card_id):
             yield Static(
-                f"Coming in milestone {self._target_milestone}",
-                id="placeholder-title",
+                placeholder_title(self._target_milestone),
+                id=PLACEHOLDER_MODAL_SPEC.title_id,
             )
-            yield Static(self._next_action, id="placeholder-body")
+            yield Static(self._next_action, id=PLACEHOLDER_MODAL_SPEC.body_id)
             yield Static(
-                "Press [bold]Esc[/], [bold]q[/], or [bold]Enter[/] to close.",
-                id="placeholder-footnote",
+                PLACEHOLDER_MODAL_SPEC.footnote.text,
+                id=PLACEHOLDER_MODAL_SPEC.footnote.widget_id,
             )
 
     def on_mount(self) -> None:
-        breadcrumb = _maybe_query(self.app, "#breadcrumb", Breadcrumb)
+        breadcrumb = _maybe_query(self.app, BREADCRUMB_SELECTOR, Breadcrumb)
         if breadcrumb is not None:
             breadcrumb.path = ("worldforge", "placeholder")
 
@@ -1509,53 +1276,19 @@ class ConfirmDeleteScreen(ModalScreen[bool]):
     """Yes/no overlay for destructive actions. Returns ``True`` only on confirm."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "deny", "Cancel", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in CONFIRM_DELETE_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    ConfirmDeleteScreen {
-        align: center middle;
-    }
-
-    ConfirmDeleteScreen > #confirm-card {
-        width: 60%;
-        max-width: 72;
-        height: auto;
-        padding: 1 2;
-        border: round $error;
-        background: $surface;
-    }
-
-    ConfirmDeleteScreen #confirm-title {
-        height: auto;
-        padding: 0 0 1 0;
-        text-style: bold;
-        color: $error;
-    }
-
-    ConfirmDeleteScreen #confirm-prompt {
-        height: auto;
-        color: $foreground;
-    }
-
-    ConfirmDeleteScreen #confirm-actions {
-        height: auto;
-        padding-top: 1;
-        align: right middle;
-    }
-
-    ConfirmDeleteScreen Button {
-        margin-left: 1;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.CONFIRM_DELETE_SCREEN_DEFAULT_CSS
 
     def __init__(
         self,
         *,
-        prompt: str = "This action cannot be undone.",
-        title: str = "Delete?",
-        confirm_label: str = "Delete",
-        cancel_label: str = "Cancel",
+        prompt: str = CONFIRM_DIALOG_SPEC.prompt,
+        title: str = CONFIRM_DIALOG_SPEC.title,
+        confirm_label: str = CONFIRM_DIALOG_SPEC.confirm.label,
+        cancel_label: str = CONFIRM_DIALOG_SPEC.cancel.label,
     ) -> None:
         super().__init__()
         self._prompt = prompt
@@ -1564,23 +1297,31 @@ class ConfirmDeleteScreen(ModalScreen[bool]):
         self._cancel_label = cancel_label
 
     def compose(self) -> ComposeResult:
-        with Container(id="confirm-card"):
-            yield Static(self._title, id="confirm-title")
-            yield Static(self._prompt, id="confirm-prompt")
-            with Horizontal(id="confirm-actions"):
-                yield Button(self._cancel_label, id="confirm-cancel", variant="default")
-                yield Button(self._confirm_label, id="confirm-accept", variant="error")
+        with Container(id=CONFIRM_DIALOG_SPEC.card_id):
+            yield Static(self._title, id=CONFIRM_DIALOG_SPEC.title_id)
+            yield Static(self._prompt, id=CONFIRM_DIALOG_SPEC.prompt_id)
+            with Horizontal(id=CONFIRM_DIALOG_SPEC.actions_id):
+                yield Button(
+                    self._cancel_label,
+                    id=CONFIRM_DIALOG_SPEC.cancel.widget_id,
+                    variant=CONFIRM_DIALOG_SPEC.cancel.variant,
+                )
+                yield Button(
+                    self._confirm_label,
+                    id=CONFIRM_DIALOG_SPEC.confirm.widget_id,
+                    variant=CONFIRM_DIALOG_SPEC.confirm.variant,
+                )
 
     def on_mount(self) -> None:
-        accept = _maybe_query(self, "#confirm-accept", Button)
+        accept = _maybe_query(self, f"#{CONFIRM_DIALOG_SPEC.confirm.widget_id}", Button)
         if accept is not None:
             accept.focus()
 
-    @on(Button.Pressed, "#confirm-accept")
+    @on(Button.Pressed, f"#{CONFIRM_DIALOG_SPEC.confirm.widget_id}")
     def _on_accept(self) -> None:
         self.dismiss(True)
 
-    @on(Button.Pressed, "#confirm-cancel")
+    @on(Button.Pressed, f"#{CONFIRM_DIALOG_SPEC.cancel.widget_id}")
     def _on_cancel(self) -> None:
         self.dismiss(False)
 
@@ -1592,116 +1333,77 @@ class NewWorldScreen(ModalScreen[WorldSpec | None]):
     """Collect name + provider + description for a brand-new world."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "cancel", "Cancel", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in NEW_WORLD_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    NewWorldScreen {
-        align: center middle;
-    }
-
-    NewWorldScreen > #new-world-card {
-        width: 70%;
-        max-width: 84;
-        height: auto;
-        padding: 1 2;
-        border: round $accent;
-        background: $surface;
-    }
-
-    NewWorldScreen #new-world-title {
-        height: auto;
-        padding: 0 0 1 0;
-        text-style: bold;
-        color: $accent;
-    }
-
-    NewWorldScreen #new-world-error {
-        height: auto;
-        color: $error;
-        padding: 1 0 0 0;
-    }
-
-    NewWorldScreen #new-world-error.hidden {
-        display: none;
-    }
-
-    NewWorldScreen .field-label {
-        color: $text-muted;
-        height: 1;
-    }
-
-    NewWorldScreen Input, NewWorldScreen Select {
-        margin-bottom: 1;
-    }
-
-    NewWorldScreen #new-world-actions {
-        height: auto;
-        padding-top: 1;
-        align: right middle;
-    }
-
-    NewWorldScreen Button {
-        margin-left: 1;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.NEW_WORLD_SCREEN_DEFAULT_CSS
 
     def __init__(self, *, providers: tuple[str, ...]) -> None:
         super().__init__()
-        self._providers = providers or ("mock",)
+        self._providers = providers or NEW_WORLD_MODAL_SPEC.default_providers
 
     def compose(self) -> ComposeResult:
-        with Container(id="new-world-card"):
-            yield Static("Create world", id="new-world-title")
-            yield Static("Name", classes="field-label")
-            yield Input(placeholder="e.g. kitchen-counter", id="new-world-name")
-            yield Static("Provider", classes="field-label")
+        with Container(id=NEW_WORLD_MODAL_SPEC.card_id):
+            yield Static(NEW_WORLD_MODAL_SPEC.title, id=NEW_WORLD_MODAL_SPEC.title_id)
+            yield Static(NEW_WORLD_MODAL_SPEC.name.label, classes=FORM_FIELD_LABEL_CLASS)
+            yield Input(
+                placeholder=NEW_WORLD_MODAL_SPEC.name.placeholder,
+                id=NEW_WORLD_MODAL_SPEC.name.widget_id,
+            )
+            yield Static(NEW_WORLD_MODAL_SPEC.provider.label, classes=FORM_FIELD_LABEL_CLASS)
             yield Select(
                 [(provider, provider) for provider in self._providers],
                 value=self._providers[0],
                 allow_blank=False,
-                id="new-world-provider",
+                id=NEW_WORLD_MODAL_SPEC.provider.widget_id,
             )
-            yield Static("Description (optional)", classes="field-label")
-            yield Input(placeholder="A short scene description.", id="new-world-description")
-            yield Static("", id="new-world-error", classes="hidden")
-            with Horizontal(id="new-world-actions"):
-                yield Button("Cancel", id="new-world-cancel", variant="default")
-                yield Button("Create", id="new-world-create", variant="primary")
+            yield Static(NEW_WORLD_MODAL_SPEC.description.label, classes=FORM_FIELD_LABEL_CLASS)
+            yield Input(
+                placeholder=NEW_WORLD_MODAL_SPEC.description.placeholder,
+                id=NEW_WORLD_MODAL_SPEC.description.widget_id,
+            )
+            yield Static("", id=NEW_WORLD_MODAL_SPEC.error_id, classes=FORM_HIDDEN_CLASS)
+            with Horizontal(id=NEW_WORLD_MODAL_SPEC.actions_id):
+                yield Button(
+                    NEW_WORLD_MODAL_SPEC.cancel.label,
+                    id=NEW_WORLD_MODAL_SPEC.cancel.widget_id,
+                    variant=NEW_WORLD_MODAL_SPEC.cancel.variant,
+                )
+                yield Button(
+                    NEW_WORLD_MODAL_SPEC.submit.label,
+                    id=NEW_WORLD_MODAL_SPEC.submit.widget_id,
+                    variant=NEW_WORLD_MODAL_SPEC.submit.variant,
+                )
 
     def on_mount(self) -> None:
-        name_input = _maybe_query(self, "#new-world-name", Input)
+        name_input = _maybe_query(self, f"#{NEW_WORLD_MODAL_SPEC.name.widget_id}", Input)
         if name_input is not None:
             name_input.focus()
 
     def _set_error(self, message: str | None) -> None:
-        _set_form_error(self, "#new-world-error", message)
+        _set_form_error(self, f"#{NEW_WORLD_MODAL_SPEC.error_id}", message)
 
-    @on(Button.Pressed, "#new-world-create")
-    @on(Input.Submitted, "#new-world-name")
-    @on(Input.Submitted, "#new-world-description")
+    @on(Button.Pressed, f"#{NEW_WORLD_MODAL_SPEC.submit.widget_id}")
+    @on(Input.Submitted, f"#{NEW_WORLD_MODAL_SPEC.name.widget_id}")
+    @on(Input.Submitted, f"#{NEW_WORLD_MODAL_SPEC.description.widget_id}")
     def _on_create(self) -> None:
-        name_input = self.query_one("#new-world-name", Input)
-        description_input = self.query_one("#new-world-description", Input)
-        provider_select = self.query_one("#new-world-provider", Select)
-        name = (name_input.value or "").strip()
-        if not name:
-            self._set_error("Name must be a non-empty string.")
+        result = world_spec_from_form(
+            name=self.query_one(f"#{NEW_WORLD_MODAL_SPEC.name.widget_id}", Input).value,
+            provider_value=self.query_one(
+                f"#{NEW_WORLD_MODAL_SPEC.provider.widget_id}", Select
+            ).value,
+            description=self.query_one(
+                f"#{NEW_WORLD_MODAL_SPEC.description.widget_id}", Input
+            ).value,
+        )
+        if result.error:
+            self._set_error(result.error)
             return
-        # Most users type a human name — we *only* pre-validate when the user
-        # typed something that actively looks like an id (no spaces, looks
-        # path-ish). Otherwise the save worker's WorldForgeError is the true
-        # boundary and raises a toast.
-        if " " not in name and ("/" in name or "\\" in name or name in {".", ".."}):
-            reason = validate_id_or_reason(name)
-            if reason:
-                self._set_error(reason)
-                return
-        provider = provider_select.value if isinstance(provider_select.value, str) else "mock"
-        description = (description_input.value or "").strip()
-        self.dismiss(WorldSpec(name=name, provider=provider, description=description))
+        if result.spec is not None:
+            self.dismiss(result.spec)
 
-    @on(Button.Pressed, "#new-world-cancel")
+    @on(Button.Pressed, f"#{NEW_WORLD_MODAL_SPEC.cancel.widget_id}")
     def _on_cancel_button(self) -> None:
         self.dismiss(None)
 
@@ -1713,132 +1415,71 @@ class EditObjectScreen(ModalScreen[SceneObjectSpec | None]):
     """Collect name + position for a single scene object."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "cancel", "Cancel", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in EDIT_OBJECT_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    EditObjectScreen {
-        align: center middle;
-    }
-
-    EditObjectScreen > #edit-object-card {
-        width: 60%;
-        max-width: 72;
-        height: auto;
-        padding: 1 2;
-        border: round $accent;
-        background: $surface;
-    }
-
-    EditObjectScreen #edit-object-title {
-        height: auto;
-        padding: 0 0 1 0;
-        text-style: bold;
-        color: $accent;
-    }
-
-    EditObjectScreen .field-label {
-        color: $text-muted;
-        height: 1;
-    }
-
-    EditObjectScreen Input {
-        margin-bottom: 1;
-    }
-
-    EditObjectScreen #edit-object-error {
-        color: $error;
-        height: auto;
-    }
-
-    EditObjectScreen #edit-object-error.hidden {
-        display: none;
-    }
-
-    EditObjectScreen #edit-object-actions {
-        height: auto;
-        padding-top: 1;
-        align: right middle;
-    }
-
-    EditObjectScreen Button {
-        margin-left: 1;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.EDIT_OBJECT_SCREEN_DEFAULT_CSS
 
     def __init__(self, *, existing: SceneObjectSpec | None = None) -> None:
         super().__init__()
         self._existing = existing
 
     def compose(self) -> ComposeResult:
-        default = self._existing or SceneObjectSpec(name="cube", x=0.0, y=0.5, z=0.0)
-        with Container(id="edit-object-card"):
-            yield Static("Scene object", id="edit-object-title")
-            yield Static("Name", classes="field-label")
-            yield Input(value=default.name, placeholder="cube", id="edit-object-name")
-            yield Static("Position x / y / z", classes="field-label")
-            yield Input(value=str(default.x), id="edit-object-x")
-            yield Input(value=str(default.y), id="edit-object-y")
-            yield Input(value=str(default.z), id="edit-object-z")
-            yield Static("", id="edit-object-error", classes="hidden")
-            with Horizontal(id="edit-object-actions"):
-                yield Button("Cancel", id="edit-object-cancel", variant="default")
-                yield Button("Save", id="edit-object-save", variant="primary")
+        default = self._existing or default_scene_object_spec()
+        with Container(id=EDIT_OBJECT_MODAL_SPEC.card_id):
+            yield Static(EDIT_OBJECT_MODAL_SPEC.title, id=EDIT_OBJECT_MODAL_SPEC.title_id)
+            yield Static(EDIT_OBJECT_MODAL_SPEC.name.label, classes=FORM_FIELD_LABEL_CLASS)
+            yield Input(
+                value=default.name,
+                placeholder=EDIT_OBJECT_MODAL_SPEC.name.placeholder,
+                id=EDIT_OBJECT_MODAL_SPEC.name.widget_id,
+            )
+            yield Static(EDIT_OBJECT_MODAL_SPEC.position_label, classes=FORM_FIELD_LABEL_CLASS)
+            yield Input(value=str(default.x), id=EDIT_OBJECT_MODAL_SPEC.x_id)
+            yield Input(value=str(default.y), id=EDIT_OBJECT_MODAL_SPEC.y_id)
+            yield Input(value=str(default.z), id=EDIT_OBJECT_MODAL_SPEC.z_id)
+            yield Static("", id=EDIT_OBJECT_MODAL_SPEC.error_id, classes=FORM_HIDDEN_CLASS)
+            with Horizontal(id=EDIT_OBJECT_MODAL_SPEC.actions_id):
+                yield Button(
+                    EDIT_OBJECT_MODAL_SPEC.cancel.label,
+                    id=EDIT_OBJECT_MODAL_SPEC.cancel.widget_id,
+                    variant=EDIT_OBJECT_MODAL_SPEC.cancel.variant,
+                )
+                yield Button(
+                    EDIT_OBJECT_MODAL_SPEC.submit.label,
+                    id=EDIT_OBJECT_MODAL_SPEC.submit.widget_id,
+                    variant=EDIT_OBJECT_MODAL_SPEC.submit.variant,
+                )
 
     def on_mount(self) -> None:
-        name_input = _maybe_query(self, "#edit-object-name", Input)
+        name_input = _maybe_query(self, f"#{EDIT_OBJECT_MODAL_SPEC.name.widget_id}", Input)
         if name_input is not None:
             name_input.focus()
 
     def _set_error(self, message: str | None) -> None:
-        _set_form_error(self, "#edit-object-error", message)
+        _set_form_error(self, f"#{EDIT_OBJECT_MODAL_SPEC.error_id}", message)
 
-    @on(Button.Pressed, "#edit-object-save")
+    @on(Button.Pressed, f"#{EDIT_OBJECT_MODAL_SPEC.submit.widget_id}")
     def _on_save(self) -> None:
-        try:
-            name = (self.query_one("#edit-object-name", Input).value or "").strip()
-            if not name:
-                self._set_error("Name must be a non-empty string.")
-                return
-            x = float(self.query_one("#edit-object-x", Input).value or 0.0)
-            y = float(self.query_one("#edit-object-y", Input).value or 0.0)
-            z = float(self.query_one("#edit-object-z", Input).value or 0.0)
-        except ValueError:
-            self._set_error("Position coordinates must be numeric.")
+        result = scene_object_spec_from_form(
+            name=self.query_one(f"#{EDIT_OBJECT_MODAL_SPEC.name.widget_id}", Input).value,
+            x=self.query_one(f"#{EDIT_OBJECT_MODAL_SPEC.x_id}", Input).value,
+            y=self.query_one(f"#{EDIT_OBJECT_MODAL_SPEC.y_id}", Input).value,
+            z=self.query_one(f"#{EDIT_OBJECT_MODAL_SPEC.z_id}", Input).value,
+        )
+        if result.error:
+            self._set_error(result.error)
             return
-        self.dismiss(SceneObjectSpec(name=name, x=x, y=y, z=z))
+        if result.spec is not None:
+            self.dismiss(result.spec)
 
-    @on(Button.Pressed, "#edit-object-cancel")
+    @on(Button.Pressed, f"#{EDIT_OBJECT_MODAL_SPEC.cancel.widget_id}")
     def _on_cancel_button(self) -> None:
         self.dismiss(None)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
-
-
-# ---------------------------------------------------------------------------
-# Worlds CRUD: screens
-# ---------------------------------------------------------------------------
-
-
-def _default_bbox_for_position(position: Position) -> BBox:
-    """Build a conservative unit-sized bounding box around ``position``."""
-
-    return BBox(
-        Position(position.x - 0.05, position.y - 0.05, position.z - 0.05),
-        Position(position.x + 0.05, position.y + 0.05, position.z + 0.05),
-    )
-
-
-def _scene_object_from_spec(spec: SceneObjectSpec) -> SceneObject:
-    position = Position(spec.x, spec.y, spec.z)
-    return SceneObject(
-        name=spec.name,
-        position=position,
-        bbox=_default_bbox_for_position(position),
-        is_graspable=spec.is_graspable,
-        metadata=dict(spec.metadata),
-    )
 
 
 class WorldsScreen(Screen):
@@ -1850,78 +1491,11 @@ class WorldsScreen(Screen):
     """
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("n", "new_world", "New", show=True),
-        Binding("enter", "open_selected", "Open", show=True),
-        Binding("e", "open_selected", "Edit", show=False),
-        Binding("d", "delete_selected", "Delete", show=True),
-        Binding("f", "fork_selected", "Fork", show=True),
-        Binding("slash", "focus_filter", "Filter", show=True),
-        Binding("r", "refresh_worlds", "Refresh", show=True),
-        Binding("escape", "clear_filter", "Clear filter", show=False),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in WORLDS_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    WorldsScreen {
-        background: $background;
-        color: $foreground;
-    }
-
-    #worlds-root {
-        height: 1fr;
-        padding: 1 2;
-    }
-
-    #worlds-filter-row {
-        height: 3;
-        margin-bottom: 1;
-    }
-
-    #worlds-filter-label {
-        width: auto;
-        padding: 1 1 0 0;
-        color: $text-muted;
-    }
-
-    #worlds-filter {
-        width: 1fr;
-    }
-
-    #worlds-body {
-        height: 1fr;
-    }
-
-    #worlds-table-wrap {
-        width: 2fr;
-        margin-right: 1;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #worlds-detail {
-        width: 1fr;
-        padding: 1 2;
-        border: round $panel;
-        background: $surface;
-        color: $foreground;
-    }
-
-    #worlds-detail.-focused {
-        border: round $accent;
-    }
-
-    #worlds-empty {
-        padding: 1 2;
-        color: $text-muted;
-    }
-
-    #worlds-empty.hidden {
-        display: none;
-    }
-
-    #worlds-table.hidden {
-        display: none;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.WORLDS_SCREEN_DEFAULT_CSS
 
     selected_world: reactive[str | None] = reactive(None, init=False)
     filter_query: reactive[str] = reactive("", init=False)
@@ -1934,33 +1508,37 @@ class WorldsScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal(id="chrome"):
-            yield Breadcrumb(id="breadcrumb")
-            yield ProviderStatusPill(id="provider-pill")
-        with Container(id="worlds-root"):
-            with Horizontal(id="worlds-filter-row"):
-                yield Static("Filter:", id="worlds-filter-label")
-                yield Input(placeholder="id or name substring", id="worlds-filter")
-            with Horizontal(id="worlds-body"):
-                with Container(id="worlds-table-wrap"):
+        yield from _compose_chrome()
+        with Container(id=WORLDS_SCREEN_SPEC.root_id):
+            with Horizontal(id=WORLDS_SCREEN_SPEC.filter_row_id):
+                yield Static(
+                    WORLDS_SCREEN_SPEC.filter_label.text,
+                    id=WORLDS_SCREEN_SPEC.filter_label.widget_id,
+                )
+                yield Input(
+                    placeholder=WORLDS_SCREEN_SPEC.filter_input.placeholder,
+                    id=WORLDS_SCREEN_SPEC.filter_input.widget_id,
+                )
+            with Horizontal(id=WORLDS_SCREEN_SPEC.body_id):
+                with Container(id=WORLDS_SCREEN_SPEC.table_wrap_id):
                     yield DataTable(
                         zebra_stripes=True,
                         cursor_type="row",
-                        id="worlds-table",
+                        id=WORLDS_SCREEN_SPEC.table.widget_id,
                     )
                     yield Static(
-                        "No worlds yet — press [b]n[/] to create one.",
-                        id="worlds-empty",
+                        WORLDS_SCREEN_SPEC.empty.text,
+                        id=WORLDS_SCREEN_SPEC.empty.widget_id,
                     )
                 yield Static(
-                    "Select a world to see its summary.",
-                    id="worlds-detail",
+                    WORLDS_SCREEN_SPEC.detail.text,
+                    id=WORLDS_SCREEN_SPEC.detail.widget_id,
                 )
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one("#worlds-table", DataTable)
-        table.add_columns("id", "name", "provider", "step", "last touched")
+        table = self.query_one(WORLDS_TABLE_SELECTOR, DataTable)
+        table.add_columns(*WORLDS_SCREEN_SPEC.table.columns)
         # Focus the table so the screen bindings (``n``, ``d``, ``f``, ``/``)
         # win over the filter ``Input`` at the top of the screen. The filter
         # focuses explicitly via ``/`` → ``action_focus_filter``.
@@ -1970,7 +1548,7 @@ class WorldsScreen(Screen):
 
     def on_screen_resume(self) -> None:
         self._update_chrome()
-        table = _maybe_query(self, "#worlds-table", DataTable)
+        table = _maybe_query(self, WORLDS_TABLE_SELECTOR, DataTable)
         if table is not None:
             table.focus()
         # We intentionally avoid calling ``refresh_worlds`` here: screen
@@ -1981,14 +1559,12 @@ class WorldsScreen(Screen):
         # / ``WorldForked`` messages instead.
 
     def _update_chrome(self) -> None:
-        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-        if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", "worlds")
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            selected = self.selected_world
-            world = self._worlds.get(selected) if selected else None
-            pill.label = world.provider if world else ""
+        selected = self.selected_world
+        world = self._worlds.get(selected) if selected else None
+        _apply_chrome(
+            self,
+            screen_chrome("worlds", provider_label=world.provider if world else ""),
+        )
 
     # ------------------------------------------------------------------
     # Reactives
@@ -2024,8 +1600,8 @@ class WorldsScreen(Screen):
         self._rebuild_table_rows()
 
     def _rebuild_table_rows(self) -> None:
-        table = _maybe_query(self, "#worlds-table", DataTable)
-        empty = _maybe_query(self, "#worlds-empty", Static)
+        table = _maybe_query(self, WORLDS_TABLE_SELECTOR, DataTable)
+        empty = _maybe_query(self, WORLDS_EMPTY_SELECTOR, Static)
         if table is None:
             return
         table.clear()
@@ -2056,13 +1632,13 @@ class WorldsScreen(Screen):
             self.selected_world = None
 
     def _refresh_detail(self) -> None:
-        detail = _maybe_query(self, "#worlds-detail", Static)
+        detail = _maybe_query(self, WORLDS_DETAIL_SELECTOR, Static)
         if detail is None:
             return
         selected = self.selected_world
         world = self._worlds.get(selected) if selected else None
         if world is None:
-            detail.update("Select a world to see its summary.")
+            detail.update(WORLDS_SCREEN_SPEC.detail.text)
             return
         detail.update(format_detail_summary(world, state_dir=self._forge.state_dir))
 
@@ -2070,40 +1646,40 @@ class WorldsScreen(Screen):
     # Events / actions
     # ------------------------------------------------------------------
 
-    @on(DataTable.RowHighlighted, "#worlds-table")
+    @on(DataTable.RowHighlighted, WORLDS_TABLE_SELECTOR)
     def _on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         key = event.row_key.value if event.row_key else None
         if isinstance(key, str):
             self.selected_world = key
 
-    @on(DataTable.RowSelected, "#worlds-table")
+    @on(DataTable.RowSelected, WORLDS_TABLE_SELECTOR)
     def _on_row_selected(self, event: DataTable.RowSelected) -> None:
         key = event.row_key.value if event.row_key else None
         if isinstance(key, str):
             self.selected_world = key
             self.action_open_selected()
 
-    @on(Input.Changed, "#worlds-filter")
+    @on(Input.Changed, f"#{WORLDS_FILTER_ID}")
     def _on_filter_changed(self, event: Input.Changed) -> None:
         self.filter_query = event.value
 
-    @on(Input.Submitted, "#worlds-filter")
+    @on(Input.Submitted, f"#{WORLDS_FILTER_ID}")
     def _on_filter_submitted(self) -> None:
-        table = _maybe_query(self, "#worlds-table", DataTable)
+        table = _maybe_query(self, WORLDS_TABLE_SELECTOR, DataTable)
         if table is not None:
             table.focus()
 
     def action_focus_filter(self) -> None:
-        filt = _maybe_query(self, "#worlds-filter", Input)
+        filt = _maybe_query(self, WORLDS_FILTER_SELECTOR, Input)
         if filt is not None:
             filt.focus()
 
     def action_clear_filter(self) -> None:
-        filt = _maybe_query(self, "#worlds-filter", Input)
+        filt = _maybe_query(self, WORLDS_FILTER_SELECTOR, Input)
         if filt is not None:
             filt.value = ""
         self.filter_query = ""
-        table = _maybe_query(self, "#worlds-table", DataTable)
+        table = _maybe_query(self, WORLDS_TABLE_SELECTOR, DataTable)
         if table is not None:
             table.focus()
 
@@ -2215,83 +1791,11 @@ class WorldEditScreen(Screen):
     """Form editor for a single in-memory ``World`` + single-shot preview pane."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("ctrl+s", "save_world", "Save", show=True),
-        Binding("a", "add_object", "Add object", show=True),
-        Binding("delete", "remove_object", "Remove", show=True),
-        Binding("ctrl+p,predict", "predict_preview", "Preview", show=False),
-        Binding("escape", "close", "Back", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in WORLD_EDIT_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    WorldEditScreen {
-        background: $background;
-        color: $foreground;
-    }
-
-    #edit-root {
-        height: 1fr;
-        padding: 1 2;
-    }
-
-    #edit-title {
-        height: 1;
-        text-style: bold;
-        color: $accent;
-    }
-
-    #edit-body {
-        height: 1fr;
-    }
-
-    #edit-form {
-        width: 2fr;
-        margin-right: 1;
-        border: round $panel;
-        background: $surface;
-        padding: 1 2;
-    }
-
-    #edit-preview {
-        width: 1fr;
-        border: round $panel;
-        background: $surface;
-        padding: 1 2;
-        color: $foreground;
-    }
-
-    #edit-preview.-staged {
-        border: round $warning;
-    }
-
-    #edit-objects {
-        height: 10;
-        margin-top: 1;
-        background: $surface;
-    }
-
-    #edit-objects-header {
-        height: 1;
-        color: $text-muted;
-    }
-
-    .field-label {
-        height: 1;
-        color: $text-muted;
-    }
-
-    Input, Select {
-        margin-bottom: 1;
-    }
-
-    #edit-preview-caption {
-        height: 1;
-        color: $warning;
-    }
-
-    #edit-preview-caption.hidden {
-        display: none;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.WORLD_EDIT_SCREEN_DEFAULT_CSS
 
     dirty: reactive[bool] = reactive(False, init=False)
     staged_action: reactive[Action | None] = reactive(None, init=False)
@@ -2302,42 +1806,54 @@ class WorldEditScreen(Screen):
         self._world = world
         self._is_new = is_new
         # Keep an original-snapshot clone (unless new) for dirty detection.
-        self._original = None if is_new else self._clone_world(world)
-
-    @staticmethod
-    def _clone_world(world: World) -> World:
-        # Round-trip through ``World.from_state`` so ``_original`` is a
-        # detached snapshot that does not share mutable members with ``world``.
-        return World.from_state(world._forge, world.to_dict())
+        self._original = None if is_new else clone_world(world)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal(id="chrome"):
-            yield Breadcrumb(id="breadcrumb")
-            yield ProviderStatusPill(id="provider-pill")
-        with Container(id="edit-root"):
-            yield Static(self._render_title(), id="edit-title")
-            with Horizontal(id="edit-body"):
-                with Container(id="edit-form"):
-                    yield Static("Name", classes="field-label")
-                    yield Input(value=self._world.name, id="edit-name")
-                    yield Static("Provider", classes="field-label")
+        yield from _compose_chrome()
+        with Container(id=WORLD_EDIT_SCREEN_SPEC.root_id):
+            yield Static(
+                self._render_title(),
+                id=WORLD_EDIT_SCREEN_SPEC.title.widget_id,
+            )
+            with Horizontal(id=WORLD_EDIT_SCREEN_SPEC.body_id):
+                with Container(id=WORLD_EDIT_SCREEN_SPEC.form_id):
+                    yield Static(
+                        WORLD_EDIT_SCREEN_SPEC.name_label.text,
+                        classes=FORM_FIELD_LABEL_CLASS,
+                    )
+                    yield Input(
+                        value=self._world.name,
+                        id=WORLD_EDIT_SCREEN_SPEC.name.widget_id,
+                    )
+                    yield Static(
+                        WORLD_EDIT_SCREEN_SPEC.provider_label.text,
+                        classes=FORM_FIELD_LABEL_CLASS,
+                    )
                     yield Select(
                         [(name, name) for name in self._forge.providers()],
                         value=self._world.provider,
                         allow_blank=False,
-                        id="edit-provider",
+                        id=WORLD_EDIT_SCREEN_SPEC.provider.widget_id,
                     )
-                    yield Static("Scene objects", id="edit-objects-header")
-                    yield OptionList(id="edit-objects")
-                with Container(id="edit-preview"):
-                    yield Static("Preview (saved state)", id="edit-preview-caption")
-                    yield Static("", id="edit-preview-body")
+                    yield Static(
+                        WORLD_EDIT_SCREEN_SPEC.objects_header.text,
+                        id=WORLD_EDIT_SCREEN_SPEC.objects_header.widget_id,
+                    )
+                    yield OptionList(id=WORLD_EDIT_SCREEN_SPEC.objects.widget_id)
+                with Container(id=WORLD_EDIT_SCREEN_SPEC.preview.widget_id):
+                    yield Static(
+                        WORLD_EDIT_SCREEN_SPEC.preview_caption.text,
+                        id=WORLD_EDIT_SCREEN_SPEC.preview_caption.widget_id,
+                    )
+                    yield Static(
+                        WORLD_EDIT_SCREEN_SPEC.preview_body.text,
+                        id=WORLD_EDIT_SCREEN_SPEC.preview_body.widget_id,
+                    )
         yield Footer()
 
     def _render_title(self) -> str:
-        marker = " *" if self.dirty or self._is_new else ""
-        return f"Edit: {self._world.name} ({self._world.id}){marker}"
+        return world_edit_title(self._world, dirty=self.dirty, is_new=self._is_new)
 
     def on_mount(self) -> None:
         self._update_chrome()
@@ -2347,7 +1863,7 @@ class WorldEditScreen(Screen):
         # Focus the object list so the screen-level ``a``/``delete`` bindings
         # fire before the name ``Input`` swallows them. The user can press
         # ``Tab`` (or click) to move to the name field when renaming.
-        options = _maybe_query(self, "#edit-objects", OptionList)
+        options = _maybe_query(self, WORLD_EDIT_OBJECTS_SELECTOR, OptionList)
         if options is not None:
             options.focus()
 
@@ -2355,41 +1871,31 @@ class WorldEditScreen(Screen):
         self._update_chrome()
 
     def _update_chrome(self) -> None:
-        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-        if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", "worlds", "edit", self._world.name)
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            pill.label = self._world.provider
+        _apply_chrome(
+            self,
+            screen_chrome("worlds", "edit", self._world.name, provider_label=self._world.provider),
+        )
 
     def _populate_objects(self) -> None:
-        options = _maybe_query(self, "#edit-objects", OptionList)
+        options = _maybe_query(self, WORLD_EDIT_OBJECTS_SELECTOR, OptionList)
         if options is None:
             return
         options.clear_options()
-        for scene_object in self._world.scene_objects.values():
-            options.add_option(
-                Option(
-                    f"{scene_object.name} @ "
-                    f"({scene_object.position.x:.2f},"
-                    f" {scene_object.position.y:.2f},"
-                    f" {scene_object.position.z:.2f})",
-                    id=scene_object.id,
-                )
-            )
+        for label, option_id in scene_object_options(self._world):
+            options.add_option(Option(label, id=option_id))
 
     def _refresh_preview_static(self) -> None:
-        caption = _maybe_query(self, "#edit-preview-caption", Static)
-        body = _maybe_query(self, "#edit-preview-body", Static)
-        preview = _maybe_query(self, "#edit-preview", Container)
+        caption = _maybe_query(self, WORLD_EDIT_PREVIEW_CAPTION_SELECTOR, Static)
+        body = _maybe_query(self, WORLD_EDIT_PREVIEW_BODY_SELECTOR, Static)
+        preview = _maybe_query(self, WORLD_EDIT_PREVIEW_SELECTOR, Container)
         if body is None or caption is None or preview is None:
             return
-        if self.staged_action is not None:
-            caption.update("Preview (predicted next state)")
+        staged = self.staged_action is not None
+        caption.update(edit_preview_caption(staged=staged))
+        if staged:
             caption.remove_class("hidden")
             preview.add_class("-staged")
         else:
-            caption.update("Preview (saved state)")
             caption.remove_class("hidden")
             preview.remove_class("-staged")
         body.update(format_detail_summary(self._world, state_dir=self._forge.state_dir))
@@ -2399,7 +1905,7 @@ class WorldEditScreen(Screen):
     # ------------------------------------------------------------------
 
     def watch_dirty(self, _old: bool, _new: bool) -> None:
-        title = _maybe_query(self, "#edit-title", Static)
+        title = _maybe_query(self, WORLD_EDIT_TITLE_SELECTOR, Static)
         if title is not None:
             title.update(self._render_title())
 
@@ -2410,26 +1916,22 @@ class WorldEditScreen(Screen):
     # Input events
     # ------------------------------------------------------------------
 
-    @on(Input.Changed, "#edit-name")
+    @on(Input.Changed, f"#{WORLD_EDIT_NAME_ID}")
     def _on_name_changed(self, event: Input.Changed) -> None:
-        new_name = event.value.strip()
-        if not new_name:
+        if not apply_world_name_edit(self._world, event.value):
             return
-        self._world.name = new_name
-        self._world.metadata["name"] = new_name
         self.dirty = True
-        title = _maybe_query(self, "#edit-title", Static)
+        title = _maybe_query(self, WORLD_EDIT_TITLE_SELECTOR, Static)
         if title is not None:
             title.update(self._render_title())
 
-    @on(Select.Changed, "#edit-provider")
+    @on(Select.Changed, f"#{WORLD_EDIT_PROVIDER_ID}")
     def _on_provider_changed(self, event: Select.Changed) -> None:
-        if isinstance(event.value, str) and event.value != self._world.provider:
-            self._world.provider = event.value
-            self.dirty = True
-            pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-            if pill is not None:
-                pill.label = event.value
+        provider = apply_world_provider_edit(self._world, event.value)
+        if provider is None:
+            return
+        self.dirty = True
+        self._update_chrome()
 
     # ------------------------------------------------------------------
     # Actions
@@ -2442,32 +1944,25 @@ class WorldEditScreen(Screen):
         if spec is None:
             return
         try:
-            scene_object = _scene_object_from_spec(spec)
-            self._world.add_object(scene_object)
+            staged_action = add_scene_object_from_spec(self._world, spec)
         except WorldForgeError as exc:
             self.app.notify(str(exc), severity="error", title="Scene object")
             return
         self.dirty = True
         self._populate_objects()
         # Stage a spawn action so the preview pane reflects the addition.
-        self.staged_action = Action.spawn_object(
-            spec.name,
-            position=Position(spec.x, spec.y, spec.z),
-        )
+        self.staged_action = staged_action
         self._run_preview()
 
     def action_remove_object(self) -> None:
-        options = _maybe_query(self, "#edit-objects", OptionList)
+        options = _maybe_query(self, WORLD_EDIT_OBJECTS_SELECTOR, OptionList)
         if options is None:
             return
         highlighted = options.highlighted
         if highlighted is None:
             return
         option = options.get_option_at_index(highlighted)
-        if option.id is None:
-            return
-        removed = self._world.remove_object_by_id(option.id)
-        if removed is not None:
+        if remove_scene_object_by_id(self._world, option.id):
             self.dirty = True
             self._populate_objects()
             self._refresh_preview_static()
@@ -2512,7 +2007,7 @@ class WorldEditScreen(Screen):
 
     def _handle_save_success(self, world_id: str) -> None:
         self._is_new = False
-        self._original = self._clone_world(self._world)
+        self._original = clone_world(self._world)
         self.dirty = False
         self.app.notify(f"Saved world '{world_id}'.", severity="information", title="Save")
         self.post_message(WorldSaved(world_id))
@@ -2550,69 +2045,61 @@ class RegisterProviderModal(  # pragma: no cover - exercised by Pilot tests.
 ):
     """Register a deterministic mock provider variant for local testing."""
 
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel", show=True)]
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in REGISTER_PROVIDER_BINDING_SPECS
+    ]
 
-    DEFAULT_CSS = """
-    RegisterProviderModal {
-        align: center middle;
-    }
-
-    RegisterProviderModal > #register-provider-card {
-        width: 64;
-        height: auto;
-        padding: 1 2;
-        border: round $accent;
-        background: $surface;
-    }
-
-    RegisterProviderModal .field-label {
-        color: $text-muted;
-        height: 1;
-    }
-
-    RegisterProviderModal Input {
-        margin-bottom: 1;
-    }
-
-    RegisterProviderModal #register-provider-actions {
-        height: auto;
-        align: right middle;
-        padding-top: 1;
-    }
-
-    RegisterProviderModal Button {
-        margin-left: 1;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.REGISTER_PROVIDER_MODAL_DEFAULT_CSS
 
     def compose(self) -> ComposeResult:
-        with Container(id="register-provider-card"):
-            yield Static("Register deterministic provider", id="register-provider-title")
-            yield Static("Provider id", classes="field-label")
-            yield Input(placeholder="mock-lab", id="register-provider-name")
+        with Container(id=REGISTER_PROVIDER_MODAL_SPEC.card_id):
             yield Static(
-                "Registers a MockProvider variant. Live optional runtimes remain host-owned.",
-                id="register-provider-note",
+                REGISTER_PROVIDER_MODAL_SPEC.title,
+                id=REGISTER_PROVIDER_MODAL_SPEC.title_id,
             )
-            with Horizontal(id="register-provider-actions"):
-                yield Button("Cancel", id="register-provider-cancel", variant="default")
-                yield Button("Register", id="register-provider-submit", variant="primary")
+            yield Static(
+                REGISTER_PROVIDER_MODAL_SPEC.name.label,
+                classes=PROVIDER_FIELD_LABEL_CLASS,
+            )
+            yield Input(
+                placeholder=REGISTER_PROVIDER_MODAL_SPEC.name.placeholder,
+                id=REGISTER_PROVIDER_MODAL_SPEC.name.widget_id,
+            )
+            yield Static(
+                REGISTER_PROVIDER_MODAL_SPEC.note,
+                id=REGISTER_PROVIDER_MODAL_SPEC.note_id,
+            )
+            with Horizontal(id=REGISTER_PROVIDER_MODAL_SPEC.actions_id):
+                yield Button(
+                    REGISTER_PROVIDER_MODAL_SPEC.cancel.label,
+                    id=REGISTER_PROVIDER_MODAL_SPEC.cancel.widget_id,
+                    variant=REGISTER_PROVIDER_MODAL_SPEC.cancel.variant,
+                )
+                yield Button(
+                    REGISTER_PROVIDER_MODAL_SPEC.submit.label,
+                    id=REGISTER_PROVIDER_MODAL_SPEC.submit.widget_id,
+                    variant=REGISTER_PROVIDER_MODAL_SPEC.submit.variant,
+                )
 
     def on_mount(self) -> None:
-        name = _maybe_query(self, "#register-provider-name", Input)
+        name = _maybe_query(self, f"#{REGISTER_PROVIDER_MODAL_SPEC.name.widget_id}", Input)
         if name is not None:
             name.focus()
 
-    @on(Button.Pressed, "#register-provider-submit")
-    @on(Input.Submitted, "#register-provider-name")
+    @on(Button.Pressed, f"#{REGISTER_PROVIDER_MODAL_SPEC.submit.widget_id}")
+    @on(Input.Submitted, f"#{REGISTER_PROVIDER_MODAL_SPEC.name.widget_id}")
     def _submit(self) -> None:
-        value = self.query_one("#register-provider-name", Input).value.strip()
-        if not value:
-            self.app.notify("Provider id must be non-empty.", severity="error", title="Provider")
+        result = provider_registration_from_form(
+            self.query_one(f"#{REGISTER_PROVIDER_MODAL_SPEC.name.widget_id}", Input).value
+        )
+        if result.error:
+            self.app.notify(result.error, severity="error", title="Provider")
             return
-        self.dismiss(MockProvider(name=value))
+        if result.provider_name is not None:
+            self.dismiss(MockProvider(name=result.provider_name))
 
-    @on(Button.Pressed, "#register-provider-cancel")
+    @on(Button.Pressed, f"#{REGISTER_PROVIDER_MODAL_SPEC.cancel.widget_id}")
     def _cancel_button(self) -> None:
         self.dismiss(None)
 
@@ -2624,72 +2111,11 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
     """Capability matrix and live ``mock.predict`` execution surface."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("enter", "select_provider", "Use", show=True),
-        Binding("p", "run_predict", "Predict", show=True),
-        Binding("r", "register_provider", "Register", show=True),
-        Binding("escape", "cancel_or_back", "Cancel/Back", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in PROVIDER_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    ProvidersScreen {
-        background: $background;
-        color: $foreground;
-    }
-
-    #providers-root {
-        height: 1fr;
-        padding: 1 2;
-    }
-
-    #providers-body {
-        height: 1fr;
-    }
-
-    #providers-table-wrap {
-        width: 2fr;
-        margin-right: 1;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #providers-table {
-        height: 1fr;
-        background: $surface;
-    }
-
-    #providers-empty {
-        padding: 1 2;
-        color: $text-muted;
-    }
-
-    #providers-empty.hidden {
-        display: none;
-    }
-
-    #providers-detail {
-        width: 1fr;
-        padding: 1 2;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #providers-log {
-        height: 10;
-        margin-top: 1;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #providers-actions {
-        height: 3;
-        margin-top: 1;
-        align: right middle;
-    }
-
-    #providers-actions Button {
-        margin-left: 1;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.PROVIDERS_SCREEN_DEFAULT_CSS
 
     current_row_provider: reactive[str | None] = reactive(None, init=False)
     running_operation: reactive[str] = reactive("idle", init=False)
@@ -2703,24 +2129,33 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal(id="chrome"):
-            yield Breadcrumb(id="breadcrumb")
-            yield ProviderStatusPill(id="provider-pill")
-        with Container(id="providers-root"):
-            with Horizontal(id="providers-body"):
-                with Container(id="providers-table-wrap"):
-                    yield DataTable(zebra_stripes=True, cursor_type="row", id="providers-table")
+        yield from _compose_chrome()
+        with Container(id=PROVIDER_SCREEN_SPEC.root_id):
+            with Horizontal(id=PROVIDER_SCREEN_SPEC.body_id):
+                with Container(id=PROVIDER_SCREEN_SPEC.table_wrap_id):
+                    yield DataTable(
+                        zebra_stripes=True,
+                        cursor_type="row",
+                        id=PROVIDER_SCREEN_SPEC.table.widget_id,
+                    )
                     yield Static(
-                        "No providers registered — set env vars or run with provider mock.",
-                        id="providers-empty",
+                        PROVIDER_SCREEN_SPEC.empty.message,
+                        id=PROVIDER_SCREEN_SPEC.empty.widget_id,
                         classes="hidden",
                     )
-                yield Static("Select a provider.", id="providers-detail")
-            yield RichLog(highlight=True, markup=True, max_lines=5000, id="providers-log")
-            with Horizontal(id="providers-actions"):
-                yield Button("Run predict", id="provider-run", variant="primary")
-                yield Button("Cancel", id="provider-cancel", variant="warning")
-                yield Button("Register", id="provider-register", variant="default")
+                yield Static(
+                    PROVIDER_SCREEN_SPEC.detail.message,
+                    id=PROVIDER_SCREEN_SPEC.detail.widget_id,
+                )
+            yield RichLog(
+                highlight=True,
+                markup=True,
+                max_lines=PROVIDER_SCREEN_SPEC.log.max_lines,
+                id=PROVIDER_SCREEN_SPEC.log.widget_id,
+            )
+            with Horizontal(id=PROVIDER_SCREEN_SPEC.actions_id):
+                for spec in PROVIDER_ACTION_SPECS:
+                    yield Button(spec.label, id=spec.widget_id, variant=spec.variant)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -2731,35 +2166,27 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         self._update_chrome()
 
     def _update_chrome(self) -> None:
-        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-        if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", "providers")
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            provider = getattr(self.app, "current_provider", "mock")
-            pill.label = f"{provider} · predict"
+        provider = getattr(self.app, "current_provider", "mock")
+        _apply_chrome(
+            self,
+            screen_chrome(
+                "providers",
+                provider_label=provider_capability_label(provider, "predict"),
+            ),
+        )
 
     def _build_table(self) -> None:
-        table = _maybe_query(self, "#providers-table", DataTable)
-        empty = _maybe_query(self, "#providers-empty", Static)
+        table = _maybe_query(self, PROVIDER_TABLE_SELECTOR, DataTable)
+        empty = _maybe_query(self, PROVIDER_EMPTY_SELECTOR, Static)
         if table is None:
             return
         table.clear(columns=True)
-        table.add_columns("provider", "status", "credentials", "runtime", *CAPABILITY_NAMES)
+        table.add_columns(*PROVIDER_SCREEN_SPEC.table.columns)
         rows = provider_connector_summaries(self._forge)
         self._provider_rows = {row.name: row for row in rows}
         self._provider_names = [row.name for row in rows]
         for row in rows:
-            cells = [
-                self._capability_cell(name in row.capabilities, row.implementation_status)
-                for name in CAPABILITY_NAMES
-            ]
-            credentials = "missing" if row.missing_env_vars else "ok"
-            runtime = "deps" if row.status == "missing_dependency" else "ok"
-            if row.status == "scaffold":
-                credentials = "n/a"
-                runtime = "scaffold"
-            table.add_row(row.name, row.status, credentials, runtime, *cells, key=row.name)
+            table.add_row(*provider_table_row(row), key=row.name)
         if rows:
             table.remove_class("hidden")
             if empty is not None:
@@ -2773,13 +2200,7 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
             self.current_row_provider = None
         self._refresh_detail()
 
-    @staticmethod
-    def _capability_cell(enabled: bool, implementation_status: str) -> str:
-        if not enabled:
-            return ""
-        return "○" if implementation_status == "scaffold" else "●"
-
-    @on(DataTable.RowHighlighted, "#providers-table")
+    @on(DataTable.RowHighlighted, PROVIDER_TABLE_SELECTOR)
     def _on_provider_highlighted(self, event: DataTable.RowHighlighted) -> None:
         key = event.row_key.value if event.row_key else None
         if isinstance(key, str):
@@ -2789,42 +2210,15 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         self._refresh_detail()
 
     def _refresh_detail(self) -> None:
-        detail = _maybe_query(self, "#providers-detail", Static)
+        detail = _maybe_query(self, PROVIDER_DETAIL_SELECTOR, Static)
         if detail is None:
             return
         provider = self.current_row_provider
-        if provider is None:
-            detail.update("No provider selected.")
-            return
-        row = self._provider_rows.get(provider)
-        if row is None:
-            detail.update("No provider selected.")
-            return
-        summary = self._last_call_summary.get(provider, {})
-        env_vars = ", ".join(row.required_env_vars) if row.required_env_vars else "none"
-        missing = ", ".join(row.missing_env_vars) if row.missing_env_vars else "none"
-        dependencies = ", ".join(row.optional_dependencies) if row.optional_dependencies else "none"
-        last = (
-            f"{summary.get('phase')} "
-            f"{float(summary.get('latency_ms') or 0.0):.2f} ms "
-            f"retries={summary.get('retries', 0)}"
-            if summary
-            else "No run captured — press p to run mock.predict."
-        )
+        row = self._provider_rows.get(provider) if provider is not None else None
         detail.update(
-            "\n".join(
-                [
-                    f"Provider: {provider}",
-                    f"Status: {row.status} ({row.implementation_status})",
-                    f"Capabilities: {', '.join(row.capabilities) or 'none'}",
-                    f"Health: {row.health}",
-                    f"Required env vars: {env_vars}",
-                    f"Missing env vars: {missing}",
-                    f"Optional deps: {dependencies}",
-                    f"Next command: {row.smoke_command}",
-                    "Triage: " + " | ".join(row.triage_steps),
-                    f"Last call: {last}",
-                ]
+            provider_connector_detail_text(
+                row,
+                last_call_summary=self._last_call_summary.get(provider or ""),
             )
         )
 
@@ -2840,20 +2234,22 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         )
 
     def action_run_predict(self) -> None:
-        provider = getattr(self.app, "current_provider", "mock")
-        if provider not in self._provider_names:
-            provider = self.current_row_provider or "mock"
-        self._run_predict(str(provider))
+        provider = provider_predict_target(
+            current_provider=getattr(self.app, "current_provider", "mock"),
+            current_row_provider=self.current_row_provider,
+            provider_names=self._provider_names,
+        )
+        self._run_predict(provider)
 
-    @on(Button.Pressed, "#provider-run")
+    @on(Button.Pressed, f"#{PROVIDER_RUN_BUTTON_ID}")
     def _run_button(self) -> None:
         self.action_run_predict()
 
-    @on(Button.Pressed, "#provider-cancel")
+    @on(Button.Pressed, f"#{PROVIDER_CANCEL_BUTTON_ID}")
     def _cancel_button(self) -> None:
         self.action_cancel_or_back()
 
-    @on(Button.Pressed, "#provider-register")
+    @on(Button.Pressed, f"#{PROVIDER_REGISTER_BUTTON_ID}")
     def _register_button(self) -> None:
         self.action_register_provider()
 
@@ -2861,8 +2257,11 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         if self.running_operation == "running":
             self.workers.cancel_group(self, "provider")
             self.running_operation = "cancelled"
-            provider = getattr(self.app, "current_provider", self.current_row_provider or "mock")
-            self.post_message(RunCancelled(provider=str(provider)))
+            provider = provider_cancel_target(
+                current_provider=getattr(self.app, "current_provider", "mock"),
+                current_row_provider=self.current_row_provider,
+            )
+            self.post_message(RunCancelled(provider=provider))
             return
         self.app.action_switch_screen("home")
 
@@ -2916,7 +2315,7 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
 
     def on_provider_event_received(self, event: ProviderEventReceived) -> None:
         event.stop()
-        log = _maybe_query(self, "#providers-log", RichLog)
+        log = _maybe_query(self, PROVIDER_LOG_SELECTOR, RichLog)
         if log is not None:
             log.write(_format_provider_event(event.event))
         self._last_call_summary[event.event.provider] = _event_summary(event.event)
@@ -2925,11 +2324,7 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
     def on_run_completed(self, event: RunCompleted) -> None:
         event.stop()
         self.running_operation = "done"
-        self._last_call_summary[event.provider] = {
-            "phase": "success",
-            "latency_ms": event.latency_ms,
-            "retries": 0,
-        }
+        self._last_call_summary[event.provider] = provider_success_summary(event.latency_ms)
         self._refresh_detail()
         self.app.notify(
             f"{event.provider}.predict completed in {event.latency_ms:.2f} ms.",
@@ -2939,7 +2334,7 @@ class ProvidersScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
     def on_run_cancelled(self, event: RunCancelled) -> None:
         event.stop()
         self.running_operation = "cancelled"
-        log = _maybe_query(self, "#providers-log", RichLog)
+        log = _maybe_query(self, PROVIDER_LOG_SELECTOR, RichLog)
         if log is not None:
             log.write(Text("cancelled provider run", style="bold yellow"))
         self.app.notify("Cancelled provider run.", severity="warning", title="Provider")
@@ -2949,51 +2344,11 @@ class EvalScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
     """Run built-in deterministic evaluation suites from the TUI."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("r", "run_eval", "Run", show=True),
-        Binding("escape", "cancel_or_back", "Cancel/Back", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in EVAL_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    EvalScreen {
-        background: $background;
-        color: $foreground;
-    }
-
-    #eval-root {
-        height: 1fr;
-        padding: 1 2;
-    }
-
-    #eval-form {
-        width: 34;
-        margin-right: 1;
-        padding: 1 2;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #eval-output {
-        width: 1fr;
-    }
-
-    #eval-log {
-        height: 10;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #eval-verdict {
-        height: auto;
-        padding: 1 2;
-        margin-bottom: 1;
-        border: round $panel;
-        background: $surface;
-    }
-
-    EvalScreen Select, EvalScreen Button {
-        margin-bottom: 1;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.EVAL_SCREEN_DEFAULT_CSS
 
     running: reactive[bool] = reactive(False, init=False)
 
@@ -3003,65 +2358,82 @@ class EvalScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal(id="chrome"):
-            yield Breadcrumb(id="breadcrumb")
-            yield ProviderStatusPill(id="provider-pill")
-        with Horizontal(id="eval-root"):
-            with Vertical(id="eval-form"):
-                yield Static("Suite")
+        yield from _compose_chrome()
+        with Horizontal(id=EVAL_SCREEN_SPEC.root_id):
+            with Vertical(id=EVAL_SCREEN_SPEC.form_id):
+                yield Static(EVAL_SCREEN_SPEC.suite.label)
                 yield Select(
                     [(suite, suite) for suite in list_eval_suites()],
-                    value="planning",
+                    value=EVAL_SCREEN_SPEC.suite.default,
                     allow_blank=False,
-                    id="eval-suite",
+                    id=EVAL_SCREEN_SPEC.suite.widget_id,
                 )
-                yield Static("Provider")
+                yield Static(EVAL_SCREEN_SPEC.provider.label)
                 yield Select(
                     [(provider, provider) for provider in self._forge.providers()],
                     value=getattr(self.app, "current_provider", "mock"),
                     allow_blank=False,
-                    id="eval-provider",
+                    id=EVAL_SCREEN_SPEC.provider.widget_id,
                 )
-                yield Button("Run eval", id="eval-run", variant="primary")
-            with Vertical(id="eval-output"):
-                yield Static("No suite run yet — press r to execute.", id="eval-verdict")
-                yield RichLog(highlight=True, markup=True, max_lines=5000, id="eval-log")
-                yield ExportPane(widget_id="eval-export")
+                yield Button(
+                    EVAL_SCREEN_SPEC.run.label,
+                    id=EVAL_SCREEN_SPEC.run.widget_id,
+                    variant=EVAL_SCREEN_SPEC.run.variant,
+                )
+            with Vertical(id=EVAL_SCREEN_SPEC.output_id):
+                yield Static(
+                    EVAL_SCREEN_SPEC.verdict.empty_message,
+                    id=EVAL_SCREEN_SPEC.verdict.widget_id,
+                )
+                yield RichLog(
+                    highlight=True,
+                    markup=True,
+                    max_lines=EVAL_SCREEN_SPEC.log.max_lines,
+                    id=EVAL_SCREEN_SPEC.log.widget_id,
+                )
+                yield ExportPane(widget_id=EVAL_SCREEN_SPEC.completion.export_widget_id)
         yield Footer()
 
     def on_mount(self) -> None:
         self._update_chrome()
 
     def _update_chrome(self) -> None:
-        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-        if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", "eval")
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            pill.label = f"{getattr(self.app, 'current_provider', 'mock')} · eval"
+        provider = getattr(self.app, "current_provider", "mock")
+        _apply_chrome(
+            self,
+            screen_chrome("eval", provider_label=provider_capability_label(provider, "eval")),
+        )
 
-    @on(Button.Pressed, "#eval-run")
+    @on(Button.Pressed, f"#{EVAL_RUN_BUTTON_ID}")
     def _run_button(self) -> None:
         self.action_run_eval()
 
     def action_run_eval(self) -> None:
-        suite = self.query_one("#eval-suite", Select).value
-        provider = self.query_one("#eval-provider", Select).value
-        if isinstance(suite, str) and isinstance(provider, str):
-            self._run_eval(suite, provider)
+        request = eval_request_from_form(
+            suite_value=self.query_one(f"#{EVAL_SCREEN_SPEC.suite.widget_id}", Select).value,
+            provider_value=self.query_one(f"#{EVAL_SCREEN_SPEC.provider.widget_id}", Select).value,
+        )
+        if request is not None:
+            self._run_eval(request.suite_id, request.provider)
 
     def action_cancel_or_back(self) -> None:
-        if self.running:
-            self.workers.cancel_group(self, "eval")
+        if _cancel_report_or_back(
+            self,
+            running=self.running,
+            run_control=EVAL_SCREEN_SPEC.run_control,
+        ):
             self.running = False
-            self.app.notify("Cancelled eval run.", severity="warning", title="Eval")
             return
-        self.app.action_switch_screen("home")
 
-    @work(thread=True, group="eval", exclusive=True, name="eval.run")
+    @work(
+        thread=True,
+        group=EVAL_SCREEN_SPEC.run_control.worker_group,
+        exclusive=True,
+        name=EVAL_SCREEN_SPEC.run_control.worker_name,
+    )
     def _run_eval(self, suite_id: str, provider: str) -> None:
         self.app.call_from_thread(setattr, self, "running", True)
-        self.app.call_from_thread(self._write_eval_log, f"running {suite_id} x {provider}")
+        self.app.call_from_thread(self._write_eval_log, eval_running_log_line(suite_id, provider))
         try:
             artifacts, report = eval_run_artifacts(self._forge, suite_id, provider)
             path = write_report(self._forge, f"eval-{suite_id}", artifacts)
@@ -3072,137 +2444,54 @@ class EvalScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         if get_current_worker().is_cancelled:
             self.app.call_from_thread(setattr, self, "running", False)
             return
-        run = self._run_from_eval_report(suite_id, artifacts, report.to_dict(), path)
-        self.app.call_from_thread(self._complete_report_run, run, artifacts, path, "eval")
+        run = eval_report_harness_run(
+            suite_id,
+            artifacts,
+            report.to_dict(),
+            path=path,
+            state_dir=self._forge.state_dir,
+        )
+        self.app.call_from_thread(self._complete_report_run, run, artifacts, path)
 
     def _write_eval_log(self, line: str | Text) -> None:
-        log = _maybe_query(self, "#eval-log", RichLog)
+        log = _maybe_query(self, EVAL_LOG_SELECTOR, RichLog)
         if log is not None:
             log.write(line)
-
-    def _run_from_eval_report(
-        self,
-        suite_id: str,
-        artifacts: dict[str, str],
-        payload: dict[str, Any],
-        path: Path,
-    ) -> HarnessRun:
-        passed = sum(1 for result in payload.get("results", []) if result.get("passed"))
-        total = len(payload.get("results", []))
-        flow = HarnessFlow(
-            id=f"eval-{suite_id}",
-            title=f"Evaluation: {payload.get('suite', suite_id)}",
-            short_title=f"Eval {suite_id}",
-            focus="evaluation",
-            provider=", ".join(
-                summary.get("provider", "provider")
-                for summary in payload.get("provider_summaries", [])
-            )
-            or "provider",
-            capability="eval",
-            command=f"worldforge eval --suite {suite_id}",
-            accent="",
-            summary=f"{passed}/{total} scenarios passed.",
-        )
-        return HarnessRun(
-            flow=flow,
-            state_dir=self._forge.state_dir,
-            summary=payload,
-            steps=(
-                HarnessStep(
-                    "Run evaluation", "Execute built-in suite.", f"{passed}/{total} passed."
-                ),
-            ),
-            metrics=tuple(
-                HarnessMetric(
-                    summary.get("provider", "provider"),
-                    f"{summary.get('passed_scenario_count', 0)}/{summary.get('scenario_count', 0)}",
-                    f"average_score={float(summary.get('average_score', 0.0)):.2f}",
-                )
-                for summary in payload.get("provider_summaries", [])
-            ),
-            transcript=("kind: eval", f"suite: {suite_id}", f"report_path: {path}"),
-            kind="eval",
-            report_path=path,
-            artifacts=artifacts,
-        )
 
     def _complete_report_run(
         self,
         run: HarnessRun,
         artifacts: dict[str, str],
         path: Path,
-        kind: str,
     ) -> None:
         self.running = False
-        export = _maybe_query(self, "#eval-export", ExportPane) or _maybe_query(
-            self, "#benchmark-export", ExportPane
+        _complete_report_run(
+            self,
+            forge=self._forge,
+            completion=EVAL_SCREEN_SPEC.completion,
+            run=run,
+            artifacts=artifacts,
+            path=path,
         )
-        if export is not None:
-            export.set_artifacts(artifacts)
-        verdict = _maybe_query(self, "#eval-verdict", Static)
-        if verdict is not None:
-            verdict.update(f"Report saved: {path}")
-        self.post_message(ReportExported(path=path, kind=kind))
-        self.app.push_screen(RunInspectorScreen(state_dir=self._forge.state_dir, run=run))
 
     def on_capability_mismatch(self, event: CapabilityMismatch) -> None:
-        event.stop()
-        self.app.notify(str(event.error), severity="error", title="Capability mismatch")
-        log = _maybe_query(self, "#eval-log", RichLog)
-        if log is not None:
-            log.write(Text(str(event.error), style="bold red"))
+        _handle_capability_mismatch(
+            self,
+            event,
+            run_control=EVAL_SCREEN_SPEC.run_control,
+            log_selector=EVAL_LOG_SELECTOR,
+        )
 
 
 class BenchmarkScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
     """Run capability-aware provider benchmarks from the TUI."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("r", "run_benchmark", "Run", show=True),
-        Binding("escape", "cancel_or_back", "Cancel/Back", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in BENCHMARK_BINDING_SPECS
     ]
 
-    DEFAULT_CSS = """
-    BenchmarkScreen {
-        background: $background;
-        color: $foreground;
-    }
-
-    #benchmark-root {
-        height: 1fr;
-        padding: 1 2;
-    }
-
-    #benchmark-form {
-        width: 34;
-        margin-right: 1;
-        padding: 1 2;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #benchmark-output {
-        width: 1fr;
-    }
-
-    #benchmark-log {
-        height: 10;
-        border: round $panel;
-        background: $surface;
-    }
-
-    #benchmark-stats {
-        height: auto;
-        padding: 1 2;
-        margin-bottom: 1;
-        border: round $panel;
-        background: $surface;
-    }
-
-    BenchmarkScreen Select, BenchmarkScreen Input, BenchmarkScreen Button {
-        margin-bottom: 1;
-    }
-    """
+    DEFAULT_CSS = _tui_styles.BENCHMARK_SCREEN_DEFAULT_CSS
 
     running: reactive[bool] = reactive(False, init=False)
 
@@ -3214,75 +2503,111 @@ class BenchmarkScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
     def compose(self) -> ComposeResult:
         provider = getattr(self.app, "current_provider", "mock")
         yield Header(show_clock=True)
-        with Horizontal(id="chrome"):
-            yield Breadcrumb(id="breadcrumb")
-            yield ProviderStatusPill(id="provider-pill")
-        with Horizontal(id="benchmark-root"):
-            with Vertical(id="benchmark-form"):
-                yield Static("Provider")
+        yield from _compose_chrome()
+        with Horizontal(id=BENCHMARK_SCREEN_SPEC.root_id):
+            with Vertical(id=BENCHMARK_SCREEN_SPEC.form_id):
+                yield Static(BENCHMARK_SCREEN_SPEC.provider.label)
                 yield Select(
                     [(name, name) for name in self._forge.providers()],
                     value=provider,
                     allow_blank=False,
-                    id="benchmark-provider",
+                    id=BENCHMARK_SCREEN_SPEC.provider.widget_id,
                 )
-                yield Static("Operation")
+                yield Static(BENCHMARK_SCREEN_SPEC.operation.label)
                 yield Select(
                     [(operation, operation) for operation in BENCHMARKABLE_OPERATIONS],
-                    value="predict",
+                    value=BENCHMARK_SCREEN_SPEC.operation.default,
                     allow_blank=False,
-                    id="benchmark-operation",
+                    id=BENCHMARK_SCREEN_SPEC.operation.widget_id,
                 )
-                yield Static("Iterations")
-                yield Input(value="5", id="benchmark-iterations")
-                yield Button("Run benchmark", id="benchmark-run", variant="primary")
-            with Vertical(id="benchmark-output"):
-                yield Static("No benchmark run yet — press r to execute.", id="benchmark-stats")
-                yield ProgressBar(total=5, id="benchmark-progress")
-                yield RichLog(highlight=True, markup=True, max_lines=5000, id="benchmark-log")
-                yield ExportPane(widget_id="benchmark-export")
+                yield Static(BENCHMARK_SCREEN_SPEC.iterations.label)
+                yield Input(
+                    value=BENCHMARK_SCREEN_SPEC.iterations.default,
+                    id=BENCHMARK_SCREEN_SPEC.iterations.widget_id,
+                )
+                yield Button(
+                    BENCHMARK_SCREEN_SPEC.run.label,
+                    id=BENCHMARK_SCREEN_SPEC.run.widget_id,
+                    variant=BENCHMARK_SCREEN_SPEC.run.variant,
+                )
+            with Vertical(id=BENCHMARK_SCREEN_SPEC.output_id):
+                yield Static(
+                    BENCHMARK_SCREEN_SPEC.stats.empty_message,
+                    id=BENCHMARK_SCREEN_SPEC.stats.widget_id,
+                )
+                yield ProgressBar(
+                    total=DEFAULT_BENCHMARK_ITERATIONS,
+                    id=BENCHMARK_SCREEN_SPEC.progress_id,
+                )
+                yield RichLog(
+                    highlight=True,
+                    markup=True,
+                    max_lines=BENCHMARK_SCREEN_SPEC.log.max_lines,
+                    id=BENCHMARK_SCREEN_SPEC.log.widget_id,
+                )
+                yield ExportPane(widget_id=BENCHMARK_SCREEN_SPEC.completion.export_widget_id)
         yield Footer()
 
     def on_mount(self) -> None:
         self._update_chrome()
 
     def _update_chrome(self) -> None:
-        breadcrumb = _maybe_query(self, "#breadcrumb", Breadcrumb)
-        if breadcrumb is not None:
-            breadcrumb.path = ("worldforge", "benchmark")
-        pill = _maybe_query(self, "#provider-pill", ProviderStatusPill)
-        if pill is not None:
-            pill.label = f"{getattr(self.app, 'current_provider', 'mock')} · benchmark"
+        provider = getattr(self.app, "current_provider", "mock")
+        _apply_chrome(
+            self,
+            screen_chrome(
+                "benchmark",
+                provider_label=provider_capability_label(provider, "benchmark"),
+            ),
+        )
 
-    @on(Button.Pressed, "#benchmark-run")
+    @on(Button.Pressed, f"#{BENCHMARK_RUN_BUTTON_ID}")
     def _run_button(self) -> None:
         self.action_run_benchmark()
 
     def action_run_benchmark(self) -> None:
-        provider = self.query_one("#benchmark-provider", Select).value
-        operation = self.query_one("#benchmark-operation", Select).value
-        try:
-            iterations = int(self.query_one("#benchmark-iterations", Input).value or "5")
-        except ValueError:
-            self.app.notify("Iterations must be an integer.", severity="error", title="Benchmark")
+        result = benchmark_request_from_form(
+            provider_value=self.query_one(
+                f"#{BENCHMARK_SCREEN_SPEC.provider.widget_id}", Select
+            ).value,
+            operation_value=self.query_one(
+                f"#{BENCHMARK_SCREEN_SPEC.operation.widget_id}", Select
+            ).value,
+            iterations_value=self.query_one(
+                f"#{BENCHMARK_SCREEN_SPEC.iterations.widget_id}", Input
+            ).value,
+        )
+        if result.error:
+            self.app.notify(result.error, severity="error", title="Benchmark")
             return
-        if isinstance(provider, str) and isinstance(operation, str):
-            progress = _maybe_query(self, "#benchmark-progress", ProgressBar)
-            if progress is not None:
-                progress.total = iterations
-                progress.progress = 0
-            self._samples = []
-            self._run_benchmark(provider, operation, iterations)
+        if result.request is None:
+            return
+        progress = _maybe_query(self, f"#{BENCHMARK_SCREEN_SPEC.progress_id}", ProgressBar)
+        if progress is not None:
+            progress.total = result.request.iterations
+            progress.progress = 0
+        self._samples = []
+        self._run_benchmark(
+            result.request.provider,
+            result.request.operation,
+            result.request.iterations,
+        )
 
     def action_cancel_or_back(self) -> None:
-        if self.running:
-            self.workers.cancel_group(self, "benchmark")
+        if _cancel_report_or_back(
+            self,
+            running=self.running,
+            run_control=BENCHMARK_SCREEN_SPEC.run_control,
+        ):
             self.running = False
-            self.app.notify("Cancelled benchmark run.", severity="warning", title="Benchmark")
             return
-        self.app.action_switch_screen("home")
 
-    @work(thread=True, group="benchmark", exclusive=True, name="benchmark.run")
+    @work(
+        thread=True,
+        group=BENCHMARK_SCREEN_SPEC.run_control.worker_group,
+        exclusive=True,
+        name=BENCHMARK_SCREEN_SPEC.run_control.worker_name,
+    )
     def _run_benchmark(self, provider: str, operation: str, iterations: int) -> None:
         self.app.call_from_thread(setattr, self, "running", True)
 
@@ -3306,70 +2631,26 @@ class BenchmarkScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         if get_current_worker().is_cancelled:
             self.app.call_from_thread(setattr, self, "running", False)
             return
-        run = self._run_from_benchmark_report(artifacts, report.to_dict(), path)
+        run = benchmark_report_harness_run(
+            artifacts,
+            report.to_dict(),
+            path=path,
+            state_dir=self._forge.state_dir,
+        )
         self.app.call_from_thread(self._complete_report_run, run, artifacts, path)
 
     def _record_benchmark_sample(self, sample: JSONDict, total: int) -> None:
-        latency = float(sample.get("latency_ms") or 0.0)
-        self._samples.append(latency)
-        progress = _maybe_query(self, "#benchmark-progress", ProgressBar)
+        view = benchmark_sample_progress(sample, self._samples, total=total)
+        self._samples = list(view.samples)
+        progress = _maybe_query(self, f"#{BENCHMARK_SCREEN_SPEC.progress_id}", ProgressBar)
         if progress is not None:
-            progress.progress = min(len(self._samples), total)
-        log = _maybe_query(self, "#benchmark-log", RichLog)
+            progress.progress = view.progress_count
+        log = _maybe_query(self, BENCHMARK_LOG_SELECTOR, RichLog)
         if log is not None:
-            log.write(
-                f"{sample.get('provider')}.{sample.get('operation')} "
-                f"#{sample.get('iteration')} {latency:.2f} ms"
-            )
-        median = statistics.median(self._samples)
-        p95 = sorted(self._samples)[max(0, int((len(self._samples) - 1) * 0.95))]
-        stats = _maybe_query(self, "#benchmark-stats", Static)
+            log.write(view.log_line)
+        stats = _maybe_query(self, f"#{BENCHMARK_SCREEN_SPEC.stats.widget_id}", Static)
         if stats is not None:
-            stats.update(
-                f"Samples: {len(self._samples)}/{total}  median={median:.2f} ms  p95={p95:.2f} ms"
-            )
-
-    def _run_from_benchmark_report(
-        self,
-        artifacts: dict[str, str],
-        payload: dict[str, Any],
-        path: Path,
-    ) -> HarnessRun:
-        results = payload.get("results", [])
-        flow = HarnessFlow(
-            id="benchmark",
-            title="Benchmark Report",
-            short_title="Benchmark",
-            focus="latency / retry / throughput",
-            provider=", ".join(sorted({result.get("provider", "provider") for result in results}))
-            or "provider",
-            capability="benchmark",
-            command="worldforge benchmark",
-            accent="",
-            summary=f"{len(results)} benchmark rows.",
-        )
-        return HarnessRun(
-            flow=flow,
-            state_dir=self._forge.state_dir,
-            summary=payload,
-            steps=(
-                HarnessStep(
-                    "Run benchmark", "Execute provider operations.", f"{len(results)} rows."
-                ),
-            ),
-            metrics=tuple(
-                HarnessMetric(
-                    f"{result.get('provider')}.{result.get('operation')}",
-                    f"{float(result.get('average_latency_ms') or 0.0):.2f} ms",
-                    f"ok={result.get('success_count')}/{result.get('iterations')}",
-                )
-                for result in results
-            ),
-            transcript=("kind: benchmark", f"report_path: {path}", f"rows: {len(results)}"),
-            kind="benchmark",
-            report_path=path,
-            artifacts=artifacts,
-        )
+            stats.update(view.stats_line)
 
     def _complete_report_run(
         self,
@@ -3378,224 +2659,59 @@ class BenchmarkScreen(Screen):  # pragma: no cover - exercised by Pilot tests.
         path: Path,
     ) -> None:
         self.running = False
-        export = _maybe_query(self, "#benchmark-export", ExportPane)
-        if export is not None:
-            export.set_artifacts(artifacts)
-        stats = _maybe_query(self, "#benchmark-stats", Static)
-        if stats is not None:
-            stats.update(f"Report saved: {path}")
-        self.post_message(ReportExported(path=path, kind="benchmark"))
-        self.app.push_screen(RunInspectorScreen(state_dir=self._forge.state_dir, run=run))
+        _complete_report_run(
+            self,
+            forge=self._forge,
+            completion=BENCHMARK_SCREEN_SPEC.completion,
+            run=run,
+            artifacts=artifacts,
+            path=path,
+        )
 
     def on_capability_mismatch(self, event: CapabilityMismatch) -> None:
-        event.stop()
-        self.app.notify(str(event.error), severity="error", title="Benchmark")
-        log = _maybe_query(self, "#benchmark-log", RichLog)
-        if log is not None:
-            log.write(Text(str(event.error), style="bold red"))
+        _handle_capability_mismatch(
+            self,
+            event,
+            run_control=BENCHMARK_SCREEN_SPEC.run_control,
+            log_selector=BENCHMARK_LOG_SELECTOR,
+        )
 
 
 # ---------------------------------------------------------------------------
 # Robotics Replay Showcase Report
 # ---------------------------------------------------------------------------
 
-
-def _robotics_number(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    number = float(value)
-    if number != number or number in (float("inf"), float("-inf")):
-        return None
-    return number
-
-
-def _robotics_nested(payload: dict[str, object], *keys: str) -> object:
-    current: object = payload
-    for key in keys:
-        if not isinstance(current, dict):
-            return None
-        current = current.get(key)
-    return current
-
-
-def _robotics_candidate_targets(payload: dict[str, object]) -> list[dict[str, object]]:
-    value = _robotics_nested(payload, "visualization", "candidate_targets")
-    return [dict(item) for item in value] if isinstance(value, list) else []
-
-
-def _robotics_scores(payload: dict[str, object]) -> list[float]:
-    value = _robotics_nested(payload, "score_result", "scores")
-    if not isinstance(value, list):
-        return []
-    scores: list[float] = []
-    for item in value:
-        number = _robotics_number(item)
-        if number is not None:
-            scores.append(number)
-    return scores
-
-
-def _robotics_selected_index(payload: dict[str, object]) -> int | None:
-    value = _robotics_nested(payload, "score_result", "best_index")
-    if isinstance(value, bool) or not isinstance(value, int):
-        return None
-    return value
-
-
-def _robotics_event_duration(
-    payload: dict[str, object],
-    *,
-    provider: str,
-    operation: str,
-) -> float | None:
-    events = payload.get("provider_events")
-    if not isinstance(events, list):
-        return None
-    for event in reversed(events):
-        if not isinstance(event, dict):
-            continue
-        if event.get("provider") == provider and event.get("operation") == operation:
-            return _robotics_number(event.get("duration_ms"))
-    return None
-
-
-def _robotics_final_position(payload: dict[str, object]) -> dict[str, float] | None:
-    position = _robotics_nested(payload, "execution", "final_block_position")
-    if not isinstance(position, dict):
-        return None
-    x = _robotics_number(position.get("x"))
-    y = _robotics_number(position.get("y"))
-    z = _robotics_number(position.get("z"))
-    if x is None or y is None or z is None:
-        return None
-    return {"x": x, "y": y, "z": z}
-
-
-def _robotics_rerun_recording_path(payload: dict[str, object]) -> Path | None:
-    rerun = payload.get("rerun")
-    if not isinstance(rerun, dict):
-        return None
-    save_path = rerun.get("save_path")
-    if not isinstance(save_path, str) or not save_path.strip():
-        return None
-    path = Path(save_path).expanduser()
-    return path if path.is_absolute() else path.resolve()
-
-
-def _robotics_rerun_viewer_command(path: Path) -> list[str]:
-    return [
-        "uvx",
-        "--from",
-        "rerun-sdk>=0.24,<0.32",
-        "rerun",
-        str(path),
-    ]
-
-
-def _robotics_rerun_viewer_command_text(path: Path) -> str:
-    return " ".join(shlex.quote(part) for part in _robotics_rerun_viewer_command(path))
-
-
-def _robotics_tensorboard_log_dir(payload: dict[str, object]) -> Path | None:
-    tensorboard = payload.get("tensorboard")
-    if not isinstance(tensorboard, dict):
-        return None
-    log_dir = tensorboard.get("log_dir")
-    if not isinstance(log_dir, str) or not log_dir.strip():
-        return None
-    path = Path(log_dir).expanduser()
-    return path if path.is_absolute() else path.resolve()
-
-
-ROBOTICS_TENSORBOARD_DEFAULT_PORT = tensorboard_launcher.DEFAULT_PORT
-ROBOTICS_TENSORBOARD_READY_TIMEOUT_S = tensorboard_launcher.DEFAULT_READY_TIMEOUT_S
-ROBOTICS_TENSORBOARD_POLL_INTERVAL_S = tensorboard_launcher.DEFAULT_POLL_INTERVAL_S
-ROBOTICS_TENSORBOARD_STDOUT_LOG = tensorboard_launcher.STDOUT_LOG
-ROBOTICS_TENSORBOARD_STDERR_LOG = tensorboard_launcher.STDERR_LOG
-
-
-def _tensorboard_port_open(host: str, port: int, *, timeout: float = 1.0) -> bool:
-    """Return True when a TCP connect to ``host:port`` succeeds within ``timeout``."""
-
-    return tensorboard_launcher.port_open(host, port, timeout=timeout)
-
-
-def _robotics_tensorboard_viewer_command(path: Path) -> list[str]:
-    return tensorboard_launcher.viewer_command(
-        path,
-        port=ROBOTICS_TENSORBOARD_DEFAULT_PORT,
-    )
-
-
-def _robotics_tensorboard_viewer_command_text(path: Path) -> str:
-    return tensorboard_launcher.viewer_command_text(
-        path,
-        port=ROBOTICS_TENSORBOARD_DEFAULT_PORT,
-    )
-
-
-def _robotics_tensorboard_url() -> str:
-    return tensorboard_launcher.viewer_url(port=ROBOTICS_TENSORBOARD_DEFAULT_PORT)
-
-
-def _robotics_color(token: str) -> str:
-    return {
-        "accent": "cyan",
-        "success": "green",
-        "warning": "yellow",
-        "muted": "bright_black",
-        "panel": "blue",
-    }.get(token, "white")
-
-
-ROBOTICS_REPORT_GUIDE_ROWS: tuple[tuple[str, str, str], ...] = (
-    (
-        "Runtime bars",
-        "policy, score, plan, and total are wall-clock milliseconds for the completed run.",
-        "Policy is the LeRobot checkpoint call; score is the LeWorldModel cost call.",
-    ),
-    (
-        "Tensor contract",
-        "tensor MB and elements describe the preprocessed score tensors sent to LeWorldModel.",
-        "They explain runtime size and shape, not physical skill or task success by themselves.",
-    ),
-    (
-        "Candidate ranking",
-        "lower cost wins; SELECTED is the action chunk WorldForge mock-replays.",
-        "The selected row should agree with the tabletop target/final marker and best_index.",
-    ),
-)
-
-ROBOTICS_TABLETOP_DIAGRAM = """Tabletop replay
----------------
-legend: S=start, G=goal, T=selected target, F=mock final, X=selected+final
-selected candidate: #2
-+------------------------------------------+
-|                                          |
-|                                          |
-|                                          |
-|                               0          |
-|                          1               |
-|                                          |
-|S                   G                     |
-|                                          |
-|               X                          |
-|                                          |
-|                                          |
-|                                          |
-|                                          |
-+------------------------------------------+
-x=0.00             x=0.50             x=1.00"""
-
-ROBOTICS_TABLETOP_HELP_TEXT = (
-    "Read the tabletop replay as a top-down map of the PushT workspace. "
-    "S is the start, G is the goal, numbered marks are non-selected policy "
-    "candidates, T is the selected target, F is the mock final position, and "
-    "X means the selected target and mock final state overlap on the same rendered cell. "
-    "Mentally: LeRobot proposes possible pushes, LeWorldModel assigns costs, "
-    "WorldForge picks the lowest-cost candidate, then the local mock world replays that action. "
-    "This is a planning visualization, not a hardware camera feed or robot-control trace."
-)
+# Compatibility names kept on ``worldforge.harness.tui`` for existing tests
+# and callers; implementation lives in a Textual-free helper module.
+ROBOTICS_REPORT_GUIDE_ROWS = _robotics_view.ROBOTICS_REPORT_GUIDE_ROWS
+ROBOTICS_TABLETOP_DIAGRAM = _robotics_view.ROBOTICS_TABLETOP_DIAGRAM
+ROBOTICS_TABLETOP_GOAL = _robotics_view.ROBOTICS_TABLETOP_GOAL
+ROBOTICS_TABLETOP_HEIGHT = _robotics_view.ROBOTICS_TABLETOP_HEIGHT
+ROBOTICS_TABLETOP_HELP_BINDING_SPECS = _robotics_view.ROBOTICS_TABLETOP_HELP_BINDING_SPECS
+ROBOTICS_TABLETOP_HELP_SCREEN_SPEC = _robotics_view.ROBOTICS_TABLETOP_HELP_SCREEN_SPEC
+ROBOTICS_TABLETOP_HELP_TEXT = _robotics_view.ROBOTICS_TABLETOP_HELP_TEXT
+ROBOTICS_TABLETOP_START = _robotics_view.ROBOTICS_TABLETOP_START
+ROBOTICS_TABLETOP_WIDTH = _robotics_view.ROBOTICS_TABLETOP_WIDTH
+ROBOTICS_SHOWCASE_APP_SPEC = _robotics_view.ROBOTICS_SHOWCASE_APP_SPEC
+ROBOTICS_SHOWCASE_BODY_SELECTOR = _robotics_view.ROBOTICS_SHOWCASE_BODY_SELECTOR
+ROBOTICS_TENSORBOARD_DEFAULT_PORT = _robotics_view.ROBOTICS_TENSORBOARD_DEFAULT_PORT
+ROBOTICS_TENSORBOARD_POLL_INTERVAL_S = _robotics_view.ROBOTICS_TENSORBOARD_POLL_INTERVAL_S
+ROBOTICS_TENSORBOARD_READY_TIMEOUT_S = _robotics_view.ROBOTICS_TENSORBOARD_READY_TIMEOUT_S
+ROBOTICS_TENSORBOARD_STDERR_LOG = _robotics_view.ROBOTICS_TENSORBOARD_STDERR_LOG
+ROBOTICS_TENSORBOARD_STDOUT_LOG = _robotics_view.ROBOTICS_TENSORBOARD_STDOUT_LOG
+_robotics_candidate_targets = _robotics_view.robotics_candidate_targets
+_robotics_event_duration = _robotics_view.robotics_event_duration
+_robotics_final_position = _robotics_view.robotics_final_position
+_robotics_nested = _robotics_view.robotics_nested
+_robotics_number = _robotics_view.robotics_number
+_robotics_rerun_recording_path = _robotics_view.robotics_rerun_recording_path
+_robotics_scores = _robotics_view.robotics_scores
+_robotics_selected_index = _robotics_view.robotics_selected_index
+_robotics_tabletop_map_lines = _robotics_view.robotics_tabletop_map_lines
+_robotics_tensorboard_log_dir = _robotics_view.robotics_tensorboard_log_dir
+_tensorboard_port_open = _robotics_view.tensorboard_port_open
+subprocess = _robotics_launch.subprocess
+webbrowser = _robotics_launch.webbrowser
 
 
 class RoboticsHeroPane(Static, _ThemedRenderer):
@@ -3607,384 +2723,92 @@ class RoboticsHeroPane(Static, _ThemedRenderer):
         self.summary_path = summary_path
 
     def on_mount(self) -> None:
-        policy_path = _robotics_nested(self.summary, "inputs", "policy_path") or "unknown"
-        checkpoint = self.summary.get("checkpoint_display") or self.summary.get("checkpoint")
-        selected = _robotics_selected_index(self.summary)
-        best_score = _robotics_nested(self.summary, "score_result", "best_score")
-        score_text = (
-            f"{float(best_score):.6f}" if _robotics_number(best_score) is not None else "n/a"
-        )
-        artifact = str(self.summary_path or self.summary.get("checkpoint_display") or "summary")
-        title = Text("WorldForge Robotics Showcase", style=f"bold {_robotics_color('accent')}")
-        subtitle = Text("real LeRobot policy + real LeWorldModel checkpoint scoring", style="dim")
-        contract = Text()
-        contract.append("REAL policy", style=f"bold {_robotics_color('success')}")
-        contract.append("  +  ")
-        contract.append("REAL score", style=f"bold {_robotics_color('success')}")
-        contract.append("  +  ")
-        contract.append("LOCAL mock replay", style=f"bold {_robotics_color('warning')}")
-        body = Table.grid(expand=True)
-        body.add_column(ratio=1)
-        body.add_column(justify="right", ratio=1)
-        body.add_row(Text("policy", style="dim"), Text(str(policy_path), style="bold"))
-        body.add_row(Text("checkpoint", style="dim"), Text(str(checkpoint), style="bold"))
-        body.add_row(
-            Text("selected candidate", style="dim"),
-            Text(f"#{selected} / score {score_text}", style=f"bold {_robotics_color('success')}"),
-        )
-        body.add_row(Text("artifact", style="dim"), Text(artifact, style=_robotics_color("muted")))
-        self.update(
-            Panel(
-                Group(title, subtitle, Text(""), contract, Text(""), body),
-                title="REAL ROBOTICS POLICY + WORLD MODEL",
-                border_style=_robotics_color("accent"),
-            )
-        )
+        self.update(robotics_hero_panel(self.summary, summary_path=self.summary_path))
 
 
-class RoboticsPipelinePane(Static, _ThemedRenderer):
+class _RoboticsSummaryPane(Static, _ThemedRenderer):
+    """Base for summary-backed robotics panes with pure renderable builders."""
+
+    _render_summary: ClassVar[Callable[[dict[str, object]], RenderableType]]
+
+    def __init__(self, summary: dict[str, object]) -> None:
+        super().__init__()
+        self.summary = summary
+
+    def on_mount(self) -> None:
+        self.update(type(self)._render_summary(self.summary))
+
+
+class _RoboticsStaticPane(Static, _ThemedRenderer):
+    """Base for robotics panes rendered from static pure builders."""
+
+    _render_static: ClassVar[Callable[[], RenderableType]]
+
+    def on_mount(self) -> None:
+        self.update(type(self)._render_static())
+
+
+class RoboticsPipelinePane(_RoboticsStaticPane):
     """Visual pipeline graph for the real policy+score run."""
 
-    def __init__(self, summary: dict[str, object]) -> None:
-        super().__init__()
-        self.summary = summary
-
-    def on_mount(self) -> None:
-        accent = _robotics_color("accent")
-        success = _robotics_color("success")
-        warning = _robotics_color("warning")
-        rows = [
-            ("1", "PushT observation", "packaged host-preprocessed task state", success),
-            ("2", "LeRobot policy", "select_action from lerobot/diffusion_pusht", accent),
-            ("3", "Candidate bridge", "3 checkpoint-native action tensors", accent),
-            ("4", "LeWorldModel cost", "lower cost wins", success),
-            ("5", "WorldForge planner", "policy+score candidate selection", accent),
-            ("6", "Mock replay", "local execution only, no hardware control", warning),
-        ]
-        table = Table.grid(expand=True, padding=(0, 2))
-        table.add_column(justify="right", no_wrap=True)
-        table.add_column(no_wrap=True)
-        table.add_column(ratio=2)
-        for index, label, detail, color in rows:
-            table.add_row(
-                Text(f"{index}.", style=f"bold {color}"), Text(label, style="bold"), detail
-            )
-            if index != rows[-1][0]:
-                table.add_row("", Text("|", style=color), Text("v", style=color))
-        self.update(Panel(table, title="Pipeline Flow", border_style=accent))
+    _render_static: ClassVar[Callable[[], RenderableType]] = staticmethod(robotics_pipeline_panel)
 
 
-class RoboticsReportGuidePane(Static, _ThemedRenderer):
+class RoboticsReportGuidePane(_RoboticsStaticPane):
     """Compact guide for interpreting the report panes."""
 
-    def on_mount(self) -> None:
-        table = Table(
-            expand=True,
-            show_header=True,
-            header_style=f"bold {_robotics_color('accent')}",
-            box=box.SIMPLE,
-        )
-        table.add_column("pane", no_wrap=True)
-        table.add_column("read it as", ratio=2)
-        table.add_column("watch for", ratio=2)
-        for pane, meaning, watch_for in ROBOTICS_REPORT_GUIDE_ROWS:
-            table.add_row(
-                Text(pane, style=f"bold {_robotics_color('success')}"),
-                meaning,
-                Text(watch_for, style=_robotics_color("muted")),
-            )
-        footer = Text(
-            "Press ? for the tabletop replay legend and mental model.",
-            style=f"bold {_robotics_color('warning')}",
-        )
-        self.update(
-            Panel(
-                Group(table, Text(""), footer),
-                title="Reading The Report",
-                border_style=_robotics_color("panel"),
-            )
-        )
+    _render_static: ClassVar[Callable[[], RenderableType]] = staticmethod(
+        robotics_report_guide_panel
+    )
 
 
-class RoboticsRerunPane(Static, _ThemedRenderer):
+class RoboticsRerunPane(_RoboticsSummaryPane):
     """Rerun artifact location and viewer command."""
 
-    def __init__(self, summary: dict[str, object]) -> None:
-        super().__init__()
-        self.summary = summary
-
-    def on_mount(self) -> None:
-        path = _robotics_rerun_recording_path(self.summary)
-        if path is None:
-            self.update(
-                Panel(
-                    Text("Rerun recording was not enabled for this run.", style="dim"),
-                    title="Rerun Recording",
-                    border_style=_robotics_color("panel"),
-                )
-            )
-            return
-        rerun = self.summary.get("rerun")
-        size = None
-        written = None
-        if isinstance(rerun, dict):
-            size = rerun.get("recording_size_bytes")
-            written = rerun.get("recording_written")
-        status = "written" if written else "configured"
-        if isinstance(size, int) and size > 0:
-            status = f"{status}, {size} bytes"
-        command = _robotics_rerun_viewer_command_text(path)
-        table = Table.grid(expand=True)
-        table.add_column(no_wrap=True)
-        table.add_column(ratio=1)
-        table.add_row(Text("path", style="dim"), Text(str(path), style="bold"))
-        table.add_row(Text("status", style="dim"), Text(status, style="bold"))
-        table.add_row(Text("open", style="dim"), Text(command, style=_robotics_color("accent")))
-        table.add_row(Text("shortcut", style="dim"), Text("press o", style="bold"))
-        self.update(Panel(table, title="Rerun Recording", border_style=_robotics_color("success")))
+    _render_summary: ClassVar[Callable[[dict[str, object]], RenderableType]] = staticmethod(
+        robotics_rerun_panel
+    )
 
 
-class RoboticsTensorBoardPane(Static, _ThemedRenderer):
+class RoboticsTensorBoardPane(_RoboticsSummaryPane):
     """TensorBoard log directory and viewer command."""
 
-    def __init__(self, summary: dict[str, object]) -> None:
-        super().__init__()
-        self.summary = summary
-
-    def on_mount(self) -> None:
-        path = _robotics_tensorboard_log_dir(self.summary)
-        if path is None:
-            self.update(
-                Panel(
-                    Text(
-                        "TensorBoard recording was not enabled for this run.",
-                        style="dim",
-                    ),
-                    title="TensorBoard Logs",
-                    border_style=_robotics_color("panel"),
-                )
-            )
-            return
-        tensorboard = self.summary.get("tensorboard")
-        events_written = None
-        run_name = None
-        if isinstance(tensorboard, dict):
-            events_written = tensorboard.get("events_written")
-            run_name = tensorboard.get("run_name")
-        status = "events written" if events_written else "configured"
-        command = _robotics_tensorboard_viewer_command_text(path)
-        url = _robotics_tensorboard_url()
-        table = Table.grid(expand=True)
-        table.add_column(no_wrap=True)
-        table.add_column(ratio=1)
-        table.add_row(Text("path", style="dim"), Text(str(path), style="bold"))
-        if isinstance(run_name, str) and run_name.strip():
-            table.add_row(Text("run", style="dim"), Text(run_name, style="bold"))
-        table.add_row(Text("status", style="dim"), Text(status, style="bold"))
-        table.add_row(Text("url", style="dim"), Text(url, style=_robotics_color("accent")))
-        table.add_row(Text("open", style="dim"), Text(command, style=_robotics_color("accent")))
-        table.add_row(Text("shortcut", style="dim"), Text("press t", style="bold"))
-        self.update(Panel(table, title="TensorBoard Logs", border_style=_robotics_color("success")))
+    _render_summary: ClassVar[Callable[[dict[str, object]], RenderableType]] = staticmethod(
+        robotics_tensorboard_panel
+    )
 
 
-class RoboticsMetricsPane(Static, _ThemedRenderer):
+class RoboticsMetricsPane(_RoboticsSummaryPane):
     """Runtime bars and tensor contract summary."""
 
-    def __init__(self, summary: dict[str, object]) -> None:
-        super().__init__()
-        self.summary = summary
-
-    @staticmethod
-    def _bar(value: float, maximum: float, *, width: int = 34) -> str:
-        fill = 0 if maximum <= 0 else max(1, min(width, round((value / maximum) * width)))
-        return f"{'#' * fill:<{width}}"
-
-    def on_mount(self) -> None:
-        policy_ms = _robotics_event_duration(self.summary, provider="lerobot", operation="policy")
-        score_ms = _robotics_event_duration(
-            self.summary, provider="leworldmodel", operation="score"
-        )
-        plan_ms = _robotics_number(_robotics_nested(self.summary, "metrics", "plan_latency_ms"))
-        total_ms = _robotics_number(_robotics_nested(self.summary, "metrics", "total_latency_ms"))
-        rows = [
-            ("policy", policy_ms, _robotics_color("accent")),
-            ("score", score_ms, _robotics_color("success")),
-            ("plan", plan_ms, _robotics_color("accent")),
-            ("total", total_ms, _robotics_color("warning")),
-        ]
-        maximum = max((value or 0.0) for _label, value, _color in rows)
-        table = Table.grid(expand=True, padding=(0, 2))
-        table.add_column(no_wrap=True)
-        table.add_column(justify="right", no_wrap=True)
-        table.add_column(ratio=1)
-        for label, value, color in rows:
-            if value is None:
-                table.add_row(label, "n/a", "")
-                continue
-            table.add_row(
-                Text(label, style="dim"),
-                Text(f"{value:.2f} ms", style=f"bold {color}"),
-                Text(self._bar(value, maximum), style=color),
-            )
-        tensor_mb = _robotics_nested(self.summary, "inputs", "approx_float32_mb")
-        total_elements = _robotics_nested(self.summary, "inputs", "total_tensor_elements")
-        table.add_row("", "", "")
-        table.add_row(Text("tensor MB", style="dim"), Text(str(tensor_mb), style="bold"), "")
-        table.add_row(Text("elements", style="dim"), Text(str(total_elements), style="bold"), "")
-        self.update(
-            Panel(table, title="Runtime + Tensor Contract", border_style=_robotics_color("accent"))
-        )
+    _render_summary: ClassVar[Callable[[dict[str, object]], RenderableType]] = staticmethod(
+        robotics_metrics_panel
+    )
 
 
-class RoboticsCandidatePane(Static, _ThemedRenderer):
+class RoboticsCandidatePane(_RoboticsSummaryPane):
     """Candidate scores, targets, and selection status."""
 
-    def __init__(self, summary: dict[str, object]) -> None:
-        super().__init__()
-        self.summary = summary
-
-    def on_mount(self) -> None:
-        targets = _robotics_candidate_targets(self.summary)
-        scores = _robotics_scores(self.summary)
-        selected = _robotics_selected_index(self.summary)
-        table = Table(
-            expand=True,
-            show_header=True,
-            header_style=f"bold {_robotics_color('accent')}",
-            box=box.SIMPLE_HEAVY,
-        )
-        table.add_column("candidate", justify="right", no_wrap=True)
-        table.add_column("target", no_wrap=True)
-        table.add_column("cost", justify="right", no_wrap=True)
-        table.add_column("status", no_wrap=True)
-        for target in targets:
-            index = int(target.get("index", -1))
-            score = scores[index] if 0 <= index < len(scores) else None
-            x = _robotics_number(target.get("x")) or 0.0
-            y = _robotics_number(target.get("y")) or 0.0
-            z = _robotics_number(target.get("z")) or 0.0
-            status = "SELECTED" if index == selected else ""
-            style = f"bold {_robotics_color('success')}" if index == selected else ""
-            table.add_row(
-                f"#{index}",
-                f"x={x:.3f} y={y:.3f} z={z:.3f}",
-                "n/a" if score is None else f"{score:.6f}",
-                Text(status, style=style),
-                style=style,
-            )
-        self.update(
-            Panel(table, title="Candidate Ranking", border_style=_robotics_color("success"))
-        )
+    _render_summary: ClassVar[Callable[[dict[str, object]], RenderableType]] = staticmethod(
+        robotics_candidate_panel
+    )
 
 
-class RoboticsTabletopPane(Static, _ThemedRenderer):
+class RoboticsTabletopPane(_RoboticsSummaryPane):
     """Compact tabletop map with stable marker semantics."""
 
-    def __init__(self, summary: dict[str, object]) -> None:
-        super().__init__()
-        self.summary = summary
+    _render_summary: ClassVar[Callable[[dict[str, object]], RenderableType]] = staticmethod(
+        robotics_tabletop_panel
+    )
 
     def _map_lines(self) -> list[str]:
-        targets = _robotics_candidate_targets(self.summary)
-        selected = _robotics_selected_index(self.summary)
-        final_position = _robotics_final_position(self.summary)
-        width = 62
-        height = 12
-        cells: dict[tuple[int, int], set[str]] = {}
-
-        def place(x: float, y: float, marker: str) -> None:
-            column = max(0, min(width - 1, round(x * (width - 1))))
-            row = max(0, min(height - 1, round((1.0 - y) * (height - 1))))
-            cells.setdefault((row, column), set()).add(marker)
-
-        place(0.0, 0.5, "S")
-        place(0.5, 0.5, "G")
-        for target in targets:
-            index = int(target.get("index", -1))
-            x = _robotics_number(target.get("x"))
-            y = _robotics_number(target.get("y"))
-            if x is None or y is None:
-                continue
-            marker = "T" if index == selected else str(index % 10)
-            place(x, y, marker)
-        if final_position is not None:
-            place(final_position["x"], final_position["y"], "F")
-
-        lines = ["+" + "-" * width + "+"]
-        for row in range(height):
-            characters: list[str] = []
-            for column in range(width):
-                markers = cells.get((row, column), set())
-                if not markers:
-                    characters.append(" ")
-                elif "F" in markers and "T" in markers:
-                    characters.append("X")
-                elif "F" in markers:
-                    characters.append("F")
-                elif "T" in markers:
-                    characters.append("T")
-                elif len(markers) > 1:
-                    characters.append("*")
-                else:
-                    characters.append(next(iter(markers)))
-            lines.append("|" + "".join(characters) + "|")
-        lines.append("+" + "-" * width + "+")
-        lines.append("x=0.00                         x=0.50                         x=1.00")
-        return lines
-
-    def on_mount(self) -> None:
-        legend = Text("S start  G goal  T selected target  F final  X selected+final", style="dim")
-        selected = _robotics_selected_index(self.summary)
-        map_text = Text("\n".join(self._map_lines()), style=f"bold {_robotics_color('success')}")
-        subtitle = Text(
-            f"selected candidate: #{selected}", style=f"bold {_robotics_color('success')}"
-        )
-        self.update(
-            Panel(
-                Group(subtitle, legend, map_text),
-                title="Tabletop Replay",
-                border_style=_robotics_color("warning"),
-            )
-        )
+        return _robotics_tabletop_map_lines(self.summary)
 
 
 class RoboticsArmPane(Static, _ThemedRenderer):
     """Illustrative animated robot-arm replay for the selected candidate."""
 
-    _FRAMES: ClassVar[list[list[str]]] = [
-        [
-            "                                    target",
-            "                                      T",
-            "                                      |",
-            "base [###]o====o----[]",
-            "        shoulder elbow gripper",
-            "        replay frame 1/4",
-        ],
-        [
-            "                                    target",
-            "                                      T",
-            "                                     /",
-            "base [###]o======o-----[]",
-            "        shoulder  elbow gripper",
-            "        replay frame 2/4",
-        ],
-        [
-            "                                    target",
-            "                                      T",
-            "                                    /",
-            "base [###]o========o------[]",
-            "        shoulder   elbow gripper",
-            "        replay frame 3/4",
-        ],
-        [
-            "                                    target",
-            "                                      T",
-            "                                      |",
-            "base [###]o==========o========[]",
-            "        shoulder    elbow     gripper",
-            "        replay frame 4/4",
-        ],
-    ]
+    _FRAMES: ClassVar[tuple[tuple[str, ...], ...]] = ROBOTICS_ARM_FRAMES
 
     def __init__(self, summary: dict[str, object], *, animate: bool = True) -> None:
         super().__init__()
@@ -3995,10 +2819,13 @@ class RoboticsArmPane(Static, _ThemedRenderer):
         self._target_line_cached = ""
 
     def on_mount(self) -> None:
-        self._target_line_cached = self._target_line()
+        self._target_line_cached = robotics_arm_target_line(self.summary)
         self._render_frame()
         if self.animate:
-            self._timer = self.set_interval(0.32, self._advance)
+            self._timer = self.set_interval(
+                ROBOTICS_SHOWCASE_APP_SPEC.arm_frame_interval_s,
+                self._advance,
+            )
 
     def on_unmount(self) -> None:
         # Textual timers keep firing on dismounted widgets unless stopped,
@@ -4011,248 +2838,72 @@ class RoboticsArmPane(Static, _ThemedRenderer):
         self._frame_index = (self._frame_index + 1) % len(self._FRAMES)
         self._render_frame()
 
-    def _selected_target(self) -> dict[str, object] | None:
-        selected = _robotics_selected_index(self.summary)
-        for target in _robotics_candidate_targets(self.summary):
-            if target.get("index") == selected:
-                return target
-        return None
-
-    def _target_line(self) -> str:
-        selected = _robotics_selected_index(self.summary)
-        target = self._selected_target()
-        if target is None:
-            return f"selected candidate #{selected}"
-        x = _robotics_number(target.get("x")) or 0.0
-        y = _robotics_number(target.get("y")) or 0.0
-        z = _robotics_number(target.get("z")) or 0.0
-        return f"selected candidate #{selected}: target x={x:.3f} y={y:.3f} z={z:.3f}"
-
     def _render_frame(self) -> None:
-        title = Text("Illustrative Arm Replay", style=f"bold {_robotics_color('accent')}")
-        subtitle = Text("simulation/replay only; no hardware command is emitted", style="dim")
-        target = Text(self._target_line_cached, style=f"bold {_robotics_color('success')}")
-        frame = Text("\n".join(self._FRAMES[self._frame_index]), style=_robotics_color("accent"))
-        final_position = _robotics_final_position(self.summary)
-        final = "mock final unavailable"
-        if final_position is not None:
-            final = (
-                "mock final "
-                f"x={final_position['x']:.3f} "
-                f"y={final_position['y']:.3f} "
-                f"z={final_position['z']:.3f}"
-            )
-        details = Table.grid(expand=True)
-        details.add_column(no_wrap=True)
-        details.add_column()
-        details.add_row(Text("action chunk", style="dim"), Text("1 selected WorldForge action"))
-        details.add_row(Text("replay target", style="dim"), target)
-        details.add_row(Text("result", style="dim"), Text(final, style="bold"))
-        details.add_row(Text("boundary", style="dim"), Text("local mock execution only"))
-        body = Table.grid(expand=True, padding=(0, 3))
-        body.add_column(ratio=1)
-        body.add_column(ratio=1)
-        body.add_row(frame, details)
         self.update(
-            Panel(
-                Group(title, subtitle, Text(""), body),
-                title="Robot Arm Visualization",
-                border_style=_robotics_color("accent"),
+            robotics_arm_panel(
+                self.summary,
+                frame_lines=self._FRAMES[self._frame_index],
+                target_line=self._target_line_cached,
             )
         )
 
 
-class RoboticsEventPane(Static, _ThemedRenderer):
+class RoboticsEventPane(_RoboticsSummaryPane):
     """Provider events emitted by the completed real run."""
 
-    def __init__(self, summary: dict[str, object]) -> None:
-        super().__init__()
-        self.summary = summary
-
-    def on_mount(self) -> None:
-        events = self.summary.get("provider_events")
-        table = Table(
-            expand=True, show_header=True, header_style=f"bold {_robotics_color('accent')}"
-        )
-        table.add_column("provider", no_wrap=True)
-        table.add_column("operation", no_wrap=True)
-        table.add_column("phase", no_wrap=True)
-        table.add_column("duration", justify="right", no_wrap=True)
-        if isinstance(events, list):
-            for event in events:
-                if not isinstance(event, dict):
-                    continue
-                duration = _robotics_number(event.get("duration_ms"))
-                table.add_row(
-                    str(event.get("provider")),
-                    str(event.get("operation")),
-                    str(event.get("phase")),
-                    "n/a" if duration is None else f"{duration:.2f} ms",
-                )
-        self.update(Panel(table, title="Provider Event Log", border_style=_robotics_color("panel")))
+    _render_summary: ClassVar[Callable[[dict[str, object]], RenderableType]] = staticmethod(
+        robotics_event_panel
+    )
 
 
 class RoboticsTabletopHelpScreen(ModalScreen[None]):
     """Modal explainer for the standalone robotics tabletop replay."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "dismiss", "Close", show=True),
-        Binding("q", "dismiss", "Close", show=False),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in ROBOTICS_TABLETOP_HELP_BINDING_SPECS
     ]
 
-    CSS = """
-    RoboticsTabletopHelpScreen {
-        align: center middle;
-    }
-
-    RoboticsTabletopHelpScreen > #robotics-help-card {
-        width: 104;
-        height: 38;
-        background: $surface;
-        border: tall $accent;
-        padding: 1 2;
-    }
-
-    RoboticsTabletopHelpScreen #robotics-help-title {
-        height: 1;
-        text-style: bold;
-        color: $accent;
-        margin-bottom: 1;
-    }
-
-    RoboticsTabletopHelpScreen .robotics-help-section {
-        margin-bottom: 1;
-    }
-    """
+    CSS = _tui_styles.ROBOTICS_TABLETOP_HELP_SCREEN_CSS
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll(id="robotics-help-card"):
-            yield Static("Reading the tabletop replay", id="robotics-help-title")
-            yield Static(ROBOTICS_TABLETOP_HELP_TEXT, classes="robotics-help-section")
-            yield Static(
-                Text(ROBOTICS_TABLETOP_DIAGRAM, style=f"bold {_robotics_color('success')}"),
-                classes="robotics-help-section",
-            )
-            yield Static(
-                "ELI5: the policy suggests a few pushes, the world model scores them, "
-                "WorldForge chooses the cheapest one, and the mock world shows where that "
-                "choice ended. If T and F overlap, the map prints X.",
-                classes="robotics-help-section",
-            )
-            yield Static(
-                "Boundary: this visualizes simulation/replay planning only. It is not a "
-                "hardware command stream, safety check, or physical success proof.",
-                classes="robotics-help-section",
-            )
+        spec = ROBOTICS_TABLETOP_HELP_SCREEN_SPEC
+        with VerticalScroll(id=spec.card_id):
+            yield Static(spec.title, id=spec.title_id)
+            for section in spec.sections:
+                yield Static(
+                    robotics_help_section_renderable(section),
+                    classes=section.classes,
+                )
 
 
 class RoboticsProgressPane(Static, _ThemedRenderer):
     """Staged reveal status for the standalone showcase report."""
 
     def on_mount(self) -> None:
-        self.set_message("Preparing visual replay from completed real inference summary...")
+        self.set_message(ROBOTICS_SHOWCASE_APP_SPEC.initial_progress_message)
 
     def set_message(self, message: str) -> None:
-        self.update(
-            Panel(
-                Text(message, style=f"bold {_robotics_color('accent')}"),
-                title="Replay Sequencer",
-                border_style=_robotics_color("accent"),
-            )
-        )
+        self.update(robotics_progress_panel(message))
 
 
 class RoboticsShowcaseApp(App[None]):
     """Standalone Textual report for the real robotics showcase."""
 
-    TITLE = "WorldForge Robotics Showcase"
-    SUB_TITLE = "LeRobot policy + LeWorldModel checkpoint scoring replay"
+    TITLE = ROBOTICS_SHOWCASE_APP_SPEC.title
+    SUB_TITLE = ROBOTICS_SHOWCASE_APP_SPEC.subtitle
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("?", "show_tabletop_help", "Help", show=True),
-        Binding("o", "open_rerun", "Open Rerun", show=True),
-        Binding("t", "open_tensorboard", "Open TensorBoard", show=True),
-        Binding("q", "quit", "Quit", show=True),
-        Binding("ctrl+t", "toggle_theme", "Theme", show=True),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in ROBOTICS_SHOWCASE_APP_SPEC.bindings
     ]
-    CSS = """
-    Header {
-        background: $surface;
-        color: $foreground;
-    }
-
-    Footer {
-        background: $surface;
-        color: $foreground;
-    }
-
-    #robotics-body {
-        height: 1fr;
-        padding: 1 2;
-        background: $surface;
-    }
-
-    RoboticsHeroPane {
-        height: 10;
-        margin-bottom: 1;
-    }
-
-    RoboticsProgressPane {
-        height: 5;
-        margin-bottom: 1;
-    }
-
-    RoboticsPipelinePane {
-        height: 13;
-        margin-bottom: 1;
-    }
-
-    RoboticsReportGuidePane {
-        height: 11;
-        margin-bottom: 1;
-    }
-
-    RoboticsRerunPane {
-        height: 9;
-        margin-bottom: 1;
-    }
-
-    RoboticsTensorBoardPane {
-        height: 11;
-        margin-bottom: 1;
-    }
-
-    RoboticsMetricsPane {
-        height: 12;
-        margin-bottom: 1;
-    }
-
-    RoboticsArmPane {
-        height: 15;
-        margin-bottom: 1;
-    }
-
-    RoboticsCandidatePane {
-        height: 10;
-        margin-bottom: 1;
-    }
-
-    RoboticsTabletopPane {
-        height: 17;
-        margin-bottom: 1;
-    }
-
-    RoboticsEventPane {
-        height: 10;
-        margin-bottom: 1;
-    }
-    """
+    CSS = _tui_styles.ROBOTICS_SHOWCASE_APP_CSS
 
     def __init__(
         self,
         *,
         summary: dict[str, object],
         summary_path: Path | None = None,
-        stage_delay: float = 0.35,
+        stage_delay: float = ROBOTICS_SHOWCASE_APP_SPEC.default_stage_delay_s,
         animate_arm: bool = True,
     ) -> None:
         super().__init__()
@@ -4262,33 +2913,17 @@ class RoboticsShowcaseApp(App[None]):
         self.animate_arm = animate_arm
         self.rerun_recording_path = _robotics_rerun_recording_path(summary)
         self.tensorboard_log_dir = _robotics_tensorboard_log_dir(summary)
-        self.register_theme(_build_theme(THEME_NAME_DARK, WORLDFORGE_DARK_PALETTE, dark=True))
-        self.register_theme(_build_theme(THEME_NAME_LIGHT, WORLDFORGE_LIGHT_PALETTE, dark=False))
-        self.register_theme(
-            _build_theme(
-                THEME_NAME_HIGH_CONTRAST,
-                WORLDFORGE_HIGH_CONTRAST_PALETTE,
-                dark=True,
-            )
-        )
+        _register_worldforge_themes(self)
         self.theme = THEME_NAME_DARK
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with VerticalScroll(id="robotics-body"):
+        with VerticalScroll(id=ROBOTICS_SHOWCASE_APP_SPEC.body_id):
             if self.stage_delay <= 0:
-                yield RoboticsHeroPane(self.summary, self.summary_path)
-                yield RoboticsPipelinePane(self.summary)
-                yield RoboticsReportGuidePane()
-                if self.rerun_recording_path is not None:
-                    yield RoboticsRerunPane(self.summary)
-                if self.tensorboard_log_dir is not None:
-                    yield RoboticsTensorBoardPane(self.summary)
-                yield RoboticsMetricsPane(self.summary)
-                yield RoboticsArmPane(self.summary, animate=self.animate_arm)
-                yield RoboticsCandidatePane(self.summary)
-                yield RoboticsTabletopPane(self.summary)
-                yield RoboticsEventPane(self.summary)
+                for stage in ROBOTICS_SHOWCASE_APP_SPEC.stages:
+                    widget = self._stage_widget(stage)
+                    if widget is not None:
+                        yield widget
             else:
                 yield RoboticsProgressPane()
         yield Footer()
@@ -4298,167 +2933,106 @@ class RoboticsShowcaseApp(App[None]):
             self.run_worker(self._reveal_report(), name="robotics.reveal", group="robotics")
 
     async def _reveal_report(self) -> None:
-        body = self.query_one("#robotics-body", VerticalScroll)
+        body = self.query_one(ROBOTICS_SHOWCASE_BODY_SELECTOR, VerticalScroll)
         progress = self.query_one(RoboticsProgressPane)
-        stages: list[tuple[str, Static]] = [
-            (
-                "Loaded real policy + score summary.",
-                RoboticsHeroPane(self.summary, self.summary_path),
-            ),
-            ("Tracing the policy-to-world-model pipeline.", RoboticsPipelinePane(self.summary)),
-            (
-                "Explaining how to read the runtime, tensor, and candidate panes.",
-                RoboticsReportGuidePane(),
-            ),
-        ]
-        if self.rerun_recording_path is not None:
-            stages.append(
-                (
-                    "Attaching Rerun artifact location and viewer command.",
-                    RoboticsRerunPane(self.summary),
-                )
-            )
-        if self.tensorboard_log_dir is not None:
-            stages.append(
-                (
-                    "Attaching TensorBoard log directory and viewer command.",
-                    RoboticsTensorBoardPane(self.summary),
-                )
-            )
-        stages.extend(
-            [
-                (
-                    "Rendering latency and tensor contract metrics.",
-                    RoboticsMetricsPane(self.summary),
-                ),
-                (
-                    "Animating the selected action chunk as an illustrative arm replay.",
-                    RoboticsArmPane(self.summary, animate=self.animate_arm),
-                ),
-                (
-                    "Ranking LeRobot action candidates by LeWorldModel cost.",
-                    RoboticsCandidatePane(self.summary),
-                ),
-                (
-                    "Drawing the tabletop replay with stable markers.",
-                    RoboticsTabletopPane(self.summary),
-                ),
-                ("Attaching provider event log.", RoboticsEventPane(self.summary)),
-            ]
-        )
         await asyncio.sleep(self.stage_delay)
-        for message, widget in stages:
-            progress.set_message(message)
+        for stage in ROBOTICS_SHOWCASE_APP_SPEC.stages:
+            widget = self._stage_widget(stage)
+            if widget is None:
+                continue
+            progress.set_message(stage.message)
             await body.mount(widget)
             await asyncio.sleep(self.stage_delay)
         await progress.remove()
 
+    def _stage_widget(self, stage: _robotics_view.RoboticsShowcaseStageSpec) -> Static | None:
+        if not _robotics_view.robotics_showcase_stage_enabled(
+            stage,
+            has_rerun_recording=self.rerun_recording_path is not None,
+            has_tensorboard_logs=self.tensorboard_log_dir is not None,
+        ):
+            return None
+        return self._make_stage_widget(stage.stage_id)
+
+    def _make_stage_widget(self, stage_id: str) -> Static | None:
+        if stage_id == "hero":
+            return RoboticsHeroPane(self.summary, self.summary_path)
+        if stage_id == "pipeline":
+            return RoboticsPipelinePane()
+        if stage_id == "guide":
+            return RoboticsReportGuidePane()
+        if stage_id == "rerun":
+            return RoboticsRerunPane(self.summary)
+        if stage_id == "tensorboard":
+            return RoboticsTensorBoardPane(self.summary)
+        if stage_id == "metrics":
+            return RoboticsMetricsPane(self.summary)
+        if stage_id == "arm":
+            return RoboticsArmPane(self.summary, animate=self.animate_arm)
+        if stage_id == "candidates":
+            return RoboticsCandidatePane(self.summary)
+        if stage_id == "tabletop":
+            return RoboticsTabletopPane(self.summary)
+        if stage_id == "events":
+            return RoboticsEventPane(self.summary)
+        return None
+
     def action_toggle_theme(self) -> None:
-        order = (THEME_NAME_DARK, THEME_NAME_LIGHT, THEME_NAME_HIGH_CONTRAST)
-        try:
-            index = order.index(self.theme)
-        except ValueError:
-            index = 0
-        self.theme = order[(index + 1) % len(order)]
+        self.theme = next_theme_name(self.theme)
 
     def action_show_tabletop_help(self) -> None:
         self.push_screen(RoboticsTabletopHelpScreen())
 
     def action_open_rerun(self) -> None:
         path = self.rerun_recording_path
-        if path is None:
-            self.notify(
-                "This run does not include a persisted Rerun recording.",
-                severity="warning",
-                title="Rerun",
-            )
+        issue = _robotics_launch.rerun_recording_preflight(path)
+        if issue is not None:
+            self.notify(issue.message, severity=issue.severity, title=issue.title)
             return
-        if not path.is_file():
-            self.notify(
-                f"Rerun recording not found: {path}",
-                severity="error",
-                title="Rerun",
-            )
-            return
-        command = _robotics_rerun_viewer_command(path)
+        assert path is not None
         try:
-            subprocess.Popen(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            command_text = _robotics_launch.launch_rerun_viewer(path)
         except OSError as exc:
             self.notify(str(exc), severity="error", title="Rerun")
             return
         self.notify(
-            _robotics_rerun_viewer_command_text(path),
+            command_text,
             severity="information",
             title="Opening Rerun",
         )
 
     def action_open_tensorboard(self) -> None:
         path = self.tensorboard_log_dir
-        if path is None:
-            self.notify(
-                "This run does not include a TensorBoard log directory.",
-                severity="warning",
-                title="TensorBoard",
-            )
+        issue = _robotics_launch.tensorboard_log_dir_preflight(path)
+        if issue is not None:
+            self.notify(issue.message, severity=issue.severity, title=issue.title)
             return
-        if not path.is_dir():
-            self.notify(
-                f"TensorBoard log directory not found: {path}",
-                severity="error",
-                title="TensorBoard",
-            )
-            return
-        stdout_log = path / ROBOTICS_TENSORBOARD_STDOUT_LOG
-        stderr_log = path / ROBOTICS_TENSORBOARD_STDERR_LOG
-        command = _robotics_tensorboard_viewer_command(path)
+        assert path is not None
         try:
-            stdout_handle = stdout_log.open("wb")
-            try:
-                stderr_handle = stderr_log.open("wb")
-                try:
-                    subprocess.Popen(
-                        command,
-                        stdout=stdout_handle,
-                        stderr=stderr_handle,
-                        start_new_session=True,
-                    )
-                finally:
-                    stderr_handle.close()
-            finally:
-                stdout_handle.close()
+            launch = _robotics_launch.launch_tensorboard_viewer(path)
         except OSError as exc:
             self.notify(str(exc), severity="error", title="TensorBoard")
             return
-        url = _robotics_tensorboard_url()
         self.notify(
-            f"Waiting for TensorBoard to start at {url}\nlogs: {stderr_log}",
+            f"Waiting for TensorBoard to start at {launch.url}\nlogs: {launch.stderr_log}",
             severity="information",
             title="TensorBoard",
         )
         self.run_worker(
-            self._open_tensorboard_browser_when_ready(url, stderr_log),
+            self._open_tensorboard_browser_when_ready(launch.url, launch.stderr_log),
             name="tensorboard.open",
             group="tensorboard",
             exclusive=True,
         )
 
     async def _open_tensorboard_browser_when_ready(self, url: str, stderr_log: Path) -> None:
-        deadline = time.monotonic() + ROBOTICS_TENSORBOARD_READY_TIMEOUT_S
-        ready = False
-        while time.monotonic() < deadline:
-            if await asyncio.to_thread(
-                _tensorboard_port_open,
-                "localhost",
-                ROBOTICS_TENSORBOARD_DEFAULT_PORT,
-            ):
-                ready = True
-                break
-            await asyncio.sleep(ROBOTICS_TENSORBOARD_POLL_INTERVAL_S)
+        ready = await _robotics_launch.wait_for_tensorboard_ready(
+            host="localhost",
+            port=ROBOTICS_TENSORBOARD_DEFAULT_PORT,
+            timeout_s=ROBOTICS_TENSORBOARD_READY_TIMEOUT_S,
+            interval_s=ROBOTICS_TENSORBOARD_POLL_INTERVAL_S,
+            port_open=_tensorboard_port_open,
+        )
         if not ready:
             self.notify(
                 f"TensorBoard did not come up at {url} within "
@@ -4468,12 +3042,11 @@ class RoboticsShowcaseApp(App[None]):
                 title="TensorBoard",
             )
             return
-        try:
-            opened = await asyncio.to_thread(webbrowser.open, url)
-        except webbrowser.Error as exc:
-            self.notify(str(exc), severity="warning", title="TensorBoard")
+        browser = await _robotics_launch.open_browser_url(url)
+        if browser.error is not None:
+            self.notify(browser.error, severity="warning", title="TensorBoard")
             return
-        if not opened:
+        if not browser.opened:
             self.notify(
                 f"Could not auto-open a browser. Visit {url} manually.",
                 severity="warning",
@@ -4513,39 +3086,26 @@ class WorldForgeCommandProvider(  # pragma: no cover - exercised by Pilot/provid
         if not hasattr(app, "_get_forge"):
             return []
         forge = app._get_forge()  # type: ignore[attr-defined]
-        items: list[tuple[str, str, Any]] = [
-            (
-                f"World: {world_id}",
-                "Open the Worlds screen",
-                lambda world_id=world_id: app._open_world_from_palette(world_id),  # type: ignore[attr-defined]
-            )
-            for world_id in forge.list_worlds()
+        specs = palette_item_specs(
+            world_ids=forge.list_worlds(),
+            providers=forge.providers(),
+            report_paths=recent_report_paths(forge.state_dir, limit=50),
+            run_records=list_run_history(workspace_root_for_state_dir(forge.state_dir), limit=50),
+        )
+        return [
+            (spec.title, spec.help_text, self._callback_for_palette_item(app, spec))
+            for spec in specs
         ]
-        items.extend(
-            (
-                f"Provider: {provider}",
-                "Open the Providers screen",
-                lambda provider=provider: app._open_provider_from_palette(provider),  # type: ignore[attr-defined]
-            )
-            for provider in forge.providers()
-        )
-        items.extend(
-            (
-                f"Run: {path.name}",
-                "Open the preserved report",
-                lambda path=path: app._open_report_path(path),  # type: ignore[attr-defined]
-            )
-            for path in recent_report_paths(forge.state_dir, limit=50)
-        )
-        items.extend(
-            (
-                f"Run workspace: {record.run_id}",
-                "Open the preserved run workspace",
-                lambda path=record.path: app._open_run_workspace(path),  # type: ignore[attr-defined]
-            )
-            for record in list_run_history(workspace_root_for_state_dir(forge.state_dir), limit=50)
-        )
-        return items
+
+    @staticmethod
+    def _callback_for_palette_item(app: App, spec: PaletteItemSpec) -> Any:
+        if spec.kind == "world":
+            return lambda value=str(spec.value): app._open_world_from_palette(value)  # type: ignore[attr-defined]
+        if spec.kind == "provider":
+            return lambda value=str(spec.value): app._open_provider_from_palette(value)  # type: ignore[attr-defined]
+        if spec.kind == "report":
+            return lambda value=Path(spec.value): app._open_report_path(value)  # type: ignore[attr-defined]
+        return lambda value=Path(spec.value): app._open_run_workspace(value)  # type: ignore[attr-defined]
 
 
 class TheWorldHarnessApp(App[None]):
@@ -4555,18 +3115,10 @@ class TheWorldHarnessApp(App[None]):
     SUB_TITLE = "WorldForge visual integration harness"
     COMMANDS = App.COMMANDS | {WorldForgeCommandProvider}
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("?", "show_help", "Help", show=True),
-        Binding("q", "quit", "Quit", show=True),
-        Binding("ctrl+t", "toggle_theme", "Theme", show=False),
-        Binding("g,h", "switch_screen('home')", "Jump: Home", show=False),
-        Binding("g,r", "switch_screen('run-inspector')", "Jump: Run Inspector", show=False),
-        Binding("g,w", "switch_screen('worlds')", "Jump: Worlds", show=False),
-        Binding("g,p", "switch_screen('providers')", "Jump: Providers", show=False),
-        Binding("g,e", "switch_screen('eval')", "Jump: Eval", show=False),
-        Binding("g,b", "switch_screen('benchmark')", "Jump: Benchmark", show=False),
-        Binding("g,u", "switch_screen('runs')", "Jump: Runs", show=False),
+        Binding(spec.key, spec.action, spec.description, show=spec.show)
+        for spec in APP_BINDING_SPECS
     ]
-    SCREENS: ClassVar[dict[str, type[Screen[Any]]]] = {
+    SCREENS: ClassVar[dict[AppScreenName, type[Screen[Any]]]] = {
         "home": HomeScreen,
         "run-inspector": RunInspectorScreen,
         "worlds": WorldsScreen,
@@ -4575,40 +3127,17 @@ class TheWorldHarnessApp(App[None]):
         "benchmark": BenchmarkScreen,
         "runs": RunsScreen,
     }
-    CSS = """
-    Header {
-        background: $surface;
-        color: $foreground;
-    }
-
-    Footer {
-        background: $surface;
-        color: $foreground;
-    }
-
-    #chrome {
-        height: 1;
-        background: $boost;
-    }
-
-    #breadcrumb {
-        width: 1fr;
-    }
-
-    #provider-pill {
-        width: auto;
-    }
-    """
+    CSS = _tui_styles.THE_WORLD_HARNESS_APP_CSS
 
     current_provider: reactive[str] = reactive("mock", init=False)
 
     def __init__(
         self,
         *,
-        initial_flow_id: str = "leworldmodel",
+        initial_flow_id: str = RUN_INSPECTOR_DEFAULT_FLOW_ID,
         initial_screen: InitialScreen = "home",
         state_dir: Path | None = None,
-        step_delay: float = 0.18,
+        step_delay: float = RUN_INSPECTOR_DEFAULT_STEP_DELAY_SECONDS,
     ) -> None:
         super().__init__()
         self._initial_flow_id = initial_flow_id
@@ -4670,46 +3199,20 @@ class TheWorldHarnessApp(App[None]):
                 return tuple(events)
 
     async def on_mount(self) -> None:
-        self.register_theme(_build_theme(THEME_NAME_DARK, WORLDFORGE_DARK_PALETTE, dark=True))
-        self.register_theme(_build_theme(THEME_NAME_LIGHT, WORLDFORGE_LIGHT_PALETTE, dark=False))
-        self.register_theme(
-            _build_theme(
-                THEME_NAME_HIGH_CONTRAST,
-                WORLDFORGE_HIGH_CONTRAST_PALETTE,
-                dark=True,
-            )
-        )
+        _register_worldforge_themes(self)
         self.theme = THEME_NAME_DARK
-        # Replace the stock default screen with the harness landing screen
-        # (Home unless the CLI passed --flow or --initial-screen). Awaiting
-        # the push keeps the active screen consistent before any test/Pilot
-        # interaction runs.
-        if self._initial_screen == "run-inspector":
-            await self.push_screen(self._make_run_inspector())
-        elif self._initial_screen == "worlds":
-            await self.push_screen(self._make_worlds())
-        elif self._initial_screen == "providers":
-            await self.push_screen(self._make_providers())
-        elif self._initial_screen == "eval":
-            await self.push_screen(self._make_eval())
-        elif self._initial_screen == "benchmark":
-            await self.push_screen(self._make_benchmark())
-        elif self._initial_screen == "runs":
-            await self.push_screen(self._make_runs())
-        else:
-            await self.push_screen(self._make_home())
+        # Awaiting the push keeps the active screen consistent before any
+        # test/Pilot interaction runs.
+        await self.push_screen(
+            self._make_screen_for_name(initial_screen_name(self._initial_screen))
+        )
 
     def action_show_help(self) -> None:
         self.push_screen(HelpScreen(source_screen=self.screen))
 
     def action_toggle_theme(self) -> None:
         """Cycle between the registered worldforge themes."""
-        order = (THEME_NAME_DARK, THEME_NAME_LIGHT, THEME_NAME_HIGH_CONTRAST)
-        try:
-            index = order.index(self.theme)
-        except ValueError:
-            index = 0
-        self.theme = order[(index + 1) % len(order)]
+        self.theme = next_theme_name(self.theme)
 
     def action_switch_screen(self, screen_name: str) -> None:
         """Switch to ``screen_name`` if not already the active screen.
@@ -4721,63 +3224,51 @@ class TheWorldHarnessApp(App[None]):
         """
         while isinstance(self.screen, ModalScreen):
             self.pop_screen()
-        target_cls = self.SCREENS.get(screen_name)
-        if target_cls is None or isinstance(self.screen, target_cls):
-            if (
-                screen_name == "run-inspector"
-                and isinstance(self.screen, RunInspectorScreen)
-                and not self.screen.can_run_flows
-            ):
-                self.switch_screen(self._make_run_inspector())
+        resolved_screen_name = app_screen_name(screen_name)
+        if resolved_screen_name is None:
             return
-        if screen_name == "run-inspector":
-            self.switch_screen(self._make_run_inspector())
-        elif screen_name == "home":
-            self.switch_screen(self._make_home())
-        elif screen_name == "worlds":
-            self.switch_screen(self._make_worlds())
-        elif screen_name == "providers":
-            self.switch_screen(self._make_providers())
-        elif screen_name == "eval":
-            self.switch_screen(self._make_eval())
-        elif screen_name == "benchmark":
-            self.switch_screen(self._make_benchmark())
-        elif screen_name == "runs":
-            self.switch_screen(self._make_runs())
-        else:  # pragma: no cover - defensive
-            self.switch_screen(screen_name)
+        target_cls = self.SCREENS[resolved_screen_name]
+        if isinstance(self.screen, target_cls):
+            if self._active_run_inspector_needs_refresh(resolved_screen_name):
+                self.switch_screen(self._make_screen_for_name(resolved_screen_name))
+            return
+        self.switch_screen(self._make_screen_for_name(resolved_screen_name))
+
+    def _active_run_inspector_needs_refresh(self, screen_name: AppScreenName) -> bool:
+        return screen_needs_run_inspector_refresh(
+            screen_name,
+            is_run_inspector=isinstance(self.screen, RunInspectorScreen),
+            can_run_flows=getattr(self.screen, "can_run_flows", True),
+        )
 
     def _make_screen_for_name(  # pragma: no cover - exercised through Textual callbacks.
-        self, screen_name: str
-    ) -> Screen | str:
-        if screen_name == "run-inspector":
-            return self._make_run_inspector()
-        if screen_name == "home":
-            return self._make_home()
-        if screen_name == "worlds":
-            return self._make_worlds()
-        if screen_name == "providers":
-            return self._make_providers()
-        if screen_name == "eval":
-            return self._make_eval()
-        if screen_name == "benchmark":
-            return self._make_benchmark()
-        if screen_name == "runs":
-            return self._make_runs()
-        return screen_name
+        self, screen_name: AppScreenName
+    ) -> Screen:
+        match screen_name:
+            case "home":
+                return self._make_home()
+            case "run-inspector":
+                return self._make_run_inspector()
+            case "worlds":
+                return self._make_worlds()
+            case "providers":
+                return self._make_providers()
+            case "eval":
+                return self._make_eval()
+            case "benchmark":
+                return self._make_benchmark()
+            case "runs":
+                return self._make_runs()
+        raise AssertionError(f"Unhandled harness screen route: {screen_name!r}")
 
     async def _switch_screen_and_wait(  # pragma: no cover - exercised through command callbacks.
-        self, screen_name: str
+        self, screen_name: AppScreenName
     ) -> Screen:
         while isinstance(self.screen, ModalScreen):
             await self.pop_screen()
-        target_cls = self.SCREENS.get(screen_name)
-        if target_cls is not None and isinstance(self.screen, target_cls):
-            if (
-                screen_name == "run-inspector"
-                and isinstance(self.screen, RunInspectorScreen)
-                and not self.screen.can_run_flows
-            ):
+        target_cls = self.SCREENS[screen_name]
+        if isinstance(self.screen, target_cls):
+            if self._active_run_inspector_needs_refresh(screen_name):
                 await self.switch_screen(self._make_run_inspector())
             return self.screen
         await self.switch_screen(self._make_screen_for_name(screen_name))
@@ -4787,62 +3278,38 @@ class TheWorldHarnessApp(App[None]):
         # Yield the stock Textual commands first (theme, quit) so they stay
         # discoverable, then layer the harness-specific entries.
         yield from super().get_system_commands(screen)
-        yield SystemCommand(
-            "Jump: Home",
-            "Open the Home screen",
-            lambda: self.action_switch_screen("home"),
-        )
-        yield SystemCommand(
-            "Jump: Run Inspector",
-            "Open the Run Inspector screen",
-            lambda: self.action_switch_screen("run-inspector"),
-        )
-        yield SystemCommand(
-            "Jump: Worlds",
-            "Open the Worlds screen",
-            lambda: self.action_switch_screen("worlds"),
-        )
-        yield SystemCommand(
-            "Jump: Providers",
-            "Open the Providers screen",
-            lambda: self.action_switch_screen("providers"),
-        )
-        yield SystemCommand(
-            "Run eval suite",
-            "Open the Eval screen",
-            lambda: self.action_switch_screen("eval"),
-        )
-        yield SystemCommand(
-            "Run benchmark",
-            "Open the Benchmark screen",
-            lambda: self.action_switch_screen("benchmark"),
-        )
-        yield SystemCommand(
-            "Jump: Runs",
-            "Open preserved run history",
-            lambda: self.action_switch_screen("runs"),
-        )
-        yield SystemCommand(
-            "New world",
-            "Open the Worlds screen and start a new world",
-            self._command_new_world,
-        )
-        yield SystemCommand(
-            "Open Help",
-            "Show the bindings on the active screen",
-            self.action_show_help,
-        )
+        theme_command: SystemCommandSpec | None = None
+        for spec in SYSTEM_COMMAND_SPECS:
+            if spec.action == "theme":
+                theme_command = spec
+                continue
+            yield SystemCommand(
+                spec.title,
+                spec.help_text,
+                self._callback_for_system_command(spec),
+            )
         for flow in available_flows():
             yield SystemCommand(
-                f"Run flow: {flow.title}",
-                f"Switch the Run Inspector to {flow.short_title} and run it",
+                flow_system_command_title(flow.title),
+                flow_system_command_help(flow.short_title),
                 self._make_run_flow_command(flow.id),
             )
-        yield SystemCommand(
-            "Switch theme",
-            "Cycle worldforge-dark, worldforge-light, and worldforge-high-contrast",
-            self.action_toggle_theme,
-        )
+        if theme_command is not None:
+            yield SystemCommand(
+                theme_command.title,
+                theme_command.help_text,
+                self._callback_for_system_command(theme_command),
+            )
+
+    def _callback_for_system_command(self, spec: SystemCommandSpec) -> Any:
+        screen_name = app_screen_name(spec.action)
+        if screen_name is not None:
+            return lambda screen_name=screen_name: self.action_switch_screen(screen_name)
+        if spec.action == "new-world":
+            return self._command_new_world
+        if spec.action == "help":
+            return self.action_show_help
+        return self.action_toggle_theme
 
     def _make_run_flow_command(self, flow_id: str):
         async def _run() -> None:

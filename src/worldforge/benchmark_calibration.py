@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from worldforge.artifact_io import write_json_artifact
 from worldforge.benchmark import BenchmarkBudget, load_benchmark_budgets
 from worldforge.models import JSONDict, WorldForgeError, dump_json, require_finite_number
 
@@ -39,6 +40,24 @@ class BudgetCalibrationResult:
     markdown_path: Path | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _CalibrationRows:
+    candidate_entries: list[JSONDict]
+    baseline_context: list[JSONDict]
+    diffs: list[JSONDict]
+
+
+@dataclass(frozen=True, slots=True)
+class _LoadedJsonFile:
+    path: Path
+    data: bytes
+    payload: object
+
+    @property
+    def sha256(self) -> str:
+        return _sha256_bytes(self.data)
+
+
 def generate_budget_calibration(
     *,
     report_paths: Sequence[Path],
@@ -54,94 +73,167 @@ def generate_budget_calibration(
     ``output_dir`` is provided, writes a full calibration report plus a candidate budget file.
     """
 
-    if not report_paths:
-        raise WorldForgeError("At least one benchmark report path is required for calibration.")
     headroom = _headroom(headroom_ratio)
     review_rationale = _rationale(rationale)
     current_budgets, current_digest = _load_current_budgets(current_budget_path)
-    reports = [_load_report(Path(path)) for path in report_paths]
-    candidates: list[JSONDict] = []
-    baselines: list[JSONDict] = []
+    reports = _load_calibration_reports(report_paths)
+    rows = _build_calibration_rows(
+        reports=reports,
+        current_budgets=current_budgets,
+        headroom=headroom,
+        machine_class=machine_class,
+        rationale=review_rationale,
+    )
+    candidate_budgets = _candidate_budget_document(
+        candidates=rows.candidate_entries,
+        reports=reports,
+        current_digest=current_digest,
+        headroom=headroom,
+        rationale=review_rationale,
+    )
+    load_benchmark_budgets(candidate_budgets)
+    payload = _calibration_payload(
+        reports=reports,
+        rows=rows,
+        candidate_budgets=candidate_budgets,
+        current_budget_path=current_budget_path,
+        current_digest=current_digest,
+        headroom=headroom,
+        rationale=review_rationale,
+    )
+    dump_json(payload)
+    if output_dir is None:
+        return BudgetCalibrationResult(payload=payload)
+    return _write_calibration_artifacts(
+        output_dir=output_dir,
+        payload=payload,
+        candidate_budgets=candidate_budgets,
+    )
+
+
+def _load_calibration_reports(report_paths: Sequence[Path]) -> list[JSONDict]:
+    if not report_paths:
+        raise WorldForgeError("At least one benchmark report path is required for calibration.")
+    return [_load_report(Path(path)) for path in report_paths]
+
+
+def _build_calibration_rows(
+    *,
+    reports: Sequence[JSONDict],
+    current_budgets: tuple[BenchmarkBudget, ...],
+    headroom: float,
+    machine_class: str | None,
+    rationale: str,
+) -> _CalibrationRows:
+    candidate_entries: list[JSONDict] = []
+    baseline_context: list[JSONDict] = []
     diffs: list[JSONDict] = []
     for report in reports:
         report_payload = report["payload"]
-        provenance = report_payload.get("provenance", {})
-        run_metadata = report_payload.get("run_metadata", {})
+        provenance = _object_or_empty(report_payload.get("provenance"))
+        run_metadata = _object_or_empty(report_payload.get("run_metadata"))
         for result in report_payload.get("results", []):
             if not isinstance(result, dict):
                 raise WorldForgeError("Benchmark report results must contain JSON objects.")
             candidate = _candidate_budget(result, headroom=headroom)
             BenchmarkBudget.from_dict(candidate)
-            candidates.append(candidate)
-            baseline = _baseline_context(
-                result=result,
-                report=report,
-                provenance=provenance if isinstance(provenance, dict) else {},
-                run_metadata=run_metadata if isinstance(run_metadata, dict) else {},
-                machine_class=machine_class,
+            candidate_entries.append(candidate)
+            baseline_context.append(
+                _baseline_context(
+                    result=result,
+                    report=report,
+                    provenance=provenance,
+                    run_metadata=run_metadata,
+                    machine_class=machine_class,
+                )
             )
-            baselines.append(baseline)
             diffs.extend(
                 _budget_diffs(
                     candidate=candidate,
                     result=result,
                     current_budgets=current_budgets,
-                    rationale=review_rationale,
+                    rationale=rationale,
                 )
             )
-    candidate_budgets = {
+    return _CalibrationRows(
+        candidate_entries=candidate_entries,
+        baseline_context=baseline_context,
+        diffs=diffs,
+    )
+
+
+def _candidate_budget_document(
+    *,
+    candidates: list[JSONDict],
+    reports: Sequence[JSONDict],
+    current_digest: str | None,
+    headroom: float,
+    rationale: str,
+) -> JSONDict:
+    return {
         "metadata": {
             "schema_version": BENCHMARK_CALIBRATION_SCHEMA_VERSION,
             "generated_by": "worldforge.benchmark_calibration",
             "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "headroom_ratio": headroom,
-            "rationale": review_rationale,
+            "rationale": rationale,
             "source_report_digests": [report["sha256"] for report in reports],
             "current_budget_digest": current_digest,
             "review_required": True,
         },
         "budgets": _dedupe_budget_entries(candidates),
     }
-    load_benchmark_budgets(candidate_budgets)
-    payload = {
+
+
+def _calibration_payload(
+    *,
+    reports: Sequence[JSONDict],
+    rows: _CalibrationRows,
+    candidate_budgets: JSONDict,
+    current_budget_path: Path | None,
+    current_digest: str | None,
+    headroom: float,
+    rationale: str,
+) -> JSONDict:
+    return {
         "schema_version": BENCHMARK_CALIBRATION_SCHEMA_VERSION,
         "generated_at": candidate_budgets["metadata"]["generated_at"],
         "headroom_ratio": headroom,
         "review_required": True,
-        "rationale": review_rationale,
+        "rationale": rationale,
         "current_budget_path": _display_path(current_budget_path) if current_budget_path else None,
         "current_budget_digest": current_digest,
-        "source_reports": [
-            {
-                "path": report["path"],
-                "sha256": report["sha256"],
-                "command": report["command"],
-                "worldforge_version": report["worldforge_version"],
-                "input_digest": report["input_digest"],
-                "budget_file": report["budget_file"],
-            }
-            for report in reports
-        ],
-        "baseline_context": baselines,
+        "source_reports": [_source_report_summary(report) for report in reports],
+        "baseline_context": rows.baseline_context,
         "candidate_budgets": candidate_budgets,
-        "diffs": diffs,
+        "diffs": rows.diffs,
     }
-    dump_json(payload)
-    if output_dir is None:
-        return BudgetCalibrationResult(payload=payload)
+
+
+def _source_report_summary(report: JSONDict) -> JSONDict:
+    return {
+        "path": report["path"],
+        "sha256": report["sha256"],
+        "command": report["command"],
+        "worldforge_version": report["worldforge_version"],
+        "input_digest": report["input_digest"],
+        "budget_file": report["budget_file"],
+    }
+
+
+def _write_calibration_artifacts(
+    *,
+    output_dir: Path,
+    payload: JSONDict,
+    candidate_budgets: JSONDict,
+) -> BudgetCalibrationResult:
+    _validate_calibration_artifacts(payload=payload, candidate_budgets=candidate_budgets)
     output = output_dir.expanduser().resolve()
-    output.mkdir(parents=True, exist_ok=True)
     calibration_path = output / "budget-calibration.json"
     candidate_budget_path = output / "candidate-budgets.json"
     markdown_path = output / "budget-calibration.md"
-    calibration_path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    candidate_budget_path.write_text(
-        json.dumps(candidate_budgets, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_json_artifact(calibration_path, payload)
+    write_json_artifact(candidate_budget_path, candidate_budgets)
     markdown_path.write_text(render_budget_calibration_markdown(payload), encoding="utf-8")
     return BudgetCalibrationResult(
         payload=payload,
@@ -150,6 +242,11 @@ def generate_budget_calibration(
         candidate_budget_path=candidate_budget_path,
         markdown_path=markdown_path,
     )
+
+
+def _validate_calibration_artifacts(*, payload: JSONDict, candidate_budgets: JSONDict) -> None:
+    dump_json(payload)
+    dump_json(candidate_budgets)
 
 
 def calibrate_benchmark_budgets(
@@ -176,7 +273,16 @@ def calibrate_benchmark_budgets(
 def render_budget_calibration_markdown(payload: JSONDict) -> str:
     """Render a human-reviewable budget calibration report."""
 
-    lines = [
+    lines = _calibration_summary_markdown_lines(payload)
+    lines.extend(_source_reports_markdown_lines(payload["source_reports"]))
+    lines.extend(_baseline_context_markdown_lines(payload["baseline_context"]))
+    lines.extend(_candidate_diffs_markdown_lines(payload["diffs"]))
+    lines.extend(_human_review_markdown_lines())
+    return "\n".join(lines)
+
+
+def _calibration_summary_markdown_lines(payload: JSONDict) -> list[str]:
+    return [
         "# Benchmark Budget Calibration",
         "",
         f"- Schema version: `{payload['schema_version']}`",
@@ -187,6 +293,11 @@ def render_budget_calibration_markdown(payload: JSONDict) -> str:
         f"- Current budget: `{payload.get('current_budget_path') or '-'}`",
         f"- Current budget digest: `{payload.get('current_budget_digest') or '-'}`",
         "",
+    ]
+
+
+def _source_reports_markdown_lines(source_reports: Sequence[JSONDict]) -> list[str]:
+    lines = [
         "## Source Reports",
         "",
         "| Report | SHA256 | Command | Input digest |",
@@ -199,20 +310,22 @@ def render_budget_calibration_markdown(payload: JSONDict) -> str:
             command=report.get("command") or "-",
             input_digest=report.get("input_digest") or "-",
         )
-        for report in payload["source_reports"]
+        for report in source_reports
     )
-    lines.extend(
-        [
-            "",
-            "## Baseline Context",
-            "",
-            (
-                "| Provider | Operation | Samples | Machine class | Python | Fixture digest | "
-                "Source report |"
-            ),
-            "| --- | --- | ---: | --- | --- | --- | --- |",
-        ]
-    )
+    return lines
+
+
+def _baseline_context_markdown_lines(baselines: Sequence[JSONDict]) -> list[str]:
+    lines = [
+        "",
+        "## Baseline Context",
+        "",
+        (
+            "| Provider | Operation | Samples | Machine class | Python | Fixture digest | "
+            "Source report |"
+        ),
+        "| --- | --- | ---: | --- | --- | --- | --- |",
+    ]
     lines.extend(
         (
             "| {provider} | {operation} | {samples} | {machine} | {python} | `{fixture}` | "
@@ -226,20 +339,22 @@ def render_budget_calibration_markdown(payload: JSONDict) -> str:
             fixture=baseline.get("input_fixture_digest") or "-",
             report=baseline["source_report"],
         )
-        for baseline in payload["baseline_context"]
+        for baseline in baselines
     )
-    lines.extend(
-        [
-            "",
-            "## Candidate Diffs",
-            "",
-            (
-                "| Provider | Operation | Metric | Old threshold | Candidate threshold | "
-                "Observed baseline | Rationale |"
-            ),
-            "| --- | --- | --- | ---: | ---: | ---: | --- |",
-        ]
-    )
+    return lines
+
+
+def _candidate_diffs_markdown_lines(diffs: Sequence[JSONDict]) -> list[str]:
+    lines = [
+        "",
+        "## Candidate Diffs",
+        "",
+        (
+            "| Provider | Operation | Metric | Old threshold | Candidate threshold | "
+            "Observed baseline | Rationale |"
+        ),
+        "| --- | --- | --- | ---: | ---: | ---: | --- |",
+    ]
     lines.extend(
         (
             "| {provider} | {operation} | {metric} | {old} | {candidate} | {observed} | "
@@ -253,21 +368,22 @@ def render_budget_calibration_markdown(payload: JSONDict) -> str:
             observed=_format_diff_value(diff.get("observed_baseline")),
             rationale=diff["rationale"],
         )
-        for diff in payload["diffs"]
+        for diff in diffs
     )
-    lines.extend(
-        [
-            "",
-            "## Human Review Required",
-            "",
-            "Candidate budgets are review artifacts. Do not replace release budget files until the "
-            "source report, machine class, input fixture digest, old threshold, candidate "
-            "threshold, observed baseline, and rationale have been reviewed. Threshold loosening "
-            "must reference preserved run artifacts.",
-            "",
-        ]
-    )
-    return "\n".join(lines)
+    return lines
+
+
+def _human_review_markdown_lines() -> list[str]:
+    return [
+        "",
+        "## Human Review Required",
+        "",
+        "Candidate budgets are review artifacts. Do not replace release budget files until the "
+        "source report, machine class, input fixture digest, old threshold, candidate "
+        "threshold, observed baseline, and rationale have been reviewed. Threshold loosening "
+        "must reference preserved run artifacts.",
+        "",
+    ]
 
 
 def _candidate_budget(result: JSONDict, *, headroom: float) -> JSONDict:
@@ -404,56 +520,68 @@ def _observed_value_for_threshold(field: str, result: JSONDict) -> float | int |
 
 
 def _load_report(path: Path) -> JSONDict:
-    report_path = path.expanduser().resolve()
+    document = _load_json_file(path, label="Benchmark report")
+    payload = _benchmark_report_payload(document.payload, path=document.path)
+    provenance = _object_or_empty(payload.get("provenance"))
+    return {
+        "path": _display_path(document.path),
+        "sha256": document.sha256,
+        "payload": payload,
+        "command": _report_command(provenance),
+        "worldforge_version": provenance.get("worldforge_version"),
+        "input_digest": provenance.get("input_digest"),
+        "budget_file": provenance.get("budget_file"),
+    }
+
+
+def _load_json_file(path: Path, *, label: str) -> _LoadedJsonFile:
+    resolved_path = path.expanduser().resolve()
+    data = _read_json_bytes(resolved_path, label=label)
+    payload = _decode_json_payload(data, path=resolved_path, label=label)
+    return _LoadedJsonFile(path=resolved_path, data=data, payload=payload)
+
+
+def _read_json_bytes(path: Path, *, label: str) -> bytes:
     try:
-        data = report_path.read_bytes()
+        return path.read_bytes()
     except FileNotFoundError as exc:
-        raise WorldForgeError(f"Benchmark report not found: {report_path}") from exc
+        raise WorldForgeError(f"{label} not found: {path}") from exc
+
+
+def _decode_json_payload(data: bytes, *, path: Path, label: str) -> object:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise WorldForgeError(f"Benchmark report must be UTF-8 JSON: {report_path}") from exc
+        raise WorldForgeError(f"{label} must be UTF-8 JSON: {path}") from exc
     try:
-        payload = json.loads(text)
+        return json.loads(text)
     except json.JSONDecodeError as exc:
-        raise WorldForgeError(f"Benchmark report contains invalid JSON: {report_path}") from exc
+        raise WorldForgeError(f"{label} contains invalid JSON: {path}") from exc
+
+
+def _benchmark_report_payload(payload: object, *, path: Path) -> JSONDict:
     if not isinstance(payload, dict):
-        raise WorldForgeError(f"Benchmark report must contain a JSON object: {report_path}")
-    if not isinstance(payload.get("results"), list) or not payload["results"]:
-        raise WorldForgeError(f"Benchmark report must contain non-empty results: {report_path}")
-    provenance = payload.get("provenance", {})
-    return {
-        "path": _display_path(report_path),
-        "sha256": _sha256_bytes(data),
-        "payload": payload,
-        "command": (
-            " ".join(provenance.get("command", ()) or ()) if isinstance(provenance, dict) else ""
-        ),
-        "worldforge_version": (
-            provenance.get("worldforge_version") if isinstance(provenance, dict) else None
-        ),
-        "input_digest": provenance.get("input_digest") if isinstance(provenance, dict) else None,
-        "budget_file": provenance.get("budget_file") if isinstance(provenance, dict) else None,
-    }
+        raise WorldForgeError(f"Benchmark report must contain a JSON object: {path}")
+    results = payload.get("results")
+    if not isinstance(results, list) or not results:
+        raise WorldForgeError(f"Benchmark report must contain non-empty results: {path}")
+    return payload
+
+
+def _report_command(provenance: JSONDict) -> str:
+    command = provenance.get("command", ()) or ()
+    if isinstance(command, str):
+        return command
+    if isinstance(command, Sequence):
+        return " ".join(str(part) for part in command)
+    return ""
 
 
 def _load_current_budgets(path: Path | None) -> tuple[tuple[BenchmarkBudget, ...], str | None]:
     if path is None:
         return (), None
-    budget_path = path.expanduser().resolve()
-    try:
-        data = budget_path.read_bytes()
-    except FileNotFoundError as exc:
-        raise WorldForgeError(f"Current budget file not found: {budget_path}") from exc
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise WorldForgeError(f"Current budget file must be UTF-8 JSON: {budget_path}") from exc
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise WorldForgeError(f"Current budget file contains invalid JSON: {budget_path}") from exc
-    return tuple(load_benchmark_budgets(payload)), _sha256_bytes(data)
+    document = _load_json_file(path, label="Current budget file")
+    return tuple(load_benchmark_budgets(document.payload)), document.sha256
 
 
 def _dedupe_budget_entries(entries: list[JSONDict]) -> list[JSONDict]:
@@ -481,6 +609,10 @@ def _headroom(value: float) -> float:
 
 def _rationale(value: str) -> str:
     return _required_text(value, name="rationale")
+
+
+def _object_or_empty(value: object) -> JSONDict:
+    return dict(value) if isinstance(value, dict) else {}
 
 
 def _required_text(value: object, *, name: str) -> str:

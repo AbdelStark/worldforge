@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import io
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
@@ -15,6 +16,7 @@ from worldforge.models import (
     ProviderCapabilities,
     ProviderEvent,
     ProviderHealth,
+    WorldForgeError,
     _redact_observable_text,
 )
 
@@ -26,7 +28,16 @@ from ._config import (
     optional_non_empty,
     optional_positive_int,
 )
-from ._policy import json_compatible, json_object, normalize_policy_action_candidates
+from ._policy import (
+    json_compatible,
+    json_object,
+    normalize_policy_action_candidates,
+    policy_action_horizon,
+    policy_embodiment_tag,
+    policy_info_object,
+    policy_observation,
+    policy_options,
+)
 from .base import BaseProvider, ProviderError, ProviderProfileSpec, _field_summary
 from .runtime_manifest import (
     missing_optional_dependency_detail,
@@ -56,10 +67,132 @@ ActionTranslator = Callable[
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class _GrootConfig:
+    host: str | None
+    port: int
+    timeout_ms: int
+    api_token: str | None
+    strict: bool
+    embodiment_tag: str | None
+
+
 def _positive_int(value: int, *, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{name} must be a positive integer.")
     return value
+
+
+def _groot_host(host: str | None) -> str | None:
+    return optional_non_empty(
+        host if host is not None else env_value(GROOT_POLICY_HOST_ENV_VAR),
+        name="GR00T policy host",
+    )
+
+
+def _groot_port(port: int | str | None) -> int:
+    return (
+        optional_positive_int(
+            port if port is not None else env_value(GROOT_POLICY_PORT_ENV_VAR),
+            name="GR00T policy port",
+        )
+        or DEFAULT_GROOT_POLICY_PORT
+    )
+
+
+def _groot_timeout_ms(timeout_ms: int | str | None) -> int:
+    return (
+        optional_positive_int(
+            timeout_ms if timeout_ms is not None else env_value(GROOT_POLICY_TIMEOUT_MS_ENV_VAR),
+            name="GR00T policy timeout_ms",
+        )
+        or DEFAULT_GROOT_POLICY_TIMEOUT_MS
+    )
+
+
+def _groot_api_token(api_token: str | None) -> str | None:
+    return optional_non_empty(
+        api_token if api_token is not None else env_value(GROOT_POLICY_API_TOKEN_ENV_VAR),
+        name="GR00T policy api_token",
+    )
+
+
+def _groot_strict(strict: bool | str | None) -> bool:
+    parsed_strict = optional_bool(
+        strict if strict is not None else env_value(GROOT_POLICY_STRICT_ENV_VAR),
+        name="GR00T policy strict",
+    )
+    return False if parsed_strict is None else parsed_strict
+
+
+def _groot_embodiment_tag(embodiment_tag: str | None) -> str | None:
+    return optional_non_empty(
+        embodiment_tag if embodiment_tag is not None else env_value(GROOT_EMBODIMENT_TAG_ENV_VAR),
+        name="GR00T embodiment_tag",
+    )
+
+
+def _resolve_groot_config(
+    *,
+    host: str | None,
+    port: int | str | None,
+    timeout_ms: int | str | None,
+    api_token: str | None,
+    strict: bool | str | None,
+    embodiment_tag: str | None,
+) -> _GrootConfig:
+    return _GrootConfig(
+        host=_groot_host(host),
+        port=_groot_port(port),
+        timeout_ms=_groot_timeout_ms(timeout_ms),
+        api_token=_groot_api_token(api_token),
+        strict=_groot_strict(strict),
+        embodiment_tag=_groot_embodiment_tag(embodiment_tag),
+    )
+
+
+def _validated_action_translator(
+    action_translator: ActionTranslator | None,
+) -> ActionTranslator | None:
+    if action_translator is not None and not callable(action_translator):
+        raise WorldForgeError("GR00T action_translator must be callable when provided.")
+    return action_translator
+
+
+def _groot_capabilities() -> ProviderCapabilities:
+    return ProviderCapabilities(
+        predict=False,
+        generate=False,
+        reason=False,
+        embed=False,
+        plan=False,
+        transfer=False,
+        score=False,
+        policy=True,
+    )
+
+
+def _groot_profile(config: _GrootConfig) -> ProviderProfileSpec:
+    return ProviderProfileSpec(
+        description=(
+            "NVIDIA Isaac GR00T policy-client adapter for selecting embodied action chunks."
+        ),
+        package="worldforge + host-supplied Isaac-GR00T runtime",
+        implementation_status="beta",
+        requires_credentials=config.api_token is not None,
+        required_env_vars=(GROOT_POLICY_HOST_ENV_VAR,),
+        supported_modalities=("video", "state", "language", "actions"),
+        artifact_types=("action_policy",),
+        notes=(
+            "Wraps the host-owned GR00T PolicyClient server/client API.",
+            "Does not import gr00t unless a non-injected client is used.",
+            "Requires an action_translator to map embodiment-specific raw actions to "
+            "WorldForge Action objects.",
+            "GR00T is an embodied policy provider, not a future-state world model.",
+        ),
+        default_model=config.embodiment_tag,
+        supported_models=(config.embodiment_tag,) if config.embodiment_tag else (),
+    )
 
 
 class _GrootZmqPolicyClient:
@@ -226,75 +359,26 @@ class GrootPolicyClientProvider(BaseProvider):
         action_translator: ActionTranslator | None = None,
         event_handler: Callable[[ProviderEvent], None] | None = None,
     ) -> None:
-        self.host = optional_non_empty(
-            host if host is not None else env_value(GROOT_POLICY_HOST_ENV_VAR),
-            name="GR00T policy host",
+        config = _resolve_groot_config(
+            host=host,
+            port=port,
+            timeout_ms=timeout_ms,
+            api_token=api_token,
+            strict=strict,
+            embodiment_tag=embodiment_tag,
         )
-        self.port = (
-            optional_positive_int(
-                port if port is not None else env_value(GROOT_POLICY_PORT_ENV_VAR),
-                name="GR00T policy port",
-            )
-            or DEFAULT_GROOT_POLICY_PORT
-        )
-        self.timeout_ms = (
-            optional_positive_int(
-                timeout_ms
-                if timeout_ms is not None
-                else env_value(GROOT_POLICY_TIMEOUT_MS_ENV_VAR),
-                name="GR00T policy timeout_ms",
-            )
-            or DEFAULT_GROOT_POLICY_TIMEOUT_MS
-        )
-        self.api_token = optional_non_empty(
-            api_token if api_token is not None else env_value(GROOT_POLICY_API_TOKEN_ENV_VAR),
-            name="GR00T policy api_token",
-        )
-        parsed_strict = optional_bool(
-            strict if strict is not None else env_value(GROOT_POLICY_STRICT_ENV_VAR),
-            name="GR00T policy strict",
-        )
-        self.strict = False if parsed_strict is None else parsed_strict
-        self.embodiment_tag = optional_non_empty(
-            embodiment_tag
-            if embodiment_tag is not None
-            else env_value(GROOT_EMBODIMENT_TAG_ENV_VAR),
-            name="GR00T embodiment_tag",
-        )
+        self.host = config.host
+        self.port = config.port
+        self.timeout_ms = config.timeout_ms
+        self.api_token = config.api_token
+        self.strict = config.strict
+        self.embodiment_tag = config.embodiment_tag
         self._policy_client = policy_client
-        self._action_translator = action_translator
+        self._action_translator = _validated_action_translator(action_translator)
         super().__init__(
             name=name,
-            capabilities=ProviderCapabilities(
-                predict=False,
-                generate=False,
-                reason=False,
-                embed=False,
-                plan=False,
-                transfer=False,
-                score=False,
-                policy=True,
-            ),
-            profile=ProviderProfileSpec(
-                description=(
-                    "NVIDIA Isaac GR00T policy-client adapter for selecting embodied action chunks."
-                ),
-                package="worldforge + host-supplied Isaac-GR00T runtime",
-                implementation_status="beta",
-                requires_credentials=self.api_token is not None,
-                required_env_vars=(GROOT_POLICY_HOST_ENV_VAR,),
-                supported_modalities=("video", "state", "language", "actions"),
-                artifact_types=("action_policy",),
-                notes=(
-                    "Wraps the host-owned GR00T PolicyClient server/client API.",
-                    "Does not import gr00t unless a non-injected client is used.",
-                    "Requires an action_translator to map embodiment-specific raw actions to "
-                    "WorldForge Action objects.",
-                    "GR00T is an embodied policy provider, not a future-state world model.",
-                ),
-                default_model=self.embodiment_tag,
-                supported_models=(self.embodiment_tag,) if self.embodiment_tag else (),
-            ),
+            capabilities=_groot_capabilities(),
+            profile=_groot_profile(config),
             event_handler=event_handler,
         )
 
@@ -506,37 +590,23 @@ class GrootPolicyClientProvider(BaseProvider):
         self,
         info: JSONDict,
     ) -> tuple[JSONDict, JSONDict | None, int | None, str | None]:
-        if not isinstance(info, dict):
-            raise ProviderError("GR00T policy info must be a JSON object.")
-        observation = info.get("observation")
-        if not isinstance(observation, dict):
-            raise ProviderError("GR00T policy info.observation must be a JSON object.")
-        if not any(key in observation for key in ("video", "state", "language")):
-            raise ProviderError(
-                "GR00T policy observation must include at least one of video, state, or language."
-            )
-        options = info.get("options")
-        if options is not None and not isinstance(options, dict):
-            raise ProviderError("GR00T policy info.options must be a JSON object when provided.")
-        action_horizon_value = info.get("action_horizon")
-        try:
-            action_horizon = (
-                optional_positive_int(action_horizon_value, name="GR00T action_horizon")
-                if action_horizon_value is not None
-                else None
-            )
-        except Exception as exc:
-            raise ProviderError(str(exc)) from exc
-        embodiment_tag = info.get("embodiment_tag")
-        if embodiment_tag is not None:
-            if not isinstance(embodiment_tag, str) or not embodiment_tag.strip():
-                raise ProviderError(
-                    "GR00T policy info.embodiment_tag must be a non-empty string when provided."
-                )
-            embodiment_tag = embodiment_tag.strip()
+        info = policy_info_object(info, provider_label="GR00T")
+        observation = policy_observation(
+            info,
+            provider_label="GR00T",
+            required_any_keys=("video", "state", "language"),
+        )
+        options = policy_options(info, provider_label="GR00T")
+        action_horizon = policy_action_horizon(
+            info,
+            provider_label="GR00T",
+            value_name="GR00T action_horizon",
+            allow_string=True,
+        )
+        embodiment_tag = policy_embodiment_tag(info, provider_label="GR00T")
         return (
-            dict(observation),
-            dict(options) if isinstance(options, dict) else None,
+            observation,
+            options,
             action_horizon,
             embodiment_tag,
         )
@@ -559,99 +629,136 @@ class GrootPolicyClientProvider(BaseProvider):
             raise ProviderError(f"GR00T action translation failed: {exc}") from exc
         return normalize_policy_action_candidates(translated, provider_label="GR00T")
 
+    def _policy_duration_ms(self, started: float) -> float:
+        return max(0.1, (perf_counter() - started) * 1000)
+
+    def _get_action_response(
+        self,
+        *,
+        observation: JSONDict,
+        options: JSONDict | None,
+    ) -> object:
+        client = self._load_client()
+        get_action = getattr(client, "get_action", None)
+        if not callable(get_action):
+            raise ProviderError("GR00T policy client does not expose get_action().")
+        try:
+            return (
+                get_action(observation, options=options)
+                if options is not None
+                else get_action(observation)
+            )
+        except Exception as exc:
+            raise ProviderError(f"GR00T policy inference failed: {exc}") from exc
+
+    def _raw_action_response_parts(self, response: object) -> tuple[object, object]:
+        if not isinstance(response, tuple):
+            return response, {}
+        if len(response) != 2:
+            raise ProviderError("GR00T policy client tuple response must contain actions and info.")
+        raw_actions, raw_provider_info = response
+        return raw_actions, raw_provider_info
+
+    def _normalized_raw_actions(self, raw_actions: object) -> JSONDict:
+        raw_actions_value = json_compatible(raw_actions, name="GR00T raw_actions")
+        if isinstance(raw_actions_value, dict):
+            return raw_actions_value
+        if isinstance(raw_actions_value, list):
+            return {"actions": raw_actions_value}
+        raise ProviderError("GR00T raw_actions must be a JSON object or action array.")
+
+    def _resolved_action_horizon(
+        self,
+        *,
+        requested_action_horizon: int | None,
+        candidate_plans: list[list[Action]],
+    ) -> int:
+        translated_action_horizon = len(candidate_plans[0])
+        if (
+            requested_action_horizon is not None
+            and requested_action_horizon != translated_action_horizon
+        ):
+            raise ProviderError(
+                "GR00T policy info.action_horizon must match the translated action count."
+            )
+        return requested_action_horizon or translated_action_horizon
+
+    def _build_policy_result(
+        self,
+        *,
+        info: JSONDict,
+        raw_actions: object,
+        raw_provider_info: object,
+        requested_action_horizon: int | None,
+        requested_embodiment_tag: str | None,
+    ) -> ActionPolicyResult:
+        normalized_raw_actions = self._normalized_raw_actions(raw_actions)
+        normalized_provider_info = json_object(raw_provider_info, name="GR00T provider_info")
+        candidate_plans = self._translate_actions(
+            raw_actions=raw_actions,
+            info=info,
+            provider_info=normalized_provider_info,
+        )
+        embodiment_tag = requested_embodiment_tag or self.embodiment_tag
+        return ActionPolicyResult(
+            provider=self.name,
+            actions=list(candidate_plans[0]),
+            raw_actions=normalized_raw_actions,
+            action_horizon=self._resolved_action_horizon(
+                requested_action_horizon=requested_action_horizon,
+                candidate_plans=candidate_plans,
+            ),
+            embodiment_tag=embodiment_tag or None,
+            metadata={
+                "runtime": "gr00t-policy-client",
+                "provider_info": normalized_provider_info,
+                "candidate_count": len(candidate_plans),
+            },
+            action_candidates=candidate_plans,
+        )
+
+    def _select_actions_result(self, *, info: JSONDict) -> ActionPolicyResult:
+        observation, options, requested_action_horizon, requested_embodiment_tag = (
+            self._validate_info(info)
+        )
+        response = self._get_action_response(observation=observation, options=options)
+        raw_actions, raw_provider_info = self._raw_action_response_parts(response)
+        return self._build_policy_result(
+            info=info,
+            raw_actions=raw_actions,
+            raw_provider_info=raw_provider_info,
+            requested_action_horizon=requested_action_horizon,
+            requested_embodiment_tag=requested_embodiment_tag,
+        )
+
+    def _emit_policy_success(self, *, started: float, result: ActionPolicyResult) -> None:
+        self._emit_policy_event(
+            phase="success",
+            duration_ms=self._policy_duration_ms(started),
+            metadata={
+                "candidate_count": len(result.action_candidates),
+                "action_horizon": result.action_horizon,
+                "embodiment_tag": result.embodiment_tag,
+            },
+        )
+
+    def _emit_policy_failure(self, *, started: float, error: ProviderError) -> None:
+        self._emit_policy_event(
+            phase="failure",
+            duration_ms=self._policy_duration_ms(started),
+            message=str(error),
+        )
+
     def select_actions(self, *, info: JSONDict) -> ActionPolicyResult:
         started = perf_counter()
         try:
-            (
-                observation,
-                options,
-                requested_action_horizon,
-                requested_embodiment_tag,
-            ) = self._validate_info(info)
-            client = self._load_client()
-            get_action = getattr(client, "get_action", None)
-            if not callable(get_action):
-                raise ProviderError("GR00T policy client does not expose get_action().")
-            try:
-                response = (
-                    get_action(observation, options=options)
-                    if options is not None
-                    else get_action(observation)
-                )
-            except Exception as exc:
-                raise ProviderError(f"GR00T policy inference failed: {exc}") from exc
-
-            if isinstance(response, tuple):
-                if len(response) != 2:
-                    raise ProviderError(
-                        "GR00T policy client tuple response must contain actions and info."
-                    )
-                raw_actions, raw_provider_info = response
-            else:
-                raw_actions = response
-                raw_provider_info = {}
-
-            raw_actions_value = json_compatible(raw_actions, name="GR00T raw_actions")
-            if isinstance(raw_actions_value, dict):
-                normalized_raw_actions = raw_actions_value
-            elif isinstance(raw_actions_value, list):
-                normalized_raw_actions = {"actions": raw_actions_value}
-            else:
-                raise ProviderError("GR00T raw_actions must be a JSON object or action array.")
-            normalized_provider_info = json_object(
-                raw_provider_info,
-                name="GR00T provider_info",
-            )
-            candidate_plans = self._translate_actions(
-                raw_actions=raw_actions,
-                info=info,
-                provider_info=normalized_provider_info,
-            )
-            translated_action_horizon = len(candidate_plans[0])
-            if (
-                requested_action_horizon is not None
-                and requested_action_horizon != translated_action_horizon
-            ):
-                raise ProviderError(
-                    "GR00T policy info.action_horizon must match the translated action count."
-                )
-            action_horizon = requested_action_horizon or translated_action_horizon
-            embodiment_tag = requested_embodiment_tag or self.embodiment_tag
-            result = ActionPolicyResult(
-                provider=self.name,
-                actions=list(candidate_plans[0]),
-                raw_actions=normalized_raw_actions,
-                action_horizon=action_horizon,
-                embodiment_tag=embodiment_tag or None,
-                metadata={
-                    "runtime": "gr00t-policy-client",
-                    "provider_info": normalized_provider_info,
-                    "candidate_count": len(candidate_plans),
-                },
-                action_candidates=candidate_plans,
-            )
-            self._emit_policy_event(
-                phase="success",
-                duration_ms=max(0.1, (perf_counter() - started) * 1000),
-                metadata={
-                    "candidate_count": len(result.action_candidates),
-                    "action_horizon": result.action_horizon,
-                    "embodiment_tag": result.embodiment_tag,
-                },
-            )
+            result = self._select_actions_result(info=info)
+            self._emit_policy_success(started=started, result=result)
             return result
         except ProviderError as exc:
-            self._emit_policy_event(
-                phase="failure",
-                duration_ms=max(0.1, (perf_counter() - started) * 1000),
-                message=str(exc),
-            )
+            self._emit_policy_failure(started=started, error=exc)
             raise
         except Exception as exc:
             error = ProviderError(f"GR00T policy selection failed: {exc}")
-            self._emit_policy_event(
-                phase="failure",
-                duration_ms=max(0.1, (perf_counter() - started) * 1000),
-                message=str(error),
-            )
+            self._emit_policy_failure(started=started, error=error)
             raise error from exc
