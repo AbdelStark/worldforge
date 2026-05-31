@@ -1,4 +1,4 @@
-"""Checkout-safe Cosmos-Policy replay flow for TheWorldHarness."""
+"""Checkout-safe Cosmos-Policy replay flow."""
 
 from __future__ import annotations
 

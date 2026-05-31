@@ -81,7 +81,7 @@ The polished runner forwards the default PushT hooks to the lower-level runner:
 | `pusht_showcase_inputs` | Task bridge | Builds PushT observation tensors, LeWorldModel score tensors, candidate tensors, and visual `Action` translations. |
 | `WorldForge` / `World` | Planning facade | Composes the `policy` and `score` surfaces through `World.plan(..., policy_provider=..., score_provider=...)`. |
 | `mock` provider | `predict` | Replays the selected executable WorldForge action chunk in a local world state. |
-| TheWorldHarness Textual report | Report surface | Displays the completed run: pipeline stages, latency, tensor contract, scores, provider events, and tabletop replay. |
+| Robotics showcase Textual report | Report surface | Displays the completed run: pipeline stages, latency, tensor contract, scores, provider events, and tabletop replay. |
 | Rerun recording | Artifact surface | Stores the same run as a visual `.rrd`: object boxes, candidate target points, selected path, score bars, latency bars, provider events, plan payload, and world snapshots. |
 
 ## End-To-End Flow At A Glance

@@ -565,8 +565,8 @@ starts before credentials, dependencies, or provider capabilities are ready.
 
 Scope:
 
-- Add a demo that runs negotiation for generate-only, transfer-only, score-only, policy+score, and
-  evaluation workflows.
+- Add a demo that runs negotiation for score-only, policy+score, prediction, and evaluation
+  workflows.
 - Include ready, missing config, missing dependency, unsupported capability, and not-registered
   examples.
 - Preserve JSON and Markdown reports and first recommended commands.
@@ -606,8 +606,7 @@ Scope:
 
 - Add a fixture-backed comparison replay across LeRobot, GR00T, and Cosmos-Policy policy outputs.
 - Show common policy contract fields and provider-specific raw action metadata.
-- Include TheWorldHarness or static report output that makes missing translator and prepared-host
-  requirements visible.
+- Include static report output that makes missing translator and prepared-host requirements visible.
 
 Out of scope:
 
@@ -752,7 +751,7 @@ Scope:
 
 - Add a fixture-backed gallery of provider failure modes with expected event, error, artifact, and
   first triage command.
-- Cover mock, remote media, optional runtime, and scaffold provider cases where appropriate.
+- Cover mock, optional runtime, and scaffold provider cases where appropriate.
 - Keep all examples safe to run without credentials.
 
 Out of scope:
@@ -770,7 +769,7 @@ Acceptance criteria:
 Validation:
 
 ```bash
-uv run pytest tests/test_remote_video_providers.py tests/test_provider_contracts.py tests/test_docs_site.py
+uv run pytest tests/test_provider_contracts.py tests/test_cosmos_policy_provider.py tests/test_docs_site.py
 uv run mkdocs build --strict
 ```
 

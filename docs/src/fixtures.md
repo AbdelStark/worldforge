@@ -1,7 +1,7 @@
 # Capability Fixture Corpus
 
 WorldForge ships a small, packaged corpus of canonical input fixtures for every provider
-capability — `predict`, `reason`, `embed`, `generate`, `transfer`, `score`, and `policy`.
+capability — `predict`, `embed`, `score`, and `policy`.
 Conformance tests, evaluation suites, and provider authors can reuse the corpus instead of
 hand-rolling payloads in each test file.
 
@@ -16,7 +16,7 @@ For each capability the corpus ships:
 - exactly one `valid_baseline.json` representing a minimal-but-realistic public input,
 - at least two `invalid_<reason>.json` fixtures that name distinct boundary failures.
 
-This guarantees seven valid baselines and at least fourteen invalid boundary fixtures, so
+This guarantees four valid baselines and at least eight invalid boundary fixtures, so
 every conformance helper can be exercised without re-deriving payloads.
 
 ## Envelope
@@ -26,7 +26,7 @@ Each fixture file is a JSON object with `schema_version: 1` and the following ke
 | Field | Description |
 | --- | --- |
 | `id` | `<capability>.<name>` matching the file path (e.g. `predict.valid_baseline`). |
-| `capability` | One of `predict`, `reason`, `embed`, `generate`, `transfer`, `score`, `policy`. |
+| `capability` | One of `predict`, `embed`, `score`, `policy`. |
 | `data_class` | `synthetic` (hand-authored), `captured` (recorded from a real provider/run), or `host-supplied` (provided by an integrator at runtime; the file ships an example). |
 | `expected` | `valid` or `invalid`. |
 | `expected_error_pattern` | Regex hint for the error message a `WorldForgeError` raises. Required for invalid fixtures, must be `null` for valid fixtures. |
@@ -125,8 +125,7 @@ schema version, byte size, and `sha256:<hex>` digest. It covers:
 - packaged capability fixtures under `src/worldforge/testing/fixtures/`;
 - provider payload fixtures under `tests/fixtures/providers/`;
 - benchmark fixtures under `examples/*benchmark*.json`;
-- scenario files under `examples/scenarios/`;
-- scene artifact fixtures under `tests/fixtures/scene_artifacts/`.
+- scenario files under `examples/scenarios/`.
 
 Check the manifest after changing any of those files:
 

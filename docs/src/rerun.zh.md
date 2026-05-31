@@ -145,7 +145,7 @@ forge = WorldForge(
 ## 边界
 
 - Rerun 是可选的。请勿从提供方模块或基础包路径中导入或依赖 `rerun-sdk`。
-- Rerun 不是 WorldForge 提供方。它不提供 `predict`、`score`、`policy`、`generate`、`transfer`、`reason`、`embed` 或 `plan` 能力。
+- Rerun 不是 WorldForge 提供方。它不提供 `predict`、`score`、`policy`、`embed` 或 `plan` 能力。
 - 提供方事件的目标、消息和元数据在传入 Rerun 接收器之前均经过清理。宿主代码仍应避免将密钥、凭据、签名 URL 或敏感数据集内容写入自定义元数据。
 - `.rrd` 文件是运行工件，应将其视为日志：它们可能包含提示词、世界元数据、对象名称、基准测试输入和派生诊断信息。
 - 本地 JSON 持久化仍由 WorldForge 持有，且为单写入者模式。Rerun 录制是检查工件，而非权威世界存储。

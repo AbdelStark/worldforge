@@ -21,12 +21,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def _write_benchmark_report(path: Path, *, state_dir: Path) -> BenchmarkReport:
     report = ProviderBenchmarkHarness(forge=WorldForge(state_dir=state_dir)).run(
         "mock",
-        operations=["generate"],
+        operations=["predict"],
         iterations=2,
     )
     assert report.provenance is not None
     report.provenance = report.provenance.with_overrides(
-        command=("worldforge", "benchmark", "--provider", "mock", "--operation", "generate"),
+        command=("worldforge", "benchmark", "--provider", "mock", "--operation", "predict"),
     )
     path.write_text(report.to_json() + "\n", encoding="utf-8")
     return report
@@ -38,7 +38,7 @@ def _write_current_budget(path: Path, *, max_average_latency_ms: float = 10_000.
         "budgets": [
             {
                 "provider": "mock",
-                "operation": "generate",
+                "operation": "predict",
                 "min_success_rate": 1.0,
                 "max_error_count": 0,
                 "max_retry_count": 0,
@@ -79,11 +79,11 @@ def test_budget_calibration_writes_reviewable_candidate_artifacts(tmp_path: Path
     source = payload["source_reports"][0]
     expected_digest = f"sha256:{hashlib.sha256(report_path.read_bytes()).hexdigest()}"
     assert source["sha256"] == expected_digest
-    assert source["command"] == "worldforge benchmark --provider mock --operation generate"
+    assert source["command"] == "worldforge benchmark --provider mock --operation predict"
 
     baseline = payload["baseline_context"][0]
     assert baseline["provider"] == "mock"
-    assert baseline["operation"] == "generate"
+    assert baseline["operation"] == "predict"
     assert baseline["sample_count"] == 2
     assert baseline["machine_class"] == "ci-macos-arm64"
     assert baseline["python_version"]
@@ -92,7 +92,7 @@ def test_budget_calibration_writes_reviewable_candidate_artifacts(tmp_path: Path
     candidate_payload = json.loads(result.candidate_budget_path.read_text(encoding="utf-8"))
     candidate_budget = load_benchmark_budgets(candidate_payload)[0]
     assert candidate_budget.provider == "mock"
-    assert candidate_budget.operation == "generate"
+    assert candidate_budget.operation == "predict"
     assert candidate_budget.min_success_rate == 1.0
     assert candidate_budget.max_error_count == 0
     assert candidate_budget.max_retry_count == 0
@@ -193,7 +193,7 @@ def test_budget_calibration_can_return_payload_without_writing_artifacts(
                     "results": [
                         {
                             "provider": "mock",
-                            "operation": "generate",
+                            "operation": "predict",
                             "iterations": 2,
                             "success_count": 1,
                             "error_count": 0,
@@ -254,7 +254,7 @@ def test_budget_calibration_rejects_invalid_review_inputs(tmp_path: Path) -> Non
         calibrate_benchmark_budgets((report_path,), current_budget_path=bad_budget_path)
 
 
-def test_calibration_script_generates_candidate_budget_files(tmp_path: Path) -> None:
+def test_calibration_script_predicts_candidate_budget_files(tmp_path: Path) -> None:
     report_path = tmp_path / "benchmark-report.json"
     _write_benchmark_report(report_path, state_dir=tmp_path / "worlds")
     current_budget_path = tmp_path / "current-budget.json"

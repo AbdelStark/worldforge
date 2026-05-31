@@ -10,8 +10,6 @@ from worldforge.models import (
     ActionScoreResult,
     EmbeddingResult,
     ProviderEvent,
-    ReasoningResult,
-    VideoClip,
     WorldForgeError,
     dump_json,
     require_finite_number,
@@ -98,25 +96,6 @@ def validate_prediction(provider: str, payload: PredictionPayload) -> None:
     )
 
 
-def validate_reasoning(provider: str, result: ReasoningResult) -> None:
-    contract_check(isinstance(result, ReasoningResult), "reason must return ReasoningResult.")
-    contract_check(result.provider == provider, "reason provider must match provider name.")
-    contract_check(
-        isinstance(result.answer, str) and bool(result.answer),
-        "reason answer required.",
-    )
-    _contract_probability(
-        result.confidence,
-        name="reason confidence",
-        message="reason confidence must be a probability.",
-    )
-    contract_check(isinstance(result.evidence, list), "reason evidence must be a list.")
-    contract_check(
-        all(isinstance(item, str) for item in result.evidence),
-        "reason evidence must contain only strings.",
-    )
-
-
 def validate_embedding(provider: str, result: EmbeddingResult) -> None:
     contract_check(isinstance(result, EmbeddingResult), "embed must return EmbeddingResult.")
     contract_check(result.provider == provider, "embed provider must match provider name.")
@@ -128,41 +107,6 @@ def validate_embedding(provider: str, result: EmbeddingResult) -> None:
         name="embed vector value",
         message="embed vector values must be finite floats.",
     )
-
-
-def validate_clip(clip: VideoClip) -> None:
-    contract_check(isinstance(clip, VideoClip), "media operation must return VideoClip.")
-    contract_check(isinstance(clip.frames, list), "VideoClip frames must be a list.")
-    contract_check(
-        all(isinstance(frame, bytes) for frame in clip.frames),
-        "VideoClip frames must contain only bytes.",
-    )
-    fps = _contract_finite_number(
-        clip.fps,
-        name="VideoClip fps",
-        message="VideoClip fps must be a finite number.",
-    )
-    contract_check(fps > 0.0, "VideoClip fps must be positive.")
-    try:
-        width, height = clip.resolution
-    except (TypeError, ValueError) as exc:
-        raise AssertionError("VideoClip resolution must contain width and height.") from exc
-    contract_check(
-        isinstance(width, int) and not isinstance(width, bool) and width > 0,
-        "VideoClip width must be positive.",
-    )
-    contract_check(
-        isinstance(height, int) and not isinstance(height, bool) and height > 0,
-        "VideoClip height must be positive.",
-    )
-    duration_seconds = _contract_finite_number(
-        clip.duration_seconds,
-        name="VideoClip duration_seconds",
-        message="VideoClip duration_seconds must be finite.",
-    )
-    contract_check(duration_seconds >= 0.0, "VideoClip duration must be non-negative.")
-    contract_check(isinstance(clip.metadata, dict), "VideoClip metadata must be a JSON object.")
-    contract_json(clip.metadata, "VideoClip metadata must be JSON serializable.")
 
 
 def validate_action_scores(provider: str, result: ActionScoreResult) -> None:
@@ -306,9 +250,7 @@ __all__ = [
     "invoke_contract",
     "validate_action_policy",
     "validate_action_scores",
-    "validate_clip",
     "validate_embedding",
     "validate_prediction",
     "validate_provider_events",
-    "validate_reasoning",
 ]

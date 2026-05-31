@@ -59,7 +59,7 @@ def test_demo_showcase_cli_lists_all_issue_backed_workflows() -> None:
         "first-run",
         "diagnostics-issue-bundle",
         "robotics-replay",
-        "remote-media-dry-run",
+        "provider-event-redaction-dry-run",
         "adapter-author",
         "batch-eval",
         "service-host",
@@ -114,11 +114,11 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     assert isinstance(replay["candidate_costs"], list)
     assert replay["selected_candidate_index"] >= 0
 
-    remote_media = summaries["remote-media-dry-run"]
-    assert remote_media["redaction_verified"] is True
-    rendered_events = json.dumps(remote_media["provider_events"])
+    provider_events = summaries["provider-event-redaction-dry-run"]
+    assert provider_events["redaction_verified"] is True
+    rendered_events = json.dumps(provider_events["provider_events"])
     assert "fake-secret" not in rendered_events
-    assert "token=fake" not in rendered_events
+    assert "api_key=fake-secret" not in rendered_events
 
     adapter_author = summaries["adapter-author"]
     assert adapter_author["scaffold_incomplete"] is True
@@ -232,11 +232,11 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     failure_entries = {entry["id"]: entry for entry in failure_report["entries"]}
     assert {
         "mock-invalid-prediction-state",
-        "cosmos-generation-unauthorized",
-        "cosmos-generation-timeout",
-        "runway-missing-task-id",
-        "runway-expired-artifact",
-        "runway-unsafe-artifact-url",
+        "leworldmodel-score-count-mismatch",
+        "leworldmodel-malformed-score-input",
+        "cosmos-policy-missing-translator",
+        "cosmos-policy-unsafe-base-url",
+        "cosmos-policy-json-numpy-shape",
         "optional-runtime-missing-dependency",
         "genie-scaffold-fail-closed",
     } <= set(failure_entries)

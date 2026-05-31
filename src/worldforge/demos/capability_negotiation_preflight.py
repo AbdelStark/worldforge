@@ -13,17 +13,13 @@ from worldforge.providers import BaseProvider, ProviderProfileSpec
 
 CAPABILITY_NEGOTIATION_WORKFLOWS = (
     "predict-only",
-    "generate-only",
-    "transfer-only",
     "score-only",
+    "embed-only",
     "policy-plus-score",
     "evaluation-physics",
 )
 
 CAPABILITY_NEGOTIATION_CLEAR_ENV = {
-    "COSMOS_BASE_URL": "",
-    "RUNWAYML_API_SECRET": "",
-    "RUNWAY_API_SECRET": "",
     "LEWORLDMODEL_POLICY": "",
     "LEWM_POLICY": "",
     "LEROBOT_POLICY_PATH": "",
@@ -31,13 +27,13 @@ CAPABILITY_NEGOTIATION_CLEAR_ENV = {
     "GROOT_POLICY_HOST": "",
 }
 
-CAPABILITY_NOT_REGISTERED_ENV = {"COSMOS_BASE_URL": "https://cosmos.example.invalid"}
+CAPABILITY_NOT_REGISTERED_ENV = {"LEWORLDMODEL_POLICY": "demo-policy"}
 
 CAPABILITY_UNSUPPORTED_EXAMPLE: JSONDict = {
-    "provider": "demo-unhealthy-transfer",
+    "provider": "demo-unhealthy-embed",
     "capability": "policy",
     "readiness": "unsupported",
-    "reason": "provider 'demo-unhealthy-transfer' does not advertise capability 'policy'",
+    "reason": "provider 'demo-unhealthy-embed' does not advertise capability 'policy'",
 }
 
 CAPABILITY_NEGOTIATION_CLAIM_BOUNDARY = (
@@ -71,11 +67,11 @@ class CapabilityNegotiationPaths:
     not_registered_json: Path
 
 
-class UnhealthyTransferProvider(BaseProvider):
+class UnhealthyEmbedProvider(BaseProvider):
     def __init__(self) -> None:
         super().__init__(
-            "demo-unhealthy-transfer",
-            capabilities=ProviderCapabilities(transfer=True),
+            "demo-unhealthy-embed",
+            capabilities=ProviderCapabilities(embed=True),
             profile=ProviderProfileSpec(
                 description="Demo provider with configured runtime but unhealthy dependency.",
                 implementation_status="demo",
@@ -104,7 +100,7 @@ def run_capability_negotiation_preflight_workflow(workflow_dir: Path) -> JSONDic
 
 def capability_negotiation_reports(workflow_dir: Path) -> CapabilityNegotiationReports:
     forge = WorldForge(state_dir=workflow_dir / "worlds", auto_register_remote=False)
-    forge.register_provider(UnhealthyTransferProvider())
+    forge.register_provider(UnhealthyEmbedProvider())
     preflight = negotiate(
         CAPABILITY_NEGOTIATION_WORKFLOWS,
         forge=forge,
@@ -115,7 +111,7 @@ def capability_negotiation_reports(workflow_dir: Path) -> CapabilityNegotiationR
         auto_register_remote=False,
     )
     not_registered = negotiate(
-        ["generate-only"],
+        ["score-only"],
         forge=not_registered_forge,
         environ=CAPABILITY_NOT_REGISTERED_ENV,
     )

@@ -419,26 +419,26 @@ uv run pytest tests/test_robotics_showcase.py tests/test_rerun_integration.py te
 uv run mkdocs build --strict
 ```
 
-### WF-DEMO-004：添加远程媒体空运行案例展示
+### WF-DEMO-004：添加提供方事件脱敏空运行案例展示
 
 GitHub 议题：[#192](https://github.com/AbdelStark/worldforge/issues/192)
 
-问题：Cosmos 和 Runway 具有远程媒体适配器逻辑，但用户需要一个针对解析器行为、工件保留和签名 URL 脱敏的安全空运行案例展示。
+问题：用户需要一个安全的提供方事件脱敏空运行案例，以便在将诊断证据附加到 issue 或发布说明之前检查输出。
 
 工作范围：
 
-- 构建一个由夹具驱动的空运行，演练远程媒体的成功和失败处理逻辑。
+- 构建一个由夹具驱动的空运行，演练提供方事件的成功和失败处理逻辑。
 - 保留经净化的运行清单、提供方事件和工件摘要。
 - 文档化已准备好宿主的实况冒烟测试后续命令。
 
 超出范围：
 
 - 可安全检出模式下不进行付费 API 调用。
-- 不在仓库中存储生成的媒体文件。
+- 不在仓库中存储提供方持有的工件。
 
 验收标准：
 
-- [ ] 空运行覆盖 Cosmos 和 Runway 夹具路径。
+- [ ] 空运行覆盖已脱敏的提供方事件夹具路径。
 - [ ] 签名 URL 和保留警告可见但已脱敏。
 - [ ] 文档区分空运行证据与实况提供方证据。
 - [ ] 测试覆盖案例展示工件。
@@ -446,7 +446,7 @@ GitHub 议题：[#192](https://github.com/AbdelStark/worldforge/issues/192)
 验证方式：
 
 ```bash
-uv run pytest tests/test_remote_video_providers.py tests/test_cosmos_smoke_script.py tests/test_docs_site.py
+uv run pytest tests/test_demo_showcases.py tests/test_cosmos_policy_smoke_script.py tests/test_docs_site.py
 uv run mkdocs build --strict
 ```
 
@@ -613,7 +613,7 @@ GitHub 议题：[#198](https://github.com/AbdelStark/worldforge/issues/198)
 
 工作范围：
 
-- 添加一个手册页面，涵盖本地世界实验、提供方编写、评估证据、基准测试预算、远程媒体空运行、机器人回放和发布证据。
+- 添加一个手册页面，涵盖本地世界实验、提供方编写、评估证据、基准测试预算、提供方事件脱敏空运行、机器人回放和发布证据。
 - 每个示例应包含命令、预期输出、工件、首步分类步骤和不适用场景说明。
 - 在 README 和示例文档中链接各示例。
 

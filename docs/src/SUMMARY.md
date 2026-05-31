@@ -11,7 +11,6 @@
   - [Use Case Cookbook](./use-case-cookbook.md)
   - [Robotics Replay Showcase](./robotics-showcase.md)
   - [Robotics Showcase Deep Dive](./robotics-showcase-deep-dive.md)
-  - [TheWorldHarness](./theworldharness.md)
   - [Rerun Integration](./rerun.md)
   - [TensorBoard Integration](./tensorboard.md)
 - System Model
@@ -23,7 +22,6 @@
 - [Providers](./providers/README.md)
   - [Provider Configuration Index](./provider-configuration-index.md)
   - [Provider Failure Mode Gallery](./provider-failure-gallery.md)
-  - [Cosmos](./providers/cosmos.md)
   - [Cosmos-Policy](./providers/cosmos-policy.md)
   - [Genie](./providers/genie.md)
   - [GR00T](./providers/gr00t.md)
@@ -31,7 +29,6 @@
   - [JEPA-WMS](./providers/jepa-wms.md)
   - [LeWorldModel](./providers/leworldmodel.md)
   - [LeRobot](./providers/lerobot.md)
-  - [Runway](./providers/runway.md)
 - Authoring And API
   - [Provider Authoring Guide](./provider-authoring-guide.md)
   - [External Provider Packages](./external-providers.md)
@@ -71,7 +68,6 @@
   - [Provider And Platform Roadmap](./provider-platform-roadmap.md)
   - [Next Provider Selection RFC](./provider-selection-rfc.md)
   - [Provider Cohort Selection Record](./provider-cohort-selection.md)
-  - [Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md)
 - Project Metadata
   - [Changelog](./changelog.md)
   - [Citation](./citation.md)

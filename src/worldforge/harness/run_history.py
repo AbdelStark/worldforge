@@ -1,4 +1,4 @@
-"""Textual-free preserved-run history helpers for TheWorldHarness."""
+"""Textual-free preserved-run history helpers."""
 
 from __future__ import annotations
 
@@ -439,7 +439,7 @@ def _synthesized_command(manifest: JSONDict) -> str:
     if kind == "benchmark":
         return f"worldforge benchmark --provider {provider} --operation {operation or 'predict'}"
     if kind == "flow" and operation:
-        return f"worldforge harness --flow {operation}"
+        return "worldforge runs list --status failed"
     return "worldforge runs list"
 
 

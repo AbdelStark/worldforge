@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from worldforge import Action, ProviderEvent, VideoClip, WorldForge
+from worldforge import Action, ProviderEvent, WorldForge
 from worldforge.models import WorldForgeError
 from worldforge.providers import GenieProvider, MockProvider
 from worldforge.workflow_trace import (
@@ -23,17 +23,15 @@ def test_worldforge_event_handler_propagates_to_builtin_and_manual_providers(tmp
     world = forge.create_world_from_prompt("empty room", provider="mock")
 
     world.predict(Action.move_to(0.2, 0.5, 0.0), steps=2)
-    forge.generate("orbiting cube", "mock", duration_seconds=1.0)
 
     manual_provider = MockProvider(name="manual")
     forge.register_provider(manual_provider)
-    forge.reason("manual", "where is the cube?", world=world)
+    forge.embed("manual", text="cube state")
 
     assert manual_provider.event_handler is not None
     assert [(event.provider, event.operation, event.phase) for event in events] == [
         ("mock", "predict", "success"),
-        ("mock", "generate", "success"),
-        ("manual", "reason", "success"),
+        ("manual", "embed", "success"),
     ]
     assert events[0].metadata["steps"] == 2
 
@@ -47,11 +45,11 @@ def test_direct_provider_target_inherits_worldforge_event_handler(tmp_path) -> N
     )
     provider = MockProvider(name="direct")
 
-    forge.reason(provider, "where is the cube?")
+    forge.embed(provider, text="cube state")
 
     assert provider.event_handler is not None
     assert [(event.provider, event.operation, event.phase) for event in events] == [
-        ("direct", "reason", "success")
+        ("direct", "embed", "success")
     ]
 
 
@@ -80,29 +78,13 @@ def test_stub_remote_provider_forwards_mock_events(monkeypatch) -> None:
     ]
 
 
-def test_scaffold_surrogate_opt_in_exercises_non_predict_operations(monkeypatch) -> None:
+def test_scaffold_surrogate_opt_in_exercises_embed_operation(monkeypatch) -> None:
     monkeypatch.setenv("GENIE_API_KEY", "genie-test-key")
     monkeypatch.setenv("WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES", "true")
     provider = GenieProvider()
 
-    generated = provider.generate("cube replay", 1.0)
-    transferred = provider.transfer(
-        VideoClip(
-            frames=[b"seed"],
-            fps=8.0,
-            resolution=(160, 90),
-            duration_seconds=1.0,
-        ),
-        width=320,
-        height=180,
-        fps=12.0,
-    )
-    reasoning = provider.reason("how many objects?", world_state={"scene": {"objects": {}}})
     embedding = provider.embed(text="cube")
 
-    assert generated.metadata["mode"] == "stub-remote-adapter"
-    assert transferred.metadata["credential_env"] == "GENIE_API_KEY"
-    assert "GENIE_API_KEY" in reasoning.evidence[-1]
     assert embedding.provider == "genie"
 
 
@@ -116,8 +98,8 @@ def test_workflow_trace_from_provider_events_sanitizes_failures_and_artifacts() 
             artifact_id="prediction-json",
         ),
         ProviderEvent(
-            provider="runway",
-            operation="generate",
+            provider="leworldmodel",
+            operation="score",
             phase="failure",
             message="provider failed with token=secret at /tmp/private/run.json",
             target="https://example.test/result.mp4?signature=secret",
@@ -141,7 +123,7 @@ def test_workflow_trace_from_provider_events_sanitizes_failures_and_artifacts() 
     assert "/tmp/private" not in error_summary
     assert "[redacted]" in error_summary
     assert "<host-local-path>" in error_summary
-    assert "runway" in trace.to_markdown()
+    assert "leworldmodel" in trace.to_markdown()
 
 
 def test_workflow_trace_from_provider_events_handles_running_and_empty_streams() -> None:

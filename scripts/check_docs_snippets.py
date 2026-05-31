@@ -379,8 +379,6 @@ def _validate_known_json_schema(block: SnippetBlock, payload: object, *, root: P
             load_benchmark_budgets(payload)
             return "parsed as BenchmarkBudget list"
         with tempfile.TemporaryDirectory(prefix="worldforge-snippet-benchmark-") as temp_dir:
-            seed_clip = Path(temp_dir) / "seed-transfer.bin"
-            seed_clip.write_bytes(b"snippet-transfer-fixture")
             load_benchmark_inputs(payload, base_path=temp_dir)
         return "parsed as BenchmarkInputs"
     return "parsed as JSON"

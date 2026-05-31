@@ -1,4 +1,4 @@
-"""TheWorldHarness optional visual integration harness."""
+"""Robotics showcase flow and preserved-run helpers."""
 
 from __future__ import annotations
 

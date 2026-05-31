@@ -19,12 +19,11 @@ run its first triage command, and attach only the safe artifact named by the row
 | --- | --- | --- | --- | --- | --- |
 | invalid prediction state | mock contract fixture | `invalid world state` contract failure | adapter contributor | `uv run pytest tests/test_provider_contracts.py -q` | attach provider contract JSON or Markdown only |
 | unsafe provider event metadata | provider event conformance | `secret material` rejection before event sinks | adapter contributor and security reviewer | `uv run pytest tests/test_provider_contracts.py -q` | keep raw event logs local-only until redacted |
-| malformed health response | Cosmos health parser | `healthcheck response field 'status'` in health details | adapter maintainer | `uv run worldforge provider health cosmos` | attach sanitized provider health JSON |
-| remote authentication failure | Cosmos generation request | provider event with `status_code=401` and redacted target | host runtime owner | `uv run worldforge provider info cosmos` | attach redacted provider events or issue bundle |
-| retry exhaustion or timeout | Cosmos generation request | `failed after 1 attempt` and failed provider event | host runtime owner | `jq 'select(.phase=="failure")' .worldforge/runs/<run-id>/logs/provider-events.jsonl` | attach sanitized event rows without raw request bodies |
-| malformed task creation response | Runway task parser | `field 'id'` parser error | adapter maintainer | `uv run pytest tests/test_remote_video_providers.py -k missing_id -q` | attach the tiny sanitized fixture |
-| expired generated artifact | Runway artifact download | `expired or unavailable` with failed download signal | host runtime owner | `uv run worldforge provider info runway` | rerun and attach a fresh safe artifact path, not a signed URL |
-| unsafe artifact URL | Runway artifact validation | `artifact URL` validation failure | adapter maintainer and security reviewer | `uv run pytest tests/test_remote_video_providers.py -k unsafe_artifact_urls -q` | mark unsafe URLs local-only instead of linking them |
+| score count mismatch | LeWorldModel score boundary | `returned 2 score(s) for 3 candidate` | score adapter maintainer | `uv run pytest tests/test_leworldmodel_provider.py -k score_count -q` | attach sanitized score metadata; do not attach tensors |
+| malformed score request payload | LeWorldModel score boundary | `four-dimensional` validation error | score adapter maintainer | `uv run pytest tests/test_leworldmodel_provider.py -k malformed_payload -q` | attach tiny JSON fixtures only; keep host tensors local |
+| embodied action translator missing | Cosmos-Policy policy boundary | `provide action_translator` | prepared host owner | `uv run worldforge provider info cosmos-policy` | attach config summaries and shape metadata, not observations |
+| unsafe local/private endpoint | Cosmos-Policy configuration | `local/private destination` | host runtime owner and security reviewer | `uv run pytest tests/test_cosmos_policy_provider.py -k local_base_url -q` | do not attach private host names or bearer tokens |
+| malformed json_numpy action shape | Cosmos-Policy response parser | `action_dim must be 14` | policy adapter maintainer | `uv run pytest tests/test_cosmos_policy_provider.py -k json_numpy_action_dim -q` | attach bounded shape metadata only; do not attach observations |
 | missing optional runtime package | prepared-host optional provider | unhealthy provider info with a setup hint | prepared host owner | `uv run worldforge provider info gr00t` | attach runtime manifest and redacted provider info only |
 | scaffold provider remains fail-closed | Genie scaffold contract | configured scaffold with no exercised operations | provider maintainer | `uv run worldforge provider contract genie --format json` | attach contract output; do not claim real Genie integration |
 
@@ -34,7 +33,7 @@ run its first triage command, and attach only the safe artifact named by the row
   runtimes, or download checkpoints.
 - Provider events, health output, issue bundles, and contract reports must stay sanitized before
   attachment.
-- raw provider request bodies, signed artifact URLs, `.env` files, private checkpoints, and
-  host-local payload paths remain local-only.
+- raw provider request bodies, signed URLs, `.env` files, private checkpoints, and host-local
+  payload paths remain local-only.
 - Scaffold providers are shown as failure boundaries. A fail-closed scaffold row is not evidence of
   a real provider integration.

@@ -10,12 +10,10 @@ The project is built around a strict provider boundary:
 - predictive models roll state forward through `predict`
 - score models rank candidate action sequences through `score`
 - embodied policies propose action chunks through `policy`
-- video and media systems expose `generate` or `transfer`
-- auxiliary models expose `reason` or `embed` only when those operations are implemented directly
+- auxiliary models expose `embed` only when that operation is implemented directly
 
 This keeps provider semantics honest. A JEPA cost model is not treated as a video generator. A VLA
-robot policy is not treated as a predictive dynamics model. A media generation API is not treated
-as proof of controllable physical planning.
+robot policy is not treated as a predictive dynamics model.
 
 WorldForge is for Python developers building provider adapters, local physical-AI experiments,
 world-model planning loops, evaluation harnesses, and testable prototypes. It is not a hosted

@@ -1,7 +1,7 @@
 # Capability Fixture Corpus
 
 This directory ships canonical input fixtures for every WorldForge provider capability
-(`predict`, `reason`, `embed`, `generate`, `transfer`, `score`, `policy`). The corpus is
+(`predict`, `embed`, `score`, `policy`). The corpus is
 public testing API: it is part of the WorldForge wheel and consumers should reach it through
 `worldforge.testing.load_capability_fixture` rather than path-walking.
 
@@ -23,7 +23,7 @@ Every fixture file is a JSON object with the following keys (`schema_version: 1`
 | --- | --- |
 | `schema_version` | Currently `1`. Bump only with a corresponding loader migration. |
 | `id` | `<capability>.<name>` matching the file path (`predict/valid_baseline.json` → `predict.valid_baseline`). |
-| `capability` | One of `predict`, `reason`, `embed`, `generate`, `transfer`, `score`, `policy`. |
+| `capability` | One of `predict`, `embed`, `score`, `policy`. |
 | `data_class` | `synthetic` (hand-authored), `captured` (recorded from a real provider/run), or `host-supplied` (provided by an integrator at runtime; the file ships an example). |
 | `expected` | `valid` or `invalid`. |
 | `expected_error_pattern` | Regex hint for the error message a `WorldForgeError` raises. Required for invalid fixtures, must be `null` for valid fixtures. |
@@ -31,9 +31,9 @@ Every fixture file is a JSON object with the following keys (`schema_version: 1`
 | `payload` | Capability-specific dict whose keys map onto the matching `assert_*_conformance()` keyword arguments. |
 
 The corpus is owned by the evaluation/quality stream. Fixture files are intentionally tiny
-(JSON only; binary clip frames are inlined as `frames_base64`). Do not add real provider
-captures, large media artifacts, or host-specific data; instead document the host requirement
-and use `data_class = "host-supplied"` with a synthetic placeholder payload.
+(JSON only). Do not add real provider captures, large artifacts, or host-specific data; instead
+document the host requirement and use `data_class = "host-supplied"` with a synthetic placeholder
+payload.
 
 ## Reuse
 
@@ -70,8 +70,8 @@ arguments used by `payload`, so fixtures can be passed straight through with `**
 ## Snapshot review
 
 Capability fixtures are also tracked by `tests/fixtures/fixture-snapshots.json` together with
-provider payload fixtures, benchmark inputs, scenario files, and scene artifact fixtures. After
-changing any tracked JSON fixture, run:
+provider payload fixtures, benchmark inputs, and scenario files. After changing any tracked JSON
+fixture, run:
 
 ```bash
 uv run python scripts/manage_fixture_snapshots.py --format markdown

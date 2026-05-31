@@ -56,11 +56,8 @@ def test_static_audit_rejects_textual_import_outside_tui(tmp_path: Path) -> None
 
 def test_harness_tui_styles_import_without_textual() -> None:
     module_names = [
-        "worldforge.harness.tui_base_styles",
-        "worldforge.harness.tui_provider_styles",
         "worldforge.harness.tui_robotics_styles",
         "worldforge.harness.tui_styles",
-        "worldforge.harness.tui_world_styles",
     ]
     modules = [importlib.import_module(name) for name in module_names]
 
@@ -69,8 +66,8 @@ def test_harness_tui_styles_import_without_textual() -> None:
     try:
         reloaded = [importlib.reload(module) for module in modules]
         facade = reloaded[module_names.index("worldforge.harness.tui_styles")]
-        assert "Breadcrumb" in facade.BREADCRUMB_DEFAULT_CSS
-        assert "#provider-pill" in facade.THE_WORLD_HARNESS_APP_CSS
+        assert "#robotics-body" in facade.ROBOTICS_SHOWCASE_APP_CSS
+        assert "RoboticsTabletopHelpScreen" in facade.ROBOTICS_TABLETOP_HELP_SCREEN_CSS
         for module in reloaded:
             assert "textual" not in module.__dict__
     finally:

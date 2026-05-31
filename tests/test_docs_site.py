@@ -175,7 +175,7 @@ def test_provider_platform_foundation_roadmap_tracker_records_completion() -> No
         "Promotion rules cover all current statuses: `scaffold`, `experimental`, `beta`, `stable`.",
         "Rules explain when to change provider profile metadata and generated catalog docs.",
         "Manifest schema is documented and validated by tests.",
-        "Manifests exist for `leworldmodel`, `lerobot`, `gr00t`, `cosmos`, and `runway`.",
+        "Manifests exist for `leworldmodel`, `lerobot`, `gr00t`, and `cosmos-policy`.",
         "Each capability has a reusable conformance helper.",
         "The helpers do not use bare Python `assert` statements.",
         "Live smoke commands can emit `run_manifest.json`.",
@@ -191,9 +191,6 @@ def test_provider_platform_foundation_roadmap_tracker_records_completion() -> No
 
     for helper in (
         "assert_predict_conformance",
-        "assert_generate_conformance",
-        "assert_transfer_conformance",
-        "assert_reason_conformance",
         "assert_embed_conformance",
         "assert_score_conformance",
         "assert_policy_conformance",
@@ -201,7 +198,7 @@ def test_provider_platform_foundation_roadmap_tracker_records_completion() -> No
     ):
         assert helper in authoring
 
-    assert {"leworldmodel", "lerobot", "gr00t", "cosmos", "runway"} <= runtime_manifests
+    assert {"leworldmodel", "lerobot", "gr00t", "cosmos-policy"} <= runtime_manifests
     assert "`src/worldforge/providers/runtime_manifests/`" in provider_index
     assert "Optional live smoke entrypoints accept `--run-manifest <path>`" in provider_index
 
@@ -254,45 +251,6 @@ def test_reference_host_roadmap_tracker_records_completion() -> None:
         assert signal in examples
 
 
-def test_production_harness_roadmap_tracker_records_completion() -> None:
-    roadmap = (ROOT / "docs/src/provider-platform-roadmap.md").read_text(encoding="utf-8")
-    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
-
-    assert "Track status: complete for [#49]" in roadmap
-    for child in (
-        "WF-HARNESS-001",
-        "WF-HARNESS-002",
-        "WF-HARNESS-003",
-        "WF-HARNESS-004",
-        "WF-HARNESS-005",
-    ):
-        assert child in roadmap
-
-    for completed_criterion in (
-        "Harness and CLI flows write the same run layout.",
-        "Run IDs are file-safe and sortable.",
-        "Exported artifacts can be attached to issues without leaking secrets.",
-        "Non-TUI metadata command exposes the same provider readiness data as JSON.",
-        "A failed run still writes enough manifest data to reproduce the command.",
-        "Comparison refuses incompatible report types with a clear error.",
-        "Workbench can run against `mock` in a clean checkout.",
-        "Failures are actionable enough to paste into GitHub issues.",
-    ):
-        assert f"- [x] {completed_criterion}" in roadmap
-
-    for signal in (
-        ".worldforge/runs/<run-id>/",
-        "run_manifest.json",
-        "logs/provider-events.jsonl",
-        "results/inspector.json",
-        "worldforge harness --connectors --format json",
-        "worldforge provider workbench mock",
-        "worldforge runs compare",
-        "worldforge runs cleanup --keep 20",
-    ):
-        assert signal in harness
-
-
 def test_real_provider_roadmap_tracker_records_completion() -> None:
     roadmap = (ROOT / "docs/src/provider-platform-roadmap.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
@@ -306,8 +264,6 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
             "lerobot",
             "gr00t",
             "cosmos-policy",
-            "cosmos",
-            "runway",
             "jepa",
             "jepa-wms",
             "genie",
@@ -325,7 +281,6 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
         "WF-LEROBOT-002",
         "WF-GROOT-001",
         "WF-COSMOS-001",
-        "WF-RUNWAY-001",
         "WF-JEPAWMS-001",
         "WF-JEPA-001",
         "WF-GENIE-001",
@@ -349,8 +304,6 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
         "lerobot",
         "gr00t",
         "cosmos-policy",
-        "cosmos",
-        "runway",
         "jepa",
     } <= runtime_manifests
 
@@ -363,8 +316,6 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
         "Cosmos-Policy /act",
         "remote PolicyClient",
         "unreachable policy server",
-        "failed tasks",
-        "signed URL",
         "facebookresearch/jepa-wms",
         "Status: scaffold",
         "Decision date: 2026-05-01",
@@ -375,7 +326,7 @@ def test_real_provider_roadmap_tracker_records_completion() -> None:
         assert f"[`{provider_name}`]" in provider_index
 
     assert 'torch.hub.load("facebookresearch/jepa-wms", model_name)' in selection
-    assert "Genie Issue Outline" in selection
+    assert "Deferred Candidates" in selection
     assert "worldforge.smoke.pusht_showcase_inputs" in showcase
     assert "host must provide" in showcase
 
@@ -463,10 +414,11 @@ def test_gr00t_live_smoke_docs_cover_remote_policy_contract() -> None:
     assert "scripts/smoke_gr00t_policy.py --health-only" in manifest
 
 
-def test_gr00t_replay_harness_docs_cover_issue_226_contract() -> None:
-    harness_doc = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+def test_gr00t_replay_flow_docs_cover_issue_226_contract() -> None:
+    examples = (ROOT / "docs/src/examples.md").read_text(encoding="utf-8")
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    catalog = (ROOT / "src/worldforge/harness/flow_catalog.py").read_text(encoding="utf-8")
     flows = (ROOT / "src/worldforge/harness/flows.py").read_text(encoding="utf-8")
     groot_replay_flow = (ROOT / "src/worldforge/harness/groot_replay_flow.py").read_text(
         encoding="utf-8"
@@ -477,13 +429,11 @@ def test_gr00t_replay_harness_docs_cover_issue_226_contract() -> None:
     tests = (ROOT / "tests/test_harness_flows.py").read_text(encoding="utf-8")
 
     for signal in (
-        "uv run --extra harness worldforge-harness --flow gr00t-replay",
-        "raw tensor shapes for `eef_9d`, `gripper_position`, and",
-        "artifacts/gr00t-replay.json",
-        "GPU logs, checkpoints, private endpoints, or raw observations",
-        "live RTX A6000 validation is mentioned as provenance",
+        "gr00t-replay",
+        "GR00T N1.7 PolicyClient replay",
+        "embodied-policy-replay-comparison",
     ):
-        assert signal in harness_doc
+        assert signal in examples or signal in catalog
 
     for implementation_signal in (
         "_run_gr00t_replay_demo",
@@ -532,20 +482,18 @@ def test_provider_cohort_selection_record_covers_issue_130_contract() -> None:
 
     for candidate in (
         "JEPA-WMS and public `jepa` score path",
-        "Cosmos and Runway remote media retention",
         "Nano World Model score candidate",
         "Spatial/3D scene provider family",
-        "Genie interactive-world generation",
-        "Additional remote video APIs",
+        "Genie runtime/API decision",
         "Simulator bridges",
         "New embodied policy stacks beyond LeRobot and GR00T",
     ):
         assert candidate in record
 
-    for selected in ("#133", "#134", "#158"):
+    for selected in ("#133", "#137", "#158"):
         assert selected in record
 
-    assert "The selected cohort contains three active work items" in record
+    assert "The selected cohort contains two active work items" in record
     assert "Deferred Candidates" in record
     assert "generated provider catalog remains unchanged" in record
     assert "Provider Cohort Selection Record" in roadmap
@@ -553,33 +501,6 @@ def test_provider_cohort_selection_record_covers_issue_130_contract() -> None:
     assert "[Provider Cohort Selection Record](./provider-cohort-selection.md)" in summary
     assert "Provider Cohort Selection Record: provider-cohort-selection.md" in mkdocs
     assert "nanowm" not in provider_index
-
-
-def test_spatial_scene_artifact_boundary_covers_issue_138_contract() -> None:
-    boundary = (ROOT / "docs/src/spatial-scene-artifact-boundary.md").read_text(encoding="utf-8")
-    summary = (ROOT / "docs/src/SUMMARY.md").read_text(encoding="utf-8")
-    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
-    selection = (ROOT / "docs/src/provider-selection-rfc.md").read_text(encoding="utf-8")
-    cohort = (ROOT / "docs/src/provider-cohort-selection.md").read_text(encoding="utf-8")
-    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
-
-    assert "Issue: [#138]" in boundary
-    assert "Status: design accepted; provider implementation deferred." in boundary
-    assert "OpenLRM-style local 3D reconstruction or generation runtime" in boundary
-    assert "World Labs Marble-style hosted spatial world products" in boundary
-    assert "Generated videos are media artifacts" in boundary
-    assert "future `generate` surface" in boundary
-    assert "worldforge.scene_artifact" in boundary
-    assert "coordinate_frame" in boundary
-    assert "host-local absolute paths" in boundary
-    assert "does not prove physical validity" in boundary
-    assert "Follow-Up Contract For #143" in boundary
-
-    assert "[Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md)" in summary
-    assert "Spatial Scene Artifact Boundary: spatial-scene-artifact-boundary.md" in mkdocs
-    assert "Spatial Scene Artifact Boundary" in selection
-    assert "Spatial Scene Artifact Boundary" in cohort
-    assert "Spatial Scene Artifact Boundary" in continuation
 
 
 def test_live_smoke_evidence_registry_docs_cover_issue_144_contract() -> None:
@@ -597,7 +518,7 @@ def test_live_smoke_evidence_registry_docs_cover_issue_144_contract() -> None:
     assert "signed artifact URLs" in registry_doc
     assert "It is not a" in registry_doc
     assert "benchmark" in registry_doc
-    assert "skipped_missing_credentials" in registry_json
+    assert "skipped_missing_runtime" in registry_json
     assert "Live Smoke Evidence Registry" in provider_index
     assert "--live-smoke-registry docs/src/live-smoke-evidence.json" in operations
     assert "[Live Smoke Evidence Registry](./live-smoke-evidence.md)" in summary
@@ -626,9 +547,6 @@ def test_claim_to_evidence_map_covers_issue_140_contract() -> None:
         "`predict`",
         "`score`",
         "`policy`",
-        "`generate`",
-        "`transfer`",
-        "`reason`",
         "`embed`",
         "`plan`",
     ):
@@ -708,25 +626,24 @@ def test_issue_bundle_docs_cover_issue_148_contract() -> None:
     assert "- [x] Unsafe metadata causes a clear error or local-only marking" in continuation
 
 
-def test_harness_run_history_docs_cover_issue_149_contract() -> None:
-    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+def test_run_history_docs_cover_issue_149_contract() -> None:
+    run_index = (ROOT / "docs/src/run-index.md").read_text(encoding="utf-8")
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
     continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
     for signal in (
-        "worldforge harness --runs",
+        "worldforge runs index --status failed",
         "--artifact-type json",
         "sanitized rerun command",
         "issue-bundle",
-        "provider, capability, status, created date, and safe artifact type",
+        "provider, capability, status, date range, or\nsafe-artifact type",
     ):
-        assert signal in harness or signal in operations or signal in playbooks
+        assert signal in run_index or signal in operations or signal in playbooks
 
-    assert "Runs screen" in harness
     assert "preserved-run history actions" in changelog
-    assert "- [x] Harness can filter and open preserved runs without optional model runtimes" in (
+    assert "- [x] CLI can filter and open preserved runs without optional model runtimes" in (
         continuation
     )
     assert "- [x] Rerun commands are generated from sanitized manifests" in continuation
@@ -1027,10 +944,9 @@ def test_fixture_snapshot_manager_docs_cover_issue_205_contract() -> None:
 
     assert "--allow-intended-updates" in script
     assert "src/worldforge/testing/fixtures/predict/valid_baseline.json" in manifest
-    assert "tests/fixtures/providers/cosmos_generate_success.json" in manifest
+    assert "tests/fixtures/providers/leworldmodel_score_request.json" in manifest
     assert "examples/benchmark-inputs.json" in manifest
     assert "examples/scenarios/cube-on-table.json" in manifest
-    assert "tests/fixtures/scene_artifacts/valid_minimal_scene.json" in manifest
     assert "Fixture snapshot manifests" in artifact_schemas
     assert "fixture snapshot governance" in changelog
     for test_signal in (
@@ -1051,7 +967,7 @@ def test_fixture_snapshot_manager_docs_cover_issue_205_contract() -> None:
 
 def test_cross_provider_comparison_docs_cover_issue_150_contract() -> None:
     benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
-    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+    run_index = (ROOT / "docs/src/run-index.md").read_text(encoding="utf-8")
     claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
     continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -1067,20 +983,17 @@ def test_cross_provider_comparison_docs_cover_issue_150_contract() -> None:
         "skip reasons",
         "not a public leaderboard",
     ):
-        assert signal in benchmarking or signal in harness
+        assert signal in benchmarking or signal in run_index
 
     assert "tests/test_harness_report_compare.py" in claim_map
     assert "cross-provider run comparisons" in changelog
     assert "- [x] Compatible runs compare with provenance" in continuation
-    assert (
-        "- [x] Harness and CLI comparison paths use the same underlying report model"
-        in continuation
-    )
+    assert "- [x] CLI comparison paths use the same underlying report model" in continuation
 
 
 def test_regression_comparison_docs_cover_issue_248_contract() -> None:
     benchmarking = (ROOT / "docs/src/benchmarking.md").read_text(encoding="utf-8")
-    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
+    run_index = (ROOT / "docs/src/run-index.md").read_text(encoding="utf-8")
     html_reports = (ROOT / "docs/src/html-reports.md").read_text(encoding="utf-8")
     claim_map = (ROOT / "docs/src/claim-evidence-map.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
@@ -1112,7 +1025,7 @@ def test_regression_comparison_docs_cover_issue_248_contract() -> None:
         "Unsafe artifact references",
         "do not update baselines",
     ):
-        assert signal in benchmarking or signal in harness or signal in claim_map
+        assert signal in benchmarking or signal in run_index or signal in claim_map
 
     assert "--mode regression --format html" in html_reports
     assert "Regression comparisons review a candidate run" in claim_map
@@ -1734,26 +1647,24 @@ def test_workflow_trace_docs_cover_issue_256_contract() -> None:
 
 
 def test_adapter_workbench_docs_cover_issue_141_contract() -> None:
-    harness = (ROOT / "docs/src/theworldharness.md").read_text(encoding="utf-8")
     authoring = (ROOT / "docs/src/provider-authoring-guide.md").read_text(encoding="utf-8")
     continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
     for signal in (
-        "worldforge harness --flow workbench",
         "worldforge provider workbench jepa-wms",
         "promotion evidence",
         "runtime manifest status",
         "safe artifact references",
         "validation commands",
-        "missing evidence by promotion status",
+        "promotion evidence by future status",
         "jepa_wms_*.json",
     ):
-        assert signal in harness or signal in authoring
+        assert signal in authoring
 
     assert "adapter author workbench flow" in changelog
     assert "- [x] Workbench can run against `mock`" in continuation
-    assert "- [x] TUI and CLI workbench views use the same non-Textual flow logic" in continuation
+    assert "- [x] CLI workbench views use the same non-Textual flow logic" in continuation
 
 
 def test_scaffold_provider_docs_cover_issue_142_contract() -> None:
@@ -1994,7 +1905,7 @@ def test_contributor_task_starters_cover_issue_233_contract() -> None:
         "uv run python scripts/check_docs_snippets.py",
         "uv run python scripts/demo_showcases.py list",
         "uv run pytest tests/test_evidence_bundle.py tests/test_html_report.py",
-        "uv run worldforge benchmark --provider mock --operation generate",
+        "uv run worldforge benchmark --provider mock --operation predict",
         "uv run pytest tests/test_cli_help_snapshots.py tests/test_cli_world_commands.py",
     ):
         assert command in starters
@@ -2489,7 +2400,6 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
             "HTML_REPORT_SCHEMA_VERSION",
             "src/worldforge/html_report.py",
         ),
-        ("Scene artifacts", "SCENE_ARTIFACT_SCHEMA_VERSION", "src/worldforge/scene_artifacts.py"),
         (
             "Live smoke evidence registry",
             "LIVE_SMOKE_EVIDENCE_SCHEMA_VERSION",
@@ -2860,7 +2770,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         ("first-run", 189),
         ("diagnostics-issue-bundle", 190),
         ("robotics-replay", 191),
-        ("remote-media-dry-run", 192),
+        ("provider-event-redaction-dry-run", 192),
         ("adapter-author", 193),
         ("batch-eval", 194),
         ("service-host", 195),
@@ -3018,9 +2928,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
     support_docs = (ROOT / "docs/src/support.md").read_text(encoding="utf-8")
     playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
     provider_index = (ROOT / "docs/src/providers/README.md").read_text(encoding="utf-8")
-    remote_provider_tests = (ROOT / "tests/test_remote_video_providers.py").read_text(
-        encoding="utf-8"
-    )
+    gallery_tests = (ROOT / "tests/test_provider_failure_gallery.py").read_text(encoding="utf-8")
     contract_tests = (ROOT / "tests/test_provider_contracts.py").read_text(encoding="utf-8")
     provider_gallery_source = (ROOT / "src/worldforge/demos/provider_failure_gallery.py").read_text(
         encoding="utf-8"
@@ -3043,11 +2951,11 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         assert checkbox in roadmap
     for signal in (
         "mock-invalid-prediction-state",
-        "cosmos-generation-unauthorized",
-        "cosmos-generation-timeout",
-        "runway-missing-task-id",
-        "runway-expired-artifact",
-        "runway-unsafe-artifact-url",
+        "leworldmodel-score-count-mismatch",
+        "leworldmodel-malformed-score-input",
+        "cosmos-policy-missing-translator",
+        "cosmos-policy-unsafe-base-url",
+        "cosmos-policy-json-numpy-shape",
         "optional-runtime-missing-dependency",
         "genie-scaffold-fail-closed",
         "raw provider request bodies",
@@ -3055,7 +2963,7 @@ def test_demo_showcase_docs_cover_issues_189_to_198_and_237_contract() -> None:
         assert (
             signal in failure_gallery_docs or signal in script or signal in provider_gallery_source
         )
-    assert "test_provider_failure_gallery_matches_remote_provider_failures" in remote_provider_tests
+    assert "test_provider_failure_gallery_report_preserves_attachable_contract" in gallery_tests
     assert "test_provider_failure_gallery_matches_contract_failures" in contract_tests
 
 
@@ -3124,7 +3032,7 @@ def test_provider_lifecycle_docs_cover_issue_247_contract() -> None:
     for test_signal in (
         "test_provider_lifecycle_status_covers_noop_ready_skipped_failed_and_teardown",
         "test_doctor_report_includes_lifecycle_readiness_and_skip_reasons",
-        "_LifecycleReadyReasoner",
+        "_LifecycleReadyCost",
     ):
         assert test_signal in provider_tests
 

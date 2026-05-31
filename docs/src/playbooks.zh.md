@@ -56,7 +56,7 @@ uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo
 | `first-run` 失败 | 运行 `uv run worldforge world preflight --state-dir .worldforge/demo-showcases/first-run/worlds` | 贡献者 |
 | 诊断包不适合附件提交 | 打开 `issue-bundle/evidence_manifest.json` 并检查被排除的文件 | 报告方 |
 | 机器人回放失败 | 运行 `uv run worldforge-demo-lerobot` 并检查提供方事件阶段 | 贡献者 |
-| 远程媒体干运行泄露了查询字符串 | 检查 `remote-media-events.json` 及提供方事件脱敏语料库 | 贡献者 |
+| 提供方事件脱敏干运行泄露了查询字符串 | 检查 `provider-event-redaction-events.json` 及提供方事件脱敏语料库 | 贡献者 |
 | 批量基准测试状态发生变化 | 在修改阈值前检查已复制的预算和基准测试报告 | 性能维护者 |
 
 运行器不安装 LeRobot、LeWorldModel、GR00T、torch、Rerun、检查点、模拟器或提供方凭据。它不发起付费 API 调用、不控制硬件，也不声称具备物理保真度。
@@ -68,11 +68,8 @@ uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo
 | 需求 | 能力 | 首要命令 |
 | --- | --- | --- |
 | 根据动作推进世界状态 | `predict` | `uv run worldforge doctor --capability predict` |
-| 从文本/选项生成媒体 | `generate` | `uv run worldforge doctor --capability generate` |
-| 将一个视频片段转换为另一个 | `transfer` | `uv run worldforge doctor --capability transfer` |
 | 对候选动作排序 | `score` | `uv run worldforge doctor --capability score` |
 | 选择具身动作块 | `policy` | `uv run worldforge doctor --capability policy` |
-| 回答有类型的问题 | `reason` | `uv run worldforge doctor --capability reason` |
 | 对文本进行嵌入 | `embed` | `uv run worldforge doctor --capability embed` |
 
 然后检查提供方档案：
@@ -121,12 +118,12 @@ uv run python scripts/scaffold_provider.py "Acme WM" \
 
 - 在可能的情况下，在调用网络或模型之前对调用方输入进行验证。
 - 上游输出通过显式辅助函数解析，格式错误的夹具会触发失败。
-- 受支持的方法返回 `PredictionPayload`、`VideoClip`、`ActionScoreResult`、`ActionPolicyResult`、`ReasoningResult` 或 `EmbeddingResult`（视情况而定）。
+- 受支持的方法返回 `PredictionPayload`、`ActionScoreResult`、`ActionPolicyResult` 或 `EmbeddingResult`（视情况而定）。
 - 不受支持的方法继承 `BaseProvider` 的 `ProviderError` 行为。
 - `health()` 开销小，并能清晰报告缺失的凭据或可选依赖。
 - 文档说明配置、运行时归属、输入形状、输出模式、限制、失败模式和冒烟路径。
 
-如果集成仅涉及一个窄的本地接口，优先实现能力协议，而不是创建一个大部分为空的 `BaseProvider` 子类。使用 `register_cost`、`register_policy`、`register_generator`、`register_predictor`、`register_reasoner`、`register_embedder` 或 `register_transferer` 注册它；它仍会出现在 `providers()`、`provider_profile(...)`、`doctor(...)`、规划和基准测试路由中。
+如果集成仅涉及一个窄的本地接口，优先实现能力协议，而不是创建一个大部分为空的 `BaseProvider` 子类。使用 `register_cost`、`register_policy`、`register_predictor` 或 `register_embedder` 注册它；它仍会出现在 `providers()`、`provider_profile(...)`、`doctor(...)`、规划和基准测试路由中。
 
 验证：
 
@@ -204,7 +201,7 @@ uv run worldforge provider info leworldmodel
 
 ```bash
 uv run python examples/hosts/service/app.py --provider mock --port 8080
-uv run python examples/hosts/batch-eval/app.py benchmark --provider mock --operation generate --iterations 1
+uv run python examples/hosts/batch-eval/app.py benchmark --provider mock --operation predict --iterations 1
 uv run python examples/hosts/robotics-operator/app.py review --sample-translator --approve-dry-run \
   --check workspace_clear --check emergency_stop_available --check operator_present --check controller_isolated
 ```
@@ -226,9 +223,9 @@ uv run worldforge drills run all --workspace-dir .worldforge/drills
 
 | 演练名称 | 预期故障 | 恢复命令 |
 | --- | --- | --- |
-| `missing-credentials` | 无值配置摘要中缺少必要的提供方凭据 | 加载所需环境变量，然后运行 `uv run worldforge provider health runway` |
+| `missing-credentials` | 无值配置摘要中缺少必要的提供方凭据 | 加载所需环境变量，然后运行 `uv run worldforge provider health leworldmodel` |
 | `missing-optional-dependency` | 可选运行时导入缺失 | 在已准备好的宿主上安装提供方可选运行时，然后重新运行其冒烟命令 |
-| `malformed-provider-output` | Runway 任务解析器拒绝了没有 task id 的夹具 | 附上经脱敏处理的夹具，修复解析器或上游契约 |
+| `malformed-provider-output` | 提供方解析器拒绝格式错误的夹具 | 附上经脱敏处理的夹具，修复解析器或上游契约 |
 | `budget-violation` | 模拟基准测试违反了刻意设置为不可能达到的延迟预算 | 检查运行包，然后重新运行 `uv run worldforge benchmark --provider mock --operation predict --iterations 1` |
 | `corrupted-world-state` | 格式错误的本地世界 JSON 文件触发 `WorldStateError` | 导出诊断信息，隔离损坏文件，然后重新创建或导入有效的世界 |
 | `expired-artifact` | 工件描述符的过期时间戳已在过去 | 重新运行提供方工作流以刷新工件，然后导出新的议题包 |
@@ -300,24 +297,14 @@ forge.delete_world(world_id)
 - 若多个 worker 需要写入，请将持久化迁移至具备锁定、迁移、备份和恢复演练的宿主方存储中。
 - 未经[持久化适配器 ADR](./adr/0001-persistence-adapter-boundary.md) 批准，不得向 WorldForge 添加锁文件、SQLite 存储或服务适配器。
 
-### 5a. 从 TheWorldHarness 管理世界
-
-TheWorldHarness 中的 Worlds 屏幕是 `worldforge world` CLI 的键盘优先镜像界面。启动 harness 并按 `g w`（或从 `Ctrl+P` 中选择"Jump: Worlds"）：
-
-```bash
-uv run --extra harness worldforge-harness
-```
-
-按键绑定与 CLI 命令完全对应：`n` 映射到 `worldforge world create`，`Enter` 打开编辑器（`world show` + `add-object` + `update-object`），`d` 调用 `WorldForge.delete_world(...)`，`f` 映射到 `world fork`，`/` 按 ID 或名称子串缩小表格范围。每次写入或解除链接都通过 `WorldForge` 在 `@work(thread=True, group="persistence")` worker 上执行；不手动写入任何 JSON。框架触发的验证错误（`WorldStateError` / `WorldForgeError`）以浮层提示显示——内存中的编辑缓冲区保持完整，用户可以修正后重试。
-
 ### 5b. 捕获运行作用域的提供方日志
 
-当 CLI 任务、批处理宿主、服务请求或 TheWorldHarness 运行需要可附加到议题、发布包或事故说明的提供方事件时使用本节。
+当 CLI 任务、批处理宿主、服务请求或机器人案例展示运行需要可附加到议题、发布包或事故说明的提供方事件时使用本节。
 
 对于一次失败的保留运行，在发布前导出议题就绪的包：
 
 ```bash
-uv run worldforge harness --runs --status failed --artifact-type json
+uv run worldforge runs list --status failed --artifact-type json
 uv run worldforge runs bundle <run-id> \
   --workspace-dir .worldforge \
   --output .worldforge/issue-bundles/<run-id>
@@ -331,7 +318,7 @@ from pathlib import Path
 from worldforge import WorldForge
 from worldforge.observability import JsonLoggerSink, RunJsonLogSink, compose_event_handlers
 
-run_id = "20260430T120000Z-runway-generate"
+run_id = "20260430T120000Z-provider-event"
 log_path = Path(".worldforge") / "runs" / run_id / "provider-events.jsonl"
 
 forge = WorldForge(
@@ -386,23 +373,23 @@ jq '{run_id, provider_profile, capability, status, event_count, artifact_paths}'
 
 ```bash
 uv run worldforge eval --suite planning --provider mock --format markdown
-uv run worldforge eval --suite generation --provider mock --format json
+uv run worldforge eval --suite physics --provider mock --format json
 uv run worldforge eval --suite planning --provider mock \
   --dataset-manifest examples/dataset-manifests/mock-evaluation-fixtures.json \
   --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format markdown
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 ```
 
 成功信号：
 
 - 当提供方不支持所需能力时，套件会明确跳过或失败。
 - 评估数据集清单以简洁的溯源引用标注；许可证、隐私、安全性、校验和以及由宿主方负责的获取步骤均被记录，但不复制数据集本身。
-- 基准测试报告标明提供方、操作、通过/失败状态、延迟、重试次数以及针对 `score`、`policy`、`generate`、`transfer` 和 `embed` 等直接提供方接口的导出工件格式。
+- 基准测试报告标明提供方、操作、通过/失败状态、延迟、重试次数以及针对 `predict`、`score`、`policy` 和 `embed` 等直接提供方接口的导出工件格式。
 - 当成功率、错误次数、重试次数、延迟或吞吐量阈值出现退步时，基准测试预算文件以非零状态退出。
-- `--input-file` 夹具可复现预测、生成、传输、嵌入、score 和 policy 运行的基准测试输入。已提交的夹具对 `mock` 的 `predict`、`generate`、`transfer` 和 `embed` 是检出安全的；其 score 和 policy 字段是面向公告了相应能力的提供方的专属输入。传输片段路径相对于夹具文件解析。
+- `--input-file` 夹具可复现预测、嵌入、score 和 policy 运行的基准测试输入。已提交的夹具对 `mock` 的 `predict` 和 `embed` 是检出安全的；其 score 和 policy 字段是面向公告了相应能力的提供方的专属输入。
 - 当基准测试输入文件和结果 JSON 被用于发布或论文声明时，由宿主方保存。
 
 若分数发生变化，首先检查提供方能力、测试夹具变化、输入数据和重试事件。在不保留运行工件的情况下，不得围绕单次运行重写声明。
@@ -418,16 +405,16 @@ uv run python scripts/calibrate_benchmark_budgets.py \
 
 成功信号：`candidate-budgets.json` 通过基准测试预算解析器的加载，且 `budget-calibration.md` 显示源报告摘要、机器类型、旧阈值、候选阈值、观测到的基线及理由。遇到意外候选值时，首要排查步骤是在同一机器类型上重新运行已保留的基准测试命令并对比报告摘要，然后再放宽任何发布门控。
 
-### 6a. 保留 Harness 报告
+### 6a. 保留评估和基准测试报告
 
-TheWorldHarness 的 Eval 和 Benchmark 屏幕会自动将已完成的报告保留在活跃的状态目录下：
+评估和基准测试 CLI 会将已完成的报告保留在活跃的运行工作区下：
 
 ```text
 .worldforge/reports/eval-<suite>-<timestamp>-<run-id>.json
 .worldforge/reports/benchmark-<timestamp>-<run-id>.json
 ```
 
-JSON 由 `worldforge eval` 和 `worldforge benchmark` 命令使用的相同渲染器写入。TUI 中的 Markdown 和 CSV 预览由同一报告对象重新生成，因此截图与保存的 JSON 指向的是相同的数字。每当基准测试或评估结果被引用于 PR、发布说明、论文或幻灯片时，请使用成功浮层提示中打印的路径。
+JSON 由 `worldforge eval` 和 `worldforge benchmark` 命令使用的相同渲染器写入。每当基准测试或评估结果被引用于 PR、发布说明、论文或幻灯片时，请使用保留的报告路径。
 
 若出现意外数字，首要排查步骤：打开保存的 JSON，确认提供方和操作/套件，然后使用相同的提供方和操作重新运行匹配的 CLI 命令。
 
@@ -451,16 +438,16 @@ uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-
 
 成功信号：记录包含候选目标点、选定的回放轨迹、打分条、延迟条、提供方事件、世界快照和规划载荷。若仅需要 TUI/JSON 工件，使用 `--no-rerun`。在机器人 TUI 中，按 `o` 可直接打开已持久化的 Rerun 录制。
 
-## 7. 处理远程媒体工件
+## 7. 处理提供方工件
 
-适用于 Cosmos、Runway 或任何未来的媒体适配器。
+适用于可能附加到 issue 或发布说明的提供方输出和事件证据。
 
 预检：
 
 ```bash
-uv run worldforge doctor --capability generate
-uv run worldforge provider info runway
-uv run worldforge provider health runway
+uv run worldforge doctor --capability score
+uv run worldforge provider info leworldmodel
+uv run worldforge provider health leworldmodel
 ```
 
 操作规则：
@@ -469,13 +456,13 @@ uv run worldforge provider health runway
 - 健康检查、轮询和下载可通过 `ProviderRequestPolicy` 进行重试。
 - `timeout_seconds` 是单次请求的超时时间；`max_elapsed_seconds` 是宿主对该操作（含重试、退避和轮询间隔）的工作流预算。
 - 预算超出会触发 `ProviderBudgetExceededError` 并发出 `phase=="budget_exceeded"` 事件，以便告警能够区分宿主预算耗尽与上游 HTTP 故障。
-- 返回的工件在 `VideoClip` 返回前经过验证。
+- 提供方返回的工件引用在可附加证据中不得包含凭据、私有主机或原始签名 URL。
 - 提供方返回的工件 URL 被视为不可信输入：默认仅允许 HTTP(S)、无内嵌凭据、无本地/私有/链路本地目标，并以最大字节上限流式传输。
 - 签名 URL 和临时工件 URL 不是持久化存储。请在完成后立即将其下载或持久化到宿主方存储中。
 - 提供方错误应包含操作和提供方上下文，但不得泄露凭据、bearer 令牌或签名 URL。
 - 提供方事件的 `target` 值已为日志进行脱敏处理：用它来识别端点或工件路径，而非恢复完整的签名 URL。
 
-若工件下载失败，检查提供方事件中的 `operation`、`phase`、`status_code`、`attempt` 和经脱敏处理的 `target`，并在 URL 过期后使用新任务重新运行。
+若工件导出失败，检查提供方事件中的 `operation`、`phase`、`status_code`、`attempt` 和经脱敏处理的 `target`，然后在修复提供方输入或宿主配置后重新运行本地工作流。
 
 ## 8. 运行可选运行时冒烟测试
 
@@ -488,25 +475,13 @@ uv run pytest
 uv run pytest -m "not live"
 uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
-uv run --extra harness worldforge-harness --flow diagnostics
 ```
 
-运行时 pytest 配置文件为选择加入制。用最小的真实标记集标注实时提供方测试，例如 `@pytest.mark.live`、`@pytest.mark.network`、`@pytest.mark.credentialed`、`@pytest.mark.gpu`、`@pytest.mark.robotics` 和 `@pytest.mark.provider_profile("runway")`。默认的 `uv run pytest` 会在标注的测试尝试访问实时端点、GPU、机器人技术栈、凭据或已下载的检查点之前将其跳过。
+运行时 pytest 配置文件为选择加入制。用最小的真实标记集标注实时提供方测试，例如 `@pytest.mark.live`、`@pytest.mark.network`、`@pytest.mark.credentialed`、`@pytest.mark.gpu`、`@pytest.mark.robotics` 和 `@pytest.mark.provider_profile("leworldmodel")`。默认的 `uv run pytest` 会在标注的测试尝试访问实时端点、GPU、机器人技术栈、凭据或已下载的检查点之前将其跳过。
 
 已准备宿主的提供方配置文件：
 
 ```bash
-# Cosmos: requires COSMOS_BASE_URL and a reachable deployment.
-COSMOS_BASE_URL=http://localhost:8000 \
-  uv run pytest -m "live and network and provider_profile" \
-    --run-live --run-network --provider-profile cosmos
-
-COSMOS_BASE_URL=http://localhost:8000 \
-  uv run worldforge-smoke-cosmos \
-    --output .worldforge/runs/cosmos-live/artifacts/cosmos.mp4 \
-    --summary-json .worldforge/runs/cosmos-live/results/summary.json \
-    --run-manifest .worldforge/runs/cosmos-live/run_manifest.json
-
 # Cosmos-Policy: requires COSMOS_POLICY_BASE_URL and a reachable ALOHA /act server.
 COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
@@ -552,11 +527,6 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
 #    such as 50 x 14.
 # 6. Preserve only sanitized evidence. Do not commit raw images, tokens, checkpoints, Docker
 #    layers, or GPU logs with secrets. Hibernate or terminate the GPU host when finished.
-
-# Runway: requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET.
-RUNWAYML_API_SECRET=... \
-  uv run pytest -m "live and network and credentialed and provider_profile" \
-    --run-live --run-network --run-credentialed --provider-profile runway
 
 # LeWorldModel: requires LEWORLDMODEL_POLICY or LEWM_POLICY and host-owned runtime deps.
 LEWORLDMODEL_POLICY=pusht/lewm \
@@ -832,7 +802,7 @@ uv run python scripts/generate_release_notes.py \
 | 提供方不健康 | `uv run worldforge provider health <name>` | 健康详情、可选依赖版本 | 宿主运行时设置或提供方健康代码 |
 | 能力不支持 | `uv run worldforge doctor --capability <capability>` | 提供方档案和工作流调用 | 选择正确的提供方或实现该能力 |
 | 持久化加载失败 | 用保存的 JSON 复现 `load_world` | 失败的 JSON、世界 ID、状态目录 | 从备份恢复或修复导入器验证逻辑 |
-| 远程媒体失败 | 提供方事件和提供方专属文档 | 状态码、尝试次数、经脱敏处理的目标 | 解析器、重试策略、工件处理或宿主凭据 |
+| 提供方工件导出失败 | 提供方事件和提供方专属文档 | 状态码、尝试次数、经脱敏处理的目标 | 解析器、重试策略、工件处理或宿主凭据 |
 | 可选运行时冒烟测试失败 | 冒烟命令和 `--help` 输出 | 宿主操作系统、依赖路径、检查点路径 | 宿主运行时设置；不得向基础软件包添加重型依赖 |
 | 覆盖率失败 | `uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90` | 缺少覆盖的代码行和已更改的文件 | 添加行为测试，尤其是错误路径 |
 

@@ -12,7 +12,6 @@ from worldforge.models import (
     ActionPolicyResult,
     ActionScoreResult,
     EmbeddingResult,
-    GenerationOptions,
     JSONDict,
     ProviderCapabilities,
     ProviderEvent,
@@ -22,12 +21,9 @@ from worldforge.models import (
     ProviderLifecycleStatus,
     ProviderProfile,
     ProviderRequestPolicy,
-    ReasoningResult,
-    VideoClip,
     WorldForgeError,
     require_finite_number,
     require_json_dict,
-    require_positive_int,
     require_probability,
 )
 
@@ -46,49 +42,6 @@ class ProviderError(RuntimeError):
 
 class ProviderBudgetExceededError(ProviderError):
     """Raised when a provider operation exceeds its configured host budget."""
-
-
-def validate_generation_request(
-    prompt: object,
-    duration_seconds: object,
-    *,
-    options: object | None = None,
-) -> tuple[str, float, GenerationOptions | None]:
-    """Validate common provider generation inputs before adapter execution."""
-
-    if not isinstance(prompt, str) or not prompt.strip():
-        raise WorldForgeError("generate() prompt must be a non-empty string.")
-    duration = require_finite_number(duration_seconds, name="generate() duration_seconds")
-    if duration <= 0.0:
-        raise WorldForgeError("generate() duration_seconds must be greater than 0.")
-    if options is not None and not isinstance(options, GenerationOptions):
-        raise WorldForgeError("generate() options must be a GenerationOptions instance.")
-    return prompt.strip(), duration, options
-
-
-def validate_transfer_request(
-    clip: object,
-    *,
-    width: object,
-    height: object,
-    fps: object,
-    prompt: object = "",
-    options: object | None = None,
-) -> tuple[VideoClip, int, int, float, str, GenerationOptions | None]:
-    """Validate common provider transfer inputs before adapter execution."""
-
-    if not isinstance(clip, VideoClip):
-        raise WorldForgeError("transfer() clip must be a VideoClip.")
-    resolved_width = require_positive_int(width, name="transfer() width")
-    resolved_height = require_positive_int(height, name="transfer() height")
-    resolved_fps = require_finite_number(fps, name="transfer() fps")
-    if resolved_fps <= 0.0:
-        raise WorldForgeError("transfer() fps must be greater than 0.")
-    if not isinstance(prompt, str):
-        raise WorldForgeError("transfer() prompt must be a string.")
-    if options is not None and not isinstance(options, GenerationOptions):
-        raise WorldForgeError("transfer() options must be a GenerationOptions instance.")
-    return clip, resolved_width, resolved_height, resolved_fps, prompt.strip(), options
 
 
 @dataclass(slots=True, frozen=True)
@@ -454,51 +407,6 @@ class BaseProvider:
         """
 
         raise ProviderError(f"Provider '{self.name}' does not implement predict().")
-
-    def generate(
-        self,
-        prompt: str,
-        duration_seconds: float,
-        *,
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        """Generate a video clip from ``prompt`` with the given duration.
-
-        Override when ``generate=True``. Implementations should respect ``options.width``,
-        ``options.height``, and ``options.fps`` when supplied, and raise
-        :class:`ProviderError` on upstream failures, expired artifacts, or unsupported flows.
-        """
-
-        raise ProviderError(f"Provider '{self.name}' does not implement generate().")
-
-    def transfer(
-        self,
-        clip: VideoClip,
-        *,
-        width: int,
-        height: int,
-        fps: float,
-        prompt: str = "",
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        """Transfer the visual content of ``clip`` to a new style or modality.
-
-        Override when ``transfer=True``. The output clip dimensions and fps are caller-set
-        contract values; adapters that cannot honor them must raise :class:`ProviderError`
-        rather than silently returning a clip with different parameters.
-        """
-
-        raise ProviderError(f"Provider '{self.name}' does not implement transfer().")
-
-    def reason(self, query: str, *, world_state: JSONDict | None = None) -> ReasoningResult:
-        """Answer a structured reasoning ``query`` over an optional ``world_state``.
-
-        Override when ``reason=True``. Implementations should populate
-        :class:`ReasoningResult` with concrete evidence; placeholder or unverifiable evidence
-        is a contract violation.
-        """
-
-        raise ProviderError(f"Provider '{self.name}' does not implement reason().")
 
     def embed(self, *, text: str) -> EmbeddingResult:
         """Return a fixed-dimension embedding for ``text``.

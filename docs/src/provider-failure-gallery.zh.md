@@ -15,12 +15,11 @@ uv run python scripts/demo_showcases.py run provider-failure-gallery \
 | --- | --- | --- | --- | --- | --- |
 | 无效的预测状态 | mock 契约夹具 | `invalid world state` 契约失败 | 适配器贡献者 | `uv run pytest tests/test_provider_contracts.py -q` | 仅附上提供方契约 JSON 或 Markdown |
 | 不安全的提供方事件元数据 | 提供方事件一致性 | 事件 sink 前拒绝 `secret material` | 适配器贡献者和安全审查者 | `uv run pytest tests/test_provider_contracts.py -q` | 脱敏处理前将原始事件日志仅保留在本地 |
-| 格式错误的健康响应 | Cosmos 健康解析器 | 健康详情中出现 `healthcheck response field 'status'` | 适配器维护者 | `uv run worldforge provider health cosmos` | 附上经脱敏处理的提供方健康 JSON |
-| 远程认证失败 | Cosmos 生成请求 | 包含 `status_code=401` 和脱敏目标的提供方事件 | 宿主运行时负责人 | `uv run worldforge provider info cosmos` | 附上经脱敏处理的提供方事件或议题包 |
-| 重试耗尽或超时 | Cosmos 生成请求 | `failed after 1 attempt` 及失败的提供方事件 | 宿主运行时负责人 | `jq 'select(.phase=="failure")' .worldforge/runs/<run-id>/logs/provider-events.jsonl` | 附上不含原始请求体的经脱敏处理的事件行 |
-| 格式错误的任务创建响应 | Runway 任务解析器 | `field 'id'` 解析错误 | 适配器维护者 | `uv run pytest tests/test_remote_video_providers.py -k missing_id -q` | 附上极小的经脱敏处理的夹具 |
-| 生成工件过期 | Runway 工件下载 | `expired or unavailable` 及下载失败信号 | 宿主运行时负责人 | `uv run worldforge provider info runway` | 重新运行并附上新的安全工件路径，而非签名 URL |
-| 不安全的工件 URL | Runway 工件验证 | `artifact URL` 验证失败 | 适配器维护者和安全审查者 | `uv run pytest tests/test_remote_video_providers.py -k unsafe_artifact_urls -q` | 将不安全的 URL 标记为仅本地，而非链接出去 |
+| 分数数量不匹配 | LeWorldModel 打分边界 | `returned 2 score(s) for 3 candidate` | 打分适配器维护者 | `uv run pytest tests/test_leworldmodel_provider.py -k score_count -q` | 附上经脱敏的分数元数据；不要附上张量 |
+| 格式错误的打分请求载荷 | LeWorldModel 打分边界 | `four-dimensional` 验证错误 | 打分适配器维护者 | `uv run pytest tests/test_leworldmodel_provider.py -k malformed_payload -q` | 仅附上小型 JSON 夹具；宿主张量留在本地 |
+| 缺失具身动作转换器 | Cosmos-Policy 策略边界 | `provide action_translator` | 预制宿主负责人 | `uv run worldforge provider info cosmos-policy` | 附上配置摘要和形状元数据，不附上观测 |
+| 不安全的本地/私有端点 | Cosmos-Policy 配置 | `local/private destination` | 宿主运行时负责人和安全审查者 | `uv run pytest tests/test_cosmos_policy_provider.py -k local_base_url -q` | 不附上私有主机名或 bearer token |
+| 格式错误的 json_numpy 动作形状 | Cosmos-Policy 响应解析器 | `action_dim must be 14` | 策略适配器维护者 | `uv run pytest tests/test_cosmos_policy_provider.py -k json_numpy_action_dim -q` | 仅附上有界形状元数据，不附上观测 |
 | 可选运行时包缺失 | 已准备宿主的可选提供方 | 带有设置提示的不健康提供方信息 | 已准备宿主负责人 | `uv run worldforge provider info gr00t` | 仅附上运行时清单和经脱敏处理的提供方信息 |
 | 脚手架提供方保持失败关闭 | Genie 脚手架契约 | 已配置的脚手架，没有任何已执行的操作 | 提供方维护者 | `uv run worldforge provider contract genie --format json` | 附上契约输出；不得声称真实的 Genie 集成 |
 

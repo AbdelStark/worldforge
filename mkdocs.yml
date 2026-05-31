@@ -118,7 +118,6 @@ plugins:
             Provider And Platform Roadmap: 提供方与平台路线图
             Next Provider Selection RFC: 下一个提供方选型 RFC
             Provider Cohort Selection Record: 提供方批次选型记录
-            Spatial Scene Artifact Boundary: 空间场景工件边界
             Project Metadata: 项目元信息
             Changelog: 更新日志
             Citation: 引用
@@ -136,7 +135,6 @@ nav:
       - Use Case Cookbook: use-case-cookbook.md
       - Robotics Replay Showcase: robotics-showcase.md
       - Robotics Showcase Deep Dive: robotics-showcase-deep-dive.md
-      - TheWorldHarness: theworldharness.md
       - Rerun Integration: rerun.md
   - System Model:
       - World Model Taxonomy: world-model-taxonomy.md
@@ -148,7 +146,6 @@ nav:
       - Overview: providers/README.md
       - Provider Configuration Index: provider-configuration-index.md
       - Provider Failure Mode Gallery: provider-failure-gallery.md
-      - Cosmos: providers/cosmos.md
       - Cosmos-Policy: providers/cosmos-policy.md
       - Genie: providers/genie.md
       - GR00T: providers/gr00t.md
@@ -156,7 +153,6 @@ nav:
       - JEPA-WMS: providers/jepa-wms.md
       - LeWorldModel: providers/leworldmodel.md
       - LeRobot: providers/lerobot.md
-      - Runway: providers/runway.md
   - Authoring And API:
       - Provider Authoring Guide: provider-authoring-guide.md
       - External Provider Packages: external-providers.md
@@ -196,7 +192,6 @@ nav:
       - Provider And Platform Roadmap: provider-platform-roadmap.md
       - Next Provider Selection RFC: provider-selection-rfc.md
       - Provider Cohort Selection Record: provider-cohort-selection.md
-      - Spatial Scene Artifact Boundary: spatial-scene-artifact-boundary.md
   - Project Metadata:
       - Changelog: changelog.md
       - Citation: citation.md

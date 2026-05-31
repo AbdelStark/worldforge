@@ -112,11 +112,8 @@ class LeWorldModelProvider(BaseProvider):
             name=name,
             capabilities=ProviderCapabilities(
                 predict=False,
-                generate=False,
-                reason=False,
                 embed=False,
                 plan=False,
-                transfer=False,
                 score=True,
             ),
             profile=ProviderProfileSpec(

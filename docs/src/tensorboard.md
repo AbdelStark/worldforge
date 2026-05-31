@@ -193,8 +193,8 @@ effects until the first ``log_*`` call. ``close()`` is idempotent.
 
 ## Boundaries
 
-- The bridge never advertises ``predict``, ``generate``, ``reason``, ``embed``,
-  ``plan``, ``transfer``, ``score``, or ``policy`` capabilities. It is purely
+- The bridge never advertises ``predict``, ``embed``, ``plan``, ``score``, or ``policy``
+  capabilities. It is purely
   observability.
 - The bridge never imports torch on its own. Weight histograms require the host
   to pass tensor-like objects through ``log_state_dict_histograms`` -

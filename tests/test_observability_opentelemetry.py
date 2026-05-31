@@ -58,18 +58,18 @@ def test_importing_worldforge_does_not_import_opentelemetry() -> None:
 
 def test_provider_event_span_attributes_are_bounded_and_sanitized() -> None:
     event = ProviderEvent(
-        provider="runway",
-        operation="task create",
+        provider="leworldmodel",
+        operation="score",
         phase="SUCCESS",
         method="post",
-        target="https://user:secret@api.runwayml.com/v1/tasks?token=secret#fragment",
+        target="https://user:secret@api.example.test/v1/score?token=secret#fragment",
         status_code=201,
         duration_ms=42.5,
         attempt=2,
         max_attempts=3,
         message="Bearer secret-token failed for token=secret",
         metadata={
-            "capability": "generate",
+            "capability": "score",
             "api_key": "secret",
             "artifact_url": "https://files.example.test/video.mp4?signature=secret",
         },
@@ -83,14 +83,14 @@ def test_provider_event_span_attributes_are_bounded_and_sanitized() -> None:
 
     attributes = provider_event_span_attributes(event)
 
-    assert attributes["worldforge.provider"] == "runway"
-    assert attributes["worldforge.operation"] == "task create"
+    assert attributes["worldforge.provider"] == "leworldmodel"
+    assert attributes["worldforge.operation"] == "score"
     assert attributes["worldforge.phase"] == "success"
     assert attributes["worldforge.status_class"] == "2xx"
-    assert attributes["worldforge.capability"] == "generate"
+    assert attributes["worldforge.capability"] == "score"
     assert attributes["http.request.method"] == "POST"
     assert attributes["http.response.status_code"] == 201
-    assert attributes["url.full"] == "https://api.runwayml.com/v1/tasks"
+    assert attributes["url.full"] == "https://api.example.test/v1/score"
     assert attributes["worldforge.trace_id"] == "trace-789"
     rendered = str(attributes)
     assert "secret-token" not in rendered
@@ -131,7 +131,7 @@ def test_open_telemetry_sink_composes_with_provider_handlers() -> None:
     handler = compose_event_handlers(events.append, OpenTelemetryProviderEventSink(tracer=tracer))
 
     assert handler is not None
-    handler(ProviderEvent(provider="mock", operation="generate", phase="retry", attempt=1))
+    handler(ProviderEvent(provider="mock", operation="embed", phase="retry", attempt=1))
 
     assert [event.phase for event in events] == ["retry"]
     assert tracer.spans[0].attributes["worldforge.phase"] == "retry"

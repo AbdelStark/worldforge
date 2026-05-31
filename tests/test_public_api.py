@@ -23,11 +23,8 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.BenchmarkResult is not None
     assert worldforge.CAPABILITY_NAMES == (
         "predict",
-        "generate",
-        "reason",
         "embed",
         "plan",
-        "transfer",
         "score",
         "policy",
     )
@@ -36,11 +33,8 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.PlannerConfig is not None
     assert worldforge.ScoreCandidateBatch is not None
     assert worldforge.Policy is not None
-    assert worldforge.Generator is not None
     assert worldforge.Predictor is not None
     assert worldforge.RunnableModel is not None
-    assert worldforge.GenerationOptions is not None
-    assert worldforge.GenerationEvaluationSuite is not None
     assert worldforge.LIVE_SMOKE_EVIDENCE_SCHEMA_VERSION == 1
     assert "skipped_missing_runtime" in worldforge.LIVE_SMOKE_EVIDENCE_STATUSES
     assert worldforge.ProviderEvent is not None
@@ -53,22 +47,17 @@ def test_top_level_exports_and_subpackages_import() -> None:
     assert worldforge.RerunEventSink is not None
     assert worldforge.RerunRecordingConfig is not None
     assert worldforge.RerunSession is not None
-    assert worldforge.SCENE_ARTIFACT_KIND == "worldforge.scene_artifact"
-    assert worldforge.SCENE_ARTIFACT_SCHEMA_VERSION == "1"
     assert worldforge.StructuredGoal is not None
-    assert worldforge.TransferEvaluationSuite is not None
     assert worldforge.WorldForge is not None
     assert worldforge.WorldForgeError is not None
     assert worldforge.WorldStateError is not None
     assert worldforge.SceneObjectPatch is not None
     assert worldforge.render_live_smoke_registry_table is not None
     assert worldforge.validate_live_smoke_registry is not None
-    assert worldforge.validate_scene_artifact is not None
     assert worldforge.load_benchmark_budgets is not None
     assert worldforge.load_benchmark_inputs is not None
     assert EvaluationSuite is not None
     assert worldforge.PlanningEvaluationSuite is not None
-    assert worldforge.ReasoningEvaluationSuite is not None
     assert MockProvider is not None
     assert GrootPolicyClientProvider is not None
     assert observability.JsonLoggerSink is not None

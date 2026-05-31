@@ -13,10 +13,10 @@ from worldforge.provenance import ProvenanceEnvelope
 def _provenance() -> ProvenanceEnvelope:
     return ProvenanceEnvelope(
         kind="evaluation",
-        suite_id="generation",
+        suite_id="planning",
         suite_version="evaluation:1",
         providers=("unsafe-provider",),
-        capabilities=("generate",),
+        capabilities=("plan", "score", "policy"),
         input_digest="sha256:" + "a" * 64,
         result_digest="sha256:" + "b" * 64,
         event_count=0,
@@ -27,13 +27,13 @@ def _provenance() -> ProvenanceEnvelope:
 
 def test_failed_evaluation_report_includes_sanitized_failure_gallery() -> None:
     report = EvaluationReport(
-        "generation",
-        "Generation Evaluation Suite",
+        "planning",
+        "Planning Evaluation Suite",
         [
             EvaluationResult(
-                suite_id="generation",
-                suite="Generation Evaluation Suite",
-                scenario="text-conditioned-video",
+                suite_id="planning",
+                suite="Planning Evaluation Suite",
+                scenario="object-relocation",
                 provider="unsafe-provider",
                 score=0.25,
                 passed=False,
@@ -62,8 +62,8 @@ def test_failed_evaluation_report_includes_sanitized_failure_gallery() -> None:
     assert gallery["schema_version"] == 1
     assert gallery["source_input_digest"] == "sha256:" + "a" * 64
     assert gallery["source_result_digest"] == "sha256:" + "b" * 64
-    assert case["fixture_id"] == "evaluation:generation:text-conditioned-video"
-    assert "expected duration" in case["expected_contract_notes"]
+    assert case["fixture_id"] == "evaluation:planning:object-relocation"
+    assert "relocates the selected object" in case["expected_contract_notes"]
     assert "score=0.2500" in case["observed_result"]
     assert case["metrics_preview"]["api_key"] == "[redacted]"
     assert case["metrics_preview"]["artifact_url"] == "https://files.example.test/video.mp4"

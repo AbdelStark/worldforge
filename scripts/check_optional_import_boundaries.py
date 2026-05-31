@@ -134,7 +134,6 @@ IMPORT_TIME_MODULES = (
     "worldforge.harness.theme",
     "worldforge.harness.workbench",
     "worldforge.harness.workspace",
-    "worldforge.harness.worlds_view",
 )
 
 

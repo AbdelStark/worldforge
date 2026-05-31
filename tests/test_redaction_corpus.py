@@ -149,7 +149,11 @@ def test_provider_event_redaction_corpus_covers_event_sinks_and_manifests(
             provider_profile=event.provider,
             capability=str(event.metadata["capability"]),
             status="failed",
-            env_vars=("RUNWAYML_API_SECRET",),
+            env_vars=(
+                ("COSMOS_POLICY_BASE_URL",)
+                if event.provider == "cosmos-policy"
+                else ("LEWORLDMODEL_POLICY",)
+            ),
             command_argv=("worldforge-smoke", "--provider", event.provider),
             result=event.to_dict(),
             artifact_paths={"artifact": str(case["event"]["target"])},

@@ -152,7 +152,7 @@ inspector.close()
 
 ## 边界
 
-- 桥接模块不宣传 ``predict``、``generate``、``reason``、``embed``、``plan``、``transfer``、``score`` 或 ``policy`` 能力。它纯粹用于可观测性。
+- 桥接模块不宣传 ``predict``、``embed``、``plan``、``score`` 或 ``policy`` 能力。它纯粹用于可观测性。
 - 桥接模块不会自行导入 torch。权重直方图需要宿主方通过 ``log_state_dict_histograms`` 传入类张量对象——适用于 LeWorldModel 运行时已在宿主方加载的场景。
 - 桥接模块不读取 ``.env`` 或任何其他秘密文件。提供方事件消息在 :mod:`worldforge.models` 中到达桥接模块前已完成脱敏；桥接模块随后再次过滤，在写入文本面板前去除 ``api_key=``、``token=``、``secret=``、``signature=`` 以及签名 URL 的 ``?signature=``/``?token=`` 查询片段。
 - ``tfevents`` 文件保留在本地。若需将 TensorBoard 运行作为发布证明共享，请以归档其他案例展示工件的方式归档日志目录。

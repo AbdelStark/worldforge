@@ -93,7 +93,7 @@ def test_validate_remote_url_rejects_malformed_public_urls() -> None:
         with pytest.raises(ProviderError, match=match):
             validate_remote_url(
                 url,
-                provider_name="runway",
+                provider_name="remote-provider",
                 url_name="artifact URL",
                 resolve_dns=False,
             )

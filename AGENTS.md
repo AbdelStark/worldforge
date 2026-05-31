@@ -18,11 +18,11 @@ evaluation harnesses, and testable prototypes.
   deterministic IDs, and numeric/probability checks re-exported through `models.py`.
 - `src/worldforge/scene_models.py`: geometry primitives, actions, scene objects, scene patches,
   structured planning goals, and local world-history entries.
-- `src/worldforge/capability_results.py`: media, reasoning, embedding, action-score, and
-  embodied-policy result payload contracts.
+- `src/worldforge/capability_results.py`: embedding, action-score, and embodied-policy result
+  payload contracts.
 - `src/worldforge/provider_models.py`: public compatibility facade for provider-facing contracts.
-- `src/worldforge/provider_profiles.py`: provider capabilities, generation options, provider info,
-  and profile metadata.
+- `src/worldforge/provider_profiles.py`: provider capabilities, provider info, and profile
+  metadata.
 - `src/worldforge/provider_request_policy.py`: retry/backoff and operation timeout policies for
   HTTP-backed providers.
 - `src/worldforge/provider_events.py`: structured provider events and event-field validation.
@@ -31,8 +31,7 @@ evaluation harnesses, and testable prototypes.
 - `src/worldforge/provider_redaction.py`: observable-field sanitization shared by provider events,
   diagnostics, manifests, routing, and reports.
 - `src/worldforge/capabilities/__init__.py`: runtime-checkable capability protocols for narrow
-  `Cost`, `Policy`, `Generator`, `Predictor`, `Reasoner`, `Embedder`, `Transferer`, and
-  `RunnableModel` integrations.
+  `Cost`, `Policy`, `Predictor`, `Embedder`, and `RunnableModel` integrations.
 - `src/worldforge/control/`: score-driven controller primitives. `LatentMPCController` samples
   action horizons in pure Python, scores them through `score_actions`, and returns an optimized
   chunk without importing optional ML runtimes or stepping host environments.
@@ -52,8 +51,6 @@ evaluation harnesses, and testable prototypes.
   in-repo provider catalog.
 - `src/worldforge/providers/mock.py`: deterministic local provider used by tests, examples, and
   contract checks.
-- `src/worldforge/providers/cosmos.py` and `runway.py`: real HTTP adapters with typed timeout,
-  retry, polling, download policies, and response parsers.
 - `src/worldforge/providers/cosmos_policy.py`: host-owned NVIDIA Cosmos-Policy ALOHA `/act`
   server adapter for selecting embodied action chunks through the `policy` capability.
 - `src/worldforge/providers/leworldmodel.py`: real optional LeWorldModel JEPA cost-model adapter
@@ -67,8 +64,7 @@ evaluation harnesses, and testable prototypes.
   host-owned torch-hub runtime but is intentionally not exported or registered.
 - `src/worldforge/providers/remote.py`: credential-gated scaffold providers for `jepa` and
   `genie`; these intentionally use deterministic mock behavior after credential checks.
-- `src/worldforge/evaluation/`: built-in generation, physics, planning, reasoning, and transfer
-  suites plus report renderers.
+- `src/worldforge/evaluation/`: built-in physics and planning suites plus report renderers.
 - `src/worldforge/benchmark.py`: capability-aware provider latency, retry, and throughput harness.
 - `src/worldforge/observability.py`: composable `ProviderEvent` sinks for JSON logging, in-memory
   recording, and metrics aggregation.
@@ -107,11 +103,10 @@ evaluation harnesses, and testable prototypes.
   assembles `CHANGELOG.md`, optional closed GitHub issue metadata, release evidence JSON,
   validation summaries, row-level validation gate status, caveats, and host-owned optional runtime
   evidence through shared text redaction, without publishing.
-- `src/worldforge/harness/`: optional TheWorldHarness TUI package. Keep flow metadata and runners
-  independent from Textual; `tui.py` is the only Textual-dependent module. Current flows cover
-  LeWorldModel score planning, LeRobot policy-plus-score planning, Cosmos-Policy ALOHA replay,
-  GR00T PolicyClient replay, provider diagnostics plus benchmark comparison, and the adapter author
-  workbench.
+- `src/worldforge/harness/`: robotics showcase flow/report package. Keep flow metadata and
+  runners independent from Textual; `tui.py` is the only Textual-dependent module. Current flows
+  cover LeWorldModel score planning, LeRobot policy-plus-score planning, Cosmos-Policy ALOHA
+  replay, GR00T PolicyClient replay, and robotics policy replay comparison.
 - `src/worldforge/harness/tui_styles.py`: Textual-free CSS constants consumed by `tui.py`; keep
   styling declarations here instead of embedding large CSS strings in widget classes.
 - `src/worldforge/smoke/`: packaged optional-runtime smoke entry points exposed through `uv run`
@@ -153,7 +148,7 @@ evaluation harnesses, and testable prototypes.
 - Python `>=3.13,<3.14`, with CI workflows standardized on Python 3.13.
 - Packaging/build: `hatchling`, `uv`, `uv.lock`.
 - Runtime dependency: `httpx`.
-- Optional TheWorldHarness runtime: `textual`, supplied only by the `harness` extra.
+- Optional robotics showcase TUI runtime: `textual`, supplied only by the `harness` extra.
 - Optional Rerun runtime: `rerun-sdk`, supplied by the `rerun` extra or by host-owned optional
   runtimes such as LeRobot in the robotics showcase wrapper.
 - Optional LeWorldModel runtime: `stable-worldmodel` and `torch`, supplied by the host
@@ -210,7 +205,6 @@ uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world delete <world-id>
 uv run worldforge provider docs
-uv run --extra harness worldforge-harness
 uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
 uv run --extra rerun worldforge-demo-rerun
@@ -219,7 +213,7 @@ uv run python scripts/release_readiness_drill.py --workspace-dir .worldforge/rel
 scripts/robotics-showcase
 uvx --from rerun-sdk rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 scripts/lewm-lerobot-real --help
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
 ```
 
@@ -342,29 +336,27 @@ release scripts, and generated documentation surfaces.
   with `WorldStateError`; provider/runtime integration failures fail with `ProviderError`.
 - Provider capabilities must only advertise operations that are implemented end to end.
   `ProviderCapabilities()` intentionally advertises no operations by default; opt into each
-  supported capability explicitly. Valid capability names are `predict`, `generate`, `reason`,
-  `embed`, `plan`, `transfer`, `score`, and `policy`; reject unknown names instead of treating
-  them as unsupported.
+  supported capability explicitly. Valid capability names are `predict`, `embed`, `plan`, `score`,
+  and `policy`; reject unknown names instead of treating them as unsupported.
 - `worldforge provider contract` output is issue-facing evidence. Keep it safe to attach, include
   validation commands and next steps, report skipped host-owned checks explicitly, and do not call
   non-local provider capabilities unless the host opts in with `--live`.
 - Use capability protocol registration for narrow one-surface integrations. A protocol
   implementation declares `name`, optional `ProviderProfileSpec`, and the matching method; register
-  it with `WorldForge.register_cost`, `register_policy`, `register_generator`,
-  `register_predictor`, `register_reasoner`, `register_embedder`, `register_transferer`, or
-  structural `register(...)`. Use a full `BaseProvider` subclass when the adapter needs catalog
+  it with `WorldForge.register_cost`, `register_policy`, `register_predictor`,
+  `register_embedder`, or structural `register(...)`. Use a full `BaseProvider` subclass when the adapter needs catalog
   auto-registration, custom configuration/health behavior, or multiple provider-owned surfaces.
 - Provider lifecycle hooks (`preflight`, `warmup`, `teardown`) are optional provider-owned
   diagnostics. Return `ProviderLifecycleResult` with JSON-native sanitized evidence, keep missing
   host config/dependencies as typed `skipped` results, and never install dependencies, provision
   credentials, start daemons, or download large assets from a lifecycle hook.
-- `leworldmodel` exposes `score`, not `predict`, `generate`, or `reason`; do not fake those
-  capabilities around a cost model.
-- `gr00t` exposes `policy`, not `predict`, `score`, or `generate`; do not call an embodied policy
-  a predictive world model.
-- `lerobot` exposes `policy`, not `predict`, `score`, or `generate`; keep embodiment-specific
-  action translation host-owned.
-- TheWorldHarness must keep Textual optional. Do not import Textual from `worldforge.__init__`,
+- `leworldmodel` exposes `score`, not `predict` or `policy`; do not fake those capabilities around
+  a cost model.
+- `gr00t` exposes `policy`, not `predict` or `score`; do not call an embodied policy a predictive
+  world model.
+- `lerobot` exposes `policy`, not `predict` or `score`; keep embodiment-specific action
+  translation host-owned.
+- The robotics showcase TUI must keep Textual optional. Do not import Textual from `worldforge.__init__`,
   `worldforge.cli`, or non-TUI harness modules.
 - Remote create/mutation requests are single-attempt by default; health, polling, and downloads
   use retry/backoff policy.
@@ -394,7 +386,7 @@ release scripts, and generated documentation surfaces.
 - Put remote provider payload fixtures under `tests/fixtures/providers/` and assert both parser
   errors and public provider errors.
 - After changing capability fixtures, provider payload fixtures, benchmark inputs, scenario files,
-  or scene artifact fixtures, run the fixture snapshot check; use `--write` only after the fixture
+  or runtime asset manifests, run the fixture snapshot check; use `--write` only after the fixture
   diff is intended and reviewed.
 - Scenario parameter matrices must stay bounded and JSON-native. Use whole-value placeholders only;
   keep supported substitutions limited to provider names, object positions, action targets, and
@@ -534,7 +526,6 @@ release scripts, and generated documentation surfaces.
 - `JEPA_WMS_MODEL_PATH`, `JEPA_WMS_MODEL_NAME`, and `JEPA_WMS_DEVICE` are documented by the
   `jepa-wms` candidate only. They do not make `JEPAWMSProvider` available through `WorldForge`;
   direct tests must inject `runtime=` or use `JEPAWMSProvider.from_torch_hub(...)`.
-- `RUNWAYML_API_SECRET` is preferred, but `RUNWAY_API_SECRET` remains supported as a legacy alias.
 - `.env.example` is tracked via an explicit `!.env.example` rule in `.gitignore` (the general
   `.env.*` pattern would otherwise exclude it). Keep both the template and the exception in sync
   when adding new provider environment variables.
@@ -561,8 +552,6 @@ release scripts, and generated documentation surfaces.
   JSON thresholds and exits non-zero on violations. Keep benchmark budgets tied to preserved run
   artifacts when using them for release or paper claims.
 - `worldforge benchmark --input-file <path>` loads deterministic benchmark inputs from JSON.
-  Relative transfer clip paths resolve next to the input file; inline `frames_base64` is available
-  when the clip bytes must be preserved inside the fixture.
 
 ## Technical Scope
 

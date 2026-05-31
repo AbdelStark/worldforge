@@ -13,23 +13,6 @@
       }
     },
     "prediction_steps": 2,
-    "reason_query": "How many objects are tracked?",
-    "generation_prompt": "preset orbiting cube",
-    "generation_duration_seconds": 1.0,
-    "transfer_prompt": "preset transfer rerender",
-    "transfer_width": 320,
-    "transfer_height": 180,
-    "transfer_fps": 12.0,
-    "transfer_clip": {
-      "frames_base64": ["d29ybGRmb3JnZS1wcmVzZXQtZnJhbWU="],
-      "fps": 8.0,
-      "resolution": [160, 90],
-      "duration_seconds": 1.0,
-      "metadata": {
-        "content_type": "application/octet-stream",
-        "mode": "preset-benchmark-seed"
-      }
-    },
     "embedding_text": "preset cube state"
   }
 }

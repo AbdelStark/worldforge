@@ -6,13 +6,12 @@ import importlib.util
 import json
 import re
 import sys
-from base64 import b64decode
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from worldforge import VideoClip, World, WorldForge, WorldForgeError
+from worldforge import World, WorldForge, WorldForgeError
 from worldforge.models import Action
 from worldforge.testing import (
     CAPABILITY_FIXTURE_NAMES,
@@ -37,10 +36,7 @@ VALID_SHA256 = "sha256:" + "a" * 64
 def test_corpus_covers_every_capability() -> None:
     expected = {
         "predict",
-        "reason",
         "embed",
-        "generate",
-        "transfer",
         "score",
         "policy",
     }
@@ -116,35 +112,6 @@ def test_predict_invalid_world_state_is_rejected_at_facade(tmp_path) -> None:
     assert pattern.search(str(excinfo.value))
 
 
-def test_reason_valid_baseline_runs_through_facade(tmp_path) -> None:
-    fixture = load_capability_fixture("reason", "valid_baseline")
-    forge = WorldForge(state_dir=tmp_path)
-    world = World.from_state(forge, fixture.payload["world_state"])
-    result = forge.reason("mock", fixture.payload["query"], world=world)
-    assert result.provider == "mock"
-    assert result.answer
-
-
-def test_reason_invalid_world_state_is_rejected(tmp_path) -> None:
-    fixture = load_capability_fixture("reason", "invalid_world_state_corrupt")
-    forge = WorldForge(state_dir=tmp_path)
-    pattern = re.compile(fixture.expected_error_pattern or ".*", re.IGNORECASE)
-    with pytest.raises(WorldForgeError) as excinfo:
-        World.from_state(forge, fixture.payload["world_state"])
-    assert pattern.search(str(excinfo.value))
-
-
-def test_reason_invalid_query_is_rejected_by_facade(tmp_path) -> None:
-    fixture = load_capability_fixture("reason", "invalid_query_empty")
-    forge = WorldForge(state_dir=tmp_path)
-    world = World.from_state(forge, fixture.payload["world_state"])
-    pattern = re.compile(fixture.expected_error_pattern or ".*", re.IGNORECASE)
-
-    with pytest.raises(WorldForgeError) as excinfo:
-        forge.reason("mock", fixture.payload["query"], world=world)
-    assert pattern.search(str(excinfo.value))
-
-
 def test_embed_valid_baseline_runs_through_facade(tmp_path) -> None:
     fixture = load_capability_fixture("embed", "valid_baseline")
     forge = WorldForge(state_dir=tmp_path)
@@ -163,81 +130,6 @@ def test_embed_invalid_fixtures_are_rejected_by_facade(tmp_path) -> None:
         with pytest.raises(WorldForgeError) as excinfo:
             forge.embed("mock", text=fixture.payload["text"])
         assert pattern.search(str(excinfo.value))
-
-
-def test_generate_valid_baseline_runs_through_facade(tmp_path) -> None:
-    fixture = load_capability_fixture("generate", "valid_baseline")
-    forge = WorldForge(state_dir=tmp_path)
-    clip = forge.generate(
-        fixture.payload["prompt"],
-        "mock",
-        duration_seconds=fixture.payload["duration_seconds"],
-    )
-    assert isinstance(clip, VideoClip)
-    assert clip.duration_seconds == fixture.payload["duration_seconds"]
-
-
-def test_generate_invalid_prompt_is_rejected(tmp_path) -> None:
-    fixture = load_capability_fixture("generate", "invalid_prompt_empty")
-    forge = WorldForge(state_dir=tmp_path)
-    pattern = re.compile(fixture.expected_error_pattern or ".*", re.IGNORECASE)
-    with pytest.raises(WorldForgeError) as excinfo:
-        forge.generate(
-            fixture.payload["prompt"],
-            "mock",
-            duration_seconds=fixture.payload["duration_seconds"],
-        )
-    assert pattern.search(str(excinfo.value))
-
-
-def test_generate_invalid_duration_is_rejected(tmp_path) -> None:
-    fixture = load_capability_fixture("generate", "invalid_duration_zero")
-    forge = WorldForge(state_dir=tmp_path)
-    pattern = re.compile(fixture.expected_error_pattern or ".*", re.IGNORECASE)
-    with pytest.raises(WorldForgeError) as excinfo:
-        forge.generate(
-            fixture.payload["prompt"],
-            "mock",
-            duration_seconds=fixture.payload["duration_seconds"],
-        )
-    assert pattern.search(str(excinfo.value))
-
-
-def _build_clip(payload_clip: dict) -> VideoClip:
-    frames = [b64decode(frame, validate=True) for frame in payload_clip["frames_base64"]]
-    return VideoClip(
-        frames=frames,
-        fps=payload_clip["fps"],
-        resolution=tuple(payload_clip["resolution"]),
-        duration_seconds=payload_clip["duration_seconds"],
-        metadata=dict(payload_clip.get("metadata", {})),
-    )
-
-
-def test_transfer_valid_baseline_runs_through_facade(tmp_path) -> None:
-    fixture = load_capability_fixture("transfer", "valid_baseline")
-    forge = WorldForge(state_dir=tmp_path)
-    clip = _build_clip(fixture.payload["clip"])
-    transferred = forge.transfer(
-        clip,
-        "mock",
-        width=fixture.payload["width"],
-        height=fixture.payload["height"],
-        fps=fixture.payload["fps"],
-    )
-    assert isinstance(transferred, VideoClip)
-
-
-@pytest.mark.parametrize(
-    "fixture_name",
-    ["invalid_clip_negative_duration", "invalid_clip_resolution_zero"],
-)
-def test_transfer_invalid_clip_is_rejected_at_construction(fixture_name: str) -> None:
-    fixture = load_capability_fixture("transfer", fixture_name)
-    pattern = re.compile(fixture.expected_error_pattern or ".*", re.IGNORECASE)
-    with pytest.raises(WorldForgeError) as excinfo:
-        _build_clip(fixture.payload["clip"])
-    assert pattern.search(str(excinfo.value))
 
 
 def test_score_valid_baseline_payload_has_required_keys() -> None:
@@ -337,7 +229,6 @@ def test_fixture_snapshot_manifest_loads_and_validates_committed_manifest() -> N
         "provider-payload-fixture",
         "benchmark-fixture",
         "scenario-fixture",
-        "scene-artifact-fixture",
     }.issubset(fixture_kinds)
     assert any(
         entry.path == "src/worldforge/testing/fixtures/predict/valid_baseline.json"

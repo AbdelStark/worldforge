@@ -69,7 +69,7 @@ def test_run_json_log_sink_redacts_exported_secrets(tmp_path) -> None:
 
     sink(
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="artifact download",
             phase="failure",
             method="get",

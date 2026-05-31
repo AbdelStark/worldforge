@@ -25,7 +25,7 @@ def test_scaffold_provider_script_generates_safe_adapter_files(tmp_path: Path) -
             "--planned-capability",
             "score",
             "--planned-capability",
-            "generate",
+            "embed",
             "--planned-capability",
             "policy",
             "--remote",
@@ -64,7 +64,7 @@ def test_scaffold_provider_script_generates_safe_adapter_files(tmp_path: Path) -
     assert "from .base import BaseProvider, ProviderError, ProviderProfileSpec" in provider_source
     assert "capabilities=ProviderCapabilities(predict=False)" in provider_source
     assert "profile=ProviderProfileSpec(" in provider_source
-    assert "planned_capabilities = ('score', 'generate', 'policy')" in provider_source
+    assert "planned_capabilities = ('score', 'embed', 'policy')" in provider_source
     assert "scaffold_implementation_status = 'scaffold'" in provider_source
     assert "implementation_status='scaffold'" in provider_source
     assert 'ACME_WM_ENV_VAR = "ACME_WM_API_KEY"' in provider_source
@@ -75,7 +75,7 @@ def test_scaffold_provider_script_generates_safe_adapter_files(tmp_path: Path) -
     assert "capability_calls_fail_closed_until_promoted" in test_source
     assert "profile.capabilities.supports(capability) is False" in test_source
     assert "score_actions_is_not_implemented_yet" in test_source
-    assert "generate_is_not_implemented_yet" in test_source
+    assert "embed_is_not_implemented_yet" in test_source
     assert "select_actions_is_not_implemented_yet" in test_source
     assert "profile.supported_tasks == []" in test_source
 

@@ -14,8 +14,6 @@ from worldforge.models import (
     EmbeddingResult,
     JSONDict,
     ProviderEvent,
-    ReasoningResult,
-    VideoClip,
 )
 from worldforge.providers.base import PredictionPayload, ProviderError, ProviderProfileSpec
 
@@ -73,20 +71,6 @@ class _FakeCandidatePolicy:
         )
 
 
-class _FakeGenerator:
-    name = "fake_gen"
-    profile = None
-
-    def generate(self, prompt, duration_seconds, *, options=None) -> VideoClip:
-        return VideoClip(
-            frames=[b"\x00"],
-            fps=4.0,
-            resolution=(32, 32),
-            duration_seconds=duration_seconds,
-            metadata={"prompt": prompt, "provider": self.name},
-        )
-
-
 class _FakePredictor:
     name = "fake_predictor"
     profile = ProviderProfileSpec(description="fake predictor")
@@ -107,32 +91,6 @@ class _FakePredictor:
             frames=[b"frame"],
             metadata={"provider": self.name},
             latency_ms=0.1,
-        )
-
-
-class _FakeTransferer:
-    name = "fake_transfer"
-    profile = None
-
-    def transfer(self, clip, *, width, height, fps, prompt="", options=None) -> VideoClip:
-        return VideoClip(
-            frames=list(clip.frames),
-            fps=fps,
-            resolution=(width, height),
-            duration_seconds=clip.duration_seconds,
-            metadata={"transferred": True, "provider": self.name, "prompt": prompt},
-        )
-
-
-class _FakeReasoner:
-    name = "fake_reasoner"
-    profile = None
-
-    def reason(self, query: str, *, world_state=None) -> ReasoningResult:
-        return ReasoningResult(
-            provider=self.name,
-            answer=f"echo:{query}",
-            confidence=1.0,
         )
 
 
@@ -197,41 +155,6 @@ def test_select_actions_accepts_both_forms(tmp_path: Path):
     via_instance = forge.select_actions(policy=_FakePolicy(), info={})
     assert via_name.provider == "fake_policy"
     assert via_instance.provider == "fake_policy"
-
-
-def test_generate_accepts_both_forms(tmp_path: Path):
-    forge = _isolated_forge(tmp_path)
-    forge.register_generator(_FakeGenerator())
-    via_name = forge.generate("hello", generator="fake_gen", duration_seconds=0.5)
-    via_instance = forge.generate("hello", generator=_FakeGenerator(), duration_seconds=0.5)
-    assert via_name.metadata["provider"] == "fake_gen"
-    assert via_instance.metadata["provider"] == "fake_gen"
-
-
-def test_transfer_accepts_both_forms(tmp_path: Path):
-    forge = _isolated_forge(tmp_path)
-    forge.register_transferer(_FakeTransferer())
-    forge.register_generator(_FakeGenerator())
-    clip = forge.generate("seed", generator="fake_gen", duration_seconds=0.5)
-    via_name = forge.transfer(
-        clip, transferer="fake_transfer", width=64, height=64, fps=4.0, prompt=""
-    )
-    via_instance = forge.transfer(
-        clip, transferer=_FakeTransferer(), width=64, height=64, fps=4.0, prompt=""
-    )
-    assert via_name.metadata["transferred"] is True
-    assert via_name.metadata["provider"] == "fake_transfer"
-    assert via_instance.metadata["transferred"] is True
-    assert via_instance.metadata["provider"] == "fake_transfer"
-
-
-def test_reason_accepts_both_forms(tmp_path: Path):
-    forge = _isolated_forge(tmp_path)
-    forge.register_reasoner(_FakeReasoner())
-    via_name = forge.reason(reasoner="fake_reasoner", query="hi")
-    via_instance = forge.reason(reasoner=_FakeReasoner(), query="hi")
-    assert via_name.answer == "echo:hi"
-    assert via_instance.answer == "echo:hi"
 
 
 def test_embed_accepts_both_forms(tmp_path: Path):

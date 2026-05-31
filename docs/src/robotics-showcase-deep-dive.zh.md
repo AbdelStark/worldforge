@@ -75,7 +75,7 @@ uv run --python 3.13 ... worldforge-robotics-showcase
 | `pusht_showcase_inputs` | 任务桥接 | 构建 PushT 观测张量、LeWorldModel 打分张量、候选动作张量以及可视化 `Action` 转换。 |
 | `WorldForge` / `World` | 规划门面 | 通过 `World.plan(..., policy_provider=..., score_provider=...)` 组合 `policy` 和 `score` 能力。 |
 | `mock` 提供方 | `predict` | 在本地世界状态中回放所选的可执行 WorldForge 动作片段。 |
-| TheWorldHarness Textual 报告 | 报告界面 | 展示已完成的运行：流水线阶段、延迟、张量契约、得分、提供方事件以及桌面回放。 |
+| 机器人案例展示 Textual 报告 | 报告界面 | 展示已完成的运行：流水线阶段、延迟、张量契约、得分、提供方事件以及桌面回放。 |
 | Rerun 记录 | 工件界面 | 将同一运行存储为可视化 `.rrd`：对象框、候选目标点、所选路径、得分条、延迟条、提供方事件、规划载荷以及世界快照。 |
 
 ## 端到端流程概览

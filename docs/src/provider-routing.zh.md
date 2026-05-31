@@ -4,7 +4,7 @@ WorldForge 提供了一个类型化的路由辅助工具，用于优先尝试首
 
 ## 适合使用回退的场景
 
-- **可选提供方**：宿主在离线开发时注册了 mock 提供方，并在凭据存在时配置了远程适配器（Cosmos、Runway）。路由优先选择远程提供方，并在检出时凭据适配器缺失的情况下回退到 mock。
+- **可选提供方**：宿主在离线开发时注册了 mock 提供方，并在运行时存在时配置预制宿主提供方。路由优先选择运行时提供方，并在检出时该适配器缺失的情况下回退到 mock。
 - **瞬时远程故障**：远程提供方返回了其自身重试策略无法消化的可重试状态码。路由记录该故障并尝试下一个提供方，从而避免偶发的网络抖动破坏批量评估。
 - **跨宿主可移植性**：相同的工作流在具有不同提供方组合的机器上运行。确定性的首选 + 回退链使调用路径在各宿主间保持可预测。
 
@@ -33,46 +33,45 @@ WorldForge 提供了一个类型化的路由辅助工具，用于优先尝试首
 
 <!-- worldforge-snippet: execute -->
 ```python
-from worldforge import ProviderRoutingPolicy, WorldForge, route_capability
+from worldforge import Action, ProviderRoutingPolicy, WorldForge, route_capability
 
 forge = WorldForge()
-# Forge auto-registers `mock` everywhere and `runway` when RUNWAYML_API_SECRET
-# is present in the host environment.
+# Forge 始终自动注册 `mock`。预制宿主提供方仅在必需环境存在时注册。
 
 policy = ProviderRoutingPolicy(
-    capability="generate",
-    preferred="runway",
+    capability="predict",
+    preferred="local-predictor",
     fallbacks=("mock",),
-    operation="orbit-clip-fallback",
+    operation="prediction-fallback",
 )
 
 result = route_capability(
     policy,
     forge,
-    invoke=lambda name: forge.generate(
-        "orbiting cube on a wood table",
-        name,
-        duration_seconds=2.0,
+    invoke=lambda name: forge.predict(
+        world_state={"objects": {}},
+        action=Action(type="noop", target="world"),
+        provider=name,
     ),
 )
 
 if not result.succeeded:
     raise RuntimeError(
-        "no provider in chain satisfied generate(): "
+        "no provider in chain satisfied predict(): "
         + ", ".join(
             f"{a.provider}={a.status}" for a in result.attempts
         )
     )
 
 print(f"chosen={result.chosen} via_chain={[a.provider for a in result.attempts]}")
-clip = result.value
+prediction = result.value
 ```
 
-当 ``runway`` 在宿主上未配置时，尝试历史为其记录 `skipped-not-registered`，链继续执行到 ``mock``——不发起任何远程调用，也不向已凭据账户计费。
+当首选提供方在宿主上未配置时，尝试历史为其记录 `skipped-not-registered`，链继续执行到 ``mock``——不发起任何远程调用。
 
 ## 事件与溯源
 
-`route_capability` **不会**自行发出 `ProviderEvent` 对象。由 `forge.generate(...)`、`forge.predict(...)` 等内部的可观测能力包装器产生的事件会原样保留，并流经附加到 forge 的 ``event_handler``。``RoutingResult.attempts`` 元组是这些单次调用事件的链级配套记录。
+`route_capability` **不会**自行发出 `ProviderEvent` 对象。由 `forge.predict(...)`、`forge.embed(...)`、打分或策略调用内部的可观测能力包装器产生的事件会原样保留，并流经附加到 forge 的 ``event_handler``。``RoutingResult.attempts`` 元组是这些单次调用事件的链级配套记录。
 
 `attempts` 中的失败尝试携带：
 

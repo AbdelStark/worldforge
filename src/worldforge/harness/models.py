@@ -1,4 +1,4 @@
-"""Typed models for TheWorldHarness flow orchestration."""
+"""Typed models for robotics showcase flow orchestration."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from worldforge.models import JSONDict
 
 @dataclass(frozen=True, slots=True)
 class HarnessFlow:
-    """A runnable WorldForge demonstration flow exposed through TheWorldHarness."""
+    """A runnable WorldForge demonstration flow exposed through the robotics showcase package."""
 
     id: str
     title: str

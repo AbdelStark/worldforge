@@ -15,8 +15,6 @@ from worldforge import (
     ActionScoreResult,
     EmbeddingResult,
     ProviderCapabilities,
-    ReasoningResult,
-    VideoClip,
     WorldForgeError,
 )
 from worldforge.cli import main as worldforge_main
@@ -29,7 +27,6 @@ from worldforge.provider_contracts import (
 )
 from worldforge.providers import (
     BaseProvider,
-    CosmosProvider,
     GenieProvider,
     JepaProvider,
     MockProvider,
@@ -39,14 +36,11 @@ from worldforge.providers import (
 )
 from worldforge.testing import (
     assert_embed_conformance,
-    assert_generate_conformance,
     assert_policy_conformance,
     assert_predict_conformance,
     assert_provider_contract,
     assert_provider_events_conform,
-    assert_reason_conformance,
     assert_score_conformance,
-    assert_transfer_conformance,
     load_capability_fixture,
 )
 
@@ -105,16 +99,9 @@ def test_mock_provider_passes_contract_checks() -> None:
     report = assert_provider_contract(provider)
 
     assert report.configured is True
-    assert set(report.exercised_operations) == {
-        "predict",
-        "reason",
-        "embed",
-        "generate",
-        "transfer",
-    }
+    assert set(report.exercised_operations) == {"predict", "embed"}
     assert_predict_conformance(provider)
-    generated = assert_generate_conformance(provider)
-    assert_transfer_conformance(provider, clip=generated)
+    assert_embed_conformance(provider)
 
 
 def test_provider_contract_uses_explicit_failure_for_invalid_prediction_state() -> None:
@@ -171,7 +158,10 @@ class FakeScoreProvider(BaseProvider):
             scores=list(self._scores),
             best_index=self._best_index,
             lower_is_better=self._lower_is_better,
-            metadata={"fixture": info["fixture"], "candidates": len(action_candidates)},
+            metadata={
+                "fixture": info.get("fixture", "score"),
+                "candidates": len(action_candidates),
+            },
         )
 
 
@@ -196,7 +186,7 @@ class FakePolicyProvider(BaseProvider):
         return ActionPolicyResult(
             provider=self.name,
             actions=[action],
-            raw_actions={"fixture": info["fixture"]},
+            raw_actions={"fixture": info.get("fixture", "policy")},
             action_candidates=[[action]],
             metadata={"runtime": "test"},
         )
@@ -208,10 +198,7 @@ class InvalidPublicResultProvider(BaseProvider):
             name="invalid-public-result",
             capabilities=ProviderCapabilities(
                 predict=True,
-                reason=True,
                 embed=True,
-                generate=True,
-                transfer=True,
                 score=True,
                 policy=True,
             ),
@@ -233,17 +220,8 @@ class InvalidPublicResultProvider(BaseProvider):
             latency_ms=0.1,
         )
 
-    def reason(self, query, *, world_state=None) -> ReasoningResult:
-        return ReasoningResult(provider=self.name, answer="ok", confidence=2.0)
-
     def embed(self, *, text) -> EmbeddingResult:
         return EmbeddingResult(provider=self.name, model="fixture", vector=[])
-
-    def generate(self, prompt, duration_seconds, *, options=None) -> VideoClip:
-        return VideoClip(frames=[b"frame"], fps=0.0, resolution=(1, 1), duration_seconds=0.0)
-
-    def transfer(self, clip, *, width, height, fps, prompt="", options=None) -> VideoClip:
-        return VideoClip(frames=[b"frame"], fps=0.0, resolution=(1, 1), duration_seconds=0.0)
 
     def score_actions(self, *, info, action_candidates) -> ActionScoreResult:
         return ActionScoreResult(
@@ -279,9 +257,7 @@ class MutatedPublicResultProvider(BaseProvider):
         super().__init__(
             name="mutated-public-result",
             capabilities=ProviderCapabilities(
-                reason=True,
                 embed=True,
-                generate=True,
                 score=True,
                 policy=True,
             ),
@@ -294,26 +270,10 @@ class MutatedPublicResultProvider(BaseProvider):
         )
         self._mutation = mutation
 
-    def reason(self, query, *, world_state=None) -> ReasoningResult:
-        result = ReasoningResult(provider=self.name, answer="ok", confidence=1.0)
-        if self._mutation == "reason_bool_confidence":
-            result.confidence = True  # type: ignore[assignment]
-        if self._mutation == "reason_non_string_evidence":
-            result.evidence = [object()]  # type: ignore[list-item]
-        return result
-
     def embed(self, *, text) -> EmbeddingResult:
         result = EmbeddingResult(provider=self.name, model="fixture", vector=[1.0])
         if self._mutation == "embed_non_finite_vector":
             result.vector = [float("nan")]
-        return result
-
-    def generate(self, prompt, duration_seconds, *, options=None) -> VideoClip:
-        result = VideoClip(frames=[b"frame"], fps=1.0, resolution=(1, 1), duration_seconds=0.0)
-        if self._mutation == "generate_bool_fps":
-            result.fps = True  # type: ignore[assignment]
-        if self._mutation == "generate_bad_resolution_shape":
-            result.resolution = (1,)  # type: ignore[assignment]
         return result
 
     def score_actions(self, *, info, action_candidates) -> ActionScoreResult:
@@ -444,20 +404,8 @@ def test_score_conformance_rejects_best_index_that_contradicts_direction(
             "predict must return a valid PredictionPayload",
         ),
         (
-            lambda provider: assert_reason_conformance(provider),
-            "reason must return a valid ReasoningResult",
-        ),
-        (
             lambda provider: assert_embed_conformance(provider),
             "embed must return a valid EmbeddingResult",
-        ),
-        (
-            lambda provider: assert_generate_conformance(provider),
-            "generate must return a valid VideoClip",
-        ),
-        (
-            lambda provider: assert_transfer_conformance(provider),
-            "transfer must return a valid VideoClip",
         ),
         (
             lambda provider: assert_score_conformance(
@@ -494,29 +442,9 @@ def test_capability_conformance_helpers_normalize_provider_errors() -> None:
     ("provider", "helper", "expected_message"),
     [
         (
-            MutatedPublicResultProvider("reason_bool_confidence"),
-            lambda provider: assert_reason_conformance(provider),
-            "reason confidence must be a probability",
-        ),
-        (
-            MutatedPublicResultProvider("reason_non_string_evidence"),
-            lambda provider: assert_reason_conformance(provider),
-            "reason evidence must contain only strings",
-        ),
-        (
             MutatedPublicResultProvider("embed_non_finite_vector"),
             lambda provider: assert_embed_conformance(provider),
             "embed vector values must be finite floats",
-        ),
-        (
-            MutatedPublicResultProvider("generate_bool_fps"),
-            lambda provider: assert_generate_conformance(provider),
-            "VideoClip fps must be a finite number",
-        ),
-        (
-            MutatedPublicResultProvider("generate_bad_resolution_shape"),
-            lambda provider: assert_generate_conformance(provider),
-            "VideoClip resolution must contain width and height",
         ),
         (
             MutatedPublicResultProvider("score_non_finite_score"),
@@ -573,43 +501,38 @@ def test_corpus_valid_baselines_pass_mock_provider_conformance() -> None:
         steps=predict_fx.payload["steps"],
     )
 
-    reason_fx = load_capability_fixture("reason", "valid_baseline")
-    assert_reason_conformance(
-        provider,
-        query=reason_fx.payload["query"],
-        world_state=reason_fx.payload["world_state"],
-    )
-
     embed_fx = load_capability_fixture("embed", "valid_baseline")
     assert_embed_conformance(provider, text=embed_fx.payload["text"])
 
-    generate_fx = load_capability_fixture("generate", "valid_baseline")
-    assert_generate_conformance(
-        provider,
-        prompt=generate_fx.payload["prompt"],
-        duration_seconds=generate_fx.payload["duration_seconds"],
+    score_fx = load_capability_fixture("score", "valid_baseline")
+    assert_score_conformance(
+        FakeScoreProvider(),
+        info=score_fx.payload["info"],
+        action_candidates=score_fx.payload["action_candidates"],
     )
+    policy_fx = load_capability_fixture("policy", "valid_baseline")
+    assert_policy_conformance(FakePolicyProvider(), info=policy_fx.payload["info"])
 
 
 def test_provider_event_conformance_helper_rejects_secret_material() -> None:
     assert_provider_events_conform(
         [
             ProviderEvent(
-                provider="runway",
+                provider="fixture",
                 operation="download",
                 phase="success",
                 target="https://example.test/artifact.mp4?token=api-secret",
                 metadata={"status": "ok"},
             )
         ],
-        provider="runway",
+        provider="fixture",
     )
 
     with pytest.raises(AssertionError, match="secret material"):
         assert_provider_events_conform(
             [
                 ProviderEvent(
-                    provider="runway",
+                    provider="fixture",
                     operation="download",
                     phase="success",
                     metadata={"safe": "raw-secret"},
@@ -623,16 +546,6 @@ def test_provider_conformance_helpers_do_not_use_bare_assert_statements() -> Non
     helper_source = source.split("def assert_predict_conformance", 1)[1]
 
     assert "\n    assert " not in helper_source
-
-
-def test_scaffold_provider_reports_clear_unconfigured_contract(monkeypatch) -> None:
-    monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
-
-    report = assert_provider_contract(CosmosProvider())
-
-    assert report.configured is False
-    assert report.health.healthy is False
-    assert report.exercised_operations == []
 
 
 def test_configured_scaffold_remote_providers_stay_fail_closed(monkeypatch) -> None:
@@ -667,8 +580,8 @@ def test_provider_failure_gallery_matches_contract_failures(monkeypatch) -> None
         assert_provider_events_conform(
             [
                 ProviderEvent(
-                    provider="runway",
-                    operation="download",
+                    provider="mock",
+                    operation="predict",
                     phase="success",
                     metadata={"safe": "raw-secret"},
                 )
@@ -709,7 +622,7 @@ def test_provider_contract_cli_runs_mock_provider(monkeypatch, capsys) -> None:
     )
     checks = {check["name"]: check for check in payload["checks"]}
     assert checks["metadata"]["status"] == "passed"
-    for capability in ("predict", "reason", "embed", "generate", "transfer"):
+    for capability in ("predict", "embed"):
         assert checks[capability]["status"] == "passed"
 
 

@@ -9,18 +9,12 @@ WorldForge 开箱即支持以下工作流形态：
 | 工作流 | 所需能力 |
 | --- | --- |
 | `predict-only` | predict |
-| `generate-only` | generate |
 | `score-only` | score |
 | `policy-only` | policy |
-| `transfer-only` | transfer |
-| `reason-only` | reason |
 | `embed-only` | embed |
 | `policy-plus-score` | policy, score |
-| `evaluation-generation` | generate |
 | `evaluation-physics` | predict |
 | `evaluation-planning` | predict |
-| `evaluation-reasoning` | reason |
-| `evaluation-transfer` | transfer |
 
 `evaluation-*` 工作流与内置评估套件所需的能力一一对应。宿主可通过 `WorldForge.register_provider()` 注册额外的提供方，协商报告会自动将其纳入。
 
@@ -29,7 +23,7 @@ WorldForge 开箱即支持以下工作流形态：
 ```bash
 uv run worldforge negotiate --list
 uv run worldforge negotiate --workflow policy-plus-score
-uv run worldforge negotiate --workflow generate-only --format json
+uv run worldforge negotiate --workflow score-only --format json
 uv run worldforge negotiate                                # 一次性检查所有工作流
 ```
 
@@ -81,7 +75,7 @@ for negotiation in report.workflows:
 | 状态 | 含义 |
 | --- | --- |
 | `ready` | 提供方已注册、已配置、健康，且支持该能力。 |
-| `missing-config` | 提供方支持该能力，但其运行时配置缺少必需的环境变量（例如 `COSMOS_BASE_URL`）。 |
+| `missing-config` | 提供方支持该能力，但其运行时配置缺少必需的环境变量（例如 `LEWORLDMODEL_POLICY`）。 |
 | `missing-dependency` | 提供方已注册且已配置，但健康检查不健康（例如某个可选运行时不可达）。 |
 | `unsupported` | 提供方在目录中，但不公布该能力。 |
 | `not-registered` | 提供方在目录中且可满足该能力，但当前未在此 forge 上注册。 |
@@ -90,7 +84,7 @@ for negotiation in report.workflows:
 
 每个被阻塞的能力会产生一条具体的推荐信息。示例：
 
-- `Configure provider 'cosmos' to serve capability 'generate': provider profile 'cosmos' is not configured: missing COSMOS_BASE_URL.`
+- `Configure provider 'leworldmodel' to serve capability 'score': provider profile 'leworldmodel' is not configured: missing LEWORLDMODEL_POLICY.`
 - `Register or configure a provider that supports capability 'score'.`
 
 这些是人类可读的诊断信息，不是机器可解析的命令字符串。实际配置请参考对应的提供方文档页面。

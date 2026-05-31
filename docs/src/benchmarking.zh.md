@@ -1,6 +1,6 @@
 # 基准测试
 
-WorldForge 内置了一个能力感知的基准测试 harness，适用于已注册的完整提供方及已注册的能力协议实现。它可以测量提供方的直接接口：`predict`、`reason`、`generate`、`transfer`、`embed`、`score` 和 `policy`。`plan` 仍是 WorldForge 的一个门面工作流，因此在需要规划路径延迟数据时，应直接对打分模型提供方和策略提供方进行基准测试。
+WorldForge 内置了一个能力感知的基准测试 harness，适用于已注册的完整提供方及已注册的能力协议实现。它可以测量提供方的直接接口：`predict`、`embed`、`score` 和 `policy`。`plan` 仍是 WorldForge 的一个门面工作流，因此在需要规划路径延迟数据时，应直接对打分模型提供方和策略提供方进行基准测试。
 
 ## Python
 
@@ -11,7 +11,7 @@ from worldforge import ProviderBenchmarkHarness
 harness = ProviderBenchmarkHarness(forge=forge)
 report = harness.run(
     ["mock"],
-    operations=["predict", "generate", "transfer", "embed"],
+    operations=["predict", "embed"],
     iterations=5,
     concurrency=2,
 )
@@ -54,7 +54,7 @@ report = ProviderBenchmarkHarness(forge=forge).run(
 
 ```bash
 uv run worldforge benchmark --provider mock --iterations 5
-uv run worldforge benchmark --provider mock --operation generate --format json
+uv run worldforge benchmark --provider mock --operation predict --format json
 uv run worldforge benchmark --provider mock --operation embed --format markdown
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
 ```
@@ -97,7 +97,7 @@ uv run worldforge runs compare \
 
 当第一次运行是保存的基线、第二次运行是候选时，使用 `--mode regression`。回归模式支持保存的基准测试、评估和演示案例展示运行。它以 JSON、Markdown、CSV 或 HTML 格式报告指标增量、预算状态变化、新增和已删除的故障、安全的工件漂移以及来源溯源差异。不安全的工件引用（如绝对路径、遍历形式路径、二进制/检查点后缀或原始私有工件）被计为已排除，不会渲染到比较报告中。回归报告仅作为审查工件：它不会自动更新基线或削弱预算。
 
-当基准测试结果需要从保存的输入中重现时，使用 `--input-file`。文件可以直接包含输入字段，也可以包含一个 `inputs` 对象加上元数据。已提交的 `examples/benchmark-inputs.json` 夹具对 mock 提供方的 `predict`、`generate`、`transfer` 和 `embed` 操作是检出即可运行的；score 和 policy 条目需要声明了相应能力的提供方。
+当基准测试结果需要从保存的输入中重现时，使用 `--input-file`。文件可以直接包含输入字段，也可以包含一个 `inputs` 对象加上元数据。已提交的 `examples/benchmark-inputs.json` 夹具对 mock 提供方的 `predict` 和 `embed` 操作是检出即可运行的；score 和 policy 条目需要声明了相应能力的提供方。
 
 <!-- worldforge-snippet: parse -->
 ```json
@@ -114,20 +114,6 @@ uv run worldforge runs compare \
       }
     },
     "prediction_steps": 2,
-    "reason_query": "How many objects are tracked?",
-    "generation_prompt": "benchmark orbiting cube",
-    "generation_duration_seconds": 1.0,
-    "transfer_prompt": "benchmark transfer rerender",
-    "transfer_width": 320,
-    "transfer_height": 180,
-    "transfer_fps": 12.0,
-    "transfer_clip": {
-      "path": "seed-transfer.bin",
-      "fps": 8.0,
-      "resolution": [160, 90],
-      "duration_seconds": 1.0,
-      "metadata": { "content_type": "application/octet-stream" }
-    },
     "embedding_text": "benchmark cube state",
     "score_info": {
       "pixels": [[[[0.0]]]],
@@ -146,24 +132,15 @@ uv run worldforge runs compare \
 }
 ```
 
-省略的字段将保留确定性默认值。`transfer_clip.path` 相对于输入 JSON 文件进行解析；当片段字节必须包含在 JSON 夹具内部时，使用 `frames_base64` 代替 `path`。
+省略的字段将保留确定性默认值。提供方专属的打分和策略输入应保持 JSON 原生，以便基准测试夹具可作为可附加证据保留。
 
-远程媒体提供方可能需要特定于能力的夹具，因为 generate 和 transfer 操作针对的是不同的上游接口。Runway 提供了单独的示例，以便宿主方可以对每个接口单独进行基准测试，而不会意外地将 transfer 种子重用于生成操作：
-
-```bash
-uv run worldforge benchmark --provider runway --operation generate \
-  --input-file examples/runway-generate-benchmark-inputs.json
-uv run worldforge benchmark --provider runway --operation transfer \
-  --input-file examples/runway-transfer-benchmark-inputs.json
-```
-
-同一个提供方-操作运行器也可从 TheWorldHarness 使用：
+使用 CLI 运行提供方-操作对比：
 
 ```bash
-uv run --extra harness worldforge-harness --flow benchmark
+uv run worldforge benchmark --provider mock --operation predict --iterations 5
 ```
 
-TUI 在运行期间实时展示每个样本的延迟，运行结束后将规范的 JSON 报告写入 `.worldforge/reports/` 并在运行检查器中打开。请将这些报告视同 CLI 基准测试工件：只有在其背后的 JSON 被保存的情况下，才能引用其中的数字。
+CLI 将规范的 JSON 报告写入 `.worldforge/reports/`。请将这些报告视同证据工件：只有在其背后的 JSON 被保存的情况下，才能引用其中的数字。
 
 当基准测试运行是发布门控、回归检查或公开声明的一部分时，使用预算文件。预算选择器可以指定提供方和操作，也可以省略任一字段以将阈值应用于所有匹配的结果：
 
@@ -173,7 +150,7 @@ TUI 在运行期间实时展示每个样本的延迟，运行结束后将规范�
   "budgets": [
     {
       "provider": "mock",
-      "operation": "generate",
+      "operation": "predict",
       "min_success_rate": 1.0,
       "max_error_count": 0,
       "max_retry_count": 0,
@@ -188,7 +165,7 @@ TUI 在运行期间实时展示每个样本的延迟，运行结束后将规范�
 ```bash
 uv run worldforge benchmark \
   --provider mock \
-  --operation generate \
+  --operation predict \
   --iterations 5 \
   --format json \
   --budget-file examples/benchmark-budget.json
@@ -250,11 +227,10 @@ uv run python scripts/check_core_performance.py \
 
 | 预设 | 类别 | 提供方 | 操作 | 迭代次数 | 失败容忍策略 |
 | --- | --- | --- | --- | ---: | --- |
-| `mock-smoke` | 检出即可运行 | `mock` | predict, generate, embed | 5 | fail-on-violation |
-| `parser-overhead` | 检出即可运行 | `mock` | predict, reason, generate, transfer, embed | 20 | fail-on-violation |
-| `remote-media-dryrun` | 远程媒体 | `cosmos`, `runway` | generate | 1 | skip-when-env-missing |
+| `mock-smoke` | 检出即可运行 | `mock` | predict, embed | 5 | fail-on-violation |
+| `parser-overhead` | 检出即可运行 | `mock` | predict, embed | 20 | fail-on-violation |
 | `prepared-host` | 准备宿主 | `leworldmodel`, `lerobot`, `gr00t` | score, policy | 3 | skip-when-env-missing |
-| `release-evidence` | 发布 | `mock` | predict, reason, generate, transfer, embed | 10 | fail-on-violation |
+| `release-evidence` | 发布 | `mock` | predict, embed | 10 | fail-on-violation |
 
 通过现有的 `benchmark` 子命令列出、查看和运行预设：
 

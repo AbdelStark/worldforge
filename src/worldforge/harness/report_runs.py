@@ -1,4 +1,4 @@
-"""Evaluation and benchmark report helpers for TheWorldHarness."""
+"""Evaluation and benchmark report helpers for preserved showcase runs."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def eval_run_artifacts(
     """Run an evaluation suite and return canonical report artifacts.
 
     This helper is intentionally Textual-free. The TUI and tests both call it so
-    the strings shown in TheWorldHarness stay byte-identical to the CLI report
+    the strings shown in showcase reports stay byte-identical to the CLI report
     renderers.
     """
 

@@ -2,13 +2,13 @@
 
 WorldForge is the Python integration layer around testable physical-AI world-model workflows. Its
 job is to expose each provider through an honest typed capability surface, validate the boundary,
-and let host applications compose planning, prediction, generation, evaluation, persistence, and
+and let host applications compose planning, prediction, evaluation, persistence, and
 observability without pretending every provider means the same thing by "world model."
 
 The architecture centers on capability-specific contracts. LeWorldModel scores action candidates.
-GR00T and LeRobot select embodied action chunks. Cosmos and Runway return media artifacts. The
-framework keeps those surfaces distinct, then composes them through typed planning, evaluation,
-diagnostics, and observability.
+GR00T, Cosmos-Policy, and LeRobot select embodied action chunks. The framework keeps those
+surfaces distinct, then composes them through typed planning, evaluation, diagnostics, and
+observability.
 
 ## System Map
 
@@ -24,9 +24,9 @@ worldforge/
 |   |-- _model_utils.py    # shared JSON, ID, numeric, and probability validators
 |   |-- models.py          # public compatibility facade and model re-exports
 |   |-- scene_models.py    # geometry, action, scene object, goal, and history contracts
-|   |-- capability_results.py # media, reasoning, embedding, score, and policy results
+|   |-- capability_results.py # embedding, score, and policy results
 |   |-- provider_models.py # compatibility facade for provider-facing contracts
-|   |-- provider_profiles.py # provider capabilities, generation options, and metadata
+|   |-- provider_profiles.py # provider capabilities and metadata
 |   |-- provider_request_policy.py # retry/backoff and operation timeout policies
 |   |-- provider_events.py # provider event validation and serialization
 |   |-- provider_diagnostics.py # provider health, lifecycle readiness, and doctor reports
@@ -39,10 +39,9 @@ worldforge/
 |   |   |-- mock.py        # deterministic reference provider
 |   |   |-- observable.py  # event/health wrapper for protocol implementations
 |   |   |-- leworldmodel.py# local JEPA cost-model adapter
-|   |   |-- cosmos.py      # HTTP video generation adapter
 |   |   |-- gr00t.py       # host-owned embodied policy client adapter
+|   |   |-- cosmos_policy.py # host-owned Cosmos-Policy adapter
 |   |   |-- lerobot.py     # host-owned LeRobot policy adapter
-|   |   |-- runway.py      # HTTP video generation/transfer adapter
 |   |   `-- remote.py      # scaffold adapters for JEPA and Genie
 |   |-- observability.py   # ProviderEvent sinks
 |   |-- rerun.py           # optional Rerun event and artifact bridge
@@ -91,10 +90,9 @@ Host application
 +-------------------+
 | typed result      |
 | Prediction        |
-| VideoClip         |
 | ActionScoreResult |
 | ActionPolicyResult|
-| ReasoningResult   |
+| EmbeddingResult   |
 +-------------------+
 ```
 
@@ -106,8 +104,8 @@ flowchart TD
     Forge[WorldForge facade\nprovider + capability registries,\ndiagnostics, persistence]
     World[World\nstate, history, planning]
     Provider[Provider adapter or capability impl\ncapability contract]
-    Upstream[Upstream runtime or API\nLeWM, GR00T, LeRobot, Cosmos, Runway, mock]
-    Models[Typed public models\nPrediction, VideoClip, ActionScoreResult, ActionPolicyResult]
+    Upstream[Upstream runtime or API\nLeWM, GR00T, LeRobot, Cosmos-Policy, mock]
+    Models[Typed public models\nPrediction, EmbeddingResult, ActionScoreResult, ActionPolicyResult]
     Obs[ProviderEvent sinks\nlogs, recorder, metrics]
     Store[Local JSON state]
 
@@ -143,8 +141,8 @@ boundaries.
 `framework.py`
 
 - `WorldForge`: top-level object for provider registration, diagnostics, persistence helpers, and
-  provider-wide operations such as `generate(...)`, `transfer(...)`, `reason(...)`, `embed(...)`,
-  `score_actions(...)`, and `select_actions(...)`.
+  provider-wide operations such as `predict(...)`, `embed(...)`, `score_actions(...)`, and
+  `select_actions(...)`.
 
 `_world.py`
 
@@ -173,8 +171,8 @@ boundaries.
 
 `capability_results.py`
 
-- Public capability return payloads such as `VideoClip`, `ReasoningResult`, `EmbeddingResult`,
-  `ActionScoreResult`, and `ActionPolicyResult`.
+- Public capability return payloads such as `EmbeddingResult`, `ActionScoreResult`, and
+  `ActionPolicyResult`.
 
 `_model_utils.py`
 
@@ -185,8 +183,7 @@ boundaries.
 `provider_models.py` and focused provider contract modules
 
 - `provider_models.py` remains a compatibility facade for older imports.
-- `provider_profiles.py` owns `ProviderCapabilities`, `GenerationOptions`, `ProviderInfo`, and
-  `ProviderProfile`.
+- `provider_profiles.py` owns `ProviderCapabilities`, `ProviderInfo`, and `ProviderProfile`.
 - `provider_request_policy.py` owns `RetryPolicy`, `RequestOperationPolicy`, and
   `ProviderRequestPolicy`.
 - `provider_events.py` owns `ProviderEvent` validation and serialization.
@@ -208,8 +205,8 @@ boundaries.
 
 `capabilities/__init__.py`
 
-- Runtime-checkable protocol contracts for narrow integrations: `Cost`, `Policy`, `Generator`,
-  `Predictor`, `Reasoner`, `Embedder`, `Transferer`, and reserved `Planner`.
+- Runtime-checkable protocol contracts for narrow integrations: `Cost`, `Policy`, `Predictor`,
+  `Embedder`, and reserved `Planner`.
 - `RunnableModel`, an optional bundle for implementations that genuinely expose multiple
   capability protocols under one logical model.
 
@@ -233,15 +230,10 @@ boundaries.
 - Validates `pixels`, `goal`, `action`, four-dimensional action candidates, finite cost outputs,
   and direction-consistent `best_index`.
 
-`providers/cosmos.py` and `providers/runway.py`
+`providers/gr00t.py`, `providers/cosmos_policy.py`, and `providers/lerobot.py`
 
-- Real HTTP adapters with typed request policy, parser boundaries, retry events, and artifact
-  validation.
-
-`providers/gr00t.py` and `providers/lerobot.py`
-
-- Host-owned policy adapters for NVIDIA Isaac GR00T PolicyClient and Hugging Face LeRobot
-  `PreTrainedPolicy` inference.
+- Host-owned policy adapters for NVIDIA Isaac GR00T PolicyClient, Cosmos-Policy ALOHA `/act`, and
+  Hugging Face LeRobot `PreTrainedPolicy` inference.
 - Exposes only `policy=True`.
 - Requires an explicit action translator because robot actions are embodiment-specific.
 
@@ -300,22 +292,19 @@ Expanded:
 
 3. Workflow call
    - world.predict(...) requires a provider with predict=True
-   - forge.generate(...) requires generate=True
-   - forge.transfer(...) requires transfer=True
    - forge.select_actions(...) requires policy=True
    - world.plan(...) can use predictive, score-based, policy, policy+score, or latent-MPC
      planning
    - world.evaluate(...) and benchmark harnesses select operations by capability
 
 4. Provider boundary
-   - provider receives a JSON world snapshot, media request, query, embedding request, score
-     payload, or policy observation
+   - provider receives a JSON world snapshot, embedding request, score payload, or policy
+     observation
    - adapter validates local inputs before network/model calls when possible
    - provider emits ProviderEvent records for success, failure, and retries where supported
 
 5. Result boundary
    - PredictionPayload updates world state only after validation
-   - VideoClip validates media metadata and bytes/source paths
    - ActionScoreResult validates finite scores and a direction-consistent best_index
    - ActionPolicyResult validates executable actions and JSON-compatible raw actions
    - ProviderError surfaces provider/runtime failures with context
@@ -336,8 +325,7 @@ Construction-time auto-registration
 WorldForge(auto_register_remote=True)
   |
   |-- mock              always registered
-  |-- cosmos            if COSMOS_BASE_URL is set
-  |-- runway            if RUNWAYML_API_SECRET or RUNWAY_API_SECRET is set
+  |-- cosmos-policy     if COSMOS_POLICY_BASE_URL is set
   |-- leworldmodel      if LEWORLDMODEL_POLICY or LEWM_POLICY is set
   |-- gr00t             if GROOT_POLICY_HOST is set
   |-- jepa              if JEPA_MODEL_NAME is set
@@ -378,7 +366,7 @@ world.predict(action)                         # uses world.provider
 world.predict(action, provider="other")       # overrides for this call
 world.plan(..., provider="leworldmodel")      # planner/scorer provider
 world.execute_plan(plan, provider="mock")     # execution provider
-forge.generate("prompt", generator=impl)      # direct one-off capability instance
+forge.score_actions("local-score", info={}, action_candidates=[{}])
 ```
 
 Provider lookup is name-based for registered full providers and registered protocol
@@ -688,12 +676,11 @@ In-repo provider mapping:
 
 | Provider | Surface | Primary capability | Runtime kind |
 | --- | --- | --- | --- |
-| `mock` | implemented | predict, generate, reason, embed, transfer | deterministic local surrogate |
+| `mock` | implemented | predict, embed | deterministic local surrogate |
 | `leworldmodel` | optional runtime adapter | score | local JEPA cost model |
 | `gr00t` | optional runtime adapter | policy | host-owned Isaac GR00T policy client |
+| `cosmos-policy` | optional runtime adapter | policy | host-owned Cosmos-Policy ALOHA server |
 | `lerobot` | optional runtime adapter | policy | host-owned LeRobot policy checkpoint |
-| `cosmos` | HTTP adapter | generate | remote physical-AI video foundation model API |
-| `runway` | HTTP adapter | generate, transfer | remote video generation API |
 | `jepa` | optional runtime adapter | score | host-owned `facebookresearch/jepa-wms` torch-hub runtime |
 | `genie` | scaffold | capability-fail-closed | reservation for future interactive simulator work |
 
@@ -766,7 +753,6 @@ State invariants:
 - invalid public inputs fail explicitly instead of being silently coerced
 - score providers return finite scores and a `best_index` that matches `lower_is_better`
 - policy providers return executable actions and preserve raw provider actions
-- remote media artifacts reject unsupported content types before returning a `VideoClip`
 - provider events sanitize log-facing targets, messages, and metadata before event sinks record
   them; signed URL query strings and obvious credential fields are redacted
 
@@ -783,8 +769,8 @@ WorldStateError
 
 ProviderError
   provider credentials, optional dependency failures, transport failures, malformed upstream
-  responses, provider-specific input limits, expired artifacts, invalid downloaded media,
-  unsupported provider operations, malformed model outputs
+  responses, provider-specific input limits, unsupported provider operations, malformed model
+  outputs
 ```
 
 Boundary rule:
@@ -793,7 +779,6 @@ Boundary rule:
 caller input error     -> fail before provider call when possible
 provider/runtime error -> ProviderError with provider-specific context
 state mutation         -> only after provider output validates
-remote artifact        -> content type and body validated before VideoClip is returned
 score output           -> finite scores + direction-consistent best_index before Plan is returned
 ```
 
@@ -827,7 +812,7 @@ Example:
 import logging
 from pathlib import Path
 
-from worldforge import WorldForge
+from worldforge import Action, WorldForge
 from worldforge.observability import (
     JsonLoggerSink,
     OpenTelemetryProviderEventSink,
@@ -852,8 +837,9 @@ forge = WorldForge(
     )
 )
 
-forge.generate("orbiting cube", "mock", duration_seconds=1.0)
-print(metrics.get("mock", "generate").to_dict())
+world = forge.create_world_from_prompt("cube", provider="mock")
+world.predict(Action(type="move_to", parameters={"target": {"x": 0.2, "y": 0.5, "z": 0.0}}))
+print(metrics.get("mock", "predict").to_dict())
 rerun_session.close()
 ```
 
