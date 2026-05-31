@@ -39,7 +39,7 @@
 |---|------|--------|--------|
 | [#270](https://github.com/AbdelStark/worldforge/issues/270) | WF-DEMO3-001：发布首次运行工作流的 VHS 录制 CLI 导览 | p2 | M |
 | [#271](https://github.com/AbdelStark/worldforge/issues/271) | WF-DEMO3-002：发布 Python API 的 Jupyter 笔记本演练 | p1 | M |
-| [#272](https://github.com/AbdelStark/worldforge/issues/272) | WF-DEMO3-003：添加 TheWorldHarness 键盘驱动导览画廊 | p2 | S |
+| [#272](https://github.com/AbdelStark/worldforge/issues/272) | WF-DEMO3-003：添加机器人案例展示键盘驱动导览画廊 | p2 | S |
 | [#273](https://github.com/AbdelStark/worldforge/issues/273) | WF-DEMO3-004：添加从场景到发布凭证的叙述式演练 | p2 | M |
 | [#274](https://github.com/AbdelStark/worldforge/issues/274) | WF-DEMO3-005：添加接入您的机器人 20 分钟引导演示 | p1 | M |
 | [#275](https://github.com/AbdelStark/worldforge/issues/275) | WF-DEMO3-006：添加能力协议注册迷你演示 | p2 | S |

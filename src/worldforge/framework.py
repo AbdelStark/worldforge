@@ -34,12 +34,9 @@ from worldforge._world_prompt_seeders import _prompt_world_name, _seed_prompt_wo
 from worldforge.capabilities import (
     Cost,
     Embedder,
-    Generator,
     Planner,
     Policy,
     Predictor,
-    Reasoner,
-    Transferer,
 )
 from worldforge.framework_capabilities import (
     CapabilityRegistry,
@@ -64,15 +61,12 @@ from worldforge.models import (
     ActionScoreResult,
     DoctorReport,
     EmbeddingResult,
-    GenerationOptions,
     JSONDict,
     ProviderEvent,
     ProviderHealth,
     ProviderInfo,
     ProviderLifecycleStatus,
     ProviderProfile,
-    ReasoningResult,
-    VideoClip,
     WorldForgeError,
     ensure_directory,
     require_positive_int,
@@ -85,8 +79,6 @@ from worldforge.providers import (
     PredictionPayload,
     ProviderConfigSummary,
     ProviderError,
-    validate_generation_request,
-    validate_transfer_request,
 )
 from worldforge.providers.catalog import (
     PROVIDER_CATALOG,
@@ -271,30 +263,15 @@ class WorldForge:
 
         self._register_typed("cost", cost, Cost)
 
-    def register_generator(self, generator: Generator) -> None:
-        """Register a :class:`~worldforge.capabilities.Generator` implementation."""
-
-        self._register_typed("generator", generator, Generator)
-
     def register_predictor(self, predictor: Predictor) -> None:
         """Register a :class:`~worldforge.capabilities.Predictor` implementation."""
 
         self._register_typed("predictor", predictor, Predictor)
 
-    def register_reasoner(self, reasoner: Reasoner) -> None:
-        """Register a :class:`~worldforge.capabilities.Reasoner` implementation."""
-
-        self._register_typed("reasoner", reasoner, Reasoner)
-
     def register_embedder(self, embedder: Embedder) -> None:
         """Register an :class:`~worldforge.capabilities.Embedder` implementation."""
 
         self._register_typed("embedder", embedder, Embedder)
-
-    def register_transferer(self, transferer: Transferer) -> None:
-        """Register a :class:`~worldforge.capabilities.Transferer` implementation."""
-
-        self._register_typed("transferer", transferer, Transferer)
 
     def register_planner(self, planner: Planner) -> None:
         """Register a :class:`~worldforge.capabilities.Planner` implementation."""
@@ -631,39 +608,6 @@ class WorldForge:
     ) -> World:
         return _fork_world(self, world_id, history_index=history_index, name=name)
 
-    def generate(
-        self,
-        prompt: str,
-        provider: str | Generator | BaseProvider | None = None,
-        *,
-        generator: str | Generator | BaseProvider | None = None,
-        duration_seconds: float = 1.0,
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        prompt, duration_seconds, options = validate_generation_request(
-            prompt,
-            duration_seconds,
-            options=options,
-        )
-        target = self._select_capability_target(
-            provider,
-            generator,
-            operation="generate",
-            keyword_name="generator",
-        )
-        return cast(
-            VideoClip,
-            self._call_capability(
-                field_name="generator",
-                protocol=Generator,
-                target=target,
-                operation="generate",
-                target_label="generator",
-                args=(prompt, duration_seconds),
-                kwargs={"options": options},
-            ),
-        )
-
     def predict(
         self,
         world_state: JSONDict,
@@ -692,82 +636,6 @@ class WorldForge:
                 operation="predict",
                 target_label="predictor",
                 args=(world_state, action, steps),
-            ),
-        )
-
-    def transfer(
-        self,
-        clip: VideoClip,
-        provider: str | Transferer | BaseProvider | None = None,
-        *,
-        transferer: str | Transferer | BaseProvider | None = None,
-        width: int,
-        height: int,
-        fps: float,
-        prompt: str = "",
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        clip, width, height, fps, prompt, options = validate_transfer_request(
-            clip,
-            width=width,
-            height=height,
-            fps=fps,
-            prompt=prompt,
-            options=options,
-        )
-        target = self._select_capability_target(
-            provider,
-            transferer,
-            operation="transfer",
-            keyword_name="transferer",
-        )
-        return cast(
-            VideoClip,
-            self._call_capability(
-                field_name="transferer",
-                protocol=Transferer,
-                target=target,
-                operation="transfer",
-                target_label="transferer",
-                args=(clip,),
-                kwargs={
-                    "width": width,
-                    "height": height,
-                    "fps": fps,
-                    "prompt": prompt,
-                    "options": options,
-                },
-            ),
-        )
-
-    def reason(
-        self,
-        provider: str | Reasoner | BaseProvider | None = None,
-        query: str | None = None,
-        *,
-        reasoner: str | Reasoner | BaseProvider | None = None,
-        world: World | None = None,
-    ) -> ReasoningResult:
-        if query is None:
-            raise WorldForgeError("reason() requires a query.")
-        query = _require_non_empty_text(query, name="reason() query")
-        world_state = world._snapshot() if world else None
-        target = self._select_capability_target(
-            provider,
-            reasoner,
-            operation="reason",
-            keyword_name="reasoner",
-        )
-        return cast(
-            ReasoningResult,
-            self._call_capability(
-                field_name="reasoner",
-                protocol=Reasoner,
-                target=target,
-                operation="reason",
-                target_label="reasoner",
-                args=(query,),
-                kwargs={"world_state": world_state},
             ),
         )
 

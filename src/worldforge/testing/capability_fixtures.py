@@ -1,7 +1,7 @@
 """Loader for the WorldForge capability fixture corpus.
 
 The corpus is a small set of JSON fixtures that name canonical input shapes for each provider
-capability — ``predict``, ``reason``, ``embed``, ``generate``, ``transfer``, ``score``, and
+capability — ``predict``, ``embed``, ``score``, and
 ``policy``. Every capability ships at least one valid baseline fixture and two invalid boundary
 fixtures so conformance tests, evaluation suites, and provider authors can exercise public
 input validation without re-deriving payloads each time.
@@ -16,7 +16,7 @@ Each fixture file follows this envelope shape::
     {
       "schema_version": 1,
       "id": "<capability>.<name>",
-      "capability": "<predict|reason|...>",
+      "capability": "<predict|embed|score|policy>",
       "data_class": "synthetic" | "captured" | "host-supplied",
       "expected": "valid" | "invalid",
       "expected_error_pattern": "<regex>" | null,
@@ -46,10 +46,7 @@ from worldforge.models import JSONDict, WorldForgeError
 
 CAPABILITY_FIXTURE_NAMES: tuple[str, ...] = (
     "predict",
-    "reason",
     "embed",
-    "generate",
-    "transfer",
     "score",
     "policy",
 )

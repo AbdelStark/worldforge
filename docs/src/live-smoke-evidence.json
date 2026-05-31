@@ -32,34 +32,6 @@
       ]
     },
     {
-      "provider": "cosmos",
-      "capability": "generate",
-      "command": "uv run worldforge-smoke-cosmos --run-manifest .worldforge/runs/cosmos-live/run_manifest.json",
-      "runtime_manifest": "cosmos:schema-1",
-      "date": "2026-05-05",
-      "version": "0.5.0",
-      "status": "skipped_missing_runtime",
-      "artifact_path": null,
-      "skip_reason": "requires a prepared Cosmos endpoint through COSMOS_BASE_URL",
-      "known_limitations": [
-        "host must persist generated media before endpoint artifact retention expires"
-      ]
-    },
-    {
-      "provider": "runway",
-      "capability": "generate",
-      "command": "uv run worldforge-smoke-runway --run-manifest .worldforge/runs/runway-live/run_manifest.json",
-      "runtime_manifest": "runway:schema-1",
-      "date": "2026-05-05",
-      "version": "0.5.0",
-      "status": "skipped_missing_credentials",
-      "artifact_path": null,
-      "skip_reason": "requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET on a prepared host",
-      "known_limitations": [
-        "signed artifact URLs expire and must not be copied into issue evidence"
-      ]
-    },
-    {
       "provider": "leworldmodel",
       "capability": "score",
       "command": "uv run worldforge-smoke-leworldmodel --run-manifest .worldforge/runs/leworldmodel-live/run_manifest.json",

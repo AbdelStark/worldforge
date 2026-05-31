@@ -1,9 +1,9 @@
 """Capability protocols for WorldForge.
 
 A capability is a single, narrow surface a provider can implement: scoring actions, selecting
-actions, generating video, etc. Each capability is a ``runtime_checkable`` :class:`typing.Protocol`
-so the framework can dispatch a registered implementation into the matching registry by structural
-membership rather than by an explicit flag.
+actions, predicting world state, embedding text, etc. Each capability is a
+``runtime_checkable`` :class:`typing.Protocol` so the framework can dispatch a registered
+implementation into the matching registry by structural membership rather than by an explicit flag.
 
 Implementations declare two attributes — ``name`` and ``profile`` — and exactly one capability
 method matching the protocol's signature. Implementations stay pure: they return result
@@ -27,10 +27,7 @@ from worldforge.models import (
     ActionPolicyResult,
     ActionScoreResult,
     EmbeddingResult,
-    GenerationOptions,
     JSONDict,
-    ReasoningResult,
-    VideoClip,
 )
 
 if TYPE_CHECKING:
@@ -40,22 +37,16 @@ if TYPE_CHECKING:
 CAPABILITY_FIELD_NAMES = (
     "policy",
     "cost",
-    "generator",
     "predictor",
-    "reasoner",
     "embedder",
-    "transferer",
     "planner",
 )
 
 CAPABILITY_FIELD_TO_NAME: dict[str, str] = {
     "policy": "policy",
     "cost": "score",
-    "generator": "generate",
     "predictor": "predict",
-    "reasoner": "reason",
     "embedder": "embed",
-    "transferer": "transfer",
     "planner": "plan",
 }
 CAPABILITY_NAME_TO_FIELD: dict[str, str] = {
@@ -93,22 +84,6 @@ class Cost(Protocol):
 
 
 @runtime_checkable
-class Generator(Protocol):
-    """Capability that produces a video clip from a text prompt."""
-
-    name: str
-    profile: ProviderProfileSpec | None
-
-    def generate(
-        self,
-        prompt: str,
-        duration_seconds: float,
-        *,
-        options: GenerationOptions | None = None,
-    ) -> VideoClip: ...
-
-
-@runtime_checkable
 class Predictor(Protocol):
     """Capability that advances world state by ``steps`` under an action."""
 
@@ -124,21 +99,6 @@ class Predictor(Protocol):
 
 
 @runtime_checkable
-class Reasoner(Protocol):
-    """Capability that answers a query over an optional world snapshot."""
-
-    name: str
-    profile: ProviderProfileSpec | None
-
-    def reason(
-        self,
-        query: str,
-        *,
-        world_state: JSONDict | None = None,
-    ) -> ReasoningResult: ...
-
-
-@runtime_checkable
 class Embedder(Protocol):
     """Capability that turns text into a fixed-dimensional embedding."""
 
@@ -146,25 +106,6 @@ class Embedder(Protocol):
     profile: ProviderProfileSpec | None
 
     def embed(self, *, text: str) -> EmbeddingResult: ...
-
-
-@runtime_checkable
-class Transferer(Protocol):
-    """Capability that re-renders a clip into a target shape and prompt."""
-
-    name: str
-    profile: ProviderProfileSpec | None
-
-    def transfer(
-        self,
-        clip: VideoClip,
-        *,
-        width: int,
-        height: int,
-        fps: float,
-        prompt: str = "",
-        options: GenerationOptions | None = None,
-    ) -> VideoClip: ...
 
 
 @runtime_checkable
@@ -183,11 +124,8 @@ class Planner(Protocol):
 CAPABILITY_PROTOCOLS: dict[str, type] = {
     "policy": Policy,
     "cost": Cost,
-    "generator": Generator,
     "predictor": Predictor,
-    "reasoner": Reasoner,
     "embedder": Embedder,
-    "transferer": Transferer,
     "planner": Planner,
 }
 
@@ -205,11 +143,8 @@ class RunnableModel:
     name: str
     policy: Policy | None = None
     cost: Cost | None = None
-    generator: Generator | None = None
     predictor: Predictor | None = None
-    reasoner: Reasoner | None = None
     embedder: Embedder | None = None
-    transferer: Transferer | None = None
     planner: Planner | None = None
     profile: ProviderProfileSpec | None = None
 
@@ -229,11 +164,8 @@ __all__ = [
     "CAPABILITY_PROTOCOLS",
     "Cost",
     "Embedder",
-    "Generator",
     "Planner",
     "Policy",
     "Predictor",
-    "Reasoner",
     "RunnableModel",
-    "Transferer",
 ]

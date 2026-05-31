@@ -451,27 +451,27 @@ uv run pytest tests/test_robotics_showcase.py tests/test_rerun_integration.py te
 uv run mkdocs build --strict
 ```
 
-### WF-DEMO-004: Add A Remote Media Dry-Run Showcase
+### WF-DEMO-004: Add A Provider Event Redaction Dry-Run Showcase
 
 GitHub issue: [#192](https://github.com/AbdelStark/worldforge/issues/192)
 
-Problem: Cosmos and Runway have remote-media adapter logic, but users need a safe dry-run showcase
-for parser behavior, artifact retention, and signed-URL redaction.
+Problem: users need a safe dry-run showcase for provider-event redaction before they attach
+diagnostic evidence to issues or release notes.
 
 Scope:
 
-- Build a fixture-backed dry-run that exercises remote-media success and failure handling.
+- Build a fixture-backed dry-run that exercises provider-event success and failure handling.
 - Preserve sanitized run manifest, provider events, and artifact summaries.
 - Document prepared-host live-smoke follow-up commands.
 
 Out of scope:
 
 - No paid API calls in checkout-safe mode.
-- No storing generated media in the repo.
+- No storing provider-owned artifacts in the repo.
 
 Acceptance criteria:
 
-- [ ] Dry-run covers Cosmos and Runway fixture paths.
+- [ ] Dry-run covers sanitized provider-event fixture paths.
 - [ ] Signed URLs and retention warnings are visible but redacted.
 - [ ] Docs distinguish dry-run evidence from live-provider evidence.
 - [ ] Tests cover the showcase artifacts.
@@ -479,7 +479,7 @@ Acceptance criteria:
 Validation:
 
 ```bash
-uv run pytest tests/test_remote_video_providers.py tests/test_cosmos_smoke_script.py tests/test_docs_site.py
+uv run pytest tests/test_demo_showcases.py tests/test_cosmos_policy_smoke_script.py tests/test_docs_site.py
 uv run mkdocs build --strict
 ```
 
@@ -658,7 +658,7 @@ artifacts, and boundaries.
 Scope:
 
 - Add a cookbook page covering local world experiments, provider authoring, evaluation evidence,
-  benchmark budgets, remote media dry-runs, robotics replay, and release evidence.
+  benchmark budgets, provider-event redaction dry-runs, robotics replay, and release evidence.
 - Each recipe should include command, expected output, artifact, first triage step, and non-claims.
 - Link recipes from README and examples docs.
 
@@ -988,8 +988,8 @@ set of providers can satisfy a workflow before the workflow runs.
 
 Scope:
 
-- Add a negotiation report for workflows requiring capability sets such as generate-only,
-  score-only, policy-plus-score, transfer, or eval/benchmark presets.
+- Add a negotiation report for workflows requiring capability sets such as score-only,
+  policy-plus-score, prediction evaluation, or benchmark presets.
 - Include provider readiness, missing config, missing optional runtime, unsupported capability, and
   recommended next command.
 - Expose report through CLI and Python.

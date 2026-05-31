@@ -22,7 +22,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--provider-profile",
         action="store",
         default=None,
-        help="run tests for one provider_profile marker value, such as runway or leworldmodel",
+        help="run tests for one provider_profile marker value, such as leworldmodel or lerobot",
     )
 
 

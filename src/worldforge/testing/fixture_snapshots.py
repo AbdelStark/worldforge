@@ -30,7 +30,6 @@ FIXTURE_SNAPSHOT_RESULT_STATUSES = (
 _CAPABILITY_FIXTURE_PREFIX = "src/worldforge/testing/fixtures/"
 _PROVIDER_FIXTURE_PREFIX = "tests/fixtures/providers/"
 _SCENARIO_FIXTURE_PREFIX = "examples/scenarios/"
-_SCENE_ARTIFACT_FIXTURE_PREFIX = "tests/fixtures/scene_artifacts/"
 _BENCHMARK_FIXTURE_PREFIX = "examples/"
 
 
@@ -274,7 +273,6 @@ def default_fixture_snapshot_paths(root: Path = Path(".")) -> tuple[Path, ...]:
         "tests/fixtures/providers/*.json",
         "examples/*benchmark*.json",
         "examples/scenarios/*.json",
-        "tests/fixtures/scene_artifacts/*.json",
     ):
         paths.extend(sorted(root.glob(pattern)))
     return tuple(path for path in paths if path.is_file())
@@ -569,8 +567,6 @@ def _fixture_kind(path: str) -> str | None:
         return "benchmark-fixture"
     if path.startswith(_SCENARIO_FIXTURE_PREFIX):
         return "scenario-fixture"
-    if path.startswith(_SCENE_ARTIFACT_FIXTURE_PREFIX):
-        return "scene-artifact-fixture"
     return None
 
 

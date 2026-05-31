@@ -47,7 +47,7 @@ uv run worldforge negotiate --list
 uv run worldforge negotiate --workflow policy-plus-score
 ```
 
-当某个提供方缺失时，请优先使用 `doctor` 命令排查。LeWorldModel、LeRobot、GR00T、Cosmos 和 Runway 等可选提供方仅在宿主方配置了相应的环境变量和运行时后才会自动注册。`worldforge negotiate` 回答"在运行之前，我的提供方能否满足该工作流的需求？"这一更高层次的问题——请参阅[能力协商](./capability-negotiation.md)。
+当某个提供方缺失时，请优先使用 `doctor` 命令排查。LeWorldModel、LeRobot、GR00T 和 Cosmos-Policy 等可选提供方仅在宿主方配置了相应的环境变量和运行时后才会自动注册。`worldforge negotiate` 回答"在运行之前，我的提供方能否满足该工作流的需求？"这一更高层次的问题——请参阅[能力协商](./capability-negotiation.md)。
 
 ## 本地世界状态
 
@@ -83,8 +83,6 @@ uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0
 uv run worldforge world remove-object <world-id> cube-1
 uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
-uv run worldforge generate "A cube rolling across a table" --provider mock --duration 1
-uv run worldforge transfer input.mp4 --provider mock --prompt "make it slower"
 ```
 
 场景变更会追加类型化的历史条目。位置补丁会随姿态一并平移包围盒，预测操作则在提供方返回下一状态后追加提供方动作条目。
@@ -94,9 +92,6 @@ uv run worldforge transfer input.mp4 --provider mock --prompt "make it slower"
 ```bash
 uv run worldforge eval --suite physics --provider mock
 uv run worldforge eval --suite planning --provider mock --format json
-uv run worldforge eval --suite reasoning --provider mock
-uv run worldforge eval --suite generation --provider mock
-uv run worldforge eval --suite transfer --provider mock
 ```
 
 内置评估套件是确定性的契约检查，适用于适配器回归测试，而非物理保真度、媒体质量或真实世界安全性的声明依据。
@@ -106,29 +101,20 @@ uv run worldforge eval --suite transfer --provider mock
 ```bash
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 ```
 
 预算文件可使延迟、吞吐量、成功率、重试次数和错误次数超限时以非零状态码退出。在发布说明、论文或公开声明中使用数据前，请务必保存基准测试工件。
 
-## 可视化界面
+## 机器人案例展示 TUI
 
 ```bash
-uv run --extra harness worldforge-harness
-uv run --extra harness worldforge-harness --flow leworldmodel
-uv run --extra harness worldforge-harness --flow lerobot
-uv run --extra harness worldforge-harness --flow cosmos-policy
-uv run --extra harness worldforge-harness --flow gr00t-replay
-uv run --extra harness worldforge-harness --flow robotics-compare
-uv run --extra harness worldforge-harness --flow diagnostics
-uv run --extra harness worldforge-harness --flow workbench
-uv run --extra harness worldforge-harness --flow runs
-uv run worldforge harness --list
-uv run worldforge harness --connectors --format json
-uv run worldforge harness --runs --status failed --artifact-type json
+scripts/robotics-showcase
+scripts/robotics-showcase --no-tui
+uv run worldforge runs list --status failed --artifact-type json
 ```
 
-TheWorldHarness 是可选的 Textual 驱动界面，在保持 Textual 不进入基础包的同时，为签出安全流程、提供方诊断、本地世界状态、评估和基准测试提供可视化工作区。连接器和运行历史元数据命令无需 Textual 即可使用，可报告提供方就绪状态、保存的运行过滤器、脱敏的重运行命令以及首个恢复步骤，且不会打印任何密钥值。
+机器人案例展示报告是可选的 Textual 驱动界面，在保持 Textual 不进入基础包的同时，可视化预制宿主上的 LeRobot 与 LeWorldModel policy+score 运行。运行历史命令无需 Textual 即可使用，并会输出脱敏的恢复信息。
 
 预期成功信号：所选流程达到已完成的运行工作区，检查器显示其已保存的工件路径。对于 `cosmos-policy`，回放应报告 `raw_action_shape: [50, 14]`、`translated_actions: 50` 及 `saved_replay_artifact: artifacts/cosmos-policy-replay.json`。对于 `gr00t-replay`，预期结果为 `translated_actions: 40` 及 `saved_replay_artifact: artifacts/gr00t-replay.json`。对于 `robotics-compare`，预期结果为 `total_translated_actions: 92` 及 `comparison_artifact: artifacts/robotics-policy-comparison.json`。首个排查步骤：打开已保存的运行工作区，检查 `logs/provider-events.jsonl` 以及特定流程的工件（`artifacts/cosmos-policy-replay.json`、`artifacts/gr00t-replay.json` 或 `artifacts/robotics-policy-comparison.json`）；如需检查实时提供方就绪状态，请运行 `uv run worldforge harness --connectors --format json`。
 
@@ -174,7 +160,7 @@ uv run worldforge-open-tensorboard --logdir .worldforge/tensorboard/<run> --prob
 实时 GR00T 和 LeRobot 策略冒烟测试辅助工具：
 
 ```bash
-uv run worldforge-smoke-runway --help
+uv run worldforge-smoke-cosmos-policy --help
 uv run worldforge-smoke-jepa-wms --help
 uv run worldforge-smoke-lerobot-leworldmodel --help
 uv run python scripts/smoke_gr00t_policy.py --help
@@ -186,6 +172,6 @@ uv run python scripts/smoke_lerobot_policy.py --help
 更多详情：
 
 - [机器人回放案例展示](./robotics-showcase.md)
-- [TheWorldHarness](./theworldharness.md)
+- [机器人回放案例](./robotics-showcase.md)
 - [示例与 CLI 命令](./examples.md)
 - [用户与运维人员操作手册](./playbooks.md)

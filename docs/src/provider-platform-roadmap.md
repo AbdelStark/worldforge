@@ -16,7 +16,7 @@ follow-up issue rather than reopening these implementation slices.
 | Tracker | Scope | Completion signal |
 | --- | --- | --- |
 | [#47](https://github.com/AbdelStark/worldforge/issues/47) | Provider platform foundation | Promotion gates, runtime manifests, conformance helpers, live-smoke artifacts, and optional runtime profiles are implemented. |
-| [#48](https://github.com/AbdelStark/worldforge/issues/48) | Real provider implementations | LeWorldModel, LeRobot, GR00T, Cosmos, Runway, JEPA, JEPA-WMS, and Genie defer decisions are documented against executable capability claims. |
+| [#48](https://github.com/AbdelStark/worldforge/issues/48) | Real provider implementations | LeWorldModel, LeRobot, GR00T, Cosmos-Policy, JEPA, JEPA-WMS, and Genie defer decisions are documented against executable capability claims. |
 | [#49](https://github.com/AbdelStark/worldforge/issues/49) | Production harness | Run workspaces, connector readiness, live inspection, report comparison, and provider workbench flows preserve safe artifacts. |
 | [#50](https://github.com/AbdelStark/worldforge/issues/50) | Reference host applications | Batch eval, service, and robotics operator host examples show host-owned integration boundaries. |
 | [#51](https://github.com/AbdelStark/worldforge/issues/51) | Observability monitoring and logging | Provider event schema, logging, metrics, OpenTelemetry, readiness, and incident runbooks are available without changing the base dependency boundary. |
@@ -40,8 +40,8 @@ Use these rules when turning this roadmap into issues:
 - Keep deterministic checkout tests separate from live runtime smokes. Live smokes should be
   explicit, skip cleanly without credentials/runtime packages, and preserve enough artifacts to
   debug failures.
-- Every issue should name the exact capability surface it changes: `predict`, `generate`,
-  `transfer`, `reason`, `embed`, `score`, or `policy`.
+- Every issue should name the exact capability surface it changes: `predict`, `embed`, `score`, or
+  `policy`.
 
 ## Desired End State
 
@@ -53,7 +53,7 @@ production-shaped provider platform with these properties:
 | Provider trust | Every advertised provider capability has a real callable implementation, conformance coverage, generated docs, and a prepared-host smoke path. |
 | Provider selection | New provider work starts from a written selection record that scores user value, upstream maturity, runtime cost, validation feasibility, and maintenance burden. |
 | Runtime boundary | Heavy model packages, GPUs, checkpoints, robot stacks, hosted dashboards, and durable stores remain opt-in host concerns. |
-| Harness | TheWorldHarness becomes the local operations workspace for provider readiness, run execution, artifact inspection, eval/benchmark comparison, and provider development. |
+| Robotics showcase | The Textual surface is limited to the prepared-host robotics policy+score showcase; operations workflows stay CLI-first. |
 | Host apps | Reference hosts show how to embed WorldForge in batch jobs, services, and robotics operator workflows without redefining the base package boundary. |
 | Operations | Provider calls produce sanitized events, optional traces/metrics/log files, run manifests, readiness states, and incident runbooks. |
 | Release evidence | Releases include reproducible local gates and explicit optional-provider evidence or skip reasons. |
@@ -74,10 +74,10 @@ Non-negotiable quality bar:
 | Area | Current state | Constraint |
 | --- | --- | --- |
 | Base package | `httpx` runtime dependency, Python 3.13 only, hatchling/uv packaging | Keep provider and host extras optional. |
-| Provider catalog | `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, experimental score-only `jepa`, plus scaffold `genie` | Do not advertise scaffold providers as real integrations. |
+| Provider catalog | `mock`, `cosmos-policy`, `leworldmodel`, `gr00t`, `lerobot`, experimental score-only `jepa`, plus scaffold `genie` | Do not advertise scaffold providers as real integrations. |
 | Candidate provider | `jepa-wms` direct-construction score candidate, not exported or auto-registered | Promote only after real upstream limits and runtime behavior are validated. |
 | Planning | `World.plan(...)` composes `predict`, `score`, `policy`, and `policy+score` flows | Do not treat `plan` as a provider badge unless a provider implements planning directly. |
-| Harness | Optional Textual app with worlds, providers, eval, benchmark, run inspector, and robotics report surfaces | Textual remains isolated to `worldforge.harness.tui`. |
+| Harness | Optional Textual app for the robotics showcase report | Textual remains isolated to `worldforge.harness.tui`. |
 | Observability | `ProviderEvent`, `JsonLoggerSink`, `InMemoryRecorderSink`, `ProviderMetricsSink`, handler fanout | Host owns full telemetry export and alerting unless optional integrations are added. |
 | Persistence | Validated single-writer local JSON state and report artifacts | Durable multi-writer persistence remains a host concern until a separate adapter design lands. |
 
@@ -130,7 +130,7 @@ Every issue should state which part of this flow it changes.
 | M0: Issue-ready contracts | Convert this roadmap into labeled GitHub issues with dependencies and owners | Issues exist with acceptance criteria and validation commands. |
 | M1: Provider foundation | Shared provider promotion gates, runtime manifests, conformance tests, and live-smoke conventions | New providers can be added without inventing process per adapter. |
 | M2: Real provider promotions | Promote the highest-value current adapters and replace scaffold reservations only when real runtime contracts exist | Provider docs/catalog match executable behavior and live-smoke artifacts. |
-| M3: Production harness | Turn TheWorldHarness into the canonical local operations workspace for providers, worlds, runs, artifacts, and diagnostics | Operators can configure, run, inspect, compare, export, and recover flows locally. |
+| M3: Operations evidence | Keep run inspection, comparison, export, and recovery as CLI-first workflows | Operators can inspect, compare, export, and recover flows locally without a general-purpose TUI. |
 | M4: Reference host applications | Provide optional host apps that show how to embed WorldForge in services, batch jobs, and robotics labs | Hosts have runnable templates without changing the base package. |
 | M5: Observability and operations | Add optional telemetry exporters, service probes, run manifests, redaction gates, and incident runbooks | Production hosts can integrate with standard monitoring without leaking secrets. |
 | M6: Release hardening | Make live-provider releases reproducible, auditable, and explicitly scoped | Release gates include docs, package contract, coverage, provider contract checks, and optional smoke evidence. |
@@ -145,7 +145,7 @@ its dependencies are satisfied.
 | 0 | none | WF-PROV-001, WF-PROVIDER-SELECT-001 | Lock provider standards and avoid adding low-value adapter work. |
 | 1 | WF-PROV-001 | WF-PROV-002, WF-PROV-003 | Runtime manifests and conformance checks are the reusable substrate for real providers. |
 | 2 | WF-PROV-002, WF-PROV-003 | WF-PROV-004, WF-PROV-005 | Live smokes and markers need manifests plus contract helpers. |
-| 3 | Wave 2 | WF-LWM-001, WF-LEROBOT-001, WF-COSMOS-001, WF-RUNWAY-001 | Promote existing high-value real paths before expanding the catalog. |
+| 3 | Wave 2 | WF-LWM-001, WF-LEROBOT-001, WF-COSMOS-001 | Promote existing high-value real paths before expanding the catalog. |
 | 4 | WF-LEROBOT-001 | WF-LEROBOT-002, WF-GROOT-001 | Robotics policy work needs translator contracts before serious host workflows. |
 | 5 | WF-PROV-004 | WF-HARNESS-001, WF-OBS-001 | Runs and events need a shared artifact/correlation model. |
 | 6 | WF-HARNESS-001, WF-OBS-001 | WF-HARNESS-002 through WF-HARNESS-005, WF-OBS-002 through WF-OBS-005 | UI, exports, traces, logs, and readiness should share run IDs and event semantics. |
@@ -237,7 +237,7 @@ Current high-priority candidates:
 | --- | --- | --- |
 | LeWorldModel score | Existing real score path and robotics showcase value | WF-LWM-001 |
 | LeRobot policy | Existing real policy path and policy+score planning value | WF-LEROBOT-001 |
-| Runway/Cosmos media | Existing remote adapters with production parser/artifact concerns | WF-RUNWAY-001, WF-COSMOS-001 |
+| Cosmos-Policy policy | Prepared-host policy adapter with parser, translator, and `/act` runtime concerns | WF-COSMOS-001 |
 | GR00T PolicyClient | Valuable robotics policy path, but prepared-host complexity is higher | WF-GROOT-001 |
 | JEPA-WMS | Research-value score candidate, but should remain direct-construction until upstream limits are known | WF-JEPAWMS-001 |
 
@@ -326,13 +326,13 @@ Provider events should be joinable to run artifacts without exposing sensitive p
 
 ```json
 {
-  "provider": "runway",
-  "operation": "generate",
+  "provider": "cosmos-policy",
+  "operation": "policy",
   "phase": "success",
   "attempt": 1,
   "max_attempts": 1,
   "duration_ms": 1200.0,
-  "run_id": "20260430T120000Z-runway-generate",
+  "run_id": "20260430T120000Z-cosmos-policy",
   "request_id": "host-request-id",
   "target": "https://api.example.test/v1/tasks",
   "metadata": {
@@ -358,8 +358,8 @@ Completion signals:
 - Runtime manifests are packaged under `src/worldforge/providers/runtime_manifests/`, validated by
   tests, linked from provider docs, and used by health/configuration summaries without installing
   optional runtimes.
-- Capability conformance helpers exist for `predict`, `generate`, `transfer`, `reason`, `embed`,
-  `score`, and `policy`, plus provider-event redaction checks for safe fixture and injected-runtime
+- Capability conformance helpers exist for `predict`, `embed`, `score`, and `policy`, plus
+  provider-event redaction checks for safe fixture and injected-runtime
   coverage.
 - Optional live-smoke commands can write sanitized `run_manifest.json` evidence with command,
   package, provider profile, capability, runtime manifest, input digest, event count, result digest,
@@ -420,7 +420,7 @@ Scope:
 Acceptance criteria:
 
 - [x] Manifest schema is documented and validated by tests.
-- [x] Manifests exist for `leworldmodel`, `lerobot`, `gr00t`, `cosmos`, and `runway`.
+- [x] Manifests exist for `leworldmodel`, `lerobot`, `gr00t`, and `cosmos-policy`.
 - [x] Missing optional dependencies produce actionable health messages using manifest data.
 - [x] Docs link from provider pages to the relevant manifest.
 
@@ -443,7 +443,7 @@ that can be reused for deterministic fakes, injected runtimes, HTTP fixtures, an
 Scope:
 
 - Expand `src/worldforge/testing/` into capability-specific checks for `score`, `policy`,
-  `generate`, `transfer`, `predict`, `reason`, and `embed`.
+  `predict`, and `embed`.
 - Verify finite numeric outputs, JSON-native metadata, redacted events, failure typing, health
   behavior, and docs/profile consistency.
 - Keep helpers explicit; they should raise useful `AssertionError` messages.
@@ -541,9 +541,9 @@ Completion signals:
 - `gr00t` is a beta remote PolicyClient provider with sanitized target metadata, timeout/auth
   handling, unreachable-server health signals, and docs that keep CUDA, TensorRT, Isaac-GR00T,
   and policy-server operation host-owned.
-- `cosmos` and `runway` keep remote media generation/transfer production-shaped through parser
-  fixtures, retry/timeout event metadata, optional live smoke manifests, benchmark inputs, and
-  artifact-retention guidance that excludes signed URL query strings from observable records.
+- `cosmos-policy` keeps embodied-policy replay production-shaped through parser fixtures,
+  retry/timeout event metadata, optional live smoke manifests, and action-translation guidance that
+  excludes secret or host-local material from observable records.
 - `jepa` now advertises only the selected experimental `score` surface through the
   `facebookresearch/jepa-wms` torch-hub contract, while `jepa-wms` remains a direct-construction
   candidate with prepared-host smoke evidence rather than auto-registration.
@@ -731,21 +731,22 @@ Prepared-host smoke:
 GROOT_POLICY_HOST=<host> uv run python scripts/smoke_gr00t_policy.py --policy-info-json policy.json
 ```
 
-### WF-COSMOS-001: Cosmos Generate Provider Production Hardening
+### WF-COSMOS-001: Cosmos-Policy Provider Production Hardening
 
-Type: provider promotion  
-Labels: `provider`, `generate`, `operations`  
+Type: provider promotion
+Labels: `provider`, `policy`, `operations`
 Depends on: WF-PROV-003, WF-PROV-004
 
-Problem: `cosmos` is a real HTTP adapter. Production hardening should lock API-version handling,
-parser fixtures, retry policy, artifact metadata, and docs around reachable deployments.
+Problem: `cosmos-policy` is a prepared-host HTTP policy adapter. Production hardening should lock
+request/response validation, translator boundaries, retry policy, run evidence, and docs around
+reachable `/act` deployments.
 
 Scope:
 
-- Audit request/response parser coverage against current supported Cosmos deployment shape.
-- Preserve fixture coverage for success, malformed payloads, auth failures, timeout, polling,
-  failed tasks, and unsupported artifacts.
-- Emit run manifests for live generate smoke runs.
+- Audit request/response parser coverage against the supported Cosmos-Policy `/act` shape.
+- Preserve fixture coverage for success, malformed payloads, auth failures, timeout, bad action
+  shapes, and missing translators.
+- Emit run manifests for live policy smoke runs.
 - Keep endpoint ownership with the host.
 
 Acceptance criteria:
@@ -758,46 +759,15 @@ Acceptance criteria:
 Validation:
 
 ```bash
-uv run pytest tests/test_cosmos_provider.py tests/test_remote_video_providers.py
-uv run python scripts/generate_provider_docs.py --check
-uv run mkdocs build --strict
-```
-
-### WF-RUNWAY-001: Runway Generate/Transfer Production Hardening
-
-Type: provider promotion  
-Labels: `provider`, `generate`, `transfer`, `operations`  
-Depends on: WF-PROV-003, WF-PROV-004
-
-Problem: `runway` supports generate and transfer through a remote API. Production hardening needs
-artifact retention policy, expired URL handling, and parser coverage that matches operator docs.
-
-Scope:
-
-- Verify create, polling, download, content-type, and expired-artifact error paths.
-- Write live smoke manifests that preserve artifact metadata without storing signed URLs.
-- Document host responsibility for persisting downloaded media immediately after task completion.
-- Keep legacy `RUNWAY_API_SECRET` alias tested while preferring `RUNWAYML_API_SECRET`.
-
-Acceptance criteria:
-
-- [ ] Signed URL query strings never appear in events, logs, manifests, or reports.
-- [ ] Docs cover artifact expiration and first recovery step.
-- [ ] Transfer and generate have separate benchmark inputs and capability tests.
-- [ ] Provider profile notes model/version limits where known.
-
-Validation:
-
-```bash
-uv run pytest tests/test_runway_provider.py tests/test_remote_video_providers.py tests/test_observability.py
+uv run pytest tests/test_cosmos_policy_provider.py tests/test_cosmos_policy_smoke_script.py
 uv run python scripts/generate_provider_docs.py --check
 uv run mkdocs build --strict
 ```
 
 ### WF-JEPAWMS-001: JEPA-WMS Candidate Promotion
 
-Type: provider promotion  
-Labels: `provider`, `score`, `research`  
+Type: provider promotion
+Labels: `provider`, `score`, `research`
 Depends on: WF-PROV-001, WF-PROV-002, WF-PROV-003
 
 Problem: `jepa-wms` is a direct-construction score candidate. It should stay unregistered until
@@ -861,8 +831,8 @@ uv run mkdocs build --strict
 
 ### WF-GENIE-001: Replace Genie Scaffold Only After Runtime Contract Exists
 
-Type: provider implementation  
-Labels: `provider`, `generate`, `research`  
+Type: provider implementation
+Labels: `provider`, `research`
 Depends on: WF-PROV-001
 
 Problem: `genie` is currently a fail-closed reservation. A real implementation should wait until
@@ -872,7 +842,7 @@ dependency boundaries.
 Scope:
 
 - Create a provider-selection RFC before implementation.
-- Decide whether the first surface is `generate`, `predict`, or a new typed scene/world surface.
+- Decide whether the first surface is `predict` or remains outside the current provider surface.
 - Keep the scaffold reservation if no credible upstream contract exists.
 - Do not present deterministic local surrogate behavior as a real Genie integration.
 
@@ -901,8 +871,8 @@ batch should be chosen by callable surface, user value, runtime feasibility, and
 
 Scope:
 
-- Evaluate candidate classes: embodied policy adapters, latent score/predict models, remote media
-  generation/transfer APIs, simulator bridges, and spatial/3D world model runtimes.
+- Evaluate candidate classes: embodied policy adapters, latent score/predict models, simulator
+  bridges, and planning-relevant physical world-model runtimes.
 - For each candidate, record capability surface, package/API maturity, host dependency weight,
   smoke feasibility, licensing, fixture strategy, and expected users.
 - Choose at most three providers for the next implementation batch.
@@ -939,7 +909,7 @@ Production harness requirements:
 
 Harness anti-goals:
 
-- Do not turn TheWorldHarness into a hosted dashboard.
+- Do not turn the robotics showcase TUI into a hosted dashboard.
 - Do not hide provider setup behind implicit installation of heavy optional runtimes.
 - Do not execute robot-controller actions from a default harness flow.
 - Do not render raw secret-bearing provider metadata.
@@ -951,9 +921,9 @@ Completion signals:
 - Shared run workspaces use `.worldforge/runs/<run-id>/` with sanitized manifests, provider
   events, result summaries, report exports, logs, sortable file-safe run IDs, retention commands,
   and issue-safe artifact paths.
-- Provider connector readiness is exposed through both TheWorldHarness and
-  `worldforge harness --connectors`, separating configured, missing credentials, missing optional
-  dependencies, unhealthy, and scaffold states without printing secret values.
+- Provider readiness is exposed through CLI diagnostics, separating configured, missing
+  credentials, missing optional dependencies, unhealthy, and scaffold states without printing secret
+  values.
 - Live run inspection persists `results/inspector.json`, sanitized `logs/provider-events.jsonl`,
   failed-run manifests, validation errors, and final artifact links for successful and failed
   flows.
@@ -962,8 +932,8 @@ Completion signals:
 - `worldforge provider workbench <provider>` gives adapter authors a checkout-safe loop for
   capability conformance helpers, fixture validation, health checks, docs/catalog drift, and
   redaction-safe event checks.
-- [TheWorldHarness docs](./theworldharness.md) describe the matching non-TUI commands and artifact
-  layout so production harness behavior is testable without importing Textual.
+- CLI docs describe the matching commands and artifact layout so operations behavior is testable
+  without importing Textual.
 
 ### WF-HARNESS-001: Harness Run Workspace
 
@@ -1015,7 +985,7 @@ Scope:
 
 Acceptance criteria:
 
-- [x] `mock`, `cosmos`, `runway`, `leworldmodel`, `gr00t`, `lerobot`, experimental `jepa`, and scaffold
+- [x] `mock`, `cosmos-policy`, `leworldmodel`, `gr00t`, `lerobot`, experimental `jepa`, and scaffold
       `genie` render with distinct status.
 - [x] Missing credentials and missing optional dependencies are visibly different.
 - [x] Textual remains isolated to `worldforge.harness.tui`.
@@ -1330,7 +1300,7 @@ Acceptance criteria:
 Validation:
 
 ```bash
-uv run pytest tests/test_observability.py tests/test_remote_video_providers.py
+uv run pytest tests/test_observability.py tests/test_cosmos_policy_provider.py
 uv run mkdocs build --strict
 ```
 
@@ -1507,7 +1477,7 @@ Acceptance criteria:
 Validation:
 
 ```bash
-uv run pytest tests/test_provider_request_policy.py tests/test_remote_video_providers.py
+uv run pytest tests/test_provider_request_policy.py tests/test_cosmos_policy_provider.py
 uv run mkdocs build --strict
 ```
 
@@ -1681,8 +1651,7 @@ Implement:
 
 - WF-LWM-001: LeWorldModel Stable Score Provider
 - WF-LEROBOT-001: LeRobot Stable Policy Provider
-- WF-COSMOS-001: Cosmos Generate Provider Production Hardening
-- WF-RUNWAY-001: Runway Generate/Transfer Production Hardening
+- WF-COSMOS-001: Cosmos-Policy Provider Production Hardening
 
 Exit criteria:
 
@@ -1707,9 +1676,9 @@ Exit criteria:
   artifacts are traceable through one run manifest.
 - Real robot execution remains disabled unless supplied by a host application.
 
-### Wave 5: Harness As Operations Workspace
+### Wave 5: Operations Evidence Workspace
 
-Goal: make TheWorldHarness useful for provider development and local operations.
+Goal: make CLI-first run evidence useful for provider development and local operations.
 
 Implement:
 

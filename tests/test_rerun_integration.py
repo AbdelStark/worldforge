@@ -196,7 +196,7 @@ def test_rerun_event_sink_logs_sanitized_provider_event(tmp_path: Path) -> None:
 
     sink(
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="artifact download",
             phase="failure",
             duration_ms=12.5,
@@ -210,12 +210,12 @@ def test_rerun_event_sink_logs_sanitized_provider_event(tmp_path: Path) -> None:
     assert fake.calls[1][0] == "save"
     assert fake.times == [("worldforge_event", 0)]
     paths = [path for path, _entity in fake.logs]
-    assert "worldforge/events/runway/artifact_download/failure/log" in paths
-    assert "worldforge/events/runway/artifact_download/failure/duration_ms" in paths
+    assert "worldforge/events/remote-provider/artifact_download/failure/log" in paths
+    assert "worldforge/events/remote-provider/artifact_download/failure/duration_ms" in paths
     payload_text = next(
         entity["text"]
         for path, entity in fake.logs
-        if path == "worldforge/events/runway/artifact_download/failure/payload"
+        if path == "worldforge/events/remote-provider/artifact_download/failure/payload"
     )
     assert "secret" not in payload_text
     assert "[redacted]" in payload_text

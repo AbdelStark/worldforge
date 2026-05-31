@@ -20,7 +20,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 _SAFE_SUFFIXES = {".json", ".jsonl", ".md", ".csv", ".txt", ".html"}
 _SECRET_PATTERN = re.compile(
     r"(api[_-]?key|authorization|bearer\s+[a-z0-9._~-]+|password|secret|signature|token=|"
-    r"x-amz-signature|runwayml_api_secret|nvidia_api_key)",
+    r"x-amz-signature|nvidia_api_key)",
     re.IGNORECASE,
 )
 _HOST_PATH_PATTERN = re.compile(r"(/Users/|/private/|/var/folders/|file://|[A-Za-z]:\\)")

@@ -29,8 +29,6 @@ multiprocessing = _url_validation.multiprocessing
 _ERROR_SUMMARY_BYTES = _http_downloads._ERROR_SUMMARY_BYTES
 
 asset_to_uri = _http_assets.asset_to_uri
-clip_to_data_uri = _http_assets.clip_to_data_uri
-parse_size = _http_assets.parse_size
 _content_type_is_allowed = _response_validation._content_type_is_allowed
 _decode_json_object_response = _response_validation._decode_json_object_response
 _emit_response_validation_event = _response_validation._emit_response_validation_event

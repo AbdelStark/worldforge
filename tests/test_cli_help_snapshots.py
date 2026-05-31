@@ -1,5 +1,3 @@
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 import sys
@@ -22,14 +20,14 @@ options:
         "usage: worldforge provider list [-h] [--state-dir STATE_DIR]\n"
         "                                [--registered-only]\n"
         "                                [--capability "
-        "{predict,generate,reason,embed,plan,transfer,score,policy}]\n"
+        "{predict,embed,plan,score,policy}]\n"
         "\n"
         "options:\n"
         "  -h, --help            show this help message and exit\n"
         "  --state-dir STATE_DIR\n"
         "                        World state directory.\n"
         "  --registered-only     Show only providers registered for this process.\n"
-        "  --capability {predict,generate,reason,embed,plan,transfer,score,policy}\n"
+        "  --capability {predict,embed,plan,score,policy}\n"
         "                        Filter providers by capability name.\n"
     ),
     ("provider", "docs", "--help"): """\
@@ -147,45 +145,6 @@ options:
   --format {json,markdown}
                         Output format for the migration preview report.
 """,
-    ("harness", "--help"): """\
-usage: worldforge harness [-h]
-                          [--flow {leworldmodel,lerobot,cosmos-policy,gr00t,diagnostics,workbench,eval,benchmark,runs}]
-                          [--state-dir STATE_DIR] [--list] [--connectors]
-                          [--runs] [--workspace-dir WORKSPACE_DIR]
-                          [--provider PROVIDER] [--capability CAPABILITY]
-                          [--status STATUS] [--created-from CREATED_FROM]
-                          [--created-to CREATED_TO]
-                          [--artifact-type ARTIFACT_TYPE]
-                          [--format {markdown,json}] [--no-animation]
-
-options:
-  -h, --help            show this help message and exit
-  --flow {leworldmodel,lerobot,cosmos-policy,gr00t,diagnostics,workbench,eval,benchmark,runs}
-                        Harness flow to open.
-  --state-dir STATE_DIR
-                        Directory for persisted demo worlds. Defaults to a
-                        temporary directory.
-  --list                List available harness flows without launching the
-                        TUI.
-  --connectors          List provider connector readiness without launching
-                        the TUI.
-  --runs                List preserved run history without launching the TUI.
-  --workspace-dir WORKSPACE_DIR
-                        Workspace root for --runs. Defaults to .worldforge.
-  --provider PROVIDER   Filter --runs output by provider substring.
-  --capability CAPABILITY
-                        Filter --runs output by capability.
-  --status STATUS       Filter --runs output by run status.
-  --created-from CREATED_FROM
-                        Filter --runs output from YYYY-MM-DD.
-  --created-to CREATED_TO
-                        Filter --runs output through YYYY-MM-DD.
-  --artifact-type ARTIFACT_TYPE
-                        Filter --runs output by safe artifact type.
-  --format {markdown,json}
-                        Output format for --list, --connectors, and --runs.
-  --no-animation        Disable step reveal delays.
-""",
     ("predict", "--help"): """\
 usage: worldforge predict [-h] [--provider PROVIDER] --x X --y Y --z Z
                           [--steps STEPS] [--state-dir STATE_DIR]
@@ -219,8 +178,7 @@ options:
                         World state directory.
 """,
     ("eval", "--help"): """\
-usage: worldforge eval [-h]
-                       [--suite {generation,physics,planning,reasoning,transfer}]
+usage: worldforge eval [-h] [--suite {physics,planning}]
                        [--provider PROVIDERS] [--profile PROFILE]
                        [--format {markdown,json,csv,html}]
                        [--state-dir STATE_DIR] [--run-workspace RUN_WORKSPACE]
@@ -228,7 +186,7 @@ usage: worldforge eval [-h]
 
 options:
   -h, --help            show this help message and exit
-  --suite {generation,physics,planning,reasoning,transfer}
+  --suite {physics,planning}
                         Built-in evaluation suite.
   --provider PROVIDERS  Provider name to evaluate. Can be repeated.
   --profile PROFILE     Non-secret JSON/TOML configuration profile for CLI
@@ -246,7 +204,7 @@ options:
 """,
     ("benchmark", "--help"): """\
 usage: worldforge benchmark [-h] [--provider PROVIDERS] [--profile PROFILE]
-                            [--operation {predict,reason,generate,transfer,embed,score,policy}]
+                            [--operation {predict,embed,score,policy}]
                             [--iterations ITERATIONS]
                             [--concurrency CONCURRENCY]
                             [--format {markdown,json,csv,html}]
@@ -261,7 +219,7 @@ options:
   --provider PROVIDERS  Provider name to benchmark. Can be repeated.
   --profile PROFILE     Non-secret JSON/TOML configuration profile for CLI
                         defaults.
-  --operation {predict,reason,generate,transfer,embed,score,policy}
+  --operation {predict,embed,score,policy}
                         Operation to benchmark. Can be repeated.
   --iterations ITERATIONS
                         Iterations per operation.
@@ -332,13 +290,11 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "provider",
         "world",
         "doctor",
+        "scenario",
         "negotiate",
-        "generate",
-        "transfer",
         "predict",
         "eval",
         "benchmark",
-        "harness",
         "runs",
         "drills",
     ):
@@ -352,7 +308,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "worldforge provider docs",
         "worldforge provider info mock",
         "worldforge provider contract mock",
-        "worldforge harness --list",
+        "worldforge provider workbench mock",
         "worldforge eval --suite planning --provider mock --format json",
         "worldforge runs list",
         "worldforge drills list",

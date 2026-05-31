@@ -25,12 +25,12 @@ def _make_forge(tmp_path) -> WorldForge:
     return WorldForge(state_dir=tmp_path, auto_register_remote=False)
 
 
-def _generate_only_provider(name: str) -> BaseProvider:
+def _embed_only_provider(name: str) -> BaseProvider:
     return BaseProvider(
         name=name,
-        capabilities=ProviderCapabilities(generate=True),
+        capabilities=ProviderCapabilities(embed=True),
         profile=ProviderProfileSpec(
-            description=f"Test-only generate provider {name}.",
+            description=f"Test-only embed provider {name}.",
             implementation_status="experimental",
             is_local=True,
         ),
@@ -74,7 +74,7 @@ def test_policy_rejects_duplicate_provider_in_chain() -> None:
 
 def test_policy_normalises_whitespace_and_serialises() -> None:
     policy = ProviderRoutingPolicy(
-        capability="generate",
+        capability="score",
         preferred="  mock  ",
         fallbacks=("  alt  ",),
         operation="  remote-fallback  ",
@@ -84,7 +84,7 @@ def test_policy_normalises_whitespace_and_serialises() -> None:
     assert policy.operation == "remote-fallback"
     assert policy.chain() == ("mock", "alt")
     assert policy.to_dict() == {
-        "capability": "generate",
+        "capability": "score",
         "preferred": "mock",
         "fallbacks": ["alt"],
         "require_capability": True,
@@ -247,7 +247,7 @@ def test_routing_result_requires_attempt_capabilities_to_match_result() -> None:
             capability="predict",
             chosen=None,
             succeeded=False,
-            attempts=(RoutingAttempt(provider="mock", capability="generate", status="failed"),),
+            attempts=(RoutingAttempt(provider="mock", capability="embed", status="failed"),),
         )
 
 
@@ -328,12 +328,12 @@ def test_route_capability_skips_unregistered_providers(tmp_path) -> None:
 
 def test_route_capability_skips_capability_incompatible_providers(tmp_path) -> None:
     forge = _make_forge(tmp_path)
-    forge.register_provider(_generate_only_provider("gen-only"))
+    forge.register_provider(_embed_only_provider("embed-only"))
     forge.register_provider(MockProvider(name="alt"))
 
     policy = ProviderRoutingPolicy(
         capability="predict",
-        preferred="gen-only",
+        preferred="embed-only",
         fallbacks=("alt",),
     )
     result = route_capability(policy, forge, invoke=lambda name: name)
@@ -341,14 +341,14 @@ def test_route_capability_skips_capability_incompatible_providers(tmp_path) -> N
     assert result.succeeded is True
     assert result.chosen == "alt"
     skipped = result.skipped_attempts()
-    assert [s.provider for s in skipped] == ["gen-only"]
+    assert [s.provider for s in skipped] == ["embed-only"]
     assert skipped[0].status == "skipped-incompatible"
     assert "does not advertise capability" in (skipped[0].reason or "")
 
 
 def test_route_capability_can_disable_capability_check(tmp_path) -> None:
     forge = _make_forge(tmp_path)
-    forge.register_provider(_generate_only_provider("gen-only"))
+    forge.register_provider(_embed_only_provider("embed-only"))
 
     invoked: list[str] = []
 
@@ -358,14 +358,14 @@ def test_route_capability_can_disable_capability_check(tmp_path) -> None:
 
     policy = ProviderRoutingPolicy(
         capability="predict",
-        preferred="gen-only",
+        preferred="embed-only",
         require_capability=False,
     )
     result = route_capability(policy, forge, invoke=invoke)
 
     assert result.succeeded is True
-    assert result.chosen == "gen-only"
-    assert invoked == ["gen-only"]
+    assert result.chosen == "embed-only"
+    assert invoked == ["embed-only"]
 
 
 def test_route_capability_returns_failure_when_chain_exhausted(tmp_path) -> None:
@@ -447,18 +447,18 @@ def test_route_capability_propagates_underlying_provider_events(tmp_path) -> Non
     forge.register_provider(MockProvider(name="primary"))
 
     policy = ProviderRoutingPolicy(
-        capability="generate",
+        capability="embed",
         preferred="primary",
     )
 
     def invoke(name: str) -> object:
-        return forge.generate("orbiting cube", name, duration_seconds=1.0)
+        return forge.embed(name, text="orbiting cube")
 
     result = route_capability(policy, forge, invoke=invoke)
 
     assert result.succeeded is True
     success_events = [e for e in events if e.phase == "success"]
-    assert any(e.provider == "primary" and e.operation == "generate" for e in success_events)
+    assert any(e.provider == "primary" and e.operation == "embed" for e in success_events)
 
 
 def test_route_capability_validates_inputs(tmp_path) -> None:

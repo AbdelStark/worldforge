@@ -1,4 +1,4 @@
-"""Flow definitions and runners for TheWorldHarness."""
+"""Flow definitions and runners for robotics showcase evidence."""
 
 from __future__ import annotations
 
@@ -196,7 +196,7 @@ def run_flow(flow_id: str, *, state_dir: Path | None = None) -> HarnessRun:
 
     flow = flows[flow_id]
     resolved_state_dir = state_dir or Path(
-        tempfile.mkdtemp(prefix=f"worldforge-harness-{flow_id}-")
+        tempfile.mkdtemp(prefix=f"worldforge-robotics-flow-{flow_id}-")
     )
     workspace = create_run_workspace(
         workspace_root_for_state_dir(resolved_state_dir),

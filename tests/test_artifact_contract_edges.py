@@ -120,15 +120,15 @@ def test_config_profile_edge_cases_cover_invalid_inputs(tmp_path: Path) -> None:
     profile = parse_config_profile(
         {
             **_valid_profile(),
-            "providers": ["mock", "runway"],
+            "providers": ["mock", "leworldmodel"],
             "provider": None,
-            "operations": ["predict", "generate"],
+            "operations": ["predict", "score"],
             "operation": None,
             "workspace_dir": ".worldforge/work",
             "output_format": "html",
             "timeout_preset": "remote",
             "retry_preset": "patient",
-            "runtime_cache_roots": {"runway": ".worldforge/cache/runway"},
+            "runtime_cache_roots": {"leworldmodel": ".worldforge/cache/leworldmodel"},
         },
         source_path=Path("/Users/abdel/profile.json"),
     )
@@ -546,7 +546,7 @@ def test_runtime_asset_manifest_edges_cover_local_only_and_validation() -> None:
 
     assert (
         missing_optional_dependency_detail(
-            "runway",
+            "leworldmodel",
             "not-installed",
         )
         == "missing optional dependency not-installed"

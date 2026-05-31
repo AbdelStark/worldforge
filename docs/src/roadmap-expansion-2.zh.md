@@ -541,7 +541,7 @@ GitHub 议题：[#242](https://github.com/AbdelStark/worldforge/issues/242)
 
 - 添加基于夹具的 LeRobot、GR00T 和 Cosmos-Policy 策略输出对比重放。
 - 展示公共策略契约字段和提供方特定的原始动作元数据。
-- 包含 TheWorldHarness 或静态报告输出，使缺失的转换器和预先准备好的宿主要求可见。
+- 包含静态报告输出，使缺失的转换器和预先准备好的宿主要求可见。
 
 超出范围：
 
@@ -674,7 +674,7 @@ GitHub 议题：[#246](https://github.com/AbdelStark/worldforge/issues/246)
 范围：
 
 - 添加基于夹具的提供方失败模式画廊，包含预期事件、错误、工件和首要分诊命令。
-- 在适当情况下覆盖 mock、远程媒体、可选运行时和脚手架提供方案例。
+- 在适当情况下覆盖 mock、可选运行时和脚手架提供方案例。
 - 所有示例均可在无凭据的情况下安全运行。
 
 超出范围：
@@ -692,7 +692,7 @@ GitHub 议题：[#246](https://github.com/AbdelStark/worldforge/issues/246)
 验证：
 
 ```bash
-uv run pytest tests/test_remote_video_providers.py tests/test_provider_contracts.py tests/test_docs_site.py
+uv run pytest tests/test_provider_contracts.py tests/test_cosmos_policy_provider.py tests/test_docs_site.py
 uv run mkdocs build --strict
 ```
 

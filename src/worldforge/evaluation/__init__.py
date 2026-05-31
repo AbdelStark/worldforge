@@ -1,8 +1,8 @@
 """Deterministic evaluation suites for WorldForge providers.
 
-The evaluation package bundles five built-in suites — ``generation``, ``physics``,
-``planning``, ``reasoning``, and ``transfer`` — that exercise a provider's typed surfaces
-through fixed scenarios and capture results as :class:`EvaluationReport` payloads. Construct
+The evaluation package bundles built-in ``physics`` and ``planning`` suites that exercise a
+provider's typed surfaces through fixed scenarios and capture results as
+:class:`EvaluationReport` payloads. Construct
 suites via :meth:`EvaluationSuite.from_builtin` (the primary entry point) or assemble custom
 :class:`EvaluationScenario` sequences with callable :class:`EvaluationContext` evaluators.
 
@@ -38,16 +38,10 @@ from .suites import (
     EvalScenario,
     EvalSuite,
     EvaluationSuite,
-    GenerationEval,
-    GenerationEvaluationSuite,
     PhysicsEval,
     PhysicsEvaluationSuite,
     PlanningEval,
     PlanningEvaluationSuite,
-    ReasoningEval,
-    ReasoningEvaluationSuite,
-    TransferEval,
-    TransferEvaluationSuite,
 )
 
 __all__ = [
@@ -65,17 +59,11 @@ __all__ = [
     "EvaluationScenario",
     "EvaluationScenarioOutcome",
     "EvaluationSuite",
-    "GenerationEval",
-    "GenerationEvaluationSuite",
     "PhysicsEval",
     "PhysicsEvaluationSuite",
     "PlanningEval",
     "PlanningEvaluationSuite",
     "ProviderSummary",
-    "ReasoningEval",
-    "ReasoningEvaluationSuite",
-    "TransferEval",
-    "TransferEvaluationSuite",
     "load_dataset_manifest",
     "parse_dataset_manifest",
 ]

@@ -162,11 +162,8 @@ def _validated_action_translator(
 def _groot_capabilities() -> ProviderCapabilities:
     return ProviderCapabilities(
         predict=False,
-        generate=False,
-        reason=False,
         embed=False,
         plan=False,
-        transfer=False,
         score=False,
         policy=True,
     )

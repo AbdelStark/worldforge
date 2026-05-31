@@ -31,7 +31,7 @@
 
 ### 禁止的捷径
 
-- 除非能力已端到端实现，否则不得声明 `predict`、`generate`、`reason`、`embed`、`transfer`、`score` 或 `policy`。
+- 除非能力已端到端实现，否则不得声明 `predict`、`embed`、`score` 或 `policy`。
 - 不得将可选运行时、机器人技术栈、检查点、数据集或 CUDA 包添加到基础依赖集中。
 - 不得在缺少必要配置的情况下自动注册可选提供方。
 - 不得将脚手架或确定性 mock 行为呈现为真实的上游集成。
@@ -132,7 +132,7 @@ uv run mkdocs build --strict
 
 ## 演示或案例展示工作流
 
-适用于检出即可运行的演示、打包演示入口点、案例展示工作流、手册配方、TheWorldHarness 流程，或准备宿主机器人学案例展示文档。
+适用于检出即可运行的演示、打包演示入口点、案例展示工作流、手册配方，或准备宿主机器人学案例展示文档。
 
 ### 建议检查的文件
 
@@ -144,7 +144,6 @@ uv run mkdocs build --strict
 - `examples/`
 - `docs/src/demo-showcases.md`
 - `docs/src/use-case-cookbook.md`
-- `docs/src/theworldharness.md`
 - `docs/src/robotics-showcase.md`
 
 ### 常见需更新的文件
@@ -291,8 +290,8 @@ uv run mkdocs build --strict
 ```bash
 uv run pytest tests/test_benchmark.py tests/test_evaluation_suites.py tests/test_evaluation_and_planning.py
 uv run pytest tests/test_benchmark_budget_calibration.py
-uv run worldforge benchmark --provider mock --operation generate --input-file examples/benchmark-inputs.json
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run worldforge benchmark --provider mock --operation predict --input-file examples/benchmark-inputs.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 uv run mkdocs build --strict
 ```
 

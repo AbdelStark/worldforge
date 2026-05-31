@@ -16,7 +16,6 @@ def test_example_index_metadata_is_task_grouped() -> None:
         "Provider comparison",
         "Score planning",
         "Policy plus score planning",
-        "Visual harness",
         "Batch evaluation host",
         "Robotics operator host",
         "Optional runtime smoke",

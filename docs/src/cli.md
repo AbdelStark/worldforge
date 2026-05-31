@@ -55,7 +55,7 @@ uv run worldforge negotiate --workflow policy-plus-score
 ```
 
 Use `doctor` first when a provider is missing. Optional providers such as LeWorldModel, LeRobot,
-GR00T, Cosmos, and Runway only register when their host-owned environment variables and runtimes are
+GR00T, Cosmos-Policy, and LeWorldModel only register when their host-owned environment variables and runtimes are
 available. `worldforge negotiate` answers the higher-level question "can my providers satisfy this
 workflow before I run it?" — see [Capability Negotiation](./capability-negotiation.md).
 
@@ -101,8 +101,6 @@ uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0
 uv run worldforge world remove-object <world-id> cube-1
 uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
-uv run worldforge generate "A cube rolling across a table" --provider mock --duration 1
-uv run worldforge transfer input.mp4 --provider mock --prompt "make it slower"
 ```
 
 Scene mutations append typed history entries. Position patches keep bounding boxes translated with
@@ -113,9 +111,6 @@ the pose, and predictions append provider action entries after the provider retu
 ```bash
 uv run worldforge eval --suite physics --provider mock
 uv run worldforge eval --suite planning --provider mock --format json
-uv run worldforge eval --suite reasoning --provider mock
-uv run worldforge eval --suite generation --provider mock
-uv run worldforge eval --suite transfer --provider mock
 ```
 
 Built-in suites are deterministic contract checks. They are useful for adapter regression testing,
@@ -126,35 +121,25 @@ not claims of physical fidelity, media quality, or real-world safety.
 ```bash
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 ```
 
 Budget files can make latency, throughput, success-rate, retry-count, and error-count limits fail
 with a non-zero exit code. Preserve benchmark artifacts before using numbers in a release note,
 paper, or public claim.
 
-## Visual Harness
+## Robotics Showcase TUI
 
 ```bash
-uv run --extra harness worldforge-harness
-uv run --extra harness worldforge-harness --flow leworldmodel
-uv run --extra harness worldforge-harness --flow lerobot
-uv run --extra harness worldforge-harness --flow cosmos-policy
-uv run --extra harness worldforge-harness --flow gr00t-replay
-uv run --extra harness worldforge-harness --flow robotics-compare
-uv run --extra harness worldforge-harness --flow diagnostics
-uv run --extra harness worldforge-harness --flow workbench
-uv run --extra harness worldforge-harness --flow runs
-uv run worldforge harness --list
-uv run worldforge harness --connectors --format json
-uv run worldforge harness --runs --status failed --artifact-type json
+scripts/robotics-showcase
+scripts/robotics-showcase --no-tui
+uv run worldforge runs list --status failed --artifact-type json
 ```
 
-TheWorldHarness is optional and Textual-backed. It keeps Textual out of the base package while
-providing a visual workspace for checkout-safe flows, provider diagnostics, local worlds, evals, and
-benchmarks. The connector and run-history metadata commands are checkout-safe and work without
-Textual; they report provider readiness, preserved-run filters, sanitized rerun commands, and first
-recovery actions without printing secret values.
+The robotics showcase report is optional and Textual-backed. It keeps Textual out of the base
+package while visualizing the prepared-host LeRobot plus LeWorldModel policy+score run. The run
+history commands are checkout-safe and work without Textual; they report preserved-run filters,
+sanitized rerun commands, and first recovery actions without printing secret values.
 
 Expected success signal: the selected flow reaches a completed run workspace and the inspector
 shows its saved artifact paths. For `cosmos-policy`, the replay should report
@@ -166,7 +151,7 @@ shows its saved artifact paths. For `cosmos-policy`, the replay should report
 run workspace and inspect `logs/provider-events.jsonl` plus the flow-specific artifact, either
 `artifacts/cosmos-policy-replay.json`, `artifacts/gr00t-replay.json`, or
 `artifacts/robotics-policy-comparison.json`; for live-provider readiness checks, run
-`uv run worldforge harness --connectors --format json`.
+`uv run worldforge provider workbench cosmos-policy --format json --live`.
 
 ## Packaged Demos
 
@@ -217,7 +202,7 @@ See [TensorBoard Integration](./tensorboard.md) for the full flag reference.
 Live GR00T and LeRobot policy smoke helpers:
 
 ```bash
-uv run worldforge-smoke-runway --help
+uv run worldforge-smoke-cosmos-policy --help
 uv run worldforge-smoke-jepa-wms --help
 uv run worldforge-smoke-lerobot-leworldmodel --help
 uv run python scripts/smoke_gr00t_policy.py --help
@@ -231,6 +216,6 @@ does not treat injected demos as real upstream inference.
 More detail:
 
 - [Robotics Replay Showcase](./robotics-showcase.md)
-- [TheWorldHarness](./theworldharness.md)
+- [Robotics Replay Showcase](./robotics-showcase.md)
 - [Examples And CLI Commands](./examples.md)
 - [User And Operator Playbooks](./playbooks.md)

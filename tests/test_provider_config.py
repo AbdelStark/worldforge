@@ -12,19 +12,15 @@ from worldforge.config_profiles import (
 from worldforge.models import WorldForgeError
 from worldforge.providers import (
     CosmosPolicyProvider,
-    CosmosProvider,
     GrootPolicyClientProvider,
     LeRobotPolicyProvider,
     LeWorldModelProvider,
-    RunwayProvider,
 )
 from worldforge.providers.catalog import create_known_providers
 from worldforge.providers.runtime_manifest import load_runtime_manifest, load_runtime_manifests
 
 SECRET_VALUES = (
-    "cosmos-secret",
     "cosmos-policy-secret",
-    "runway-secret",
     "gr00t-secret",
     "signed-query-secret",
     "password-secret",
@@ -39,11 +35,8 @@ def _assert_no_secret_values(payload: object) -> None:
 
 
 def test_provider_config_summaries_are_value_free_json(monkeypatch) -> None:
-    monkeypatch.setenv("COSMOS_BASE_URL", "https://cosmos.example.test")
-    monkeypatch.setenv("NVIDIA_API_KEY", "cosmos-secret")
     monkeypatch.setenv("COSMOS_POLICY_BASE_URL", "https://cosmos-policy.example.test")
     monkeypatch.setenv("COSMOS_POLICY_API_TOKEN", "cosmos-policy-secret")
-    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-secret")
     monkeypatch.setenv("GROOT_POLICY_HOST", "127.0.0.1")
     monkeypatch.setenv("GROOT_POLICY_API_TOKEN", "gr00t-secret")
     monkeypatch.setenv("LEROBOT_POLICY_PATH", "lerobot/checkpoint")
@@ -55,9 +48,7 @@ def test_provider_config_summaries_are_value_free_json(monkeypatch) -> None:
 
     assert {summary["provider"] for summary in summaries} == {
         "mock",
-        "cosmos",
         "cosmos-policy",
-        "runway",
         "leworldmodel",
         "gr00t",
         "lerobot",
@@ -87,33 +78,14 @@ def test_provider_config_summaries_are_value_free_json(monkeypatch) -> None:
     ]
 
 
-def test_provider_config_summary_reports_alias_source_without_value(monkeypatch) -> None:
-    monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
-    monkeypatch.setenv("RUNWAY_API_SECRET", "runway-secret")
-
-    summary = RunwayProvider().config_summary().to_dict()
-
-    api_field = summary["fields"][0]
-    assert api_field["name"] == "RUNWAYML_API_SECRET"
-    assert api_field["aliases"] == ["RUNWAY_API_SECRET"]
-    assert api_field["present"] is True
-    assert api_field["source"] == "env:RUNWAY_API_SECRET"
-    assert api_field["secret"] is True
-    _assert_no_secret_values(summary)
-
-
 def test_direct_provider_config_summary_reports_source_not_value(monkeypatch) -> None:
-    monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
     monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
     monkeypatch.delenv("COSMOS_POLICY_ALLOW_LOCAL_BASE_URL", raising=False)
-    monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
-    monkeypatch.delenv("RUNWAY_API_SECRET", raising=False)
     monkeypatch.delenv("GROOT_POLICY_HOST", raising=False)
     monkeypatch.delenv("LEROBOT_POLICY_PATH", raising=False)
     monkeypatch.delenv("LEWORLDMODEL_POLICY", raising=False)
 
     summaries = [
-        CosmosProvider(base_url="https://cosmos.example.test").config_summary().to_dict(),
         CosmosPolicyProvider(
             base_url="https://cosmos-policy.example.test",
             api_token="cosmos-policy-secret",
@@ -135,18 +107,18 @@ def test_direct_provider_config_summary_reports_source_not_value(monkeypatch) ->
 
 def test_runtime_manifest_config_summaries_cover_declared_env_without_values() -> None:
     env = {
-        "RUNWAY_API_SECRET": "runway-secret",
-        "RUNWAYML_BASE_URL": "https://api.example.test",
-        "NVIDIA_API_KEY": "cosmos-secret",
+        "COSMOS_POLICY_BASE_URL": "https://cosmos-policy.example.test",
+        "COSMOS_POLICY_API_TOKEN": "cosmos-policy-secret",
     }
 
-    runway_summary = load_runtime_manifest("runway").config_summary(environ=env).to_dict()
+    cosmos_policy_summary = (
+        load_runtime_manifest("cosmos-policy").config_summary(environ=env).to_dict()
+    )
 
-    assert runway_summary["configured"] is True
-    assert runway_summary["fields"][0]["source"] == "env:RUNWAY_API_SECRET"
-    assert runway_summary["fields"][0]["aliases"] == ["RUNWAY_API_SECRET"]
-    assert runway_summary["fields"][0]["secret"] is True
-    assert runway_summary["fields"][1]["name"] == "RUNWAYML_BASE_URL"
+    assert cosmos_policy_summary["configured"] is True
+    assert cosmos_policy_summary["fields"][0]["source"] == "env:COSMOS_POLICY_BASE_URL"
+    assert cosmos_policy_summary["fields"][1]["name"] == "COSMOS_POLICY_API_TOKEN"
+    assert cosmos_policy_summary["fields"][1]["secret"] is True
     for manifest in load_runtime_manifests():
         summary = manifest.config_summary(environ={}).to_dict()
         assert summary["provider"] == manifest.provider
@@ -154,7 +126,7 @@ def test_runtime_manifest_config_summaries_cover_declared_env_without_values() -
             manifest.required_env_vars[0],
             *manifest.optional_env_vars,
         ]
-    _assert_no_secret_values(runway_summary)
+    _assert_no_secret_values(cosmos_policy_summary)
 
 
 def test_config_profile_loads_non_secret_defaults_and_provenance(tmp_path) -> None:

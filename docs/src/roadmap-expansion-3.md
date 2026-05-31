@@ -53,7 +53,7 @@ Milestone: `Roadmap: Showcases`.
 |---|-------|----------|--------|
 | [#270](https://github.com/AbdelStark/worldforge/issues/270) | WF-DEMO3-001: Publish VHS-recorded CLI tours for the first-run workflow | p2 | M |
 | [#271](https://github.com/AbdelStark/worldforge/issues/271) | WF-DEMO3-002: Publish Jupyter notebook walkthroughs for the Python API | p1 | M |
-| [#272](https://github.com/AbdelStark/worldforge/issues/272) | WF-DEMO3-003: Add a TheWorldHarness keyboard-driven tour gallery | p2 | S |
+| [#272](https://github.com/AbdelStark/worldforge/issues/272) | WF-DEMO3-003: Add a robotics showcase keyboard-driven tour gallery | p2 | S |
 | [#273](https://github.com/AbdelStark/worldforge/issues/273) | WF-DEMO3-004: Add a scenario to release-evidence narrative walkthrough | p2 | M |
 | [#274](https://github.com/AbdelStark/worldforge/issues/274) | WF-DEMO3-005: Add an adopt-your-robot 20-minute guided demo | p1 | M |
 | [#275](https://github.com/AbdelStark/worldforge/issues/275) | WF-DEMO3-006: Add a capability protocol registration mini-demo | p2 | S |

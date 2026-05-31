@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-from base64 import b64encode
 from pathlib import Path
 
-import httpx
 import pytest
 
 from worldforge import (
@@ -14,7 +12,6 @@ from worldforge import (
     ProviderBenchmarkHarness,
     ProviderCapabilities,
     ProviderEvent,
-    ProviderRequestPolicy,
     WorldForge,
     WorldForgeError,
 )
@@ -26,7 +23,6 @@ from worldforge.benchmark import (
     load_benchmark_inputs,
 )
 from worldforge.models import JSONDict
-from worldforge.providers import CosmosProvider, RunwayProvider
 from worldforge.providers.base import BaseProvider, ProviderError, ProviderProfileSpec
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,12 +102,12 @@ def test_provider_benchmark_harness_reports_mock_operations(tmp_path) -> None:
 
     report = harness.run(
         "mock",
-        operations=["predict", "reason", "generate", "transfer", "embed"],
+        operations=["predict", "embed"],
         iterations=2,
         concurrency=2,
     )
 
-    assert len(report.results) == 5
+    assert len(report.results) == 2
     assert json.loads(report.to_json())["results"][0]["provider"] == "mock"
     assert report.to_csv().startswith("provider,operation,iterations")
     assert report.to_markdown().startswith("# Benchmark Report")
@@ -132,7 +128,7 @@ def test_benchmark_report_markdown_renders_optional_provenance_fields(tmp_path) 
     forge = WorldForge(state_dir=tmp_path)
     report = ProviderBenchmarkHarness(forge=forge).run(
         "mock",
-        operations=["generate"],
+        operations=["predict"],
         iterations=1,
     )
     assert report.provenance is not None
@@ -155,7 +151,7 @@ def test_benchmark_report_evaluates_budget_gates(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
     report = ProviderBenchmarkHarness(forge=forge).run(
         "mock",
-        operations=["generate"],
+        operations=["predict"],
         iterations=2,
     )
 
@@ -163,7 +159,7 @@ def test_benchmark_report_evaluates_budget_gates(tmp_path) -> None:
         [
             BenchmarkBudget(
                 provider="mock",
-                operation="generate",
+                operation="predict",
                 min_success_rate=1.0,
                 max_error_count=0,
                 max_retry_count=0,
@@ -184,7 +180,7 @@ def test_benchmark_report_evaluates_budget_gates(tmp_path) -> None:
         [
             BenchmarkBudget(
                 provider="mock",
-                operation="generate",
+                operation="predict",
                 max_average_latency_ms=0.0,
             ),
             BenchmarkBudget(provider="mock", operation="policy", max_error_count=0),
@@ -202,7 +198,7 @@ def test_benchmark_report_evaluates_budget_gates(tmp_path) -> None:
 def test_benchmark_result_contract_rejects_incoherent_public_payloads() -> None:
     result = BenchmarkResult(
         provider="mock",
-        operation="generate",
+        operation="predict",
         iterations=2,
         concurrency=1,
         success_count=1,
@@ -219,7 +215,7 @@ def test_benchmark_result_contract_rejects_incoherent_public_payloads() -> None:
         errors=["simulated failure"],
     )
 
-    assert result.to_dict()["operation"] == "generate"
+    assert result.to_dict()["operation"] == "predict"
 
     with pytest.raises(WorldForgeError, match="operation must be one of"):
         BenchmarkResult(
@@ -241,7 +237,7 @@ def test_benchmark_result_contract_rejects_incoherent_public_payloads() -> None:
     with pytest.raises(WorldForgeError, match="must sum to iterations"):
         BenchmarkResult(
             provider="mock",
-            operation="generate",
+            operation="predict",
             iterations=2,
             concurrency=1,
             success_count=2,
@@ -258,7 +254,7 @@ def test_benchmark_result_contract_rejects_incoherent_public_payloads() -> None:
     with pytest.raises(WorldForgeError, match="operation_metrics"):
         BenchmarkResult(
             provider="mock",
-            operation="generate",
+            operation="predict",
             iterations=1,
             concurrency=1,
             success_count=1,
@@ -276,7 +272,7 @@ def test_benchmark_result_contract_rejects_incoherent_public_payloads() -> None:
     with pytest.raises(WorldForgeError, match="errors length"):
         BenchmarkResult(
             provider="mock",
-            operation="generate",
+            operation="predict",
             iterations=1,
             concurrency=1,
             success_count=0,
@@ -302,31 +298,14 @@ def test_documented_benchmark_fixtures_load_and_pass_gate(tmp_path) -> None:
 
     report = ProviderBenchmarkHarness(forge=forge).run(
         "mock",
-        operations=["predict", "embed", "generate"],
+        operations=["predict", "embed"],
         iterations=1,
         inputs=inputs,
     )
     gate = report.evaluate_budgets(budgets)
 
-    assert {result.operation for result in report.results} == {"predict", "embed", "generate"}
+    assert {result.operation for result in report.results} == {"predict", "embed"}
     assert gate.passed is True
-
-
-def test_runway_benchmark_input_fixtures_are_separate_and_valid() -> None:
-    generate_file = ROOT / "examples" / "runway-generate-benchmark-inputs.json"
-    transfer_file = ROOT / "examples" / "runway-transfer-benchmark-inputs.json"
-
-    generate_payload = json.loads(generate_file.read_text(encoding="utf-8"))
-    transfer_payload = json.loads(transfer_file.read_text(encoding="utf-8"))
-    generate_inputs = load_benchmark_inputs(generate_payload, base_path=generate_file.parent)
-    transfer_inputs = load_benchmark_inputs(transfer_payload, base_path=transfer_file.parent)
-
-    assert generate_payload["metadata"]["operation"] == "generate"
-    assert transfer_payload["metadata"]["operation"] == "transfer"
-    assert generate_inputs.generation_prompt.startswith("a calibrated robot arm")
-    assert generate_inputs.generation_duration_seconds == 5.0
-    assert transfer_inputs.transfer_prompt.startswith("rerender the clip")
-    assert transfer_inputs.transfer_clip.content_type() == "video/mp4"
 
 
 def test_load_benchmark_budgets_accepts_list_or_object_payload() -> None:
@@ -335,7 +314,7 @@ def test_load_benchmark_budgets_accepts_list_or_object_payload() -> None:
             "budgets": [
                 {
                     "provider": "mock",
-                    "operation": "generate",
+                    "operation": "predict",
                     "min_success_rate": 1.0,
                     "max_error_count": 0,
                 }
@@ -346,7 +325,7 @@ def test_load_benchmark_budgets_accepts_list_or_object_payload() -> None:
     assert loaded == [
         BenchmarkBudget(
             provider="mock",
-            operation="generate",
+            operation="predict",
             min_success_rate=1.0,
             max_error_count=0,
         )
@@ -418,16 +397,12 @@ def test_benchmark_inputs_preview_provider_native_score_candidates() -> None:
     ("kwargs", "message"),
     [
         ({"prediction_action": {"type": "move_to"}}, "prediction_action must be an Action"),
-        ({"reason_query": ""}, "reason_query must be a non-empty string"),
-        ({"generation_prompt": "  "}, "generation_prompt must be a non-empty string"),
-        ({"transfer_prompt": ""}, "transfer_prompt must be a non-empty string"),
         ({"embedding_text": ""}, "embedding_text must be a non-empty string"),
         ({"score_info": {}}, "score_info must be a non-empty JSON object"),
         ({"score_info": {"bad": object()}}, "JSON serializable"),
         ({"score_action_candidates": None}, "score_action_candidates must not be None"),
         ({"policy_info": []}, "policy_info must be a non-empty JSON object"),
         ({"policy_info": {"bad": object()}}, "JSON serializable"),
-        ({"transfer_clip": {}}, "transfer_clip must be a VideoClip"),
     ],
 )
 def test_benchmark_inputs_validate_planning_surface_inputs(
@@ -438,10 +413,7 @@ def test_benchmark_inputs_validate_planning_surface_inputs(
         BenchmarkInputs(**kwargs)
 
 
-def test_load_benchmark_inputs_accepts_fixture_payload_and_relative_clip(tmp_path) -> None:
-    clip_path = tmp_path / "seed.bin"
-    clip_path.write_bytes(b"transfer-seed")
-
+def test_load_benchmark_inputs_accepts_fixture_payload(tmp_path) -> None:
     inputs = load_benchmark_inputs(
         {
             "metadata": {"fixture": "unit"},
@@ -455,20 +427,6 @@ def test_load_benchmark_inputs_accepts_fixture_payload_and_relative_clip(tmp_pat
                     },
                 },
                 "prediction_steps": 3,
-                "reason_query": "fixture query",
-                "generation_prompt": "fixture generation",
-                "generation_duration_seconds": 1.5,
-                "transfer_prompt": "fixture transfer",
-                "transfer_width": 640,
-                "transfer_height": 360,
-                "transfer_fps": 24.0,
-                "transfer_clip": {
-                    "path": "seed.bin",
-                    "fps": 6.0,
-                    "resolution": [80, 45],
-                    "duration_seconds": 0.5,
-                    "metadata": {"fixture": "clip"},
-                },
                 "embedding_text": "fixture embedding",
                 "score_info": {"observation": [[0.0]], "goal": [[1.0]]},
                 "score_action_candidates": [[[[0.0]], [[1.0]]]],
@@ -480,36 +438,10 @@ def test_load_benchmark_inputs_accepts_fixture_payload_and_relative_clip(tmp_pat
 
     assert inputs.prediction_action.parameters["object_id"] == "cube"
     assert inputs.prediction_steps == 3
-    assert inputs.reason_query == "fixture query"
-    assert inputs.generation_prompt == "fixture generation"
-    assert inputs.transfer_width == 640
-    assert inputs.transfer_height == 360
-    assert inputs.transfer_clip.blob() == b"transfer-seed"
-    assert inputs.transfer_clip.fps == 6.0
-    assert inputs.transfer_clip.resolution == (80, 45)
     assert inputs.embedding_text == "fixture embedding"
     assert inputs.score_info["goal"] == [[1.0]]
     assert inputs.score_action_candidates == [[[[0.0]], [[1.0]]]]
     assert inputs.policy_info["mode"] == "select_action"
-
-
-def test_load_benchmark_inputs_accepts_inline_base64_transfer_frames() -> None:
-    inputs = load_benchmark_inputs(
-        {
-            "transfer_clip": {
-                "frames_base64": [
-                    b64encode(b"frame-a").decode("ascii"),
-                    b64encode(b"frame-b").decode("ascii"),
-                ],
-                "fps": 10.0,
-                "resolution": [100, 50],
-                "duration_seconds": 0.2,
-            }
-        }
-    )
-
-    assert inputs.transfer_clip.frames == [b"frame-a", b"frame-b"]
-    assert inputs.transfer_clip.resolution == (100, 50)
 
 
 @pytest.mark.parametrize(
@@ -520,30 +452,6 @@ def test_load_benchmark_inputs_accepts_inline_base64_transfer_frames() -> None:
         ({"inputs": {}, "extra": True}, "Unknown benchmark input wrapper fields"),
         ({"unknown": True}, "Unknown benchmark input fields"),
         ({"prediction_action": []}, "prediction_action must be a JSON object"),
-        ({"reason_query": ""}, "reason_query must be a non-empty string"),
-        ({"generation_duration_seconds": 0}, "generation_duration_seconds must be greater"),
-        ({"transfer_width": True}, "transfer_width must be an integer"),
-        ({"transfer_clip": []}, "transfer_clip must be a JSON object"),
-        (
-            {"transfer_clip": {"frames_base64": ["Zm9v"], "unknown": True}},
-            "Unknown transfer_clip fields",
-        ),
-        ({"transfer_clip": {"frames_base64": []}}, "frames_base64 must be a non-empty list"),
-        ({"transfer_clip": {"frames_base64": [""]}}, "must be a non-empty base64 string"),
-        (
-            {"transfer_clip": {"path": "missing.bin", "frames_base64": ["Zm9v"]}},
-            "exactly one of 'path' or 'frames_base64'",
-        ),
-        ({"transfer_clip": {"frames_base64": ["not base64"]}}, "valid base64 bytes"),
-        (
-            {"transfer_clip": {"frames_base64": ["Zm9v"], "duration_seconds": -1}},
-            "duration_seconds must be greater",
-        ),
-        (
-            {"transfer_clip": {"frames_base64": ["Zm9v"], "metadata": []}},
-            "metadata must be a JSON object",
-        ),
-        ({"transfer_clip": {"frames_base64": ["Zm9v"], "resolution": [0, 50]}}, "greater"),
         ({"score_info": []}, "score_info must be a non-empty JSON object"),
         ({"score_action_candidates": float("nan")}, "finite numbers"),
     ],
@@ -593,76 +501,12 @@ def test_provider_benchmark_harness_uses_custom_score_and_policy_inputs(tmp_path
     assert policy_provider.calls == [inputs.policy_info]
 
 
-def test_provider_benchmark_harness_captures_retry_metrics(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("RUNWAYML_API_SECRET", "runway-test-key")
-    attempts = {"poll": 0, "download": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.method == "POST" and request.url.path == "/v1/image_to_video":
-            return httpx.Response(200, json={"id": "task_generate"})
-
-        if request.method == "GET" and request.url.path == "/v1/tasks/task_generate":
-            attempts["poll"] += 1
-            if attempts["poll"] == 1:
-                return httpx.Response(503, text="retry poll")
-            return httpx.Response(
-                200,
-                json={
-                    "id": "task_generate",
-                    "status": "SUCCEEDED",
-                    "output": ["https://downloads.example.com/generated.mp4"],
-                },
-            )
-
-        if request.method == "GET" and request.url.host == "downloads.example.com":
-            attempts["download"] += 1
-            if attempts["download"] == 1:
-                return httpx.Response(503, text="retry download")
-            return httpx.Response(200, content=b"benchmark-generated")
-
-        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
-
-    forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
-    forge.register_provider(
-        RunwayProvider(
-            request_policy=ProviderRequestPolicy.remote_defaults(
-                request_timeout_seconds=30.0,
-                read_retry_attempts=2,
-                read_backoff_seconds=0.0,
-            ),
-            transport=httpx.MockTransport(handler),
-            poll_interval_seconds=0.0,
-            max_polls=1,
-        )
-    )
-
-    report = ProviderBenchmarkHarness(forge=forge).run(
-        "runway",
-        operations=["generate"],
-        iterations=1,
-    )
-
-    result = report.results[0]
-    assert result.provider == "runway"
-    assert result.operation == "generate"
-    assert result.success_count == 1
-    assert result.error_count == 0
-    assert result.retry_count == 2
-    emitted_operations = {event["operation"] for event in result.operation_metrics["events"]}
-    assert emitted_operations == {
-        "generation request",
-        "task poll",
-        "artifact download",
-    }
-
-
 def test_provider_benchmark_harness_rejects_unsupported_operations(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
-    forge.register_provider(CosmosProvider(base_url="http://cosmos.test"))
     harness = ProviderBenchmarkHarness(forge=forge)
 
-    with pytest.raises(WorldForgeError, match="unsupported operations: transfer"):
-        harness.run("cosmos", operations=["transfer"], iterations=1)
+    with pytest.raises(WorldForgeError, match="unsupported operations: score"):
+        harness.run("mock", operations=["score"], iterations=1)
 
 
 def test_provider_benchmark_harness_rejects_unknown_invoke_operation(tmp_path) -> None:

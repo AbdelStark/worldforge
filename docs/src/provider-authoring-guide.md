@@ -101,8 +101,8 @@ tokens, private endpoints, checkpoint paths, GPU logs, or downloaded model files
 
 Default hooks are safe for existing providers. Configured providers report `no-op`; missing required
 configuration reports `skipped` with a skip reason. Capability protocol implementations may define
-the same hook methods next to their existing `score_actions`, `select_actions`, `reason`, or other
-capability method; registration still happens through the capability method, and diagnostics pick up
+the same hook methods next to their existing `score_actions`, `select_actions`, `predict`, or
+`embed` method; registration still happens through the capability method, and diagnostics pick up
 the lifecycle hooks through the observable wrapper.
 
 Diagnostics serialize the aggregate `ProviderLifecycleStatus` in `worldforge doctor` and
@@ -134,15 +134,6 @@ New upstream provider
   |-- Can it roll a WorldForge state forward from an Action?
   |     `-- expose predict(...) -> PredictionPayload
   |
-  |-- Can it generate a video artifact from prompt/options?
-  |     `-- expose generate(...) -> VideoClip
-  |
-  |-- Can it transform one video artifact into another?
-  |     `-- expose transfer(...) -> VideoClip
-  |
-  |-- Can it answer questions about a world/prompt?
-  |     `-- expose reason(...) -> ReasoningResult
-  |
   |-- Can it embed text or another explicit input?
   |     `-- expose embed(...) -> EmbeddingResult
   |
@@ -161,13 +152,7 @@ flowchart TD
     Policy -- yes --> PolicyApi[select_actions -> ActionPolicyResult]
     Policy -- no --> Predict{Rolls state forward?}
     Predict -- yes --> PredictApi[predict -> PredictionPayload]
-    Predict -- no --> Generate{Generates video artifact?}
-    Generate -- yes --> GenerateApi[generate -> VideoClip]
-    Generate -- no --> Transfer{Transforms video artifact?}
-    Transfer -- yes --> TransferApi[transfer -> VideoClip]
-    Transfer -- no --> Reason{Answers questions?}
-    Reason -- yes --> ReasonApi[reason -> ReasoningResult]
-    Reason -- no --> Embed{Embeds explicit input?}
+    Predict -- no --> Embed{Embeds explicit input?}
     Embed -- yes --> EmbedApi[embed -> EmbeddingResult]
     Embed -- no --> NoProvider[Do not add provider yet]
 ```
@@ -180,9 +165,9 @@ Every provider doc and profile should identify the provider's taxonomy category.
 | --- | --- | --- |
 | JEPA latent predictive world model | `score`, future `predict` or latent rollout | First-class planning path. Follow the LeWorldModel pattern. |
 | Model-based RL latent dynamics | `predict`, `score`, maybe future policy selection | Expose the exported control surface, not the whole trainer. |
-| Generative video simulator | `generate`, maybe future action-conditioned `predict` | Do not imply controllable planning unless the API supports it. |
-| Spatial / 3D world model | future scene or asset surfaces | Keep out of core until typed scene contracts exist. |
-| Physical AI infrastructure | `generate`, `transfer`, future data/eval adapters | Model each stable API as one capability. |
+| Generative video simulator | out of scope | Do not add media-only providers to WorldForge's core planning backbone. |
+| Spatial / 3D world model | future scene or asset surfaces | Keep out of core until typed planning-facing contracts exist. |
+| Physical AI infrastructure | future data/eval adapters | Model each stable planning-facing API as one capability. |
 | Embodied policy / VLA action model | `policy`, maybe paired with a score provider | Treat as an actor. Do not claim it predicts futures. |
 | Active inference / structured generative model | future belief, uncertainty, or policy outputs | Preserve beliefs and uncertainty explicitly. |
 | Deterministic local surrogate | any tested local subset | Make it obvious that it is a surrogate. |
@@ -206,9 +191,6 @@ filtering, diagnostics, and tests.
 
 ```text
 capabilities.predict  -> predict(world_state, action, steps)
-capabilities.generate -> generate(prompt, duration_seconds, options)
-capabilities.transfer -> transfer(clip, width, height, fps, prompt, options)
-capabilities.reason   -> reason(query, world_state)
 capabilities.embed    -> embed(text)
 capabilities.score    -> score_actions(info, action_candidates)
 capabilities.policy   -> select_actions(info)
@@ -218,13 +200,10 @@ capabilities.plan     -> currently reserved for providers that implement plannin
 Rules:
 
 - [ ] Do not set `predict=True` unless the adapter returns a validated `PredictionPayload`.
-- [ ] Do not set `generate=True` unless the adapter returns a validated `VideoClip`.
 - [ ] Do not set `score=True` unless the adapter returns `ActionScoreResult` with finite scores
       and a `best_index` that matches `lower_is_better`.
 - [ ] Do not set `policy=True` unless the adapter returns `ActionPolicyResult` with at least one
       executable WorldForge `Action`.
-- [ ] Do not set `reason=True` for models that only return unstructured logs, captions, or
-      provider diagnostics.
 - [ ] Do not set `plan=True` just because a provider can score candidates. Score-based planning is
       represented by `score=True` plus `World.plan(...)`.
 
@@ -268,10 +247,9 @@ Current classifications:
 | Provider | Status | Why it is classified this way |
 | --- | --- | --- |
 | `mock` | `stable` | Deterministic in-repo provider with no optional runtime and broad checkout-safe test coverage. |
-| `cosmos` | `beta` | Real remote generate adapter with fixture coverage and runtime manifest; prepared hosts own the Cosmos deployment. |
-| `runway` | `beta` | Real remote generate/transfer adapter with parser and artifact checks; prepared hosts own credentials and artifact retention. |
 | `leworldmodel` | `stable` | Recommended score adapter for the official LeWM loading path; prepared hosts own torch, `stable_worldmodel`, checkpoints, and task preprocessing. |
 | `gr00t` | `beta` | Real remote PolicyClient boundary with fixture-backed failure coverage; prepared hosts own the reachable server, credentials, translator, and robot runtime. |
+| `cosmos-policy` | `beta` | Real remote policy boundary for ALOHA action chunks; prepared hosts own the reachable server, credentials, translator, and robot runtime. |
 | `lerobot` | `stable` | Recommended embodied policy adapter for the LeRobot `PreTrainedPolicy` path; prepared hosts own LeRobot, checkpoints, translators, and robot runtime. |
 | `jepa` | `experimental` | Score-only adapter for host-owned `facebookresearch/jepa-wms` torch-hub runtimes. |
 | `genie` | `scaffold` | Fail-closed reservation until a concrete upstream runtime/API contract exists. |
@@ -356,15 +334,15 @@ class ExampleProvider(BaseProvider):
     def __init__(self, *, event_handler=None):
         super().__init__(
             name="example",
-            capabilities=ProviderCapabilities(generate=True),
+            capabilities=ProviderCapabilities(predict=True),
             profile=ProviderProfileSpec(
                 description="Example provider adapter.",
                 package="worldforge",
                 implementation_status="beta",
                 deterministic=False,
                 required_env_vars=(self.env_var,),
-                supported_modalities=("text",),
-                artifact_types=("video",),
+            supported_modalities=("world_state", "action"),
+            artifact_types=("prediction",),
                 notes=("Documents provider-specific limits here.",),
             ),
             event_handler=event_handler,
@@ -374,14 +352,14 @@ class ExampleProvider(BaseProvider):
         # Keep health cheap. Do not download large artifacts or load huge checkpoints here.
         return super().health()
 
-    def generate(self, prompt, duration_seconds, *, options=None):
+    def predict(self, world_state, action, steps=1):
         try:
             self._require_credentials()
-            # validate inputs, call upstream, parse response, return VideoClip
+            # validate inputs, call upstream, parse response, return PredictionPayload
         except ProviderError:
             raise
         except Exception as exc:
-            raise ProviderError(f"Provider 'example' generation failed: {exc}") from exc
+            raise ProviderError(f"Provider 'example' prediction failed: {exc}") from exc
 ```
 
 Minimal single-capability protocol skeleton:
@@ -420,8 +398,8 @@ models.
 
 Caller input:
 
-- [ ] Non-empty provider name, prompt, model ID, and required env vars.
-- [ ] Positive duration, width, height, fps, step count, polling limits, and timeouts.
+- [ ] Non-empty provider name, model ID, and required env vars.
+- [ ] Positive step count, polling limits, and timeouts.
 - [ ] Finite numeric values for positions, scores, probabilities, latencies, and embeddings.
 - [ ] Existing local file paths before network upload.
 - [ ] Rectangular nested numeric arrays when accepting tensor-like JSON.
@@ -432,14 +410,8 @@ Upstream response:
 
 - [ ] JSON response is an object when an object is expected.
 - [ ] Required fields are present and correctly typed.
-- [ ] Task IDs are non-empty and stable across create/poll responses.
-- [ ] Terminal task states are explicit.
 - [ ] Partial outputs fail with `ProviderError` unless the public contract supports partial
       results.
-- [ ] Artifact URLs are non-empty and sanitized before download.
-- [ ] Expired artifacts fail with context.
-- [ ] Unsupported content types fail before returning `VideoClip`.
-- [ ] Base64 media fields decode successfully.
 - [ ] Scores flatten to a non-empty finite list.
 - [ ] Policy action chunks preserve raw provider output and translate to executable
       WorldForge `Action` objects.
@@ -534,20 +506,20 @@ Use this checklist for providers that roll a world state forward.
 - [ ] Tests cover malformed world state, missing scene objects, impossible actions if applicable,
       non-finite metrics, and provider failure propagation.
 
-## Step 10: Generative and Transfer Provider Checklist
+## Step 10: Policy And Score Provider Checklist
 
-Use this checklist for video or artifact providers.
+Use this checklist for planning-facing cost models and embodied policies.
 
-- [ ] Implement `generate(...)` only for prompt-to-video or equivalent artifact generation.
-- [ ] Implement `transfer(...)` only for video-to-video or artifact-to-artifact transformation.
-- [ ] Validate prompt, duration, size, ratio, fps, and file paths before the outbound request.
-- [ ] Model provider-specific options with `GenerationOptions` where possible.
-- [ ] Keep create-style mutations single-attempt unless the provider contract is idempotent.
-- [ ] Poll with bounded attempts and explicit terminal states.
-- [ ] Validate artifact content type before reading into `VideoClip`.
-- [ ] Reject empty artifact bodies.
-- [ ] Tests cover bad content types, expired artifacts, missing outputs, task failures, malformed
-      JSON, timeout, retry, and provider-specific limits.
+- [ ] Implement `score_actions(...)` only when the adapter returns one finite score per action
+      candidate.
+- [ ] Implement `select_actions(...)` only when the adapter can return executable WorldForge
+      `Action` objects, either directly or through a host-supplied translator.
+- [ ] Validate tensor-like JSON shape, rank, rectangularity, and finite values before invoking an
+      optional runtime.
+- [ ] Preserve raw policy actions only as JSON-native, redaction-safe metadata.
+- [ ] Keep observation preprocessing and embodiment-specific translation host-owned.
+- [ ] Tests cover malformed tensors, score-count mismatches, missing translators, optional runtime
+      skips, and provider-specific limits.
 
 ## Step 11: Observability and Failure Semantics
 
@@ -608,9 +580,6 @@ Reusable conformance helpers are available for narrow provider tests:
 | Helper | Capability covered |
 | --- | --- |
 | `assert_predict_conformance(...)` | `predict -> PredictionPayload` |
-| `assert_generate_conformance(...)` | `generate -> VideoClip` |
-| `assert_transfer_conformance(...)` | `transfer -> VideoClip` |
-| `assert_reason_conformance(...)` | `reason -> ReasoningResult` |
 | `assert_embed_conformance(...)` | `embed -> EmbeddingResult` |
 | `assert_score_conformance(...)` | `score_actions -> ActionScoreResult` |
 | `assert_policy_conformance(...)` | `select_actions -> ActionPolicyResult` |

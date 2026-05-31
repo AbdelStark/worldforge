@@ -1,4 +1,4 @@
-"""Robotics policy replay comparison flow for TheWorldHarness."""
+"""Robotics policy replay comparison flow."""
 
 from __future__ import annotations
 

@@ -16,7 +16,6 @@ from worldforge import (
     BBox,
     Comparison,
     EmbeddingResult,
-    GenerationOptions,
     Pose,
     Position,
     Prediction,
@@ -25,13 +24,11 @@ from worldforge import (
     ProviderEvent,
     ProviderHealth,
     ProviderRequestPolicy,
-    ReasoningResult,
     RequestOperationPolicy,
     RetryPolicy,
     Rotation,
     SceneObject,
     SceneObjectPatch,
-    VideoClip,
     World,
     WorldForge,
     WorldForgeError,
@@ -42,7 +39,6 @@ from worldforge.models import HistoryEntry, average, dump_json
 from worldforge.providers import PredictionPayload, ProviderError
 from worldforge.providers.http_utils import (
     asset_to_uri,
-    parse_size,
     poll_json_task,
     request_json_with_policy,
 )
@@ -58,12 +54,6 @@ def test_http_utils_validate_assets_size_and_polling(tmp_path) -> None:
 
     with pytest.raises(ProviderError, match="does not exist"):
         asset_to_uri(str(tmp_path / "missing.png"), default_content_type="image/png")
-
-    assert parse_size(GenerationOptions(size="640x360"), fallback=(1280, 720)) == (640, 360)
-    assert parse_size(GenerationOptions(ratio="16:9"), fallback=(1280, 720)) == (16, 9)
-
-    with pytest.raises(ProviderError, match="greater than 0"):
-        parse_size(GenerationOptions(size="0x360"), fallback=(1280, 720))
 
     processing_client = httpx.Client(
         transport=httpx.MockTransport(
@@ -215,8 +205,8 @@ def test_public_capability_error_message_lists_supported_names() -> None:
         ProviderCapabilities().supports("generation")
 
     assert str(excinfo.value) == (
-        "Unknown provider capability 'generation'. Known capabilities: predict, generate, "
-        "reason, embed, plan, transfer, score, policy."
+        "Unknown provider capability 'generation'. Known capabilities: predict, embed, "
+        "plan, score, policy."
     )
 
 
@@ -279,16 +269,6 @@ def test_cli_public_error_formatter_redacts_secrets_urls_and_host_paths(tmp_path
             "drill failed",
             "worldforge drills list",
         ),
-        (
-            Namespace(command="generate"),
-            "provider unavailable",
-            "worldforge provider health <provider>",
-        ),
-        (
-            Namespace(command="generate"),
-            "prompt failed",
-            "worldforge generate --help",
-        ),
     ],
 )
 def test_cli_public_error_formatter_selects_command_specific_triage(
@@ -335,7 +315,7 @@ def test_cli_special_command_dispatch_uses_route_keys(
 def test_cli_special_command_dispatch_ignores_forge_commands() -> None:
     parser = ArgumentParser(prog="worldforge")
 
-    assert cli_module._dispatch_special_command(parser, Namespace(command="generate")) is None
+    assert cli_module._dispatch_special_command(parser, Namespace(command="predict")) is None
 
 
 def test_http_request_policy_budget_can_fail_before_first_attempt(monkeypatch) -> None:
@@ -419,19 +399,12 @@ def test_framework_helpers_and_error_paths(tmp_path) -> None:
     assert [prediction.provider for prediction in multi_comparison.results] == ["mock", "mock"]
 
     assert forge.provider_info("mock").name == "mock"
-    assert [health.name for health in forge.provider_healths(capability="generate")] == ["mock"]
+    assert [health.name for health in forge.provider_healths(capability="embed")] == ["mock"]
 
-    clip = forge.generate("a cube rolling across a table", "mock", duration_seconds=1.0)
-    saved_clip_path = clip.save(tmp_path / "clip.bin")
-    assert saved_clip_path.exists()
-    with pytest.raises(WorldForgeError, match="duration_seconds"):
-        forge.generate("a cube rolling across a table", "mock", duration_seconds=math.nan)
-    with pytest.raises(WorldForgeError, match="prompt"):
-        forge.generate(" ", "mock", duration_seconds=1.0)
-    with pytest.raises(WorldForgeError, match="width"):
-        forge.transfer(clip, "mock", width=True, height=180, fps=12.0)  # type: ignore[arg-type]
-    with pytest.raises(WorldForgeError, match="fps"):
-        forge.transfer(clip, "mock", width=320, height=180, fps=math.inf)
+    embedding = forge.embed("mock", text="a cube rolling across a table")
+    assert embedding.provider == "mock"
+    with pytest.raises(WorldForgeError, match="text"):
+        forge.embed("mock", text="")
 
     assert Comparison([prediction]).prediction_count == 1
 
@@ -561,9 +534,6 @@ def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None
             actions=[Action.move_to(0.1, 0.5, 0.0)],
             action_horizon=0,
         )
-
-    with pytest.raises(WorldForgeError, match="GenerationOptions fps"):
-        GenerationOptions(fps=math.inf)
 
     with pytest.raises(WorldForgeError, match="timeout_seconds"):
         ProviderRequestPolicy.remote_defaults(request_timeout_seconds=math.nan)
@@ -751,8 +721,8 @@ def test_prediction_validates_and_clones_public_payloads(tmp_path) -> None:
         )
 
     assert ProviderCapabilities().enabled_names() == []
-    assert ProviderCapabilities(generate=True).supports("generate") is True
-    assert ProviderCapabilities(generate=True).supports("predict") is False
+    assert ProviderCapabilities(embed=True).supports("embed") is True
+    assert ProviderCapabilities(embed=True).supports("predict") is False
     with pytest.raises(WorldForgeError, match="ProviderCapabilities predict"):
         ProviderCapabilities(predict="true")  # type: ignore[arg-type]
     with pytest.raises(WorldForgeError, match="Unknown provider capability"):
@@ -802,13 +772,6 @@ def test_prediction_validates_and_clones_public_payloads(tmp_path) -> None:
         RetryPolicy(retryable_status_codes=(99,))
     with pytest.raises(WorldForgeError):
         RetryPolicy(retryable_status_codes=500)  # type: ignore[arg-type]
-    with pytest.raises(WorldForgeError):
-        GenerationOptions(seed=True)  # type: ignore[arg-type]
-    with pytest.raises(WorldForgeError):
-        GenerationOptions(reference_images="bad")  # type: ignore[arg-type]
-    with pytest.raises(WorldForgeError):
-        GenerationOptions(extras=[])  # type: ignore[arg-type]
-
     with pytest.raises(WorldForgeError):
         ProviderEvent(provider="", operation="predict", phase="success")
     with pytest.raises(WorldForgeError):
@@ -865,39 +828,6 @@ def test_prediction_validates_and_clones_public_payloads(tmp_path) -> None:
         ProviderHealth(name="mock", healthy=True, latency_ms=math.nan)
     with pytest.raises(WorldForgeError, match="ProviderHealth details"):
         ProviderHealth(name="mock", healthy=True, latency_ms=0.0, details=[])  # type: ignore[arg-type]
-
-    with pytest.raises(WorldForgeError):
-        VideoClip(frames=[object()], fps=1.0, resolution=(1, 1), duration_seconds=0.0)
-    with pytest.raises(WorldForgeError):
-        VideoClip(frames=[b"ok"], fps=0.0, resolution=(1, 1), duration_seconds=0.0)
-    with pytest.raises(WorldForgeError):
-        VideoClip(frames=[b"ok"], fps=1.0, resolution=(1,), duration_seconds=0.0)
-    with pytest.raises(WorldForgeError):
-        VideoClip(frames=[b"ok"], fps=1.0, resolution=(0, 1), duration_seconds=0.0)
-    with pytest.raises(WorldForgeError):
-        VideoClip(frames=[b"ok"], fps=1.0, resolution=(1, 1), duration_seconds=math.nan)
-    with pytest.raises(WorldForgeError):
-        VideoClip(
-            frames=[b"ok"],
-            fps=1.0,
-            resolution=(1, 1),
-            duration_seconds=0.0,
-            metadata=[],  # type: ignore[arg-type]
-        )
-
-    with pytest.raises(WorldForgeError):
-        ReasoningResult(provider="", answer="answer", confidence=0.5)
-    with pytest.raises(WorldForgeError):
-        ReasoningResult(provider="mock", answer=1, confidence=0.5)  # type: ignore[arg-type]
-    with pytest.raises(WorldForgeError):
-        ReasoningResult(provider="mock", answer="answer", confidence=2.0)
-    with pytest.raises(WorldForgeError):
-        ReasoningResult(
-            provider="mock",
-            answer="answer",
-            confidence=0.5,
-            evidence="bad",  # type: ignore[arg-type]
-        )
 
     with pytest.raises(WorldForgeError):
         EmbeddingResult(provider="", model="model", vector=[0.0])

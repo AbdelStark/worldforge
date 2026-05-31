@@ -162,7 +162,7 @@ Default timelines:
 - Rerun is optional. Do not import or require `rerun-sdk` from provider modules or base package
   paths.
 - Rerun is not a WorldForge provider. It does not advertise `predict`, `score`, `policy`,
-  `generate`, `transfer`, `reason`, `embed`, or `plan`.
+  `predict`, `score`, `policy`, `embed`, or `plan`.
 - Provider event targets, messages, and metadata are sanitized before the Rerun sink receives
   them. Host code should still avoid putting secrets, credentials, signed URLs, or sensitive
   dataset contents into custom metadata.

@@ -26,14 +26,14 @@ from worldforge import (
 
 - 提供方注册
 - 世界状态的创建与持久化
-- 生成、迁移、推理、嵌入、动作打分及动作策略辅助功能
+- 预测、嵌入、动作打分及动作策略辅助功能
 - 提供方配置文件与环境诊断
 
 常用检查辅助方法：
 
 <!-- worldforge-snippet: execute -->
 ```python
-from worldforge import WorldForge
+from worldforge import Action, WorldForge
 
 forge = WorldForge()
 
@@ -44,8 +44,7 @@ print(profiles[0].supported_tasks)
 print(doctor.issues)
 ```
 
-提供方能力过滤器严格执行。有效的能力名称为 `predict`、`generate`、
-`reason`、`embed`、`plan`、`transfer`、`score` 和 `policy`；未知名称会抛出
+提供方能力过滤器严格执行。有效的能力名称为 `predict`、`embed`、`plan`、`score` 和 `policy`；未知名称会抛出
 `WorldForgeError`，而不会因拼写错误而返回空结果。
 
 ## 能力协议
@@ -75,12 +74,10 @@ result = forge.score_actions(cost="local-cost", info={}, action_candidates=[{}, 
 print(result.best_index)
 ```
 
-同样的模式适用于 `register_policy`、`register_generator`、
-`register_predictor`、`register_reasoner`、`register_embedder` 和 `register_transferer`。
+同样的模式适用于 `register_policy`、`register_predictor` 和 `register_embedder`。
 `forge.register(...)` 通过协议成员关系分发纯对象，而
 `RunnableModel(...)` 可将多个能力实现组合在一起。已注册的协议实现将出现在
 `providers()`、`provider_profile(...)`、`doctor(...)`、规划以及基准测试框架中。
-现有调用（如 `forge.generate("prompt", "mock")`）仍通过旧版提供方注册表解析。
 
 有关注册进程内纯对象的策略+打分可运行示例，请参阅
 [能力协议快速入门](../capability-protocols-quickstart.md)。
@@ -143,8 +140,9 @@ forge = WorldForge(
     )
 )
 
-forge.generate("orbiting cube", "mock", duration_seconds=1.0)
-print(metrics.get("mock", "generate").to_dict())
+world = forge.create_world_from_prompt("cube", provider="mock")
+world.predict(Action(type="move_to", parameters={"target": {"x": 0.2, "y": 0.5, "z": 0.0}}))
+print(metrics.get("mock", "predict").to_dict())
 ```
 
 提供方事件默认对日志安全。`target` 字段保留端点或工件路径上下文，
@@ -181,26 +179,9 @@ session.close()
 
 通过 `worldforge-ai[rerun]` 安装。Rerun 不是提供方，不声明 WorldForge 能力。
 
-## 场景工件验证
-
-未来的空间或 3D 场景提供方在返回或保存证据之前，必须验证其 JSON 工件描述符。
-该辅助方法不依赖任何外部依赖，不获取资产、不渲染预览，也不运行模拟器：
-
-<!-- worldforge-snippet: skip-illustrative -->
-```python
-from worldforge import validate_scene_artifact
-
-artifact = validate_scene_artifact(payload)
-```
-
-验证后的工件仍为 JSON 对象。无效单位、格式错误的变换、非有限数值、元组形式的值、
-对象实例、不安全的 URL、未标记的宿主本地路径、类似密钥的元数据键以及过大的元数据
-均会抛出 `WorldForgeError`。
-
 ## 动作打分
 
-暴露 `score` 能力的提供方可以对候选动作序列进行排序，而无需声明支持预测、
-生成或推理功能。LeWorldModel 使用此路径，因为其上游运行时是一个 JEPA 代价模型。
+暴露 `score` 能力的提供方可以对候选动作序列进行排序，而无需声明支持预测或策略能力。LeWorldModel 使用此路径，因为其上游运行时是一个 JEPA 代价模型。
 
 <!-- worldforge-snippet: skip-host-owned -->
 ```python
@@ -371,7 +352,7 @@ from worldforge.evaluation import EvaluationSuite
 
 print(EvaluationSuite.builtin_names())
 
-suite = EvaluationSuite.from_builtin("reasoning")
+suite = EvaluationSuite.from_builtin("planning")
 report = suite.run_report(["mock"], forge=forge)
 print(report.results[0].passed)
 print(report.to_markdown())
@@ -428,12 +409,11 @@ harness = ProviderBenchmarkHarness(forge=forge)
 inputs = load_benchmark_inputs(
     {
         "embedding_text": "benchmark cube state",
-        "generation_prompt": "benchmark orbiting cube",
     }
 )
 report = harness.run(
     ["mock"],
-    operations=["predict", "generate", "embed"],
+    operations=["predict", "embed"],
     iterations=5,
     inputs=inputs,
 )
@@ -479,23 +459,21 @@ WorldForge 为运行时工作流提供三个公共异常族：
 - `WorldStateError`：格式错误的持久化状态或提供方提供的世界状态，无法安全还原
   或应用，包括无效的场景对象映射和无效的历史记录条目。
 - `ProviderError`：提供方凭据、传输故障、不支持的提供方操作、格式错误的上游响应、
-  提供方专属输入限制、已过期工件、无效的已下载媒体、可选依赖故障以及格式错误的
-  模型打分输出。
+  提供方专属输入限制、可选依赖故障以及格式错误的模型打分或策略输出。
 
-受远程适配器影响的面向提供方的工作流在返回部分结果之前会失败：
+面向提供方的工作流在返回部分结果之前会失败：
 
 ```python
-from worldforge import GenerationOptions, WorldForge
+from worldforge import Action, WorldForge
 from worldforge.providers import ProviderError
 
 forge = WorldForge()
+world = forge.create_world_from_prompt("a cube on a table")
 
 try:
-    clip = forge.generate(
-        "a rainy alley at night",
-        "runway",
-        duration_seconds=4.0,
-        options=GenerationOptions(ratio="1280:720"),
+    prediction = world.predict(
+        Action(type="move", target="cube", parameters={"dx": 0.1, "dy": 0.0, "dz": 0.0}),
+        provider="mock",
     )
 except ProviderError as exc:
     # Inspect emitted ProviderEvent records for transport status and attempts.
@@ -504,8 +482,8 @@ except ProviderError as exc:
 
 重要的边界检查：
 
-- `Position`、`Rotation`、`VideoClip`、请求策略、提供方事件、嵌入向量、推理
-  置信度以及预测负载指标拒绝非有限数值。
+- `Position`、`Rotation`、请求策略、提供方事件、嵌入向量、打分结果、策略结果以及
+  预测负载指标拒绝非有限数值。
 - `Action.parameters`、`SceneObject.metadata`、提供方事件元数据、打分元数据、
   策略原始动作、策略元数据以及预测负载状态/元数据拒绝非 JSON 原生值，而不是
   接受那些仅在持久化时才会失败的对象实例。
@@ -513,8 +491,6 @@ except ProviderError as exc:
   分数范围、连贯计数以及 JSON 原生指标。
 - `World.add_object(...)` 拒绝重复的场景对象 ID。
 - 导入的或由提供方提供的世界状态拒绝与嵌入式对象 ID 不一致的场景对象键。
-- Cosmos 生成响应必须包含非空的 base64 `b64_video` 字段以及类型化的可选元数据。
-- Runway 任务创建、轮询和工件下载响应在构建返回的 `VideoClip` 之前会被验证。
 - LeWorldModel 打分要求 `pixels`、`goal` 和 `action` 信息字段，动作候选项的形状为
   `(batch=1, samples, horizon, action_dim)`，可选的 `stable_worldmodel` 和 `torch`
   运行时依赖，每个候选样本返回一个分数，且模型分数必须为有限数。

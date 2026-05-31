@@ -2,26 +2,25 @@
 
 Status: scaffold.
 
-WorldForge keeps `genie` as a fail-closed provider reservation. It does not advertise `generate`,
-`predict`, or any scene/world capability, and it is not a real Google DeepMind Genie or Project
-Genie integration.
+WorldForge keeps `genie` as a fail-closed provider reservation. It does not advertise any public
+capability, and it is not a real Google DeepMind Genie or Project Genie integration.
 
 ## Defer Decision
 
 Decision date: 2026-05-01.
 
-The first real Genie-facing surface should be `generate` only after there is a supported upstream
-runtime or API contract that automation can call and test. Google DeepMind describes Genie 3 as a
-general-purpose world model for real-time interactive environments, and the January 2026 Project
-Genie announcement describes Project Genie as an experimental research prototype web app for U.S.
-Google AI Ultra subscribers. Those sources describe an interactive product experience, not a supported automation API, SDK, artifact schema, authentication contract, or smoke-testable runtime
-boundary.
+Any future Genie-facing surface needs a supported upstream runtime or API contract that automation
+can call and test. Google DeepMind describes Genie 3 as a general-purpose world model for
+real-time interactive environments, and the January 2026 Project Genie announcement describes
+Project Genie as an experimental research prototype web app for U.S. Google AI Ultra subscribers.
+Those sources describe an interactive product experience, not a supported automation API, SDK,
+planning contract, authentication contract, or smoke-testable runtime boundary.
 
 Until those boundaries exist, WorldForge must not present deterministic local surrogate behavior as
 a Genie implementation. Keeping the provider as `scaffold` is the accurate production behavior.
 
 Revisit trigger: a maintained upstream API, SDK, or local runtime must publish a callable
-artifact-generation contract with documented authentication, inputs, outputs, failure modes,
+planning-facing contract with documented authentication, inputs, outputs, failure modes,
 licensing, and smoke evidence. A web-only interactive prototype is not enough to change the
 provider capability flags.
 
@@ -42,7 +41,7 @@ References:
 | Artifact types | none |
 
 Setting `GENIE_API_KEY` only makes the reservation visible to diagnostics and readiness surfaces. It
-does not make `genie.generate(...)` callable. All capability methods remain fail-closed unless
+does not make any capability method callable. All capability methods remain fail-closed unless
 `WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES=1` is set for local adapter tests.
 
 The surrogate opt-in exists only to exercise shared provider plumbing. It must not be used for

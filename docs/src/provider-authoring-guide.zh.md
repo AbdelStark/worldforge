@@ -74,7 +74,7 @@ def preflight(self) -> ProviderLifecycleResult:
 
 支持的钩子为 `preflight`、`warmup` 和 `teardown`。支持的状态为 `no-op`、`ready`、`skipped`、`failed` 和 `teardown-failed`。证据必须为 JSON 原生类型且已脱敏：记录版本号、形状摘要、特性标志或清单标识符，而非原始观测数据、令牌、私有端点、检查点路径、GPU 日志或已下载的模型文件。
 
-默认钩子对现有提供方是安全的。已配置的提供方报告 `no-op`；缺少必需配置时报告 `skipped` 并附带跳过原因。能力协议实现可以在其现有 `score_actions`、`select_actions`、`reason` 或其他能力方法旁边定义相同的钩子方法；注册仍通过能力方法进行，诊断通过可观测包装器拾取生命周期钩子。
+默认钩子对现有提供方是安全的。已配置的提供方报告 `no-op`；缺少必需配置时报告 `skipped` 并附带跳过原因。能力协议实现可以在其现有 `score_actions`、`select_actions`、`predict` 或 `embed` 方法旁边定义相同的钩子方法；注册仍通过能力方法进行，诊断通过可观测包装器拾取生命周期钩子。
 
 诊断会将聚合的 `ProviderLifecycleStatus` 序列化在 `worldforge doctor` 和 `worldforge provider info <provider>` 中：
 
@@ -101,15 +101,6 @@ uv run worldforge provider info gr00t --format json
   |-- 能否根据动作将 WorldForge 状态向前推演？
   |     `-- 公开 predict(...) -> PredictionPayload
   |
-  |-- 能否根据提示/选项生成视频工件？
-  |     `-- 公开 generate(...) -> VideoClip
-  |
-  |-- 能否将一个视频工件转换为另一个？
-  |     `-- 公开 transfer(...) -> VideoClip
-  |
-  |-- 能否回答关于世界/提示的问题？
-  |     `-- 公开 reason(...) -> ReasoningResult
-  |
   |-- 能否对文本或其他显式输入进行嵌入？
   |     `-- 公开 embed(...) -> EmbeddingResult
   |
@@ -128,13 +119,7 @@ flowchart TD
     Policy -- yes --> PolicyApi[select_actions -> ActionPolicyResult]
     Policy -- no --> Predict{Rolls state forward?}
     Predict -- yes --> PredictApi[predict -> PredictionPayload]
-    Predict -- no --> Generate{Generates video artifact?}
-    Generate -- yes --> GenerateApi[generate -> VideoClip]
-    Generate -- no --> Transfer{Transforms video artifact?}
-    Transfer -- yes --> TransferApi[transfer -> VideoClip]
-    Transfer -- no --> Reason{Answers questions?}
-    Reason -- yes --> ReasonApi[reason -> ReasoningResult]
-    Reason -- no --> Embed{Embeds explicit input?}
+    Predict -- no --> Embed{Embeds explicit input?}
     Embed -- yes --> EmbedApi[embed -> EmbeddingResult]
     Embed -- no --> NoProvider[Do not add provider yet]
 ```
@@ -147,9 +132,8 @@ flowchart TD
 | --- | --- | --- |
 | JEPA 隐空间预测世界模型 | `score`，未来可能有 `predict` 或隐空间推演 | 一等规划路径，遵循 LeWorldModel 模式。 |
 | 基于模型的强化学习隐动态 | `predict`、`score`，未来可能有策略选择 | 公开导出的控制接口，而非整个训练器。 |
-| 生成式视频模拟器 | `generate`，未来可能有动作条件化的 `predict` | 除非 API 支持，否则不暗示可控的规划能力。 |
 | 空间/三维世界模型 | 未来的场景或资产接口 | 在类型化场景契约存在之前不纳入核心。 |
-| 物理 AI 基础设施 | `generate`、`transfer`，未来可能有数据/评估适配器 | 将每个稳定 API 建模为一种能力。 |
+| 物理 AI 基础设施 | 未来可能有数据/评估适配器 | 仅在稳定 API 映射到当前能力表面时建模。 |
 | 具身策略 / VLA 动作模型 | `policy`，可能与打分提供方配对 | 视为执行者，不声称其能预测未来。 |
 | 主动推理 / 结构化生成模型 | 未来的信念、不确定性或策略输出 | 显式保留信念和不确定性。 |
 | 确定性本地替代模型 | 任意已测试的本地子集 | 明确说明这是替代模型。 |
@@ -169,9 +153,6 @@ WorldForge 的能力不是荣誉徽章，而是可调用的契约。`ProviderCap
 
 ```text
 capabilities.predict  -> predict(world_state, action, steps)
-capabilities.generate -> generate(prompt, duration_seconds, options)
-capabilities.transfer -> transfer(clip, width, height, fps, prompt, options)
-capabilities.reason   -> reason(query, world_state)
 capabilities.embed    -> embed(text)
 capabilities.score    -> score_actions(info, action_candidates)
 capabilities.policy   -> select_actions(info)
@@ -181,11 +162,9 @@ capabilities.plan     -> 当前为直接实现规划的提供方保留
 规则：
 
 - [ ] 除非适配器返回经验证的 `PredictionPayload`，否则不设置 `predict=True`。
-- [ ] 除非适配器返回经验证的 `VideoClip`，否则不设置 `generate=True`。
 - [ ] 除非适配器返回具有有限分数且 `best_index` 与 `lower_is_better` 匹配的
       `ActionScoreResult`，否则不设置 `score=True`。
 - [ ] 除非适配器返回含有至少一个可执行 WorldForge `Action` 的 `ActionPolicyResult`，否则不设置 `policy=True`。
-- [ ] 对于仅返回非结构化日志、字幕或提供方诊断信息的模型，不设置 `reason=True`。
 - [ ] 仅因为提供方能对候选方案打分，不设置 `plan=True`。基于打分的规划应以 `score=True` 加 `World.plan(...)` 表示。
 
 实现选择：
@@ -219,10 +198,9 @@ capabilities.plan     -> 当前为直接实现规划的提供方保留
 | 提供方 | 状态 | 分类原因 |
 | --- | --- | --- |
 | `mock` | `stable` | 确定性的仓库内提供方，无可选运行时，签出安全的测试覆盖率广泛。 |
-| `cosmos` | `beta` | 真实的远程生成适配器，具备夹具覆盖和运行时清单；已准备好的宿主方负责 Cosmos 部署。 |
-| `runway` | `beta` | 真实的远程生成/转换适配器，具备解析器和工件检查；已准备好的宿主方负责凭证和工件保留。 |
 | `leworldmodel` | `stable` | 官方 LeWM 加载路径的推荐打分适配器；已准备好的宿主方负责 torch、`stable_worldmodel`、检查点和任务预处理。 |
 | `gr00t` | `beta` | 真实的远程 PolicyClient 边界，具备夹具支持的故障覆盖；已准备好的宿主方负责可达的服务器、凭证、转换器和机器人运行时。 |
+| `cosmos-policy` | `beta` | 面向 ALOHA 动作块的真实远程策略边界；已准备好的宿主方负责可达服务器、凭证、转换器和机器人运行时。 |
 | `lerobot` | `stable` | LeRobot `PreTrainedPolicy` 路径的推荐具身策略适配器；已准备好的宿主方负责 LeRobot、检查点、转换器和机器人运行时。 |
 | `jepa` | `experimental` | 宿主方拥有的 `facebookresearch/jepa-wms` torch-hub 运行时的仅打分适配器。 |
 | `genie` | `scaffold` | 关闭失败的保留，直到具体的上游运行时/API 契约存在。 |
@@ -304,7 +282,7 @@ class ExampleProvider(BaseProvider):
     def __init__(self, *, event_handler=None):
         super().__init__(
             name="example",
-            capabilities=ProviderCapabilities(generate=True),
+            capabilities=ProviderCapabilities(predict=True),
             profile=ProviderProfileSpec(
                 description="Example provider adapter.",
                 package="worldforge",
@@ -322,14 +300,14 @@ class ExampleProvider(BaseProvider):
         # Keep health cheap. Do not download large artifacts or load huge checkpoints here.
         return super().health()
 
-    def generate(self, prompt, duration_seconds, *, options=None):
+    def predict(self, world_state, action, steps=1):
         try:
             self._require_credentials()
-            # validate inputs, call upstream, parse response, return VideoClip
+            # validate inputs, call upstream, parse response, return PredictionPayload
         except ProviderError:
             raise
         except Exception as exc:
-            raise ProviderError(f"Provider 'example' generation failed: {exc}") from exc
+            raise ProviderError(f"Provider 'example' prediction failed: {exc}") from exc
 ```
 
 最简单能力协议骨架：
@@ -378,13 +356,7 @@ forge.register_cost(ExampleCost())
 
 - [ ] 当期望对象时，JSON 响应为对象。
 - [ ] 必填字段存在且类型正确。
-- [ ] 任务 ID 在创建/轮询响应中非空且稳定。
-- [ ] 终止任务状态明确。
 - [ ] 除非公开契约支持部分结果，否则部分输出以 `ProviderError` 失败。
-- [ ] 工件 URL 在下载前非空且已脱敏。
-- [ ] 过期工件附带上下文信息失败。
-- [ ] 返回 `VideoClip` 之前，不支持的内容类型应报错。
-- [ ] Base64 媒体字段解码成功。
 - [ ] 分数展平为非空的有限列表。
 - [ ] 策略动作块保留原始提供方输出，并转换为可执行的 WorldForge `Action` 对象。
 
@@ -476,17 +448,14 @@ forge.register_cost(ExampleCost())
 
 ## 第十步：生成式和转换型提供方检查列表
 
-将此检查列表用于视频或工件提供方。
+将此检查列表用于面向规划的打分模型和具身策略。
 
-- [ ] 仅为提示到视频或等效工件生成实现 `generate(...)`。
-- [ ] 仅为视频到视频或工件到工件的转换实现 `transfer(...)`。
-- [ ] 在发出出站请求之前验证提示、时长、大小、比例、帧率和文件路径。
-- [ ] 尽可能使用 `GenerationOptions` 为提供方特定选项建模。
-- [ ] 保持创建类变更为单次尝试，除非提供方契约是幂等的。
-- [ ] 以有界次数轮询，并明确终止状态。
-- [ ] 在读入 `VideoClip` 之前验证工件内容类型。
-- [ ] 拒绝空的工件正文。
-- [ ] 测试覆盖错误的内容类型、过期工件、缺失输出、任务失败、格式错误的 JSON、超时、重试以及提供方特定限制。
+- [ ] 仅当适配器能为每个动作候选返回一个有限分数时，才实现 `score_actions(...)`。
+- [ ] 仅当适配器能直接或通过宿主提供的转换器返回可执行 WorldForge `Action` 对象时，才实现 `select_actions(...)`。
+- [ ] 在调用可选运行时前验证类张量 JSON 的形状、秩、矩形性和有限数值。
+- [ ] 仅以 JSON 原生、脱敏安全的元数据保留原始策略动作。
+- [ ] 将观测预处理和具身形态特定动作转换留给宿主方。
+- [ ] 测试覆盖格式错误的张量、分数数量不匹配、缺失转换器、可选运行时跳过以及提供方特定限制。
 
 ## 第十一步：可观测性与故障语义
 
@@ -545,9 +514,6 @@ tests/
 | 辅助工具 | 覆盖的能力 |
 | --- | --- |
 | `assert_predict_conformance(...)` | `predict -> PredictionPayload` |
-| `assert_generate_conformance(...)` | `generate -> VideoClip` |
-| `assert_transfer_conformance(...)` | `transfer -> VideoClip` |
-| `assert_reason_conformance(...)` | `reason -> ReasoningResult` |
 | `assert_embed_conformance(...)` | `embed -> EmbeddingResult` |
 | `assert_score_conformance(...)` | `score_actions -> ActionScoreResult` |
 | `assert_policy_conformance(...)` | `select_actions -> ActionPolicyResult` |

@@ -40,7 +40,7 @@ def _preset_kwargs(**overrides: object) -> dict[str, object]:
 
 def test_preset_catalogue_covers_required_categories() -> None:
     categories = {preset.category for preset in list_presets()}
-    assert {"checkout-safe", "remote-media", "prepared-host", "release"} <= categories
+    assert {"checkout-safe", "prepared-host", "release"} <= categories
     assert categories <= set(PRESET_CATEGORIES)
     names = list_preset_names()
     assert names == tuple(preset.name for preset in list_presets())
@@ -65,9 +65,6 @@ def test_get_preset_rejects_unknown_name() -> None:
 
 
 def test_checkout_safe_presets_never_skip(monkeypatch) -> None:
-    monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
-    monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
-    monkeypatch.delenv("RUNWAY_API_SECRET", raising=False)
     monkeypatch.delenv("LEWORLDMODEL_POLICY", raising=False)
     monkeypatch.delenv("LEWM_POLICY", raising=False)
     monkeypatch.delenv("LEROBOT_POLICY_PATH", raising=False)
@@ -76,25 +73,6 @@ def test_checkout_safe_presets_never_skip(monkeypatch) -> None:
     for preset in list_presets():
         if preset.category in ("checkout-safe", "release"):
             assert preset.skip_reason() is None
-
-
-def test_remote_media_preset_skips_when_env_missing(monkeypatch) -> None:
-    monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
-    monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
-    monkeypatch.delenv("RUNWAY_API_SECRET", raising=False)
-    preset = get_preset("remote-media-dryrun")
-    reason = preset.skip_reason()
-    assert reason is not None
-    assert "cosmos" in reason
-    assert "runway" in reason
-
-
-def test_remote_media_preset_runs_when_env_present(monkeypatch) -> None:
-    monkeypatch.setenv("COSMOS_BASE_URL", "https://cosmos.example/api")
-    preset = get_preset("remote-media-dryrun")
-    assert preset.skip_reason() is None
-    configured = preset.configured_providers()
-    assert "cosmos" in configured
 
 
 def test_prepared_host_preset_skips_when_env_missing(monkeypatch) -> None:
@@ -158,7 +136,7 @@ def test_invalid_preset_boundary_values_are_rejected(
 
 
 def test_cli_lists_presets_in_json(monkeypatch, capsys) -> None:
-    monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
     from worldforge.cli import _build_parser, _cmd_benchmark
     from worldforge.framework import WorldForge
 
@@ -191,25 +169,8 @@ def test_cli_runs_mock_smoke_preset(monkeypatch, capsys, tmp_path) -> None:
     assert payload["gate"]["passed"] is True
 
 
-def test_cli_skips_remote_media_dryrun_when_env_missing(monkeypatch, capsys) -> None:
-    for env_var in ("COSMOS_BASE_URL", "RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"):
-        monkeypatch.delenv(env_var, raising=False)
-    from worldforge.cli import _build_parser, _cmd_benchmark
-    from worldforge.framework import WorldForge
-
-    parser = _build_parser()
-    args = parser.parse_args(["benchmark", "--preset", "remote-media-dryrun", "--format", "json"])
-    forge = WorldForge(state_dir=None)
-    rc = _cmd_benchmark(args, forge)
-    out = capsys.readouterr().out
-    assert rc == 0
-    payload = json.loads(out)
-    assert payload["status"] == "skipped"
-    assert "cosmos" in payload["reason"]
-
-
 def test_cli_lists_presets_in_markdown(monkeypatch, capsys) -> None:
-    monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
     from worldforge.cli import _build_parser, _cmd_benchmark
     from worldforge.framework import WorldForge
 
@@ -280,20 +241,26 @@ def test_cli_preset_csv_output(tmp_path, capsys) -> None:
     assert out.startswith("provider,operation,metric")  # gate CSV preferred when budgets present
 
 
-def test_cli_skips_remote_media_dryrun_in_markdown(monkeypatch, capsys) -> None:
-    for env_var in ("COSMOS_BASE_URL", "RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"):
+def test_cli_skips_prepared_host_preset_in_markdown(monkeypatch, capsys) -> None:
+    for env_var in (
+        "LEWORLDMODEL_POLICY",
+        "LEWM_POLICY",
+        "LEROBOT_POLICY_PATH",
+        "LEROBOT_POLICY",
+        "GROOT_POLICY_HOST",
+    ):
         monkeypatch.delenv(env_var, raising=False)
     from worldforge.cli import _build_parser, _cmd_benchmark
     from worldforge.framework import WorldForge
 
     parser = _build_parser()
-    args = parser.parse_args(["benchmark", "--preset", "remote-media-dryrun"])
+    args = parser.parse_args(["benchmark", "--preset", "prepared-host"])
     forge = WorldForge(state_dir=None)
     rc = _cmd_benchmark(args, forge)
     out = capsys.readouterr().out
     assert rc == 0
     assert "skipped" in out
-    assert "cosmos" in out
+    assert "leworldmodel" in out
 
 
 def test_cli_show_preset_markdown(capsys) -> None:

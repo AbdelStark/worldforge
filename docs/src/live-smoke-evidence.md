@@ -15,9 +15,9 @@ Each entry records:
 | Field | Contract |
 | --- | --- |
 | `provider` | Provider profile or candidate name. |
-| `capability` | One WorldForge capability such as `generate`, `score`, or `policy`. |
+| `capability` | One WorldForge capability such as `predict`, `score`, or `policy`. |
 | `command` | Smoke command to run on a prepared host. Do not inline secrets. |
-| `runtime_manifest` | Runtime manifest id such as `runway:schema-1`, or `null` if none exists. |
+| `runtime_manifest` | Runtime manifest id such as `leworldmodel:schema-1`, or `null` if none exists. |
 | `date` | Registry decision date as `YYYY-MM-DD`. |
 | `version` | WorldForge package version used for the registry row. |
 | `status` | `passed`, `failed`, `not_run`, `skipped_missing_runtime`, `skipped_missing_credentials`, or `skipped_not_configured`. |

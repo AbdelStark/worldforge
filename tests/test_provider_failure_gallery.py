@@ -68,7 +68,7 @@ def test_provider_failure_gallery_renders_and_writes_artifacts(tmp_path: Path) -
     assert payload == result["report"]
     assert "# Provider Failure Mode Gallery" in markdown
     assert "## Safe Artifact Behavior" in markdown
-    assert "`cosmos-generation-timeout`" in markdown
+    assert "`leworldmodel-score-count-mismatch`" in markdown
     assert render_provider_failure_gallery_markdown(payload) == markdown
 
 

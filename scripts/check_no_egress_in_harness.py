@@ -1,4 +1,4 @@
-"""Reject network-egress calls from TheWorldHarness code."""
+"""Reject network-egress calls from robotics showcase harness code."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def find_violations() -> list[str]:
 def main() -> int:
     violations = find_violations()
     if violations:
-        print("Network egress is not allowed in TheWorldHarness:", file=sys.stderr)
+        print("Network egress is not allowed in robotics showcase harness code:", file=sys.stderr)
         print("\n".join(violations), file=sys.stderr)
         return 1
     return 0

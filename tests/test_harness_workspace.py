@@ -136,7 +136,7 @@ def test_benchmark_cli_profile_preserves_explicit_cli_options(
             {
                 "schema_version": 1,
                 "name": "profiled-benchmark",
-                "providers": ["cosmos"],
+                "providers": ["leworldmodel"],
                 "operations": ["embed"],
                 "run_workspace": ".worldforge/profiled-runs",
                 "state_dir": ".worldforge/profiled-worlds",
@@ -392,7 +392,7 @@ def test_run_history_failure_summary_uses_validation_and_status_defaults(
     cancelled_workspace = create_run_workspace(
         tmp_path,
         kind="flow",
-        command="worldforge-harness --flow diagnostics",
+        command="worldforge runs list --status cancelled",
         provider="mock",
         operation="diagnostics",
         run_id="20260105T000000Z-00000005",
@@ -401,7 +401,7 @@ def test_run_history_failure_summary_uses_validation_and_status_defaults(
     write_run_manifest(
         cancelled_workspace,
         kind="flow",
-        command="worldforge-harness --flow diagnostics",
+        command="worldforge runs list --status cancelled",
         provider="mock",
         operation="diagnostics",
         status="cancelled",

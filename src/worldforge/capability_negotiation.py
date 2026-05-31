@@ -3,7 +3,7 @@
 The negotiation report tells a caller — before a workflow runs — whether the currently
 registered and known providers can satisfy a capability set. It groups providers by required
 capability, classifies each candidate as registered/configured/dependency-ready/capability-
-compatible, and emits a recommended next command for each gap (e.g. ``set COSMOS_BASE_URL``,
+compatible, and emits a recommended next command for each gap (e.g. ``set LEWORLDMODEL_POLICY``,
 ``register a policy provider via the worldforge.providers entry-point group``).
 
 Out of scope:
@@ -90,15 +90,6 @@ _WORKFLOWS: tuple[WorkflowSpec, ...] = (
         notes="The mock provider always satisfies predict for checkout-safe runs.",
     ),
     WorkflowSpec(
-        name="generate-only",
-        title="Generate-only workflow",
-        description=(
-            "Video or media generation workflows that only need a generate-capable provider."
-        ),
-        required_capabilities=("generate",),
-        notes="Cosmos requires COSMOS_BASE_URL; Runway requires RUNWAYML_API_SECRET.",
-    ),
-    WorkflowSpec(
         name="score-only",
         title="Score-only workflow",
         description="Action scoring workflows that only need a score-capable provider.",
@@ -114,18 +105,6 @@ _WORKFLOWS: tuple[WorkflowSpec, ...] = (
             "LeRobot requires LEROBOT_POLICY_PATH or LEROBOT_POLICY; "
             "GR00T requires GROOT_POLICY_HOST."
         ),
-    ),
-    WorkflowSpec(
-        name="transfer-only",
-        title="Transfer-only workflow",
-        description="Video transfer / re-rendering workflows that only need a transfer provider.",
-        required_capabilities=("transfer",),
-    ),
-    WorkflowSpec(
-        name="reason-only",
-        title="Reason-only workflow",
-        description="Scene reasoning workflows that only need a reason-capable provider.",
-        required_capabilities=("reason",),
     ),
     WorkflowSpec(
         name="embed-only",
@@ -148,14 +127,6 @@ _WORKFLOWS: tuple[WorkflowSpec, ...] = (
         ),
     ),
     WorkflowSpec(
-        name="evaluation-generation",
-        title="Evaluation suite: generation",
-        description=(
-            "Mirrors the built-in 'generation' evaluation suite's required capability surface."
-        ),
-        required_capabilities=("generate",),
-    ),
-    WorkflowSpec(
         name="evaluation-physics",
         title="Evaluation suite: physics",
         description=(
@@ -170,22 +141,6 @@ _WORKFLOWS: tuple[WorkflowSpec, ...] = (
             "Mirrors the built-in 'planning' evaluation suite's required capability surface."
         ),
         required_capabilities=("predict",),
-    ),
-    WorkflowSpec(
-        name="evaluation-reasoning",
-        title="Evaluation suite: reasoning",
-        description=(
-            "Mirrors the built-in 'reasoning' evaluation suite's required capability surface."
-        ),
-        required_capabilities=("reason",),
-    ),
-    WorkflowSpec(
-        name="evaluation-transfer",
-        title="Evaluation suite: transfer",
-        description=(
-            "Mirrors the built-in 'transfer' evaluation suite's required capability surface."
-        ),
-        required_capabilities=("transfer",),
     ),
 )
 

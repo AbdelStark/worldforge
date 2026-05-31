@@ -78,9 +78,6 @@ print(swap_plan.to_json())
 
 planning_report = world.evaluate("planning")
 print(planning_report.to_markdown())
-
-reasoning_report = world.evaluate("reasoning")
-print(reasoning_report.to_json())
 ```
 
 `StructuredGoal` 还支持 `object_near(...)` 用于相对位置放置，以及 `spawn_object(...)` 用于创建对象。
@@ -105,13 +102,11 @@ uv run worldforge benchmark --provider mock --iterations 5 --format json
 
 完整的命令映射请参阅 [CLI 参考](./cli.md)。可运行的演示及可选运行时冒烟测试命令请参阅[示例与 CLI 命令](./examples.md)。
 
-可选的可视化端到端界面：
+可选的机器人案例展示报告：
 
 ```bash
-uv run --extra harness worldforge-harness
-uv run --extra harness worldforge-harness --flow lerobot
-uv run --extra harness worldforge-harness --flow diagnostics
-uv run worldforge harness --list
+scripts/robotics-showcase
+scripts/robotics-showcase --no-tui
 ```
 
 打包的签出安全演示：

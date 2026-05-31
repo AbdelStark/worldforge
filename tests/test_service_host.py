@@ -123,13 +123,13 @@ def test_service_host_endpoints_exercise_reference_workflows(tmp_path, service_a
         assert prediction["provider"] == "mock"
         assert prediction["confidence"] > 0
 
-        _status, _headers, generated = _request_json(
-            f"{base_url}/workflows/generate",
+        _status, _headers, predicted = _request_json(
+            f"{base_url}/workflows/predict",
             method="POST",
-            payload={"provider": "mock", "prompt": "service smoke", "duration_seconds": 0.25},
+            payload={"provider": "mock", "world_id": "service-smoke-request"},
         )
-        assert generated["provider"] == "mock"
-        assert generated["frame_count"] >= 1
+        assert predicted["provider"] == "mock"
+        assert predicted["confidence"] > 0
 
         server.shutdown()
         thread.join(timeout=5)

@@ -1,4 +1,4 @@
-"""Provider capability, generation, and profile model contracts."""
+"""Provider capability and profile model contracts."""
 
 from __future__ import annotations
 
@@ -8,18 +8,13 @@ from worldforge._model_utils import (
     JSONDict,
     WorldForgeError,
     require_bool,
-    require_finite_number,
-    require_json_dict,
 )
 from worldforge.provider_request_policy import ProviderRequestPolicy
 
 CAPABILITY_NAMES = (
     "predict",
-    "generate",
-    "reason",
     "embed",
     "plan",
-    "transfer",
     "score",
     "policy",
 )
@@ -35,11 +30,8 @@ class ProviderCapabilities:
     """
 
     predict: bool = False
-    generate: bool = False
-    reason: bool = False
     embed: bool = False
     plan: bool = False
-    transfer: bool = False
     score: bool = False
     policy: bool = False
 
@@ -79,54 +71,6 @@ class ProviderCapabilities:
         """
 
         return [name for name in CAPABILITY_NAMES if getattr(self, name)]
-
-
-@dataclass(slots=True)
-class GenerationOptions:
-    """Typed options for provider media generation requests."""
-
-    image: str | None = None
-    video: str | None = None
-    model: str | None = None
-    ratio: str | None = None
-    size: str | None = None
-    fps: float | None = None
-    seed: int | None = None
-    negative_prompt: str | None = None
-    reference_images: list[str] = field(default_factory=list)
-    extras: JSONDict = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if self.fps is not None:
-            self.fps = require_finite_number(self.fps, name="GenerationOptions fps")
-            if self.fps <= 0.0:
-                raise WorldForgeError("GenerationOptions fps must be greater than 0.")
-        if self.seed is not None and (
-            isinstance(self.seed, bool) or not isinstance(self.seed, int)
-        ):
-            raise WorldForgeError("GenerationOptions seed must be an integer when provided.")
-        if not isinstance(self.reference_images, list) or not all(
-            isinstance(reference, str) for reference in self.reference_images
-        ):
-            raise WorldForgeError("GenerationOptions reference_images must be a list of strings.")
-        if not isinstance(self.extras, dict):
-            raise WorldForgeError("GenerationOptions extras must be a JSON object.")
-        self.reference_images = list(self.reference_images)
-        self.extras = require_json_dict(self.extras, name="GenerationOptions extras")
-
-    def to_dict(self) -> JSONDict:
-        return {
-            "image": self.image,
-            "video": self.video,
-            "model": self.model,
-            "ratio": self.ratio,
-            "size": self.size,
-            "fps": self.fps,
-            "seed": self.seed,
-            "negative_prompt": self.negative_prompt,
-            "reference_images": list(self.reference_images),
-            "extras": dict(self.extras),
-        }
 
 
 @dataclass(slots=True)

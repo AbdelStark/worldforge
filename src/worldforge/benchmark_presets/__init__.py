@@ -2,12 +2,10 @@
 
 Presets bundle a deterministic input fixture, an optional budget file, and a runtime-profile
 gate so maintainers can run "named" benchmark workloads without re-deriving inputs and
-budgets each time. Each preset belongs to one of four categories:
+budgets each time. Each preset belongs to one of three categories:
 
 - ``checkout-safe``: runs without credentials, network, GPUs, or optional runtimes; safe to
   invoke from a clean checkout and from CI.
-- ``remote-media``: requires a remote-media provider (Cosmos or Runway) with its environment
-  configured; the CLI skips with a typed reason when the env is missing.
 - ``prepared-host``: requires a host that owns the optional runtime (LeWorldModel for ``score``;
   LeRobot or GR00T for ``policy``); the CLI skips with a typed reason when the env is missing.
 - ``release``: gated regression check used for release evidence; bundles strict budgets that
@@ -43,7 +41,6 @@ from worldforge.testing.runtime_profiles import (
 
 PRESET_CATEGORIES: tuple[str, ...] = (
     "checkout-safe",
-    "remote-media",
     "prepared-host",
     "release",
 )
@@ -114,8 +111,8 @@ class BenchmarkPreset:
     def skip_reason(self, environ: Mapping[str, str] | None = None) -> str | None:
         """Return a typed skip reason when a required runtime profile is unconfigured.
 
-        Presets in the ``checkout-safe`` and ``release`` categories never skip; ``remote-media``
-        and ``prepared-host`` presets skip with the first unmet provider profile reason.
+        Presets in the ``checkout-safe`` and ``release`` categories never skip; ``prepared-host``
+        presets skip with the first unmet provider profile reason.
         """
 
         env = os.environ if environ is None else environ
@@ -270,12 +267,12 @@ _BENCHMARK_PRESETS: tuple[BenchmarkPreset, ...] = (
         name="mock-smoke",
         title="Mock provider smoke",
         summary=(
-            "Fast checkout-safe regression check: runs the mock provider across predict, generate, "
-            "and embed with five iterations and a tight success-rate gate."
+            "Fast checkout-safe regression check: runs the mock provider across predict and "
+            "embed with five iterations and a tight success-rate gate."
         ),
         category="checkout-safe",
         providers=("mock",),
-        operations=("predict", "generate", "embed"),
+        operations=("predict", "embed"),
         iterations=5,
         concurrency=1,
         inputs_file="inputs-mock.json",
@@ -293,7 +290,7 @@ _BENCHMARK_PRESETS: tuple[BenchmarkPreset, ...] = (
         ),
         category="checkout-safe",
         providers=("mock",),
-        operations=("predict", "reason", "generate", "transfer", "embed"),
+        operations=("predict", "embed"),
         iterations=20,
         concurrency=1,
         inputs_file="inputs-mock.json",
@@ -305,29 +302,6 @@ _BENCHMARK_PRESETS: tuple[BenchmarkPreset, ...] = (
             "loosening budgets."
         ),
         tags=("ci", "latency"),
-    ),
-    BenchmarkPreset(
-        name="remote-media-dryrun",
-        title="Remote media dry-run",
-        summary=(
-            "Single-iteration dry-run for remote media providers. Skips with a typed reason when "
-            "neither Cosmos nor Runway is configured."
-        ),
-        category="remote-media",
-        providers=("cosmos", "runway"),
-        operations=("generate",),
-        iterations=1,
-        concurrency=1,
-        inputs_file="inputs-remote-media.json",
-        budget_file=None,
-        failure_tolerance="skip-when-env-missing",
-        requires_provider_choice=("cosmos", "runway"),
-        notes=(
-            "Configure COSMOS_BASE_URL, RUNWAYML_API_SECRET, or RUNWAY_API_SECRET on a host "
-            "that is allowed to reach the upstream API. The preset does not assert latency or "
-            "throughput claims; treat the report as informational evidence."
-        ),
-        tags=("remote",),
     ),
     BenchmarkPreset(
         name="prepared-host",
@@ -362,7 +336,7 @@ _BENCHMARK_PRESETS: tuple[BenchmarkPreset, ...] = (
         ),
         category="release",
         providers=("mock",),
-        operations=("predict", "reason", "generate", "transfer", "embed"),
+        operations=("predict", "embed"),
         iterations=10,
         concurrency=2,
         inputs_file="inputs-mock.json",

@@ -34,7 +34,7 @@ Top-level boundaries:
 | `src/worldforge/framework.py` | `WorldForge`, `World`, persistence, planning, diagnostics, facade helpers | Gated for persistence/planning/public behavior changes |
 | `src/worldforge/providers/` | Provider base classes, catalog, concrete adapters, optional runtimes | Modify with provider skill and fixture tests |
 | `src/worldforge/evaluation/` | Deterministic evaluation suites and renderers | Modify with evaluation skill |
-| `src/worldforge/harness/` | Optional TheWorldHarness package | Keep Textual isolated to `tui.py` |
+| `src/worldforge/harness/` | Robotics showcase flow/report package | Keep Textual isolated to `tui.py` |
 | `src/worldforge/rerun.py` | Optional Rerun bridge | Events, worlds, plans, benchmarks, robotics showcase visuals; keep out of base deps |
 | `src/worldforge/smoke/` | Packaged optional-runtime smoke entry points | Host-owned dependencies only |
 | `src/worldforge/testing/` | Reusable adapter contract helpers | Public testing API; modify carefully |
@@ -42,7 +42,7 @@ Top-level boundaries:
 | `tests/fixtures/providers/` | Remote/provider parser fixtures | Create/modify for provider failure modes |
 | `examples/` | Runnable checkout examples and compatibility wrappers | Keep deterministic unless explicitly live-smoke |
 | `docs/src/` | User docs, architecture, playbooks, provider pages, API notes | Update with public behavior |
-| `specs/` | Per-feature spec triads (`<feature>/{spec.md, plan.md, tasks.md}`) following the GitHub Spec Kit pattern; today populated for the TheWorldHarness M0-M5 milestones | Author a new triad before implementing a multi-task feature; update the triad as scope changes |
+| `specs/` | Per-feature spec triads (`<feature>/{spec.md, plan.md, tasks.md}`) following the GitHub Spec Kit pattern | Author a new triad before implementing a multi-task feature; update the triad as scope changes |
 | `scripts/` | Docs generator, provider scaffold, package check, smokes | Gated for workflow/CI-impacting changes |
 | `.github/workflows/` | CI, release, security pipelines | Explicit approval before modifying |
 | `pyproject.toml`, `uv.lock` | Package metadata, deps, lockfile | Explicit approval for dependency/version changes |
@@ -58,7 +58,7 @@ Layering:
 - `AGENTS.md`: full architecture, coordination, context-engineering contract, and gotchas.
 - `.codex/skills/`: repeated workflow playbooks; `.claude/skills` and `.agents/skills` remain symlinks.
 - `specs/*`: feature contracts; update the relevant triad before new multi-task harness work.
-- `.agents/harness/goals/*`: task-specific goals such as review/backlog contracts.
+- `.agents/harness/goals/*`: task-specific review/backlog contracts when present.
 
 Context rules:
 - Re-verify current files and command output after compaction, resume, or rebase; memory is only a hint.
@@ -88,22 +88,21 @@ Run from repository root.
 | CLI smoke | `uv run worldforge doctor` | `mock` registered; optional providers report missing/unregistered when env absent |
 | World CLI persistence | `uv run worldforge world create lab --provider mock && uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 && uv run worldforge world history <world-id> && uv run worldforge world predict <world-id> --x 0.4 --y 0.5 --z 0 && uv run worldforge world delete <world-id>` | local JSON world is saved, edited with history, advanced, and removed through the validated persistence API |
 | Examples index | `uv run worldforge examples` | runnable command list prints |
-| Harness | `uv run --extra harness worldforge-harness` | Textual extra only |
+| Robotics showcase TUI | `scripts/robotics-showcase` | Textual extra only; pass `--no-tui` for terminal-only output |
 | Build | `uv build` | wheel and sdist under `dist/` |
 | Security audit | see `docs/src/playbooks.md` section 9 | locked deps audited |
 </commands>
 
 <provider_contracts>
-Capability names are strict: `predict`, `generate`, `reason`, `embed`, `plan`, `transfer`, `score`, `policy`.
+Capability names are strict: `predict`, `embed`, `plan`, `score`, `policy`.
 
 | Provider | Truthful surface | Registration trigger | Do not claim |
 | --- | --- | --- | --- |
-| `mock` | `predict`, `generate`, `transfer`, `reason`, `embed` | always registered | real physical/media fidelity |
-| `cosmos` | `generate` | `COSMOS_BASE_URL` | planning, scoring, local runtime |
-| `runway` | `generate`, `transfer` | `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` | durable artifact storage |
-| `leworldmodel` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | predict/generate/reason |
-| `gr00t` | `policy` | `GROOT_POLICY_HOST` | world model, score, generate |
-| `lerobot` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | world model, score, generate |
+| `mock` | `predict`, `embed` | always registered | real physical/media fidelity |
+| `leworldmodel` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | predict/policy |
+| `gr00t` | `policy` | `GROOT_POLICY_HOST` | world model, score |
+| `lerobot` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | world model, score |
+| `cosmos-policy` | `policy` with host translator | `COSMOS_POLICY_BASE_URL` | world model, score |
 | `jepa`, `genie` | scaffold | env-gated mock-backed reservations | real upstream integration |
 | `jepa-wms` | direct-construction candidate | none; not exported or auto-registered | catalog availability |
 </provider_contracts>
@@ -215,7 +214,7 @@ Safe to do without additional approval when aligned with the task:
 | coverage gate fails | changed behavior lacks tests | add focused success and failure-path tests |
 | package contract fails after passing local tests | wheel/sdist missing file or import path | inspect `pyproject.toml` hatch include/package settings and `scripts/test_package.sh` output |
 | Textual import fails in base CLI/import | optional harness dependency leaked | move Textual import back under `src/worldforge/harness/tui.py` or harness extra path |
-| remote media artifact fails | parser/retry/download/expired URL issue | inspect provider events and provider-specific docs; do not log secrets |
+| optional provider output fails | parser/runtime boundary issue | inspect provider events and provider-specific docs; do not log secrets |
 </troubleshooting>
 
 <skills>
@@ -227,6 +226,6 @@ Load skills on demand:
 - `.codex/skills/evaluation-benchmarking/SKILL.md`: evaluation suites, benchmarks, report claims.
 - `.codex/skills/optional-runtime-smokes/SKILL.md`: LeWorldModel, GR00T, LeRobot live or injected runtime checks.
 - `.codex/skills/persistence-state/SKILL.md`: world IDs, local JSON state, history import/export.
-- `.codex/skills/tui-development/SKILL.md`: TheWorldHarness Textual TUI - screens, workers, command palette, snapshot tests.
+- `.codex/skills/tui-development/SKILL.md`: robotics showcase Textual report and optional TUI isolation.
 - `.codex/skills/public-docs-release/SKILL.md`: README/docs/changelog/release-surface synchronization and publish-gate checks.
 </skills>
