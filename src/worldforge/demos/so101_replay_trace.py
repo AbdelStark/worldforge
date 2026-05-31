@@ -369,8 +369,22 @@ def _action_plans(candidates: list[JSONDict], *, cube_id: str) -> list[list[Acti
 def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
     """Run the SO-101 replay trace demo and return a JSON-serializable summary."""
 
-    explicit_state_dir = state_dir is not None
-    resolved_state_dir = state_dir or Path(tempfile.mkdtemp(prefix="worldforge-so101-demo-"))
+    if state_dir is None:
+        with tempfile.TemporaryDirectory(prefix="worldforge-so101-demo-") as temporary_state_dir:
+            return _run_demo(
+                resolved_state_dir=Path(temporary_state_dir),
+                explicit_state_dir=False,
+                emit=emit,
+            )
+    return _run_demo(resolved_state_dir=state_dir, explicit_state_dir=True, emit=emit)
+
+
+def _run_demo(
+    *,
+    resolved_state_dir: Path,
+    explicit_state_dir: bool,
+    emit: bool,
+) -> JSONDict:
     forge = WorldForge(state_dir=resolved_state_dir, auto_register_remote=False)
     world = forge.create_world("so101-replay-trace-demo", provider="mock")
     cube = world.add_object(_make_world_object())
@@ -401,7 +415,11 @@ def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
     reloaded_world = forge.load_world(saved_world_id)
     final_cube = reloaded_world.get_object_by_id(cube.id)
     if final_cube is None:
-        raise WorldStateError("SO-101 demo cube was not present after execution.")
+        raise WorldStateError(
+            "so101-replay-trace: cube 'so101-blue-cube' was missing after mock replay "
+            "reload; first triage step: rerun with --state-dir <empty-dir> and inspect "
+            "the persisted world JSON."
+        )
 
     trace = _decision_trace(
         observation=observation,

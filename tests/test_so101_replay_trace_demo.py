@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -79,6 +80,45 @@ def test_so101_replay_trace_default_json_summary_is_deterministic() -> None:
         "saved_world_id": "<temporary-world-id>",
         "saved_worlds": ["<temporary-world-id>"],
     }
+
+
+def test_so101_replay_trace_default_state_dir_is_cleaned_up(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeTemporaryDirectory:
+        def __init__(self, prefix: str) -> None:
+            self.prefix = prefix
+            self.path = tmp_path / "so101-temp-state"
+            self.cleaned = False
+
+        def __enter__(self) -> str:
+            assert self.prefix == "worldforge-so101-demo-"
+            self.path.mkdir()
+            return str(self.path)
+
+        def __exit__(self, *_exc: object) -> None:
+            self.cleaned = True
+            shutil.rmtree(self.path)
+
+    holder: dict[str, FakeTemporaryDirectory] = {}
+
+    def temporary_directory_factory(prefix: str) -> FakeTemporaryDirectory:
+        holder["temporary_directory"] = FakeTemporaryDirectory(prefix)
+        return holder["temporary_directory"]
+
+    monkeypatch.setattr(
+        so101_replay_trace.tempfile,
+        "TemporaryDirectory",
+        temporary_directory_factory,
+    )
+
+    summary = so101_replay_trace.run_demo(emit=False)
+
+    temporary_directory = holder["temporary_directory"]
+    assert summary["persistence"]["state_dir"] == "<temporary>"
+    assert temporary_directory.cleaned is True
+    assert not temporary_directory.path.exists()
 
 
 def test_so101_replay_trace_demo_main_json_only(
