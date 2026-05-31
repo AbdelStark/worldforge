@@ -154,6 +154,41 @@ def test_smoke_script_rejects_missing_server_checkout(tmp_path: Path) -> None:
         script._server_command(_args(gr00t_root=tmp_path))
 
 
+def test_smoke_script_builds_server_command_from_importable_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = _load_script()
+    monkeypatch.setattr(script, "_server_module_available", lambda: True)
+    monkeypatch.setattr(script.sys, "executable", "/venv/bin/python")
+
+    command, cwd = script._server_command(
+        _args(
+            model_path="/models/gr00t.ckpt",
+            device="cpu",
+            server_arg=["--log-level", "debug"],
+        )
+    )
+
+    assert cwd is None
+    assert command == [
+        "/venv/bin/python",
+        "-m",
+        "gr00t.eval.run_gr00t_server",
+        "--embodiment-tag",
+        script.DEFAULT_EMBODIMENT_TAG,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5555",
+        "--model-path",
+        "/models/gr00t.ckpt",
+        "--device",
+        "cpu",
+        "--log-level",
+        "debug",
+    ]
+
+
 def test_smoke_script_requires_translator_code_opt_in(tmp_path: Path) -> None:
     policy_path = tmp_path / "policy_info.json"
     policy_path.write_text(
@@ -178,6 +213,21 @@ def test_smoke_script_requires_translator_code_opt_in(tmp_path: Path) -> None:
                 f"{translator_path}:translate",
             ]
         )
+
+
+def test_smoke_script_help_exits_without_failed_manifest(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest_path = tmp_path / "runs" / "gr00t-help" / "run_manifest.json"
+    script = _load_script()
+
+    with pytest.raises(SystemExit) as exc_info:
+        script.main(["--help", "--run-manifest", str(manifest_path)])
+
+    assert exc_info.value.code == 0
+    assert "Run a live NVIDIA Isaac GR00T policy smoke" in capsys.readouterr().out
+    assert not manifest_path.exists()
 
 
 def test_smoke_script_requires_observation_code_opt_in(

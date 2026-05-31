@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any
@@ -50,6 +50,12 @@ PRESET_CATEGORIES: tuple[str, ...] = (
 """Categories every preset belongs to. The CLI list output groups by category."""
 
 _DATA_PACKAGE = "worldforge.benchmark_presets._data"
+_PRESET_FAILURE_TOLERANCES = frozenset(
+    {
+        "fail-on-violation",
+        "skip-when-env-missing",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,38 +79,18 @@ class BenchmarkPreset:
     tags: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        if not self.name.strip():
-            raise WorldForgeError("BenchmarkPreset name must be a non-empty string.")
-        if self.category not in PRESET_CATEGORIES:
-            known = ", ".join(PRESET_CATEGORIES)
-            raise WorldForgeError(f"BenchmarkPreset category must be one of: {known}.")
-        if not self.providers:
-            raise WorldForgeError("BenchmarkPreset must declare at least one provider.")
-        if not self.operations:
-            raise WorldForgeError("BenchmarkPreset must declare at least one operation.")
-        unknown = [op for op in self.operations if op not in BENCHMARKABLE_OPERATIONS]
-        if unknown:
-            joined = ", ".join(unknown)
-            raise WorldForgeError(f"BenchmarkPreset has unknown operations: {joined}.")
-        if self.iterations <= 0:
-            raise WorldForgeError("BenchmarkPreset iterations must be greater than 0.")
-        if self.concurrency <= 0:
-            raise WorldForgeError("BenchmarkPreset concurrency must be greater than 0.")
-        if self.failure_tolerance not in {"fail-on-violation", "skip-when-env-missing"}:
-            raise WorldForgeError(
-                "BenchmarkPreset failure_tolerance must be 'fail-on-violation' "
-                "or 'skip-when-env-missing'."
-            )
-        unknown_profiles = [
-            profile
-            for profile in (*self.requires_provider_profiles, *self.requires_provider_choice)
-            if profile not in PROVIDER_RUNTIME_PROFILES_BY_NAME
-        ]
-        if unknown_profiles:
-            joined = ", ".join(unknown_profiles)
-            raise WorldForgeError(
-                f"BenchmarkPreset references unknown provider runtime profiles: {joined}."
-            )
+        _require_non_empty_preset_name(self.name)
+        _validate_preset_category(self.category)
+        _validate_required_preset_values(self.providers, name="provider")
+        _validate_required_preset_values(self.operations, name="operation")
+        _validate_preset_operations(self.operations)
+        _validate_positive_preset_count(self.iterations, name="iterations")
+        _validate_positive_preset_count(self.concurrency, name="concurrency")
+        _validate_failure_tolerance(self.failure_tolerance)
+        _validate_provider_runtime_profiles(
+            self.requires_provider_profiles,
+            self.requires_provider_choice,
+        )
 
     def to_dict(self) -> JSONDict:
         return {
@@ -167,6 +153,58 @@ class BenchmarkPreset:
             if provider not in gated or provider_profile_skip_reason(provider, env) is None
         ]
         return tuple(configured)
+
+
+def _require_non_empty_preset_name(value: str) -> None:
+    if not value.strip():
+        raise WorldForgeError("BenchmarkPreset name must be a non-empty string.")
+
+
+def _validate_preset_category(value: str) -> None:
+    if value not in PRESET_CATEGORIES:
+        known = ", ".join(PRESET_CATEGORIES)
+        raise WorldForgeError(f"BenchmarkPreset category must be one of: {known}.")
+
+
+def _validate_required_preset_values(values: Sequence[str], *, name: str) -> None:
+    if not values:
+        raise WorldForgeError(f"BenchmarkPreset must declare at least one {name}.")
+
+
+def _validate_preset_operations(values: Sequence[str]) -> None:
+    unknown = [operation for operation in values if operation not in BENCHMARKABLE_OPERATIONS]
+    if unknown:
+        joined = ", ".join(unknown)
+        raise WorldForgeError(f"BenchmarkPreset has unknown operations: {joined}.")
+
+
+def _validate_positive_preset_count(value: int, *, name: str) -> None:
+    if value <= 0:
+        raise WorldForgeError(f"BenchmarkPreset {name} must be greater than 0.")
+
+
+def _validate_failure_tolerance(value: str) -> None:
+    if value not in _PRESET_FAILURE_TOLERANCES:
+        raise WorldForgeError(
+            "BenchmarkPreset failure_tolerance must be 'fail-on-violation' "
+            "or 'skip-when-env-missing'."
+        )
+
+
+def _validate_provider_runtime_profiles(
+    required: Sequence[str],
+    choices: Sequence[str],
+) -> None:
+    unknown_profiles = [
+        profile
+        for profile in (*required, *choices)
+        if profile not in PROVIDER_RUNTIME_PROFILES_BY_NAME
+    ]
+    if unknown_profiles:
+        joined = ", ".join(unknown_profiles)
+        raise WorldForgeError(
+            f"BenchmarkPreset references unknown provider runtime profiles: {joined}."
+        )
 
 
 def _data_text(filename: str) -> str:

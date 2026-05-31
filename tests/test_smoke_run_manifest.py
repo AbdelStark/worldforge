@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -80,6 +81,26 @@ def test_write_run_manifest_validates_before_writing(tmp_path: Path) -> None:
     assert json.loads(path.read_text(encoding="utf-8"))["provider_profile"] == "cosmos"
 
 
+def test_write_run_manifest_rejects_non_finite_payload_before_touching_disk(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "nested" / "run_manifest.json"
+    manifest = build_run_manifest(
+        run_id="run-1",
+        provider_profile="cosmos",
+        capability="generate",
+        status="skipped",
+        env_vars=("COSMOS_BASE_URL",),
+        command_argv=("smoke",),
+    ).to_dict()
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        write_run_manifest(path, {**manifest, "input_summary": {"score": math.nan}})
+
+    assert not path.exists()
+    assert not path.parent.exists()
+
+
 def test_validate_run_manifest_rejects_unknown_status() -> None:
     manifest = build_run_manifest(
         run_id="run-1",
@@ -148,6 +169,27 @@ def test_run_manifest_rejects_secret_like_values_and_signed_urls(tmp_path: Path)
         )
 
 
+def test_run_manifest_rejects_nested_secret_like_values() -> None:
+    manifest = build_run_manifest(
+        run_id="run-1",
+        provider_profile="runway",
+        capability="generate",
+        status="passed",
+        env_vars=("RUNWAYML_API_SECRET",),
+        command_argv=("smoke",),
+    ).to_dict()
+
+    with pytest.raises(WorldForgeError, match="secret-like metadata"):
+        validate_run_manifest(
+            {
+                **manifest,
+                "input_summary": {
+                    "triage": ["Bearer abc123"],
+                },
+            }
+        )
+
+
 def test_run_manifest_rejects_host_local_artifact_paths(tmp_path: Path) -> None:
     manifest = build_run_manifest(
         run_id="run-1",
@@ -172,6 +214,29 @@ def test_run_manifest_rejects_host_local_artifact_paths(tmp_path: Path) -> None:
             artifact_paths={"video": tmp_path.parent / "v.mp4"},
             artifact_root=tmp_path,
         )
+
+
+def test_validate_run_manifest_rejects_malformed_collection_fields() -> None:
+    manifest = build_run_manifest(
+        run_id="run-1",
+        provider_profile="runway",
+        capability="generate",
+        status="passed",
+        env_vars=("RUNWAYML_API_SECRET",),
+        command_argv=("smoke",),
+    ).to_dict()
+
+    cases = (
+        ("command_argv", [], "command_argv must be a non-empty string list"),
+        ("env_summary", {}, "env_summary must be a list"),
+        ("artifact_paths", [], "artifact_paths must be an object"),
+        ("runtime_assets", {}, "runtime_assets must be a list"),
+        ("input_summary", [], "input_summary must be an object"),
+    )
+
+    for field_name, value, message in cases:
+        with pytest.raises(WorldForgeError, match=message):
+            validate_run_manifest({**manifest, field_name: value})
 
 
 def test_env_summary_rejects_blank_names() -> None:

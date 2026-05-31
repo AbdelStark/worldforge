@@ -55,6 +55,13 @@ ROUTING_ATTEMPT_STATUSES: tuple[str, ...] = (
 
 
 @dataclass(slots=True, frozen=True)
+class _RouteStep[T]:
+    attempt: RoutingAttempt
+    succeeded: bool = False
+    value: T | None = None
+
+
+@dataclass(slots=True, frozen=True)
 class ProviderRoutingPolicy:
     """Typed routing policy for a single capability call.
 
@@ -70,34 +77,14 @@ class ProviderRoutingPolicy:
     operation: str = "routing"
 
     def __post_init__(self) -> None:
-        if not isinstance(self.capability, str) or self.capability not in CAPABILITY_NAMES:
-            known = ", ".join(CAPABILITY_NAMES)
-            raise WorldForgeError(f"ProviderRoutingPolicy capability must be one of: {known}.")
-        if not isinstance(self.preferred, str) or not self.preferred.strip():
-            raise WorldForgeError("ProviderRoutingPolicy preferred must be a non-empty string.")
-        object.__setattr__(self, "preferred", self.preferred.strip())
-        if not isinstance(self.fallbacks, tuple | list):
-            raise WorldForgeError(
-                "ProviderRoutingPolicy fallbacks must be a sequence of provider names."
-            )
-        cleaned: list[str] = []
-        for entry in self.fallbacks:
-            if not isinstance(entry, str) or not entry.strip():
-                raise WorldForgeError("ProviderRoutingPolicy fallbacks must be non-empty strings.")
-            cleaned.append(entry.strip())
-        seen: set[str] = {self.preferred}
-        for entry in cleaned:
-            if entry in seen:
-                raise WorldForgeError(
-                    f"ProviderRoutingPolicy provider '{entry}' duplicated in chain."
-                )
-            seen.add(entry)
-        object.__setattr__(self, "fallbacks", tuple(cleaned))
-        if not isinstance(self.require_capability, bool):
-            raise WorldForgeError("ProviderRoutingPolicy require_capability must be a bool.")
-        if not isinstance(self.operation, str) or not self.operation.strip():
-            raise WorldForgeError("ProviderRoutingPolicy operation must be a non-empty string.")
-        object.__setattr__(self, "operation", self.operation.strip())
+        _require_routing_policy_capability(self.capability)
+        preferred = _normalize_policy_preferred(self.preferred)
+        fallbacks = _normalize_policy_fallbacks(self.fallbacks, preferred=preferred)
+        _require_policy_capability_flag(self.require_capability)
+        operation = _normalize_policy_operation(self.operation)
+        object.__setattr__(self, "preferred", preferred)
+        object.__setattr__(self, "fallbacks", fallbacks)
+        object.__setattr__(self, "operation", operation)
 
     def chain(self) -> tuple[str, ...]:
         """Return the ordered provider chain, preferred first."""
@@ -112,6 +99,57 @@ class ProviderRoutingPolicy:
             "require_capability": self.require_capability,
             "operation": self.operation,
         }
+
+
+def _require_routing_policy_capability(capability: object) -> str:
+    if not isinstance(capability, str) or capability not in CAPABILITY_NAMES:
+        known = ", ".join(CAPABILITY_NAMES)
+        raise WorldForgeError(f"ProviderRoutingPolicy capability must be one of: {known}.")
+    return capability
+
+
+def _normalize_policy_preferred(preferred: object) -> str:
+    if not isinstance(preferred, str) or not preferred.strip():
+        raise WorldForgeError("ProviderRoutingPolicy preferred must be a non-empty string.")
+    return preferred.strip()
+
+
+def _normalize_policy_fallbacks(fallbacks: object, *, preferred: str) -> tuple[str, ...]:
+    if not isinstance(fallbacks, tuple | list):
+        raise WorldForgeError(
+            "ProviderRoutingPolicy fallbacks must be a sequence of provider names."
+        )
+    cleaned = tuple(_normalize_policy_fallback(entry) for entry in fallbacks)
+    _reject_duplicate_policy_providers((preferred, *cleaned))
+    return cleaned
+
+
+def _normalize_policy_fallback(fallback: object) -> str:
+    if not isinstance(fallback, str) or not fallback.strip():
+        raise WorldForgeError("ProviderRoutingPolicy fallbacks must be non-empty strings.")
+    return fallback.strip()
+
+
+def _reject_duplicate_policy_providers(chain: tuple[str, ...]) -> None:
+    seen: set[str] = set()
+    for provider in chain:
+        if provider in seen:
+            raise WorldForgeError(
+                f"ProviderRoutingPolicy provider '{provider}' duplicated in chain."
+            )
+        seen.add(provider)
+
+
+def _require_policy_capability_flag(require_capability: object) -> bool:
+    if not isinstance(require_capability, bool):
+        raise WorldForgeError("ProviderRoutingPolicy require_capability must be a bool.")
+    return require_capability
+
+
+def _normalize_policy_operation(operation: object) -> str:
+    if not isinstance(operation, str) or not operation.strip():
+        raise WorldForgeError("ProviderRoutingPolicy operation must be a non-empty string.")
+    return operation.strip()
 
 
 @dataclass(slots=True, frozen=True)
@@ -169,6 +207,81 @@ class RoutingAttempt:
         }
 
 
+def _require_routing_result_capability(capability: object) -> str:
+    if not isinstance(capability, str) or capability not in CAPABILITY_NAMES:
+        known = ", ".join(CAPABILITY_NAMES)
+        raise WorldForgeError(f"RoutingResult capability must be one of: {known}.")
+    return capability
+
+
+def _normalize_routing_chosen(chosen: object) -> str | None:
+    if chosen is None:
+        return None
+    if not isinstance(chosen, str) or not chosen.strip():
+        raise WorldForgeError("RoutingResult chosen must be None or a non-empty provider name.")
+    return chosen.strip()
+
+
+def _require_routing_succeeded(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise WorldForgeError("RoutingResult succeeded must be a bool.")
+    return value
+
+
+def _routing_attempts_for_result(
+    attempts: object,
+    *,
+    capability: str,
+) -> tuple[RoutingAttempt, ...]:
+    if not isinstance(attempts, tuple) or any(
+        not isinstance(item, RoutingAttempt) for item in attempts
+    ):
+        raise WorldForgeError("RoutingResult attempts must be a tuple of RoutingAttempt.")
+    if any(attempt.capability != capability for attempt in attempts):
+        raise WorldForgeError("RoutingResult attempt capabilities must match result capability.")
+    return attempts
+
+
+def _succeeded_routing_attempts(attempts: tuple[RoutingAttempt, ...]) -> tuple[RoutingAttempt, ...]:
+    return tuple(attempt for attempt in attempts if attempt.status == "succeeded")
+
+
+def _validate_successful_routing_result(
+    *,
+    chosen: str | None,
+    value: object,
+    attempts: tuple[RoutingAttempt, ...],
+    succeeded_attempts: tuple[RoutingAttempt, ...],
+) -> None:
+    if chosen is None:
+        raise WorldForgeError("RoutingResult succeeded results require a chosen provider.")
+    if value is None:
+        raise WorldForgeError("RoutingResult succeeded results require a value.")
+    if len(succeeded_attempts) != 1:
+        raise WorldForgeError(
+            "RoutingResult succeeded results must include exactly one succeeded attempt."
+        )
+    succeeded_attempt = succeeded_attempts[0]
+    if succeeded_attempt.provider != chosen:
+        raise WorldForgeError("RoutingResult chosen provider must match the succeeded attempt.")
+    if attempts[-1] != succeeded_attempt:
+        raise WorldForgeError("RoutingResult succeeded attempt must be the final routing attempt.")
+
+
+def _validate_failed_routing_result(
+    *,
+    chosen: str | None,
+    value: object,
+    succeeded_attempts: tuple[RoutingAttempt, ...],
+) -> None:
+    if chosen is not None:
+        raise WorldForgeError("RoutingResult failed results must not choose a provider.")
+    if value is not None:
+        raise WorldForgeError("RoutingResult failed results must not carry a value.")
+    if succeeded_attempts:
+        raise WorldForgeError("RoutingResult failed results must not include succeeded attempts.")
+
+
 @dataclass(slots=True, frozen=True)
 class RoutingResult[T]:
     """Outcome of a :func:`route_capability` call.
@@ -187,54 +300,25 @@ class RoutingResult[T]:
     value: T | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.capability, str) or self.capability not in CAPABILITY_NAMES:
-            known = ", ".join(CAPABILITY_NAMES)
-            raise WorldForgeError(f"RoutingResult capability must be one of: {known}.")
-        if self.chosen is not None and (
-            not isinstance(self.chosen, str) or not self.chosen.strip()
-        ):
-            raise WorldForgeError("RoutingResult chosen must be None or a non-empty provider name.")
-        object.__setattr__(self, "chosen", self.chosen.strip() if self.chosen else None)
-        if not isinstance(self.succeeded, bool):
-            raise WorldForgeError("RoutingResult succeeded must be a bool.")
-        if not isinstance(self.attempts, tuple) or any(
-            not isinstance(item, RoutingAttempt) for item in self.attempts
-        ):
-            raise WorldForgeError("RoutingResult attempts must be a tuple of RoutingAttempt.")
-        if any(attempt.capability != self.capability for attempt in self.attempts):
-            raise WorldForgeError(
-                "RoutingResult attempt capabilities must match result capability."
+        capability = _require_routing_result_capability(self.capability)
+        chosen = _normalize_routing_chosen(self.chosen)
+        object.__setattr__(self, "chosen", chosen)
+        succeeded = _require_routing_succeeded(self.succeeded)
+        attempts = _routing_attempts_for_result(self.attempts, capability=capability)
+        succeeded_attempts = _succeeded_routing_attempts(attempts)
+        if succeeded:
+            _validate_successful_routing_result(
+                chosen=chosen,
+                value=self.value,
+                attempts=attempts,
+                succeeded_attempts=succeeded_attempts,
             )
-        succeeded_attempts = tuple(
-            attempt for attempt in self.attempts if attempt.status == "succeeded"
-        )
-        if self.succeeded:
-            if self.chosen is None:
-                raise WorldForgeError("RoutingResult succeeded results require a chosen provider.")
-            if self.value is None:
-                raise WorldForgeError("RoutingResult succeeded results require a value.")
-            if len(succeeded_attempts) != 1:
-                raise WorldForgeError(
-                    "RoutingResult succeeded results must include exactly one succeeded attempt."
-                )
-            succeeded_attempt = succeeded_attempts[0]
-            if succeeded_attempt.provider != self.chosen:
-                raise WorldForgeError(
-                    "RoutingResult chosen provider must match the succeeded attempt."
-                )
-            if self.attempts[-1] != succeeded_attempt:
-                raise WorldForgeError(
-                    "RoutingResult succeeded attempt must be the final routing attempt."
-                )
             return
-        if self.chosen is not None:
-            raise WorldForgeError("RoutingResult failed results must not choose a provider.")
-        if self.value is not None:
-            raise WorldForgeError("RoutingResult failed results must not carry a value.")
-        if succeeded_attempts:
-            raise WorldForgeError(
-                "RoutingResult failed results must not include succeeded attempts."
-            )
+        _validate_failed_routing_result(
+            chosen=chosen,
+            value=self.value,
+            succeeded_attempts=succeeded_attempts,
+        )
 
     def to_dict(self) -> JSONDict:
         return {
@@ -293,58 +377,115 @@ def route_capability[T](
     registered = set(forge.providers())
 
     for name in policy.chain():
-        if name not in registered:
-            attempts.append(
-                RoutingAttempt(
-                    provider=name,
-                    capability=policy.capability,
-                    status="skipped-not-registered",
-                    reason=f"provider '{name}' is not registered",
-                )
-            )
-            continue
-        if policy.require_capability:
-            info = forge.provider_info(name)
-            if not info.capabilities.supports(policy.capability):
-                attempts.append(
-                    RoutingAttempt(
-                        provider=name,
-                        capability=policy.capability,
-                        status="skipped-incompatible",
-                        reason=(
-                            f"provider '{name}' does not advertise capability '{policy.capability}'"
-                        ),
-                    )
-                )
-                continue
-        try:
-            value = invoke(name)
-        except Exception as exc:
-            attempts.append(
-                RoutingAttempt(
-                    provider=name,
-                    capability=policy.capability,
-                    status="failed",
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                )
-            )
-            continue
-        attempts.append(
-            RoutingAttempt(
-                provider=name,
-                capability=policy.capability,
-                status="succeeded",
-            )
+        step = _route_provider_step(
+            policy=policy,
+            forge=forge,
+            provider=name,
+            registered=registered,
+            invoke=invoke,
         )
-        return RoutingResult(
-            capability=policy.capability,
-            chosen=name,
-            succeeded=True,
-            attempts=tuple(attempts),
-            value=value,
-        )
+        attempts.append(step.attempt)
+        if step.succeeded:
+            return _successful_route_result(
+                policy=policy, provider=name, attempts=attempts, step=step
+            )
 
+    return _failed_route_result(policy=policy, attempts=attempts)
+
+
+def _route_provider_step[T](
+    *,
+    policy: ProviderRoutingPolicy,
+    forge: WorldForge,
+    provider: str,
+    registered: set[str],
+    invoke: Callable[[str], T],
+) -> _RouteStep[T]:
+    if provider not in registered:
+        return _RouteStep(_not_registered_attempt(policy, provider))
+    if not _provider_supports_policy_capability(policy, forge, provider):
+        return _RouteStep(_incompatible_capability_attempt(policy, provider))
+    try:
+        value = invoke(provider)
+    except Exception as exc:
+        return _RouteStep(_failed_provider_attempt(policy, provider, exc))
+    return _RouteStep(_succeeded_provider_attempt(policy, provider), succeeded=True, value=value)
+
+
+def _provider_supports_policy_capability(
+    policy: ProviderRoutingPolicy,
+    forge: WorldForge,
+    provider: str,
+) -> bool:
+    if not policy.require_capability:
+        return True
+    info = forge.provider_info(provider)
+    return bool(info.capabilities.supports(policy.capability))
+
+
+def _not_registered_attempt(policy: ProviderRoutingPolicy, provider: str) -> RoutingAttempt:
+    return RoutingAttempt(
+        provider=provider,
+        capability=policy.capability,
+        status="skipped-not-registered",
+        reason=f"provider '{provider}' is not registered",
+    )
+
+
+def _incompatible_capability_attempt(
+    policy: ProviderRoutingPolicy, provider: str
+) -> RoutingAttempt:
+    return RoutingAttempt(
+        provider=provider,
+        capability=policy.capability,
+        status="skipped-incompatible",
+        reason=f"provider '{provider}' does not advertise capability '{policy.capability}'",
+    )
+
+
+def _failed_provider_attempt(
+    policy: ProviderRoutingPolicy,
+    provider: str,
+    exc: Exception,
+) -> RoutingAttempt:
+    return RoutingAttempt(
+        provider=provider,
+        capability=policy.capability,
+        status="failed",
+        error_type=type(exc).__name__,
+        error_message=str(exc),
+    )
+
+
+def _succeeded_provider_attempt(policy: ProviderRoutingPolicy, provider: str) -> RoutingAttempt:
+    return RoutingAttempt(
+        provider=provider,
+        capability=policy.capability,
+        status="succeeded",
+    )
+
+
+def _successful_route_result[T](
+    *,
+    policy: ProviderRoutingPolicy,
+    provider: str,
+    attempts: list[RoutingAttempt],
+    step: _RouteStep[T],
+) -> RoutingResult[T]:
+    return RoutingResult(
+        capability=policy.capability,
+        chosen=provider,
+        succeeded=True,
+        attempts=tuple(attempts),
+        value=step.value,
+    )
+
+
+def _failed_route_result(
+    *,
+    policy: ProviderRoutingPolicy,
+    attempts: list[RoutingAttempt],
+) -> RoutingResult[object]:
     return RoutingResult(
         capability=policy.capability,
         chosen=None,

@@ -195,6 +195,102 @@ def test_release_notes_draft_uses_failed_gate_rows_for_status(tmp_path: Path) ->
     assert "| Tests | failed | `uv run pytest` | fix tests |" in draft.markdown
 
 
+def test_release_notes_draft_handles_malformed_validation_shapes(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        """# Changelog
+
+## Unreleased
+
+### Fixed
+
+- Fixed malformed validation evidence rendering.
+""",
+        encoding="utf-8",
+    )
+    evidence = tmp_path / "release-evidence.json"
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "validation_summary": ["not", "a", "dict"],
+                "validation_gates": {"not": "a list"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    draft = build_release_notes_draft(
+        changelog_path=changelog,
+        release_evidence_path=evidence,
+        now_utc=DeterministicClock(start=datetime(2026, 5, 11, tzinfo=UTC)).now,
+    )
+
+    assert draft.status == "ready-for-maintainer-review"
+    assert "`passed`=0" in draft.markdown
+    assert "| none | missing |  | regenerate release evidence |" in draft.markdown
+
+
+def test_release_notes_draft_handles_malformed_host_owned_evidence_rows(
+    tmp_path: Path,
+) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        """# Changelog
+
+## Unreleased
+
+### Changed
+
+- Changed optional runtime release note rendering.
+""",
+        encoding="utf-8",
+    )
+    evidence = tmp_path / "release-evidence.json"
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "validation_summary": {
+                    "passed": 1,
+                    "failed": 0,
+                    "skipped": 0,
+                    "host-owned": 0,
+                },
+                "validation_gates": [
+                    {
+                        "name": "Docs",
+                        "status": "passed",
+                        "command": "uv run mkdocs build --strict",
+                        "triage_step": "fix docs",
+                    }
+                ],
+                "live_provider_evidence": {"provider": "ignored"},
+                "extra_live_provider_evidence": [
+                    "ignored",
+                    {
+                        "provider": "cosmos-policy",
+                        "status": "needs-review",
+                        "manifests": {"not": "a list"},
+                        "reason": "",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    draft = build_release_notes_draft(
+        changelog_path=changelog,
+        release_evidence_path=evidence,
+        now_utc=DeterministicClock(start=datetime(2026, 5, 11, tzinfo=UTC)).now,
+    )
+
+    assert draft.status == "ready-for-maintainer-review"
+    assert "| `cosmos-policy` | needs-review | no evidence detail |" in draft.markdown
+    assert "| `ignored` |" not in draft.markdown
+
+
 def test_release_notes_draft_redacts_secret_shapes_from_all_user_inputs(tmp_path: Path) -> None:
     changelog = tmp_path / "CHANGELOG.md"
     changelog.write_text(

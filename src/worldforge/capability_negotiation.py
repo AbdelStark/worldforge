@@ -337,51 +337,62 @@ class CapabilityNegotiationReport:
             "",
         ]
         for negotiation in self.workflows:
-            workflow = negotiation.workflow
-            status = "READY" if negotiation.ready else "BLOCKED"
-            lines.extend(
-                [
-                    f"## {workflow.title} (`{workflow.name}`) — {status}",
-                    "",
-                    workflow.description,
-                    "",
-                    f"Required capabilities: {', '.join(workflow.required_capabilities)}",
-                    f"Summary: {negotiation.summary()}",
-                    "",
-                ]
-            )
-            for requirement in negotiation.requirements:
-                lines.append(
-                    f"### Capability: `{requirement.capability}` "
-                    f"({'ready' if requirement.ready else 'blocked'})"
-                )
-                lines.append("")
-                header = (
-                    "| provider | registered | capability | configured | "
-                    "healthy | readiness | reason |"
-                )
-                lines.append(header)
-                lines.append("| --- | --- | --- | --- | --- | --- | --- |")
-                lines.extend(
-                    f"| {status.name} | "
-                    f"{'yes' if status.registered else 'no'} | "
-                    f"{'yes' if status.capability_compatible else 'no'} | "
-                    f"{'yes' if status.configured else 'no'} | "
-                    f"{'yes' if status.healthy else 'no'} | "
-                    f"{status.readiness} | "
-                    f"{status.reason or '-'} |"
-                    for status in requirement.candidates
-                )
-                if requirement.recommended_action:
-                    lines.append("")
-                    lines.append(f"Next step: {requirement.recommended_action}")
-                lines.append("")
-            if negotiation.recommended_actions and not negotiation.ready:
-                lines.append("### Recommended actions")
-                lines.append("")
-                lines.extend(f"- {action}" for action in negotiation.recommended_actions)
-                lines.append("")
+            lines.extend(_workflow_markdown_lines(negotiation))
         return "\n".join(lines).rstrip() + "\n"
+
+
+def _workflow_markdown_lines(negotiation: WorkflowNegotiation) -> list[str]:
+    workflow = negotiation.workflow
+    status = "READY" if negotiation.ready else "BLOCKED"
+    lines = [
+        f"## {workflow.title} (`{workflow.name}`) — {status}",
+        "",
+        workflow.description,
+        "",
+        f"Required capabilities: {', '.join(workflow.required_capabilities)}",
+        f"Summary: {negotiation.summary()}",
+        "",
+    ]
+    for requirement in negotiation.requirements:
+        lines.extend(_requirement_markdown_lines(requirement))
+    if negotiation.recommended_actions and not negotiation.ready:
+        lines.extend(_recommended_actions_markdown_lines(negotiation.recommended_actions))
+    return lines
+
+
+def _requirement_markdown_lines(requirement: CapabilityRequirement) -> list[str]:
+    lines = [
+        f"### Capability: `{requirement.capability}` "
+        f"({'ready' if requirement.ready else 'blocked'})",
+        "",
+        "| provider | registered | capability | configured | healthy | readiness | reason |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    lines.extend(_provider_status_markdown_row(status) for status in requirement.candidates)
+    if requirement.recommended_action:
+        lines.extend(["", f"Next step: {requirement.recommended_action}"])
+    lines.append("")
+    return lines
+
+
+def _provider_status_markdown_row(status: CapabilityProviderStatus) -> str:
+    return (
+        f"| {status.name} | "
+        f"{_yes_no(status.registered)} | "
+        f"{_yes_no(status.capability_compatible)} | "
+        f"{_yes_no(status.configured)} | "
+        f"{_yes_no(status.healthy)} | "
+        f"{status.readiness} | "
+        f"{status.reason or '-'} |"
+    )
+
+
+def _yes_no(value: bool) -> str:
+    return "yes" if value else "no"
+
+
+def _recommended_actions_markdown_lines(actions: Sequence[str]) -> list[str]:
+    return ["### Recommended actions", "", *(f"- {action}" for action in actions), ""]
 
 
 def _runtime_profile_missing_reason(provider: str, environ: Mapping[str, str]) -> str | None:
@@ -458,9 +469,8 @@ def _classify_provider(
     forge: WorldForge,
     environ: Mapping[str, str],
 ) -> CapabilityProviderStatus:
-    capability_compatible = capabilities.supports(capability)
-    if not capability_compatible:
-        return CapabilityProviderStatus(
+    if not capabilities.supports(capability):
+        return _provider_status(
             name=name,
             capability=capability,
             registered=registered,
@@ -472,49 +482,16 @@ def _classify_provider(
         )
 
     if registered:
-        provider = forge._require_provider(name)
-        configured = bool(provider.configured())
-        try:
-            healthy = bool(provider.health().healthy)
-        except Exception:
-            healthy = False
-        if configured and healthy:
-            return CapabilityProviderStatus(
-                name=name,
-                capability=capability,
-                registered=True,
-                capability_compatible=True,
-                configured=True,
-                healthy=True,
-                readiness=_READINESS_READY,
-                reason=None,
-            )
-        if not configured:
-            missing = _runtime_profile_missing_reason(name, environ)
-            return CapabilityProviderStatus(
-                name=name,
-                capability=capability,
-                registered=True,
-                capability_compatible=True,
-                configured=False,
-                healthy=healthy,
-                readiness=_READINESS_MISSING_CONFIG,
-                reason=missing or f"provider '{name}' reports configured() == False",
-            )
-        return CapabilityProviderStatus(
-            name=name,
+        return _registered_provider_status(
+            name,
             capability=capability,
-            registered=True,
-            capability_compatible=True,
-            configured=True,
-            healthy=False,
-            readiness=_READINESS_MISSING_DEPENDENCY,
-            reason=f"provider '{name}' health check is unhealthy",
+            forge=forge,
+            environ=environ,
         )
 
     missing = _runtime_profile_missing_reason(name, environ)
     if missing is not None:
-        return CapabilityProviderStatus(
+        return _provider_status(
             name=name,
             capability=capability,
             registered=False,
@@ -524,7 +501,7 @@ def _classify_provider(
             readiness=_READINESS_MISSING_CONFIG,
             reason=missing,
         )
-    return CapabilityProviderStatus(
+    return _provider_status(
         name=name,
         capability=capability,
         registered=False,
@@ -533,6 +510,159 @@ def _classify_provider(
         healthy=False,
         readiness=_READINESS_NOT_REGISTERED,
         reason=f"provider '{name}' is known but not registered on this forge",
+    )
+
+
+def _registered_provider_status(
+    name: str,
+    *,
+    capability: str,
+    forge: WorldForge,
+    environ: Mapping[str, str],
+) -> CapabilityProviderStatus:
+    provider = forge._require_provider(name)
+    configured = bool(provider.configured())
+    healthy = _provider_is_healthy(provider)
+    if configured and healthy:
+        return _provider_status(
+            name=name,
+            capability=capability,
+            registered=True,
+            capability_compatible=True,
+            configured=True,
+            healthy=True,
+            readiness=_READINESS_READY,
+            reason=None,
+        )
+    if not configured:
+        missing = _runtime_profile_missing_reason(name, environ)
+        return _provider_status(
+            name=name,
+            capability=capability,
+            registered=True,
+            capability_compatible=True,
+            configured=False,
+            healthy=healthy,
+            readiness=_READINESS_MISSING_CONFIG,
+            reason=missing or f"provider '{name}' reports configured() == False",
+        )
+    return _provider_status(
+        name=name,
+        capability=capability,
+        registered=True,
+        capability_compatible=True,
+        configured=True,
+        healthy=False,
+        readiness=_READINESS_MISSING_DEPENDENCY,
+        reason=f"provider '{name}' health check is unhealthy",
+    )
+
+
+def _provider_is_healthy(provider: object) -> bool:
+    health = getattr(provider, "health", None)
+    if not callable(health):
+        return False
+    try:
+        return bool(getattr(health(), "healthy", False))
+    except Exception:
+        return False
+
+
+def _provider_status(
+    *,
+    name: str,
+    capability: str,
+    registered: bool,
+    capability_compatible: bool,
+    configured: bool,
+    healthy: bool,
+    readiness: str,
+    reason: str | None,
+) -> CapabilityProviderStatus:
+    return CapabilityProviderStatus(
+        name=name,
+        capability=capability,
+        registered=registered,
+        capability_compatible=capability_compatible,
+        configured=configured,
+        healthy=healthy,
+        readiness=readiness,
+        reason=reason,
+    )
+
+
+def _selected_workflows(workflows: Iterable[WorkflowSpec | str] | None) -> tuple[WorkflowSpec, ...]:
+    if workflows is None:
+        return _WORKFLOWS
+    return tuple(
+        workflow if isinstance(workflow, WorkflowSpec) else get_workflow(str(workflow))
+        for workflow in workflows
+    )
+
+
+def _statuses_for_capability(
+    capability: str,
+    *,
+    forge: WorldForge,
+    environ: Mapping[str, str],
+) -> tuple[CapabilityProviderStatus, ...]:
+    return tuple(
+        _classify_provider(
+            name=name,
+            capability=capability,
+            capabilities=capabilities,
+            registered=registered,
+            forge=forge,
+            environ=environ,
+        )
+        for name, capabilities, registered in _capability_compatible_providers(capability, forge)
+    )
+
+
+def _requirement_for_capability(
+    capability: str,
+    *,
+    forge: WorldForge,
+    environ: Mapping[str, str],
+) -> CapabilityRequirement:
+    statuses = _statuses_for_capability(capability, forge=forge, environ=environ)
+    ready = any(status.is_ready() for status in statuses)
+    return CapabilityRequirement(
+        capability=capability,
+        ready=ready,
+        candidates=statuses,
+        recommended_action=None if ready else _build_recommended_action(capability, statuses),
+    )
+
+
+def _unique_recommended_actions(
+    requirements: Sequence[CapabilityRequirement],
+) -> tuple[str, ...]:
+    actions: list[str] = []
+    seen: set[str] = set()
+    for requirement in requirements:
+        action = requirement.recommended_action
+        if action and action not in seen:
+            actions.append(action)
+            seen.add(action)
+    return tuple(actions)
+
+
+def _negotiate_workflow(
+    workflow: WorkflowSpec,
+    *,
+    forge: WorldForge,
+    environ: Mapping[str, str],
+) -> WorkflowNegotiation:
+    requirements = tuple(
+        _requirement_for_capability(capability, forge=forge, environ=environ)
+        for capability in workflow.required_capabilities
+    )
+    return WorkflowNegotiation(
+        workflow=workflow,
+        requirements=requirements,
+        ready=all(requirement.ready for requirement in requirements),
+        recommended_actions=_unique_recommended_actions(requirements),
     )
 
 
@@ -554,62 +684,10 @@ def negotiate(
 
     active_forge = forge or _WorldForge()
     env = os.environ if environ is None else environ
-    selected: list[WorkflowSpec] = []
-    if workflows is None:
-        selected.extend(_WORKFLOWS)
-    else:
-        for workflow in workflows:
-            if isinstance(workflow, WorkflowSpec):
-                selected.append(workflow)
-            else:
-                selected.append(get_workflow(str(workflow)))
-
-    negotiations: list[WorkflowNegotiation] = []
-    for workflow in selected:
-        requirements: list[CapabilityRequirement] = []
-        for capability in workflow.required_capabilities:
-            statuses: list[CapabilityProviderStatus] = []
-            for name, capabilities, registered in _capability_compatible_providers(
-                capability, active_forge
-            ):
-                statuses.append(
-                    _classify_provider(
-                        name=name,
-                        capability=capability,
-                        capabilities=capabilities,
-                        registered=registered,
-                        forge=active_forge,
-                        environ=env,
-                    )
-                )
-            ready = any(status.is_ready() for status in statuses)
-            recommended = None if ready else _build_recommended_action(capability, statuses)
-            requirements.append(
-                CapabilityRequirement(
-                    capability=capability,
-                    ready=ready,
-                    candidates=tuple(statuses),
-                    recommended_action=recommended,
-                )
-            )
-        ready_overall = all(requirement.ready for requirement in requirements)
-        actions: list[str] = []
-        seen_actions: set[str] = set()
-        for requirement in requirements:
-            if (
-                requirement.recommended_action
-                and requirement.recommended_action not in seen_actions
-            ):
-                actions.append(requirement.recommended_action)
-                seen_actions.add(requirement.recommended_action)
-        negotiations.append(
-            WorkflowNegotiation(
-                workflow=workflow,
-                requirements=tuple(requirements),
-                ready=ready_overall,
-                recommended_actions=tuple(actions),
-            )
-        )
+    negotiations = tuple(
+        _negotiate_workflow(workflow, forge=active_forge, environ=env)
+        for workflow in _selected_workflows(workflows)
+    )
     return CapabilityNegotiationReport(workflows=tuple(negotiations))
 
 

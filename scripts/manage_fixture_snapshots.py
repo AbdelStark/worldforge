@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -12,6 +11,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from worldforge.artifact_io import write_json_artifact  # noqa: E402
+from worldforge.models import dump_json  # noqa: E402
 from worldforge.testing import (  # noqa: E402
     build_fixture_snapshot_manifest,
     default_fixture_snapshot_paths,
@@ -64,11 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             default_fixture_snapshot_paths(root),
             root=root,
         )
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(
-            json.dumps(manifest.to_dict(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        write_json_artifact(manifest_path, manifest.to_dict())
         try:
             display_path = manifest_path.relative_to(root)
         except ValueError:
@@ -83,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         allow_intended_updates=args.allow_intended_updates,
     )
     if args.format == "json":
-        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        print(dump_json(report.to_dict(), indent=2))
     else:
         print(report.to_markdown())
     return 0 if report.passed else 1

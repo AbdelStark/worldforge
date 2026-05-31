@@ -72,6 +72,7 @@ PUBLIC_SURFACE_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("src/worldforge", "Python API", "WorldForgeError", "WorldStateError", "ProviderError"),
     ),
 )
+HOST_OWNED_EVIDENCE_KEYS = ("live_provider_evidence", "extra_live_provider_evidence")
 
 
 class ReleaseNotesError(RuntimeError):
@@ -580,47 +581,78 @@ def _render_closed_issues(issues: tuple[IssueRecord, ...]) -> list[str]:
 def _render_validation(release_evidence: ReleaseEvidenceRecord) -> list[str]:
     lines = ["", "## Validation", ""]
     if release_evidence.status != "present":
-        lines.append(f"- {release_evidence.message}")
-        lines.append("- Draft status remains `needs-validation-evidence` until evidence is linked.")
+        lines.extend(_missing_validation_evidence_lines(release_evidence))
         return lines
 
     payload = release_evidence.payload or {}
-    summary = payload.get("validation_summary", {})
-    if not isinstance(summary, dict):
-        summary = {}
-    lines.append(f"- Evidence JSON: `{_display_path(release_evidence.path)}`")
-    lines.append(
+    lines.extend(_validation_summary_lines(release_evidence, payload))
+    lines.extend(_validation_gate_table_lines(payload))
+    lines.extend(_validation_reference_lines(payload))
+    return lines
+
+
+def _missing_validation_evidence_lines(release_evidence: ReleaseEvidenceRecord) -> list[str]:
+    return [
+        f"- {release_evidence.message}",
+        "- Draft status remains `needs-validation-evidence` until evidence is linked.",
+    ]
+
+
+def _validation_summary_lines(
+    release_evidence: ReleaseEvidenceRecord,
+    payload: dict[str, Any],
+) -> list[str]:
+    summary = _validation_summary(payload)
+    return [
+        f"- Evidence JSON: `{_display_path(release_evidence.path)}`",
         "- Summary: "
         + ", ".join(
             f"`{name}`={_validation_summary_count(summary, name)}"
             for name in ("passed", "failed", "skipped", "host-owned")
-        )
-    )
-    lines.extend(
-        ["", "| Gate | Status | Command | First triage step |", "| --- | --- | --- | --- |"]
-    )
-    gates = payload.get("validation_gates", [])
-    if isinstance(gates, list) and gates:
-        for gate in gates:
-            if not isinstance(gate, dict):
-                continue
-            lines.append(
-                "| "
-                + " | ".join(
-                    (
-                        _sanitize_text(str(gate.get("name") or "unknown")),
-                        _sanitize_text(str(gate.get("status") or "unknown")),
-                        f"`{_sanitize_text(str(gate.get('command') or ''))}`",
-                        _sanitize_text(str(gate.get("triage_step") or "")),
-                    )
-                )
-                + " |"
-            )
+        ),
+    ]
+
+
+def _validation_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    summary = payload.get("validation_summary", {})
+    return summary if isinstance(summary, dict) else {}
+
+
+def _validation_gate_table_lines(payload: dict[str, Any]) -> list[str]:
+    lines = ["", "| Gate | Status | Command | First triage step |", "| --- | --- | --- | --- |"]
+    rows = _validation_gate_rows(payload)
+    if rows:
+        lines.extend(rows)
     else:
         lines.append("| none | missing |  | regenerate release evidence |")
+    return lines
 
+
+def _validation_gate_rows(payload: dict[str, Any]) -> list[str]:
+    gates = payload.get("validation_gates", [])
+    if not isinstance(gates, list):
+        return []
+    return [_validation_gate_row(gate) for gate in gates if isinstance(gate, dict)]
+
+
+def _validation_gate_row(gate: dict[str, Any]) -> str:
+    return (
+        "| "
+        + " | ".join(
+            (
+                _sanitize_text(str(gate.get("name") or "unknown")),
+                _sanitize_text(str(gate.get("status") or "unknown")),
+                f"`{_sanitize_text(str(gate.get('command') or ''))}`",
+                _sanitize_text(str(gate.get("triage_step") or "")),
+            )
+        )
+        + " |"
+    )
+
+
+def _validation_reference_lines(payload: dict[str, Any]) -> list[str]:
     references = _artifact_references(payload)
-    lines.extend(["", "### Validation Evidence References", ""])
+    lines = ["", "### Validation Evidence References", ""]
     if references:
         lines.extend(f"- {reference}" for reference in references)
     else:
@@ -671,28 +703,49 @@ def _render_host_owned_evidence(release_evidence: ReleaseEvidenceRecord) -> list
         )
         return lines
 
-    provider_rows = []
-    for key in ("live_provider_evidence", "extra_live_provider_evidence"):
-        raw_rows = release_evidence.payload.get(key, [])
-        if isinstance(raw_rows, list):
-            provider_rows.extend(row for row in raw_rows if isinstance(row, dict))
+    provider_rows = _host_owned_evidence_rows(release_evidence.payload)
     if not provider_rows:
         lines.append("- No optional runtime evidence rows found in release evidence.")
         return lines
 
-    lines.extend(["| Provider | Status | Evidence |", "| --- | --- | --- |"])
-    for row in provider_rows:
-        provider = _sanitize_text(str(row.get("provider") or "unknown"))
-        status = _sanitize_text(str(row.get("status") or "unknown"))
-        manifests = row.get("manifests", [])
-        reason = _sanitize_text(str(row.get("reason") or ""))
-        evidence = (
-            f"{len(manifests)} manifest(s)" if isinstance(manifests, list) and manifests else reason
-        )
-        if not evidence:
-            evidence = "no evidence detail"
-        lines.append(f"| `{provider}` | {status} | {evidence} |")
+    lines.extend(_host_owned_evidence_table_lines(provider_rows))
     return lines
+
+
+def _host_owned_evidence_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for key in HOST_OWNED_EVIDENCE_KEYS:
+        rows.extend(_dict_rows(payload.get(key, [])))
+    return rows
+
+
+def _host_owned_evidence_table_lines(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        "| Provider | Status | Evidence |",
+        "| --- | --- | --- |",
+        *(_host_owned_evidence_row(row) for row in rows),
+    ]
+
+
+def _host_owned_evidence_row(row: dict[str, Any]) -> str:
+    provider = _sanitize_text(str(row.get("provider") or "unknown"))
+    status = _sanitize_text(str(row.get("status") or "unknown"))
+    evidence = _host_owned_evidence_detail(row)
+    return f"| `{provider}` | {status} | {evidence} |"
+
+
+def _host_owned_evidence_detail(row: dict[str, Any]) -> str:
+    manifests = row.get("manifests", [])
+    if isinstance(manifests, list) and manifests:
+        return f"{len(manifests)} manifest(s)"
+    reason = _sanitize_text(str(row.get("reason") or ""))
+    return reason or "no evidence detail"
+
+
+def _dict_rows(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [row for row in value if isinstance(row, dict)]
 
 
 def _render_known_caveats(caveats: tuple[str, ...]) -> list[str]:

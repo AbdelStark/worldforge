@@ -17,6 +17,8 @@ from worldforge.config_profiles import (
 )
 from worldforge.dataset_manifests import (
     DATASET_MANIFEST_SCHEMA_VERSION,
+    DatasetManifest,
+    DatasetManifestEntry,
     dataset_manifest_reference,
     dataset_manifest_references,
     load_dataset_manifest,
@@ -360,6 +362,44 @@ def test_dataset_manifest_edge_cases_cover_references_and_rejections(tmp_path: P
     invalid_file.write_text("{", encoding="utf-8")
     with pytest.raises(WorldForgeError, match="invalid JSON"):
         load_dataset_manifest(invalid_file, root=tmp_path)
+
+    non_finite_unknown = {**manifest_payload, "ignored": float("nan")}
+    with pytest.raises(WorldForgeError, match="finite number"):
+        parse_dataset_manifest(non_finite_unknown, root=tmp_path)
+
+    non_finite_file = tmp_path / "non-finite.json"
+    non_finite_file.write_text(json.dumps(non_finite_unknown), encoding="utf-8")
+    with pytest.raises(WorldForgeError, match="finite number"):
+        load_dataset_manifest(non_finite_file, root=tmp_path)
+
+    with pytest.raises(WorldForgeError, match="finite number"):
+        DatasetManifestEntry(
+            id="direct",
+            kind="remote-reference",
+            description="Direct invalid entry",
+            sha256="sha256:" + "6" * 64,
+            uri="https://example.test/direct.json",
+            metadata={"rows": float("nan")},
+        )
+
+    valid_entry = parse_dataset_manifest(manifest_payload, root=tmp_path).entries[0]
+    with pytest.raises(WorldForgeError, match="finite number"):
+        DatasetManifest(
+            id="direct-manifest",
+            name="Direct Manifest",
+            description="Direct invalid manifest",
+            license="MIT",
+            provenance={"source": "test", "version": "1", "owner": "tests"},
+            privacy={"classification": "public", "contains_personal_data": False},
+            safety={
+                "reviewed": True,
+                "contains_sensitive_capability_data": False,
+                "contains_robot_logs": False,
+            },
+            host_acquisition_steps=("Use checkout fixture.",),
+            entries=(valid_entry,),
+            metadata={"bad": float("inf")},
+        )
 
 
 def test_provider_contract_edge_cases_cover_factory_and_evidence(tmp_path: Path) -> None:

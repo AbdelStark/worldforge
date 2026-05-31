@@ -6,12 +6,15 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import singledispatch
 from pathlib import Path
+from types import NoneType
 from typing import Any
 
 from worldforge.models import WorldForgeError
 
 _DEFAULT_START = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+_PathReplacements = tuple[tuple[str, str], ...]
 
 
 @dataclass(slots=True)
@@ -189,39 +192,82 @@ def stable_path(
 def _stable_snapshot_value(
     value: Any,
     *,
-    roots: tuple[tuple[str, str], ...],
+    roots: _PathReplacements,
     field_replacements: Mapping[str, Any],
 ) -> Any:
-    if isinstance(value, Path):
-        return _replace_path_roots(str(value.expanduser().resolve()), roots)
-    if isinstance(value, str):
-        return _replace_path_roots(value, roots)
-    if value is None or isinstance(value, bool | int | float):
-        return value
-    if isinstance(value, tuple | list):
-        return [
-            _stable_snapshot_value(item, roots=roots, field_replacements=field_replacements)
-            for item in value
-        ]
-    if isinstance(value, Mapping):
-        normalized: dict[str, Any] = {}
-        for key in value:
-            if not isinstance(key, str):
-                raise WorldForgeError("Stable snapshot mapping keys must be strings.")
-        for key in sorted(value):
-            if key in field_replacements:
-                normalized[key] = field_replacements[key]
-                continue
-            normalized[key] = _stable_snapshot_value(
-                value[key],
-                roots=roots,
-                field_replacements=field_replacements,
-            )
-        return normalized
+    context = _SnapshotContext(roots=roots, field_replacements=field_replacements)
+    return _snapshot_value(value, context)
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotContext:
+    roots: _PathReplacements
+    field_replacements: Mapping[str, Any]
+
+
+@singledispatch
+def _snapshot_value(value: Any, _context: _SnapshotContext) -> Any:
     raise WorldForgeError(f"Stable snapshot value has unsupported type: {type(value).__name__}.")
 
 
-def _path_replacements(path_roots: Mapping[Path | str, str]) -> tuple[tuple[str, str], ...]:
+@_snapshot_value.register
+def _snapshot_none(value: NoneType, _context: _SnapshotContext) -> None:
+    return value
+
+
+@_snapshot_value.register
+def _snapshot_bool(value: bool, _context: _SnapshotContext) -> bool:
+    return value
+
+
+@_snapshot_value.register
+def _snapshot_int(value: int, _context: _SnapshotContext) -> int:
+    return value
+
+
+@_snapshot_value.register
+def _snapshot_float(value: float, _context: _SnapshotContext) -> float:
+    return value
+
+
+@_snapshot_value.register
+def _snapshot_path(value: Path, context: _SnapshotContext) -> str:
+    return _replace_path_roots(str(value.expanduser().resolve()), context.roots)
+
+
+@_snapshot_value.register
+def _snapshot_str(value: str, context: _SnapshotContext) -> str:
+    return _replace_path_roots(value, context.roots)
+
+
+@_snapshot_value.register(list)
+@_snapshot_value.register(tuple)
+def _snapshot_sequence(value: list[Any] | tuple[Any, ...], context: _SnapshotContext) -> list[Any]:
+    return [_snapshot_value(item, context) for item in value]
+
+
+@_snapshot_value.register(Mapping)
+def _snapshot_mapping(value: Mapping[Any, Any], context: _SnapshotContext) -> dict[str, Any]:
+    return {
+        key: _snapshot_mapping_value(key, value[key], context)
+        for key in _sorted_snapshot_keys(value)
+    }
+
+
+def _snapshot_mapping_value(key: str, value: Any, context: _SnapshotContext) -> Any:
+    if key in context.field_replacements:
+        return context.field_replacements[key]
+    return _snapshot_value(value, context)
+
+
+def _sorted_snapshot_keys(value: Mapping[Any, Any]) -> tuple[str, ...]:
+    for key in value:
+        if not isinstance(key, str):
+            raise WorldForgeError("Stable snapshot mapping keys must be strings.")
+    return tuple(sorted(value))
+
+
+def _path_replacements(path_roots: Mapping[Path | str, str]) -> _PathReplacements:
     replacements = []
     for root, label in path_roots.items():
         if not isinstance(label, str) or not label:
@@ -230,7 +276,7 @@ def _path_replacements(path_roots: Mapping[Path | str, str]) -> tuple[tuple[str,
     return tuple(sorted(replacements, key=lambda item: len(item[0]), reverse=True))
 
 
-def _replace_path_roots(value: str, roots: tuple[tuple[str, str], ...]) -> str:
+def _replace_path_roots(value: str, roots: _PathReplacements) -> str:
     normalized = value
     for root, label in roots:
         normalized = normalized.replace(root, label)

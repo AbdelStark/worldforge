@@ -255,6 +255,12 @@ def test_register_unpacks_runnable_model(tmp_path: Path):
     assert "pure_gen" in forge._capability_registries["generator"]
 
 
+def test_register_rejects_empty_runnable_model(tmp_path: Path):
+    forge = _isolated_forge(tmp_path)
+    with pytest.raises(WorldForgeError, match="does not contain any capability impls"):
+        forge.register(RunnableModel(name="empty-bundle"))
+
+
 def test_register_typed_shortcut_validates_protocol(tmp_path: Path):
     forge = _isolated_forge(tmp_path)
     forge.register_cost(_PureCost())

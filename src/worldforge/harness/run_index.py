@@ -31,7 +31,7 @@ from worldforge.harness.run_history import (
     list_run_history,
 )
 from worldforge.harness.workspace import runs_dir
-from worldforge.models import JSONDict, WorldForgeError
+from worldforge.models import JSONDict, WorldForgeError, dump_json, require_json_dict
 
 RUN_INDEX_SCHEMA_VERSION = 1
 
@@ -102,65 +102,15 @@ class RunIndex:
         }
 
     def to_json(self, *, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent, sort_keys=True) + "\n"
+        return dump_json(self.to_dict(), indent=indent) + "\n"
 
     def to_markdown(self) -> str:
-        lines: list[str] = [
-            "# WorldForge Run Index",
-            "",
-            f"- workspace: `{self.workspace_dir}`",
-            f"- generated_at: {self.generated_at}",
-            f"- schema_version: {self.schema_version}",
-            f"- entries: {len(self.entries)}",
-            f"- issues: {len(self.issues)}",
-        ]
-        if self.filter_applied:
-            applied = ", ".join(
-                f"{key}={value}"
-                for key, value in sorted(self.filter_applied.items())
-                if value not in (None, "")
-            )
-            if applied:
-                lines.append(f"- filter: {applied}")
-        lines.extend(
-            [
-                "",
-                "## Entries",
-                "",
-                "| Run | Kind | Status | Provider | Capability | Created | Artifacts | Failure |",
-                "| --- | --- | --- | --- | --- | --- | --- | --- |",
-            ]
-        )
-        if self.entries:
-            for entry in self.entries:
-                artifacts = ", ".join(entry.safe_artifact_types) or "-"
-                failure = (
-                    entry.failure_summary.replace("|", "\\|") if entry.failure_summary else "-"
-                )
-                lines.append(
-                    "| `{run_id}` | {kind} | {status} | {provider} | {capability} | "
-                    "{created} | {artifacts} | {failure} |".format(
-                        run_id=entry.run_id,
-                        kind=entry.kind or "-",
-                        status=entry.status or "-",
-                        provider=entry.provider or "-",
-                        capability=entry.capability or "-",
-                        created=entry.created_at or "-",
-                        artifacts=artifacts,
-                        failure=failure,
-                    )
-                )
-        else:
-            lines.append("| - | - | - | - | - | - | - | - |")
-        lines.extend(["", "## Issues", ""])
-        if self.issues:
-            lines.append("| Path | Reason | Detail |")
-            lines.append("| --- | --- | --- |")
-            for issue in self.issues:
-                detail = issue.detail.replace("|", "\\|") or "-"
-                lines.append(f"| `{issue.run_dir}` | {issue.reason} | {detail} |")
-        else:
-            lines.append("- No malformed or unreadable run workspaces.")
+        lines = _run_index_markdown_header(self)
+        filter_line = _run_index_filter_line(self.filter_applied)
+        if filter_line is not None:
+            lines.append(filter_line)
+        lines.extend(_run_index_entry_section(self.entries))
+        lines.extend(_run_index_issue_section(self.issues))
         return "\n".join(lines) + "\n"
 
     def to_csv(self) -> str:
@@ -200,6 +150,88 @@ class RunIndex:
         return buffer.getvalue()
 
 
+def _run_index_markdown_header(index: RunIndex) -> list[str]:
+    return [
+        "# WorldForge Run Index",
+        "",
+        f"- workspace: `{index.workspace_dir}`",
+        f"- generated_at: {index.generated_at}",
+        f"- schema_version: {index.schema_version}",
+        f"- entries: {len(index.entries)}",
+        f"- issues: {len(index.issues)}",
+    ]
+
+
+def _run_index_filter_line(filter_applied: JSONDict | None) -> str | None:
+    if not filter_applied:
+        return None
+    applied = ", ".join(
+        f"{key}={value}" for key, value in sorted(filter_applied.items()) if value not in (None, "")
+    )
+    return f"- filter: {applied}" if applied else None
+
+
+def _run_index_entry_section(entries: tuple[RunHistoryRecord, ...]) -> list[str]:
+    lines = [
+        "",
+        "## Entries",
+        "",
+        "| Run | Kind | Status | Provider | Capability | Created | Artifacts | Failure |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    if not entries:
+        lines.append("| - | - | - | - | - | - | - | - |")
+        return lines
+    lines.extend(_run_index_entry_row(entry) for entry in entries)
+    return lines
+
+
+def _run_index_entry_row(entry: RunHistoryRecord) -> str:
+    failure = _run_index_table_text(entry.failure_summary)
+    kind = _run_index_field_text(entry.kind)
+    status = _run_index_field_text(entry.status)
+    provider = _run_index_field_text(entry.provider)
+    capability = _run_index_field_text(entry.capability)
+    created = _run_index_field_text(entry.created_at)
+    artifacts = _run_index_artifacts_text(entry.safe_artifact_types)
+    return (
+        f"| `{entry.run_id}` | {kind} | {status} | {provider} | {capability} | "
+        f"{created} | {artifacts} | {failure} |"
+    )
+
+
+def _run_index_issue_section(issues: tuple[RunIndexIssue, ...]) -> list[str]:
+    lines = ["", "## Issues", ""]
+    if not issues:
+        lines.append("- No malformed or unreadable run workspaces.")
+        return lines
+    lines.extend(["| Path | Reason | Detail |", "| --- | --- | --- |"])
+    lines.extend(_run_index_issue_row(issue) for issue in issues)
+    return lines
+
+
+def _run_index_issue_row(issue: RunIndexIssue) -> str:
+    detail = _run_index_table_text(issue.detail)
+    return f"| `{issue.run_dir}` | {issue.reason} | {detail} |"
+
+
+def _run_index_table_text(value: str) -> str:
+    return value.replace("|", "\\|") if value else "-"
+
+
+def _run_index_field_text(value: str) -> str:
+    if value:
+        return value
+    return "-"
+
+
+def _run_index_artifacts_text(values: tuple[str, ...]) -> str:
+    artifacts = ", ".join(values)
+    if artifacts:
+        return artifacts
+    return "-"
+
+
 def build_run_index(
     workspace_dir: Path | str,
     *,
@@ -215,41 +247,59 @@ def build_run_index(
     capability/status exact match, date range, and safe-artifact type.
     """
 
-    if isinstance(workspace_dir, str):
-        if not workspace_dir.strip():
-            raise WorldForgeError("workspace_dir must be a non-empty string or Path.")
-        workspace_dir = Path(workspace_dir)
-    if not isinstance(workspace_dir, Path):
-        raise WorldForgeError("workspace_dir must be a Path.")
-    if filters is not None and not _looks_like_run_history_filter(filters):
-        raise WorldForgeError("filters must be a RunHistoryFilter or None.")
-
-    issues = _scan_for_issues(workspace_dir)
-    if (workspace_dir / "runs").exists():
-        entries = list_run_history(workspace_dir, filters=filters)
-    else:
-        entries = ()
-
-    generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    filter_applied: JSONDict | None = None
-    if filters is not None:
-        filter_applied = {
-            "provider": filters.provider,
-            "capability": filters.capability,
-            "status": filters.status,
-            "created_from": filters.created_from.isoformat() if filters.created_from else None,
-            "created_to": filters.created_to.isoformat() if filters.created_to else None,
-            "artifact_type": filters.artifact_type,
-        }
+    resolved_workspace_dir = _run_index_workspace_dir(workspace_dir)
+    _validate_run_index_filters(filters)
 
     return RunIndex(
         schema_version=RUN_INDEX_SCHEMA_VERSION,
-        workspace_dir=str(workspace_dir),
-        generated_at=generated_at,
-        entries=tuple(entries),
-        issues=tuple(issues),
-        filter_applied=filter_applied,
+        workspace_dir=str(resolved_workspace_dir),
+        generated_at=_utc_timestamp(),
+        entries=_run_index_entries(resolved_workspace_dir, filters=filters),
+        issues=tuple(_scan_for_issues(resolved_workspace_dir)),
+        filter_applied=_run_index_filter_applied(filters),
     )
+
+
+def _run_index_workspace_dir(workspace_dir: Path | str) -> Path:
+    if isinstance(workspace_dir, str):
+        if not workspace_dir.strip():
+            raise WorldForgeError("workspace_dir must be a non-empty string or Path.")
+        return Path(workspace_dir)
+    if isinstance(workspace_dir, Path):
+        return workspace_dir
+    raise WorldForgeError("workspace_dir must be a Path.")
+
+
+def _validate_run_index_filters(filters: object) -> None:
+    if filters is not None and not _looks_like_run_history_filter(filters):
+        raise WorldForgeError("filters must be a RunHistoryFilter or None.")
+
+
+def _run_index_entries(
+    workspace_dir: Path,
+    *,
+    filters: RunHistoryFilter | None,
+) -> tuple[RunHistoryRecord, ...]:
+    if not runs_dir(workspace_dir).exists():
+        return ()
+    return tuple(list_run_history(workspace_dir, filters=filters))
+
+
+def _run_index_filter_applied(filters: RunHistoryFilter | None) -> JSONDict | None:
+    if filters is None:
+        return None
+    return {
+        "provider": filters.provider,
+        "capability": filters.capability,
+        "status": filters.status,
+        "created_from": filters.created_from.isoformat() if filters.created_from else None,
+        "created_to": filters.created_to.isoformat() if filters.created_to else None,
+        "artifact_type": filters.artifact_type,
+    }
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _looks_like_run_history_filter(value: object) -> bool:
@@ -279,54 +329,63 @@ def _looks_like_run_history_filter(value: object) -> bool:
 def _scan_for_issues(workspace_dir: Path) -> list[RunIndexIssue]:
     """Walk ``runs/`` and record diagnostics for unreadable workspaces."""
 
-    issues: list[RunIndexIssue] = []
     root = runs_dir(workspace_dir)
     if not root.is_dir():
-        return issues
-    for run_path in sorted(root.iterdir(), key=lambda p: p.name, reverse=True):
-        if not run_path.is_dir():
-            continue
-        manifest_path = run_path / "run_manifest.json"
-        if not manifest_path.is_file():
-            issues.append(
-                RunIndexIssue(
-                    run_dir=str(run_path),
-                    reason="manifest-missing",
-                    detail="run_manifest.json not found",
-                )
-            )
-            continue
-        try:
-            text = manifest_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            issues.append(
-                RunIndexIssue(
-                    run_dir=str(run_path),
-                    reason="manifest-unreadable",
-                    detail=str(exc),
-                )
-            )
-            continue
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError as exc:
-            issues.append(
-                RunIndexIssue(
-                    run_dir=str(run_path),
-                    reason="manifest-invalid-json",
-                    detail=str(exc),
-                )
-            )
-            continue
-        if not isinstance(payload, dict):
-            issues.append(
-                RunIndexIssue(
-                    run_dir=str(run_path),
-                    reason="manifest-not-object",
-                    detail="manifest payload is not a JSON object",
-                )
-            )
-    return issues
+        return []
+    return [
+        issue
+        for run_path in _run_index_run_dirs(root)
+        if (issue := _run_index_manifest_issue(run_path)) is not None
+    ]
+
+
+def _run_index_run_dirs(root: Path) -> tuple[Path, ...]:
+    return tuple(
+        run_path
+        for run_path in sorted(root.iterdir(), key=lambda path: path.name, reverse=True)
+        if run_path.is_dir()
+    )
+
+
+def _run_index_manifest_issue(run_path: Path) -> RunIndexIssue | None:
+    manifest_path = run_path / "run_manifest.json"
+    if not manifest_path.is_file():
+        return _run_index_issue(
+            run_path,
+            reason="manifest-missing",
+            detail="run_manifest.json not found",
+        )
+    payload = _read_run_manifest_payload(run_path, manifest_path)
+    if isinstance(payload, RunIndexIssue):
+        return payload
+    if not isinstance(payload, dict):
+        return _run_index_issue(
+            run_path,
+            reason="manifest-not-object",
+            detail="manifest payload is not a JSON object",
+        )
+    return None
+
+
+def _read_run_manifest_payload(run_path: Path, manifest_path: Path) -> object:
+    try:
+        text = manifest_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return _run_index_issue(run_path, reason="manifest-unreadable", detail=str(exc))
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return _run_index_issue(run_path, reason="manifest-invalid-json", detail=str(exc))
+    if not isinstance(payload, dict):
+        return payload
+    try:
+        return require_json_dict(payload, name=f"Run manifest {manifest_path}")
+    except WorldForgeError as exc:
+        return _run_index_issue(run_path, reason="manifest-invalid-json", detail=str(exc))
+
+
+def _run_index_issue(run_path: Path, *, reason: str, detail: str) -> RunIndexIssue:
+    return RunIndexIssue(run_dir=str(run_path), reason=reason, detail=detail)
 
 
 __all__ = [

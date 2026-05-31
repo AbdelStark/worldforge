@@ -7,7 +7,7 @@ import struct
 import httpx
 import pytest
 
-import worldforge.providers.cosmos_policy as cosmos_policy_module
+import worldforge.providers.cosmos_policy_response as cosmos_policy_response_module
 from worldforge import Action, ActionPolicyResult, ActionScoreResult, WorldForge
 from worldforge.models import (
     JSONDict,
@@ -935,10 +935,30 @@ def test_cosmos_policy_rejects_non_json_native_observation_before_request() -> N
         (
             {
                 "actions": [
+                    {"__numpy__": _json_numpy_row(0.1)["__numpy__"], "dtype": "", "shape": [14]}
+                ]
+            },
+            "dtype must be a non-empty string",
+        ),
+        (
+            {
+                "actions": [
                     {"__numpy__": _json_numpy_row(0.1)["__numpy__"], "dtype": "|u1", "shape": [14]}
                 ]
             },
             "dtype must be float32 or float64",
+        ),
+        (
+            {
+                "actions": [
+                    {
+                        "__numpy__": base64.b64encode(b"0").decode("ascii"),
+                        "dtype": "<f8",
+                        "shape": [14],
+                    }
+                ]
+            },
+            "byte length must match shape and dtype",
         ),
     ],
 )
@@ -960,6 +980,15 @@ def test_cosmos_policy_rejects_malformed_responses(payload: JSONDict, match: str
         provider.select_actions(info=_policy_info())
 
 
+def test_cosmos_policy_rejects_empty_json_numpy_shape_without_expected_action_dim() -> None:
+    with pytest.raises(ProviderError, match="must encode a non-empty action row"):
+        CosmosPolicyResponse.from_payload(
+            {"actions": [{"__numpy__": "AA==", "dtype": "<f8", "shape": [0]}]},
+            provider_name="cosmos-policy",
+            expected_action_dim=None,
+        )
+
+
 def test_cosmos_policy_rejects_json_numpy_action_dim_before_decoding(monkeypatch) -> None:
     payload: JSONDict = {
         "actions": [
@@ -970,7 +999,7 @@ def test_cosmos_policy_rejects_json_numpy_action_dim_before_decoding(monkeypatch
     def fail_decode(*_args: object, **_kwargs: object) -> bytes:
         raise AssertionError("json_numpy payload should not be decoded after shape rejection")
 
-    monkeypatch.setattr(cosmos_policy_module.base64, "b64decode", fail_decode)
+    monkeypatch.setattr(cosmos_policy_response_module.base64, "b64decode", fail_decode)
 
     with pytest.raises(ProviderError, match="action_dim must be 14"):
         CosmosPolicyResponse.from_payload(
@@ -990,7 +1019,7 @@ def test_cosmos_policy_rejects_oversized_json_numpy_without_decoding(monkeypatch
     def fail_decode(*_args: object, **_kwargs: object) -> bytes:
         raise AssertionError("oversized json_numpy payload should not be decoded")
 
-    monkeypatch.setattr(cosmos_policy_module.base64, "b64decode", fail_decode)
+    monkeypatch.setattr(cosmos_policy_response_module.base64, "b64decode", fail_decode)
 
     with pytest.raises(ProviderError, match="encoded action row exceeds"):
         CosmosPolicyResponse.from_payload(

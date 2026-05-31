@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
@@ -11,8 +9,40 @@ from threading import Lock
 from typing import Any
 
 from worldforge.models import JSONDict, ProviderEvent, WorldForgeError, dump_json, require_json_dict
+from worldforge.rerun_artifacts import (
+    log_action_targets as _log_action_targets,
+)
+from worldforge.rerun_artifacts import (
+    log_benchmark_results as _log_benchmark_results,
+)
+from worldforge.rerun_artifacts import (
+    log_rerun_any_values as _log_rerun_any_values,
+)
+from worldforge.rerun_artifacts import (
+    log_robotics_runtime_profile as _log_robotics_runtime_profile,
+)
+from worldforge.rerun_artifacts import (
+    log_robotics_score_landscape as _log_robotics_score_landscape,
+)
+from worldforge.rerun_artifacts import (
+    log_robotics_tabletop as _log_robotics_tabletop,
+)
+from worldforge.rerun_artifacts import (
+    log_world_visual_layers as _log_world_visual_layers,
+)
+from worldforge.rerun_artifacts import (
+    world_scene_objects as _world_scene_objects,
+)
+from worldforge.rerun_artifacts import (
+    world_step as _world_step,
+)
+from worldforge.rerun_paths import (
+    entity_path as _entity_path,
+)
+from worldforge.rerun_paths import (
+    validate_path_prefix as _validate_path_prefix,
+)
 
-_ENTITY_SEGMENT_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
 _DEFAULT_EVENT_PREFIX = "worldforge/events"
 _DEFAULT_ARTIFACT_PREFIX = "worldforge"
 
@@ -47,37 +77,6 @@ def _require_port(value: object, *, name: str) -> int:
     return value
 
 
-def _entity_segment(value: object, *, fallback: str = "item") -> str:
-    text = str(value).strip().strip("/")
-    if not text:
-        return fallback
-    segment = _ENTITY_SEGMENT_PATTERN.sub("_", text).strip("._-")
-    if not segment or segment.startswith("__"):
-        return fallback
-    return segment
-
-
-def _entity_path(prefix: str, *segments: object) -> str:
-    clean_prefix = _validate_path_prefix(prefix, name="path_prefix")
-    clean_segments: list[str] = []
-    for segment in segments:
-        raw_segment = str(segment).strip("/")
-        if not raw_segment:
-            clean_segments.append(_entity_segment(segment))
-            continue
-        clean_segments.extend(_entity_segment(part) for part in raw_segment.split("/") if part)
-    return "/".join([clean_prefix, *clean_segments])
-
-
-def _validate_path_prefix(value: object, *, name: str) -> str:
-    prefix = _require_text(value, name=name).strip("/")
-    if not prefix:
-        raise WorldForgeError(f"{name} must contain at least one path segment.")
-    if any(not part or part.startswith("__") for part in prefix.split("/")):
-        raise WorldForgeError(f"{name} must not contain empty or Rerun-reserved path segments.")
-    return prefix
-
-
 def _as_json_payload(value: object, *, name: str) -> JSONDict:
     if hasattr(value, "to_dict"):
         value = value.to_dict()  # type: ignore[assignment, attr-defined]
@@ -86,54 +85,11 @@ def _as_json_payload(value: object, *, name: str) -> JSONDict:
 
 def _pretty_json(payload: JSONDict) -> str:
     try:
-        return json.dumps(payload, sort_keys=True, indent=2, allow_nan=False)
-    except (TypeError, ValueError) as exc:
+        return dump_json(payload, indent=2)
+    except WorldForgeError as exc:
         raise WorldForgeError(
             "Rerun payloads must be JSON serializable and contain only finite numbers."
         ) from exc
-
-
-def _finite_float(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    number = float(value)
-    if number != number or number in (float("inf"), float("-inf")):
-        return None
-    return number
-
-
-def _position_xyz(value: object) -> list[float] | None:
-    if not isinstance(value, dict):
-        return None
-    x = _finite_float(value.get("x"))
-    y = _finite_float(value.get("y"))
-    z = _finite_float(value.get("z"))
-    if x is None or y is None or z is None:
-        return None
-    return [x, y, z]
-
-
-def _bbox_geometry(value: object) -> tuple[list[float], list[float]] | None:
-    if not isinstance(value, dict):
-        return None
-    bbox_min = _position_xyz(value.get("min"))
-    bbox_max = _position_xyz(value.get("max"))
-    if bbox_min is None or bbox_max is None:
-        return None
-    center = [(bbox_min[index] + bbox_max[index]) / 2.0 for index in range(3)]
-    size = [max(0.0, bbox_max[index] - bbox_min[index]) for index in range(3)]
-    return center, size
-
-
-def _score_values(value: object) -> list[float]:
-    if not isinstance(value, list):
-        return []
-    scores: list[float] = []
-    for item in value:
-        number = _finite_float(item)
-        if number is not None:
-            scores.append(number)
-    return scores
 
 
 def _load_rerun_sdk(sdk: object | None) -> Any:
@@ -440,9 +396,7 @@ class RerunArtifactLogger:
 
         state = _as_json_payload(world, name="world")
         world_id = _require_text(state.get("id"), name="world.id")
-        world_step = state.get("step", 0)
-        if isinstance(world_step, bool) or not isinstance(world_step, int) or world_step < 0:
-            raise WorldForgeError("world.step must be a non-negative integer.")
+        world_step = _world_step(state)
         rr = self.session.rr
         rr.set_time(self.world_timeline, sequence=world_step)
         world_path = _entity_path(self.path_prefix, "worlds", world_id)
@@ -450,69 +404,9 @@ class RerunArtifactLogger:
         if label is not None:
             self._log_text(rr, f"{world_path}/label", label)
 
-        objects = state.get("scene", {}).get("objects", {})
-        if not isinstance(objects, dict):
-            raise WorldForgeError("world.scene.objects must be a JSON object.")
+        objects = _world_scene_objects(state)
         self._log_scalar(rr, f"{world_path}/object_count", float(len(objects)))
-        positions: list[list[float]] = []
-        labels: list[str] = []
-        colors: list[list[int]] = []
-        box_centers: list[list[float]] = []
-        box_sizes: list[list[float]] = []
-        box_labels: list[str] = []
-        box_colors: list[list[int]] = []
-        for object_id, item in objects.items():
-            if not isinstance(item, dict):
-                raise WorldForgeError("world.scene.objects entries must be JSON objects.")
-            pose = item.get("pose", {})
-            position = pose.get("position", {}) if isinstance(pose, dict) else {}
-            if not isinstance(position, dict):
-                continue
-            try:
-                x = float(position["x"])
-                y = float(position["y"])
-                z = float(position["z"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            positions.append([x, y, z])
-            labels.append(str(item.get("name") or object_id))
-            color = [52, 111, 235] if item.get("is_graspable") else [42, 170, 120]
-            colors.append(color)
-            bbox_geometry = _bbox_geometry(item.get("bbox"))
-            if bbox_geometry is not None:
-                center, size = bbox_geometry
-                box_centers.append(center)
-                box_sizes.append(size)
-                box_labels.append(str(item.get("name") or object_id))
-                box_colors.append(color)
-            self._log_any_values(
-                rr,
-                f"{world_path}/objects/{_entity_segment(object_id)}",
-                object_id=str(object_id),
-                name=str(item.get("name") or object_id),
-                x=x,
-                y=y,
-                z=z,
-                is_graspable=bool(item.get("is_graspable", False)),
-            )
-        points = getattr(rr, "Points3D", None)
-        if points is not None and positions:
-            rr.log(
-                f"{world_path}/objects",
-                points(positions, labels=labels, colors=colors, radii=[0.04] * len(positions)),
-            )
-        boxes = getattr(rr, "Boxes3D", None)
-        if boxes is not None and box_centers:
-            rr.log(
-                f"{world_path}/object_boxes",
-                boxes(
-                    centers=box_centers,
-                    sizes=box_sizes,
-                    labels=box_labels,
-                    colors=box_colors,
-                    radii=[0.002] * len(box_centers),
-                ),
-            )
+        _log_world_visual_layers(rr, world_path, objects)
 
     def log_plan(self, plan: object, *, label: str | None = None) -> None:
         """Log a WorldForge plan as JSON, metrics, and target waypoints."""
@@ -538,7 +432,7 @@ class RerunArtifactLogger:
             bool,
         ):
             self._log_scalar(rr, f"{plan_path}/success_probability", float(success_probability))
-        self._log_action_targets(rr, plan_path, payload.get("actions", []))
+        _log_action_targets(rr, plan_path, payload.get("actions", []))
 
     def log_benchmark_report(self, report: object) -> None:
         """Log a benchmark report as JSON plus per-result timeseries metrics."""
@@ -547,38 +441,14 @@ class RerunArtifactLogger:
         rr = self.session.rr
         report_path = _entity_path(self.path_prefix, "benchmarks")
         self._log_json(rr, f"{report_path}/report", payload)
-        results = payload.get("results", [])
-        if not isinstance(results, list):
-            raise WorldForgeError("benchmark_report.results must be a list.")
-        for index, result in enumerate(results):
-            if not isinstance(result, dict):
-                raise WorldForgeError("benchmark_report.results entries must be JSON objects.")
-            rr.set_time(self.benchmark_timeline, sequence=index)
-            provider = result.get("provider", "provider")
-            operation = result.get("operation", "operation")
-            base_path = _entity_path(self.path_prefix, "benchmarks", provider, operation)
-            self._log_json(rr, f"{base_path}/result", result)
-            iterations = result.get("iterations")
-            success_count = result.get("success_count")
-            if (
-                isinstance(iterations, int)
-                and not isinstance(iterations, bool)
-                and iterations > 0
-                and isinstance(success_count, int)
-                and not isinstance(success_count, bool)
-            ):
-                self._log_scalar(rr, f"{base_path}/success_rate", success_count / iterations)
-            for metric in (
-                "error_count",
-                "retry_count",
-                "average_latency_ms",
-                "p50_latency_ms",
-                "p95_latency_ms",
-                "throughput_per_second",
-            ):
-                value = result.get(metric)
-                if isinstance(value, int | float) and not isinstance(value, bool):
-                    self._log_scalar(rr, f"{base_path}/{metric}", float(value))
+        _log_benchmark_results(
+            rr,
+            self.path_prefix,
+            self.benchmark_timeline,
+            payload,
+            log_json=self._log_json,
+            log_scalar=self._log_scalar,
+        )
 
     def log_json(self, entity_path: str, payload: JSONDict) -> None:
         """Log a validated JSON payload under ``path_prefix/entity_path``."""
@@ -613,7 +483,7 @@ class RerunArtifactLogger:
             rr.set_time(self.workflow_timeline, sequence=index)
             step_path = _entity_path(trace_path, "steps", step.get("step_id", index))
             self._log_json(rr, f"{step_path}/payload", step)
-            self._log_any_values(
+            _log_rerun_any_values(
                 rr,
                 f"{step_path}/summary",
                 operation=step.get("operation", ""),
@@ -634,10 +504,10 @@ class RerunArtifactLogger:
         task = payload.get("task")
         if isinstance(task, str) and task.strip():
             self._log_text(rr, f"{base_path}/task", task)
-        self._log_robotics_tabletop(rr, base_path, payload)
-        self._log_robotics_score_landscape(rr, base_path, payload)
+        _log_robotics_tabletop(rr, base_path, payload)
+        _log_robotics_score_landscape(rr, base_path, payload, log_scalar=self._log_scalar)
         rr.set_time(self.robotics_timeline, sequence=0)
-        self._log_robotics_runtime_profile(rr, base_path, payload)
+        _log_robotics_runtime_profile(rr, base_path, payload)
 
     @staticmethod
     def _log_json(rr: object, entity_path: str, payload: JSONDict) -> None:
@@ -650,221 +520,6 @@ class RerunArtifactLogger:
     @staticmethod
     def _log_text(rr: object, entity_path: str, text: str) -> None:
         RerunEventSink._log_text(rr, entity_path, text, level=None)
-
-    @staticmethod
-    def _log_any_values(rr: object, entity_path: str, **values: object) -> None:
-        any_values = getattr(rr, "AnyValues", None)
-        if any_values is not None:
-            rr.log(entity_path, any_values(**values))
-
-    @staticmethod
-    def _log_robotics_tabletop(rr: object, base_path: str, payload: JSONDict) -> None:
-        visualization = payload.get("visualization")
-        if not isinstance(visualization, dict):
-            return
-        targets_payload = visualization.get("candidate_targets")
-        if not isinstance(targets_payload, list):
-            return
-        score_result = payload.get("score_result")
-        score_result = score_result if isinstance(score_result, dict) else {}
-        selected_candidate = score_result.get("best_index", visualization.get("selected_candidate"))
-        scores = _score_values(score_result.get("scores"))
-        targets: list[tuple[int, list[float]]] = []
-        for target in targets_payload:
-            if not isinstance(target, dict):
-                continue
-            index = target.get("index")
-            if isinstance(index, bool) or not isinstance(index, int):
-                continue
-            point = _position_xyz(target)
-            if point is not None:
-                targets.append((index, point))
-        if not targets:
-            return
-
-        start = [0.0, 0.5, 0.0]
-        goal = [0.5, 0.5, 0.0]
-        selected_target = next(
-            (point for index, point in targets if index == selected_candidate),
-            None,
-        )
-        points = [start, goal, *(point for _index, point in targets)]
-        labels = ["start", "goal"]
-        colors = [[90, 90, 90], [42, 170, 120]]
-        for index, _point in targets:
-            score_text = f" cost={scores[index]:.3f}" if index < len(scores) else ""
-            labels.append(f"candidate {index}{score_text}")
-            colors.append([42, 170, 120] if index == selected_candidate else [235, 147, 52])
-
-        execution = payload.get("execution")
-        final_position = None
-        if isinstance(execution, dict):
-            final_position = _position_xyz(execution.get("final_block_position"))
-        if final_position is not None:
-            points.append(final_position)
-            labels.append("mock final")
-            colors.append([52, 111, 235])
-
-        points3d = getattr(rr, "Points3D", None)
-        if points3d is not None:
-            rr.log(
-                f"{base_path}/tabletop/points",
-                points3d(points, labels=labels, colors=colors, radii=[0.035] * len(points)),
-            )
-
-        line_strips = getattr(rr, "LineStrips3D", None)
-        if line_strips is not None:
-            strips = [[start, point] for _index, point in targets]
-            strip_colors = [
-                [42, 170, 120] if index == selected_candidate else [235, 147, 52]
-                for index, _point in targets
-            ]
-            radii = [0.01 if index == selected_candidate else 0.004 for index, _point in targets]
-            rr.log(
-                f"{base_path}/tabletop/candidate_paths",
-                line_strips(
-                    strips,
-                    labels=[f"candidate {index}" for index, _point in targets],
-                    colors=strip_colors,
-                    radii=radii,
-                ),
-            )
-            if final_position is not None:
-                replay_strip = [start]
-                if selected_target is not None:
-                    replay_strip.append(selected_target)
-                replay_strip.append(final_position)
-                rr.log(
-                    f"{base_path}/tabletop/selected_replay",
-                    line_strips(
-                        [replay_strip],
-                        labels=["selected candidate replay"],
-                        colors=[[52, 111, 235]],
-                        radii=[0.012],
-                    ),
-                )
-
-        arrows = getattr(rr, "Arrows3D", None)
-        if arrows is not None and selected_target is not None:
-            vector = [selected_target[index] - start[index] for index in range(3)]
-            rr.log(
-                f"{base_path}/tabletop/selected_vector",
-                arrows(
-                    origins=[start],
-                    vectors=[vector],
-                    labels=["selected action"],
-                    colors=[[42, 170, 120]],
-                    radii=[0.012],
-                ),
-            )
-
-        boxes = getattr(rr, "Boxes3D", None)
-        if boxes is not None:
-            centers = [start]
-            sizes = [[0.1, 0.1, 0.05]]
-            box_labels = ["start block"]
-            box_colors = [[90, 90, 90]]
-            if final_position is not None:
-                centers.append(final_position)
-                sizes.append([0.1, 0.1, 0.05])
-                box_labels.append("mock final block")
-                box_colors.append([52, 111, 235])
-            rr.log(
-                f"{base_path}/tabletop/block_boxes",
-                boxes(
-                    centers=centers,
-                    sizes=sizes,
-                    labels=box_labels,
-                    colors=box_colors,
-                    radii=[0.002] * len(centers),
-                ),
-            )
-
-    @staticmethod
-    def _log_robotics_score_landscape(rr: object, base_path: str, payload: JSONDict) -> None:
-        score_result = payload.get("score_result")
-        if not isinstance(score_result, dict):
-            return
-        scores = _score_values(score_result.get("scores"))
-        if not scores:
-            return
-        bar_chart = getattr(rr, "BarChart", None)
-        if bar_chart is not None:
-            rr.log(f"{base_path}/scores/cost_bars", bar_chart(scores, color=[235, 147, 52]))
-        for index, score in enumerate(scores):
-            rr.set_time("worldforge_candidate", sequence=index)
-            RerunEventSink._log_scalar(rr, f"{base_path}/scores/candidate_cost", score)
-        best_score = _finite_float(score_result.get("best_score"))
-        if best_score is not None:
-            RerunEventSink._log_scalar(rr, f"{base_path}/scores/best_cost", best_score)
-
-    @staticmethod
-    def _log_robotics_runtime_profile(rr: object, base_path: str, payload: JSONDict) -> None:
-        rows: list[tuple[str, float]] = []
-        events = payload.get("provider_events")
-        if isinstance(events, list):
-            for event in events:
-                if not isinstance(event, dict):
-                    continue
-                provider = event.get("provider")
-                operation = event.get("operation")
-                duration = _finite_float(event.get("duration_ms"))
-                if (
-                    isinstance(provider, str)
-                    and isinstance(operation, str)
-                    and duration is not None
-                ):
-                    rows.append((f"{provider}.{operation}", duration))
-        metrics = payload.get("metrics")
-        if isinstance(metrics, dict):
-            for key in ("plan_latency_ms", "total_latency_ms"):
-                value = _finite_float(metrics.get(key))
-                if value is not None:
-                    rows.append((key, value))
-        if not rows:
-            return
-        values = [value for _label, value in rows]
-        bar_chart = getattr(rr, "BarChart", None)
-        if bar_chart is not None:
-            rr.log(f"{base_path}/runtime/latency_bars", bar_chart(values, color=[52, 111, 235]))
-        RerunArtifactLogger._log_any_values(
-            rr,
-            f"{base_path}/runtime/latency_labels",
-            labels=[label for label, _value in rows],
-            values_ms=values,
-        )
-
-    @staticmethod
-    def _log_action_targets(rr: object, plan_path: str, actions: object) -> None:
-        if not isinstance(actions, list):
-            return
-        positions: list[list[float]] = []
-        labels: list[str] = []
-        for index, action in enumerate(actions):
-            if not isinstance(action, dict):
-                continue
-            parameters = action.get("parameters", {})
-            if not isinstance(parameters, dict):
-                continue
-            target = parameters.get("target")
-            if not isinstance(target, dict):
-                continue
-            try:
-                positions.append([float(target["x"]), float(target["y"]), float(target["z"])])
-            except (KeyError, TypeError, ValueError):
-                continue
-            labels.append(f"{index}:{action.get('type', 'action')}")
-        points = getattr(rr, "Points3D", None)
-        if points is not None and positions:
-            rr.log(
-                f"{plan_path}/action_targets",
-                points(
-                    positions,
-                    labels=labels,
-                    colors=[[235, 147, 52]] * len(positions),
-                    radii=[0.035] * len(positions),
-                ),
-            )
 
 
 def create_rerun_event_handler(

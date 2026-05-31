@@ -42,3 +42,23 @@ def test_wrapper_portability_checker_names_exact_script_and_fix() -> None:
     failure = payload["results"][0]["failures"][0]
     assert "scripts/robotics-showcase" in failure
     assert "definitely-missing-wrapper-token" in failure
+
+
+def test_wrapper_portability_checker_reports_missing_doc_contract() -> None:
+    contract = check_wrapper_portability.WrapperContract(
+        path="scripts/robotics-showcase",
+        invocation="scripts/robotics-showcase",
+        executable=True,
+        shebang_prefix="#!/usr/bin/env bash",
+        required_text=("set -euo pipefail",),
+        docs=("docs/src/not-a-real-wrapper-doc.md",),
+        triage_step="restore docs",
+    )
+
+    payload = check_wrapper_portability.check_wrapper_portability(contracts=(contract,))
+
+    assert payload["passed"] is False
+    assert payload["results"][0]["failures"] == [
+        "docs/src/not-a-real-wrapper-doc.md is missing for documented wrapper command "
+        "scripts/robotics-showcase"
+    ]

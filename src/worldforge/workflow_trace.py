@@ -124,58 +124,21 @@ class WorkflowTraceStep:
     error_summary: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "step_id", _require_trace_id(self.step_id, name="step_id"))
+        step_id = _require_trace_id(self.step_id, name="step_id")
+        object.__setattr__(self, "step_id", step_id)
+        object.__setattr__(self, "operation", _normalize_step_operation(self.operation))
+        object.__setattr__(self, "status", _normalize_step_status(self.status))
+        object.__setattr__(self, "provider", _optional_trace_text(self.provider, name="provider"))
         object.__setattr__(
             self,
-            "operation",
-            _require_trace_text(self.operation, name="Workflow step operation"),
+            "capability",
+            _optional_trace_text(self.capability, name="capability"),
         )
-        normalized_status = _require_trace_text(self.status, name="Workflow step status").lower()
-        if normalized_status not in WORKFLOW_TRACE_STEP_STATUSES:
-            options = ", ".join(WORKFLOW_TRACE_STEP_STATUSES)
-            raise WorldForgeError(f"Workflow step status must be one of: {options}.")
-        object.__setattr__(self, "status", normalized_status)
-        if self.provider is not None:
-            object.__setattr__(
-                self,
-                "provider",
-                _require_trace_text(self.provider, name="Workflow step provider"),
-            )
-        if self.capability is not None:
-            object.__setattr__(
-                self,
-                "capability",
-                _require_trace_text(self.capability, name="Workflow step capability"),
-            )
-        if self.parent_id is not None:
-            object.__setattr__(
-                self,
-                "parent_id",
-                _require_trace_id(self.parent_id, name="parent_id"),
-            )
-            if self.parent_id == self.step_id:
-                raise WorldForgeError("Workflow step parent_id must not equal step_id.")
-        object.__setattr__(
-            self,
-            "input_artifacts",
-            tuple(WorkflowArtifactRef.from_value(item) for item in self.input_artifacts),
-        )
-        object.__setattr__(
-            self,
-            "output_artifacts",
-            tuple(WorkflowArtifactRef.from_value(item) for item in self.output_artifacts),
-        )
-        if self.duration_ms is not None:
-            duration = require_finite_number(
-                self.duration_ms,
-                name="Workflow step duration_ms",
-            )
-            if duration < 0.0:
-                raise WorldForgeError("Workflow step duration_ms must be non-negative.")
-            object.__setattr__(self, "duration_ms", duration)
-        if self.error_summary is not None:
-            sanitized = _safe_error_summary(self.error_summary)
-            object.__setattr__(self, "error_summary", sanitized or None)
+        object.__setattr__(self, "parent_id", _normalize_step_parent(self.parent_id, step_id))
+        object.__setattr__(self, "input_artifacts", _artifact_refs(self.input_artifacts))
+        object.__setattr__(self, "output_artifacts", _artifact_refs(self.output_artifacts))
+        object.__setattr__(self, "duration_ms", _step_duration_ms(self.duration_ms))
+        object.__setattr__(self, "error_summary", _optional_error_summary(self.error_summary))
 
     @classmethod
     def from_value(cls, value: WorkflowTraceStep | Mapping[str, Any]) -> WorkflowTraceStep:
@@ -321,36 +284,7 @@ def workflow_trace_from_provider_events(
 ) -> WorkflowTrace:
     """Build a workflow trace from already-sanitized provider events."""
 
-    steps: list[WorkflowTraceStep] = []
-    for index, event in enumerate(events, start=1):
-        payload = event.to_dict() if isinstance(event, ProviderEvent) else dict(event)
-        phase = str(payload.get("phase", "")).lower()
-        status = "success" if phase == "success" else "failed" if phase == "failure" else "running"
-        steps.append(
-            WorkflowTraceStep(
-                step_id=f"event-{index}",
-                operation=str(payload.get("operation", "provider-operation")),
-                status=status,
-                provider=str(payload.get("provider", "provider")),
-                capability=str(payload.get("operation", "capability")),
-                duration_ms=payload.get("duration_ms"),
-                error_summary=payload.get("message") if status == "failed" else None,
-                output_artifacts=(
-                    (WorkflowArtifactRef(label=str(payload["artifact_id"])),)
-                    if payload.get("artifact_id")
-                    else ()
-                ),
-            )
-        )
-    if not steps:
-        steps.append(
-            WorkflowTraceStep(
-                step_id="no-provider-events",
-                operation="provider-events",
-                status="skipped",
-                error_summary="No provider events were emitted.",
-            )
-        )
+    steps = _provider_event_trace_steps(events)
     return WorkflowTrace(
         workflow_id=workflow_id,
         name=name,
@@ -359,27 +293,170 @@ def workflow_trace_from_provider_events(
     )
 
 
+def _provider_event_trace_steps(
+    events: Sequence[ProviderEvent | Mapping[str, Any]],
+) -> tuple[WorkflowTraceStep, ...]:
+    steps = tuple(
+        _provider_event_trace_step(index, _provider_event_payload(event))
+        for index, event in enumerate(events, start=1)
+    )
+    if steps:
+        return steps
+    return (_no_provider_events_step(),)
+
+
+def _provider_event_payload(event: ProviderEvent | Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(event, ProviderEvent):
+        return event.to_dict()
+    return dict(event)
+
+
+def _provider_event_trace_step(index: int, payload: Mapping[str, Any]) -> WorkflowTraceStep:
+    status = _provider_event_status(payload)
+    return WorkflowTraceStep(
+        step_id=f"event-{index}",
+        operation=str(payload.get("operation", "provider-operation")),
+        status=status,
+        provider=str(payload.get("provider", "provider")),
+        capability=str(payload.get("operation", "capability")),
+        duration_ms=payload.get("duration_ms"),
+        error_summary=_provider_event_error_summary(payload, status=status),
+        output_artifacts=_provider_event_output_artifacts(payload),
+    )
+
+
+def _provider_event_status(payload: Mapping[str, Any]) -> str:
+    phase = str(payload.get("phase", "")).lower()
+    if phase == "success":
+        return "success"
+    if phase == "failure":
+        return "failed"
+    return "running"
+
+
+def _provider_event_error_summary(
+    payload: Mapping[str, Any],
+    *,
+    status: str,
+) -> str | None:
+    if status != "failed":
+        return None
+    message = payload.get("message")
+    if message is None:
+        return None
+    return str(message)
+
+
+def _provider_event_output_artifacts(
+    payload: Mapping[str, Any],
+) -> tuple[WorkflowArtifactRef, ...]:
+    artifact_id = payload.get("artifact_id")
+    if not artifact_id:
+        return ()
+    return (WorkflowArtifactRef(label=str(artifact_id)),)
+
+
+def _no_provider_events_step() -> WorkflowTraceStep:
+    return WorkflowTraceStep(
+        step_id="no-provider-events",
+        operation="provider-events",
+        status="skipped",
+        error_summary="No provider events were emitted.",
+    )
+
+
+def _normalize_step_operation(value: object) -> str:
+    return _require_trace_text(value, name="Workflow step operation")
+
+
+def _normalize_step_status(value: object) -> str:
+    status = _require_trace_text(value, name="Workflow step status").lower()
+    if status not in WORKFLOW_TRACE_STEP_STATUSES:
+        options = ", ".join(WORKFLOW_TRACE_STEP_STATUSES)
+        raise WorldForgeError(f"Workflow step status must be one of: {options}.")
+    return status
+
+
+def _optional_trace_text(value: object | None, *, name: str) -> str | None:
+    if value is None:
+        return None
+    return _require_trace_text(value, name=f"Workflow step {name}")
+
+
+def _normalize_step_parent(value: object | None, step_id: str) -> str | None:
+    if value is None:
+        return None
+    parent_id = _require_trace_id(value, name="parent_id")
+    if parent_id == step_id:
+        raise WorldForgeError("Workflow step parent_id must not equal step_id.")
+    return parent_id
+
+
+def _artifact_refs(
+    values: Sequence[WorkflowArtifactRef | Mapping[str, Any]],
+) -> tuple[WorkflowArtifactRef, ...]:
+    return tuple(WorkflowArtifactRef.from_value(item) for item in values)
+
+
+def _step_duration_ms(value: object | None) -> float | None:
+    if value is None:
+        return None
+    duration = require_finite_number(value, name="Workflow step duration_ms")
+    if duration < 0.0:
+        raise WorldForgeError("Workflow step duration_ms must be non-negative.")
+    return duration
+
+
+def _optional_error_summary(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return _safe_error_summary(value) or None
+
+
 def _validate_step_graph(steps: Sequence[WorkflowTraceStep]) -> None:
+    step_ids = _validated_step_ids(steps)
+    _validate_parent_references(steps, step_ids)
+    _validate_parent_graph_acyclic(steps)
+
+
+def _validated_step_ids(steps: Sequence[WorkflowTraceStep]) -> set[str]:
     seen: set[str] = set()
     for step in steps:
         if step.step_id in seen:
             raise WorldForgeError(f"WorkflowTrace step_id '{step.step_id}' is duplicated.")
         seen.add(step.step_id)
+    return seen
+
+
+def _validate_parent_references(
+    steps: Sequence[WorkflowTraceStep],
+    step_ids: set[str],
+) -> None:
     for step in steps:
-        if step.parent_id is not None and step.parent_id not in seen:
+        if step.parent_id is not None and step.parent_id not in step_ids:
             raise WorldForgeError(
                 f"WorkflowTrace step '{step.step_id}' references unknown parent_id "
                 f"'{step.parent_id}'."
             )
+
+
+def _validate_parent_graph_acyclic(steps: Sequence[WorkflowTraceStep]) -> None:
     parent_map = {step.step_id: step.parent_id for step in steps}
     for step in steps:
-        visited = {step.step_id}
-        parent = step.parent_id
-        while parent is not None:
-            if parent in visited:
-                raise WorldForgeError("WorkflowTrace parent graph must not contain cycles.")
-            visited.add(parent)
-            parent = parent_map.get(parent)
+        _validate_parent_chain_acyclic(step, parent_map)
+
+
+def _validate_parent_chain_acyclic(
+    step: WorkflowTraceStep,
+    parent_map: Mapping[str, str | None],
+) -> None:
+    visited = {step.step_id}
+    parent = step.parent_id
+    while parent is not None:
+        if parent in visited:
+            raise WorldForgeError("WorkflowTrace parent graph must not contain cycles.")
+        visited.add(parent)
+        parent = parent_map.get(parent)
 
 
 def _derive_trace_status(steps: Sequence[WorkflowTraceStep]) -> str:

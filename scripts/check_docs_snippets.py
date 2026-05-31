@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +49,22 @@ class SnippetBlock:
     language: str
     action: str
     code: str
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedFence:
+    block: SnippetBlock | None
+    failure: dict[str, Any] | None
+    next_index: int
+    closed: bool
+
+
+@dataclass(slots=True)
+class SnippetParseState:
+    heading: str = "(top)"
+    pending: SnippetMarker | None = None
+    blocks: list[SnippetBlock] = field(default_factory=list)
+    failures: list[dict[str, Any]] = field(default_factory=list)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,82 +128,152 @@ def check_docs_snippets(
 def parse_snippet_blocks(path: Path, *, root: Path = ROOT) -> dict[str, Any]:
     relative = _display_path(path, root)
     lines = path.read_text(encoding="utf-8").splitlines()
-    blocks: list[SnippetBlock] = []
-    failures: list[dict[str, Any]] = []
-    heading = "(top)"
-    pending: SnippetMarker | None = None
+    state = SnippetParseState()
     index = 0
     while index < len(lines):
-        line = lines[index]
-        if line.startswith("#"):
-            heading = line.lstrip("#").strip() or heading
-        marker_match = MARKER_PATTERN.match(line)
-        if marker_match:
-            action = marker_match.group(1)
-            if action not in VALID_ACTIONS:
-                failures.append(
-                    _failure(
-                        path=relative,
-                        line=index + 1,
-                        heading=heading,
-                        language="",
-                        reason=f"unknown snippet marker action: {action}",
-                    )
-                )
-                pending = None
-            else:
-                pending = SnippetMarker(
-                    action=action,
-                    path=relative,
-                    line=index + 1,
-                    heading=heading,
-                )
-            index += 1
-            continue
-        fence_match = FENCE_PATTERN.match(line)
-        if fence_match and pending is not None:
-            language = fence_match.group(1).strip()
-            code_lines: list[str] = []
-            fence_line = index + 1
-            index += 1
-            while index < len(lines) and not lines[index].startswith("```"):
-                code_lines.append(lines[index])
-                index += 1
-            if index >= len(lines):
-                failures.append(
-                    _failure(
-                        path=relative,
-                        line=fence_line,
-                        heading=pending.heading,
-                        language=language,
-                        reason="snippet fence is not closed",
-                    )
-                )
-                pending = None
-                break
-            blocks.append(
-                SnippetBlock(
-                    path=relative,
-                    line=fence_line,
-                    heading=pending.heading,
-                    language=language,
-                    action=pending.action,
-                    code="\n".join(code_lines).rstrip() + "\n",
-                )
-            )
-            pending = None
-        index += 1
-    if pending is not None:
-        failures.append(
-            _failure(
-                path=relative,
-                line=pending.line,
+        index, stop = _parse_snippet_line(lines, index, path=relative, state=state)
+        if stop:
+            break
+    _flush_pending_marker(state)
+    return {"blocks": state.blocks, "failures": state.failures}
+
+
+def _parse_snippet_line(
+    lines: list[str],
+    index: int,
+    *,
+    path: str,
+    state: SnippetParseState,
+) -> tuple[int, bool]:
+    line = lines[index]
+    state.heading = _updated_heading(line, state.heading)
+    marker = _snippet_marker(line, path=path, line_number=index + 1, heading=state.heading)
+    if marker is not None:
+        _accept_snippet_marker(state, marker)
+        return index + 1, False
+    if state.pending is None or not FENCE_PATTERN.match(line):
+        return index + 1, False
+    parsed = _parse_pending_fence(lines, index, state.pending)
+    _accept_parsed_fence(state, parsed)
+    return parsed.next_index + 1, not parsed.closed
+
+
+def _accept_snippet_marker(state: SnippetParseState, marker: SnippetMarker) -> None:
+    marker_failure = _marker_action_failure(marker, language="")
+    if marker_failure is None:
+        state.pending = marker
+        return
+    state.failures.append(marker_failure)
+    state.pending = None
+
+
+def _accept_parsed_fence(state: SnippetParseState, parsed: ParsedFence) -> None:
+    if parsed.failure is not None:
+        state.failures.append(parsed.failure)
+    if parsed.block is not None:
+        state.blocks.append(parsed.block)
+    state.pending = None
+
+
+def _flush_pending_marker(state: SnippetParseState) -> None:
+    if state.pending is None:
+        return
+    state.failures.append(_pending_marker_failure(state.pending))
+    state.pending = None
+
+
+def _updated_heading(line: str, current: str) -> str:
+    if not line.startswith("#"):
+        return current
+    return line.lstrip("#").strip() or current
+
+
+def _snippet_marker(
+    line: str,
+    *,
+    path: str,
+    line_number: int,
+    heading: str,
+) -> SnippetMarker | None:
+    marker_match = MARKER_PATTERN.match(line)
+    if marker_match is None:
+        return None
+    return SnippetMarker(
+        action=marker_match.group(1),
+        path=path,
+        line=line_number,
+        heading=heading,
+    )
+
+
+def _parse_pending_fence(
+    lines: list[str],
+    index: int,
+    pending: SnippetMarker,
+) -> ParsedFence:
+    fence_match = FENCE_PATTERN.match(lines[index])
+    if fence_match is None:
+        return ParsedFence(block=None, failure=None, next_index=index, closed=True)
+    language = fence_match.group(1).strip()
+    fence_line = index + 1
+    code_lines, next_index = _collect_fence_code(lines, index + 1)
+    if next_index >= len(lines):
+        return ParsedFence(
+            block=None,
+            failure=_failure(
+                path=pending.path,
+                line=fence_line,
                 heading=pending.heading,
-                language="",
-                reason="snippet marker is not followed by a fenced code block",
-            )
+                language=language,
+                reason="snippet fence is not closed",
+            ),
+            next_index=next_index,
+            closed=False,
         )
-    return {"blocks": blocks, "failures": failures}
+    return ParsedFence(
+        block=SnippetBlock(
+            path=pending.path,
+            line=fence_line,
+            heading=pending.heading,
+            language=language,
+            action=pending.action,
+            code="\n".join(code_lines).rstrip() + "\n",
+        ),
+        failure=None,
+        next_index=next_index,
+        closed=True,
+    )
+
+
+def _collect_fence_code(lines: list[str], start_index: int) -> tuple[list[str], int]:
+    code_lines: list[str] = []
+    index = start_index
+    while index < len(lines) and not lines[index].startswith("```"):
+        code_lines.append(lines[index])
+        index += 1
+    return code_lines, index
+
+
+def _marker_action_failure(marker: SnippetMarker, language: str) -> dict[str, Any] | None:
+    if marker.action in VALID_ACTIONS:
+        return None
+    return _failure(
+        path=marker.path,
+        line=marker.line,
+        heading=marker.heading,
+        language=language,
+        reason=f"unknown snippet marker action: {marker.action}",
+    )
+
+
+def _pending_marker_failure(marker: SnippetMarker) -> dict[str, Any]:
+    return _failure(
+        path=marker.path,
+        line=marker.line,
+        heading=marker.heading,
+        language="",
+        reason="snippet marker is not followed by a fenced code block",
+    )
 
 
 def run_snippet_block(

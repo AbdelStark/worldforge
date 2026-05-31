@@ -20,11 +20,12 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from worldforge.artifact_io import write_json_artifact  # noqa: E402
 from worldforge.live_smoke_evidence import (  # noqa: E402
     render_live_smoke_registry_table,
     validate_live_smoke_registry,
 )
-from worldforge.models import _redact_observable_text  # noqa: E402
+from worldforge.models import _redact_observable_text, dump_json  # noqa: E402
 from worldforge.smoke.run_manifest import validate_run_manifest  # noqa: E402
 
 DEFAULT_OUTPUT = ROOT / ".worldforge" / "release-evidence" / "release-evidence.md"
@@ -310,11 +311,10 @@ def main(argv: list[str] | None = None) -> int:
     output.write_text(report, encoding="utf-8")
     print(f"wrote {_display_path(output)}")
     if json_output == "-":
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(dump_json(payload, indent=2))
     elif json_output is not None:
         json_path = Path(json_output).expanduser().resolve()
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        write_json_artifact(json_path, payload)
         print(f"wrote {_display_path(json_path)}")
     failed = [result for result in gate_results if result.status == "failed"]
     return 1 if failed else 0

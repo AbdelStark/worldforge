@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from worldforge import WorldForge
+from worldforge.artifact_io import write_json_artifact
 from worldforge.evaluation import (
     EvaluationContext,
     EvaluationScenario,
@@ -77,7 +77,8 @@ def run_walkthrough(*, output_dir: Path, state_dir: Path) -> JSONDict:
         path = output_dir / artifact_name
         path.write_text(artifact_text, encoding="utf-8")
         artifact_paths[artifact_name] = str(path)
-    artifact_paths["walkthrough-summary.json"] = str(output_dir / "walkthrough-summary.json")
+    summary_path = output_dir / "walkthrough-summary.json"
+    artifact_paths["walkthrough-summary.json"] = str(summary_path)
     summary: JSONDict = {
         "schema_version": 1,
         "suite_id": report.suite_id,
@@ -91,10 +92,7 @@ def run_walkthrough(*, output_dir: Path, state_dir: Path) -> JSONDict:
         "claim_boundary": report.claim_boundary,
         "safe_to_attach": True,
     }
-    (output_dir / "walkthrough-summary.json").write_text(
-        json.dumps(summary, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_json_artifact(summary_path, summary)
     return summary
 
 

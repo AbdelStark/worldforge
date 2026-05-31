@@ -125,6 +125,33 @@ def test_robotics_operator_host_records_host_supplied_controller_hook(tmp_path) 
     assert review["controller_result"] == {"status": "dry_run_dispatched", "action_count": 2}
 
 
+def test_robotics_operator_host_preserves_failed_manifest_for_bad_controller_hook(
+    tmp_path,
+) -> None:
+    app = _load_operator_app()
+    workspace_dir = tmp_path / "workspace"
+
+    def hook(_actions, _approval):
+        return ["not", "a", "json-object"]
+
+    with pytest.raises(WorldForgeError, match="controller hook result"):
+        app.run_operator_review(
+            workspace_dir=workspace_dir,
+            state_dir=tmp_path / "worlds",
+            action_translator=app.sample_pusht_translator,
+            safety_checklist=_checklist(app),
+            dry_run_approved=True,
+            execute_controller=True,
+            controller_hook=hook,
+        )
+
+    manifests = list((workspace_dir / "runs").glob("*/run_manifest.json"))
+    assert len(manifests) == 1
+    manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+    assert manifest["status"] == "failed"
+    assert manifest["artifact_paths"] == {"provider_events": "logs/provider-events.jsonl"}
+
+
 def test_robotics_operator_host_cli_defaults_to_safe_validation_error(tmp_path, capsys) -> None:
     app = _load_operator_app()
 

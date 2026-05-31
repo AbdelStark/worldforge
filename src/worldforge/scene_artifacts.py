@@ -9,7 +9,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from pathlib import PurePosixPath, PureWindowsPath
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from worldforge.models import JSONDict, WorldForgeError, dump_json, require_json_dict
 
@@ -134,40 +134,74 @@ def _validate_assets(value: object, *, name: str) -> None:
     for index, item in enumerate(assets):
         asset_name = f"{name}[{index}]"
         asset = _require_json_object(item, name=asset_name)
-        asset_id = _require_non_empty_string(asset.get("id"), name=f"{asset_name}.id")
-        if asset_id in seen_ids:
-            raise WorldForgeError(f"{asset_name}.id must be unique.")
-        seen_ids.add(asset_id)
-        _require_non_empty_string(asset.get("role"), name=f"{asset_name}.role")
-        _require_digest(asset.get("digest"), name=f"{asset_name}.digest")
-        local_only = _optional_bool(asset.get("local_only", False), name=f"{asset_name}.local_only")
-        if "mime_type" in asset:
-            _require_non_empty_string(asset["mime_type"], name=f"{asset_name}.mime_type")
-        if "size_bytes" in asset:
-            size_bytes = asset["size_bytes"]
-            if isinstance(size_bytes, bool) or not isinstance(size_bytes, int) or size_bytes < 0:
-                raise WorldForgeError(f"{asset_name}.size_bytes must be a non-negative integer.")
-        if "uri" in asset:
-            _validate_uri(asset["uri"], local_only=local_only, name=f"{asset_name}.uri")
-        if "metadata" in asset:
-            _validate_metadata(asset["metadata"], name=f"{asset_name}.metadata")
+        asset_id = _validate_asset_identity(asset, name=asset_name)
+        _require_unique_asset_id(asset_id, seen_ids=seen_ids, name=f"{asset_name}.id")
+        _validate_asset_descriptor(asset, name=asset_name)
+
+
+def _validate_asset_identity(asset: JSONDict, *, name: str) -> str:
+    return _require_non_empty_string(asset.get("id"), name=f"{name}.id")
+
+
+def _require_unique_asset_id(asset_id: str, *, seen_ids: set[str], name: str) -> None:
+    if asset_id in seen_ids:
+        raise WorldForgeError(f"{name} must be unique.")
+    seen_ids.add(asset_id)
+
+
+def _validate_asset_descriptor(asset: JSONDict, *, name: str) -> None:
+    local_only = _validate_asset_required_fields(asset, name=name)
+    _validate_optional_asset_fields(asset, local_only=local_only, name=name)
+
+
+def _validate_asset_required_fields(asset: JSONDict, *, name: str) -> bool:
+    _require_non_empty_string(asset.get("role"), name=f"{name}.role")
+    _require_digest(asset.get("digest"), name=f"{name}.digest")
+    return _optional_bool(asset.get("local_only", False), name=f"{name}.local_only")
+
+
+def _validate_optional_asset_fields(asset: JSONDict, *, local_only: bool, name: str) -> None:
+    if "mime_type" in asset:
+        _require_non_empty_string(asset["mime_type"], name=f"{name}.mime_type")
+    if "size_bytes" in asset:
+        _require_non_negative_int(asset["size_bytes"], name=f"{name}.size_bytes")
+    if "uri" in asset:
+        _validate_uri(asset["uri"], local_only=local_only, name=f"{name}.uri")
+    if "metadata" in asset:
+        _validate_metadata(asset["metadata"], name=f"{name}.metadata")
 
 
 def _validate_provenance(value: object, *, name: str) -> None:
     provenance = _require_json_object(value, name=name)
+    _validate_optional_provenance_text_fields(provenance, name=name)
+    _validate_required_provenance_digests(provenance, name=name)
+    if "event_count" in provenance:
+        _require_non_negative_int(provenance["event_count"], name=f"{name}.event_count")
+    if "limitations" in provenance:
+        _validate_provenance_limitations(provenance["limitations"], name=f"{name}.limitations")
+
+
+def _validate_optional_provenance_text_fields(provenance: JSONDict, *, name: str) -> None:
     for field_name in ("runtime_manifest", "command"):
         if field_name in provenance:
             _require_non_empty_string(provenance[field_name], name=f"{name}.{field_name}")
+
+
+def _validate_required_provenance_digests(provenance: JSONDict, *, name: str) -> None:
     for field_name in ("input_digest", "result_digest"):
         _require_digest(provenance.get(field_name), name=f"{name}.{field_name}")
-    if "event_count" in provenance:
-        event_count = provenance["event_count"]
-        if isinstance(event_count, bool) or not isinstance(event_count, int) or event_count < 0:
-            raise WorldForgeError(f"{name}.event_count must be a non-negative integer.")
-    if "limitations" in provenance:
-        limitations = _require_list(provenance["limitations"], name=f"{name}.limitations")
-        for index, limitation in enumerate(limitations):
-            _require_non_empty_string(limitation, name=f"{name}.limitations[{index}]")
+
+
+def _validate_provenance_limitations(value: object, *, name: str) -> None:
+    limitations = _require_list(value, name=name)
+    for index, limitation in enumerate(limitations):
+        _require_non_empty_string(limitation, name=f"{name}[{index}]")
+
+
+def _require_non_negative_int(value: object, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise WorldForgeError(f"{name} must be a non-negative integer.")
+    return value
 
 
 def _validate_metadata(value: object, *, name: str) -> None:
@@ -193,38 +227,70 @@ def _reject_secret_like_metadata_keys(value: object, *, name: str) -> None:
 
 def _validate_uri(value: object, *, local_only: bool, name: str) -> None:
     uri = _require_non_empty_string(value, name=name)
+    parts = _split_scene_artifact_uri(uri, name=name)
+    _reject_uri_credentials_and_tail(parts, name=name)
+    if parts.scheme:
+        _validate_uri_scheme(parts, local_only=local_only, name=name)
+        return
+    _validate_relative_or_host_local_path(uri, local_only=local_only, name=name)
+
+
+def _split_scene_artifact_uri(uri: str, *, name: str) -> SplitResult:
     try:
-        parts = urlsplit(uri)
+        return urlsplit(uri)
     except ValueError as exc:
         raise WorldForgeError(f"{name} must be a safe relative path or URL.") from exc
+
+
+def _reject_uri_credentials_and_tail(parts: SplitResult, *, name: str) -> None:
     if parts.username or parts.password or parts.query or parts.fragment:
         raise WorldForgeError(f"{name} must not include userinfo, query strings, or fragments.")
-    if parts.scheme:
-        scheme = parts.scheme.lower()
-        if scheme == "file":
-            if local_only:
-                return
-            raise WorldForgeError(f"{name} file URI requires local_only=true.")
-        if scheme not in {"http", "https"}:
-            raise WorldForgeError(f"{name} must use https or a relative artifact path.")
-        host = parts.hostname or ""
-        if _is_private_or_loopback_host(host):
-            if local_only:
-                return
-            raise WorldForgeError(f"{name} host-local URL requires local_only=true.")
-        if scheme != "https":
-            raise WorldForgeError(f"{name} public remote URL must use https.")
+
+
+def _validate_uri_scheme(parts: SplitResult, *, local_only: bool, name: str) -> None:
+    scheme = parts.scheme.lower()
+    if scheme == "file":
+        _require_local_only_uri(local_only, name=name, message="file URI")
         return
-    if (
+    if scheme not in {"http", "https"}:
+        raise WorldForgeError(f"{name} must use https or a relative artifact path.")
+    _validate_remote_uri_scheme(scheme, parts, local_only=local_only, name=name)
+
+
+def _validate_remote_uri_scheme(
+    scheme: str,
+    parts: SplitResult,
+    *,
+    local_only: bool,
+    name: str,
+) -> None:
+    host = parts.hostname or ""
+    if _is_private_or_loopback_host(host):
+        _require_local_only_uri(local_only, name=name, message="host-local URL")
+        return
+    if scheme != "https":
+        raise WorldForgeError(f"{name} public remote URL must use https.")
+
+
+def _validate_relative_or_host_local_path(uri: str, *, local_only: bool, name: str) -> None:
+    if _is_host_local_path(uri):
+        _require_local_only_uri(local_only, name=name, message="host-local path")
+        return
+    if ".." in PurePosixPath(uri).parts or ".." in PureWindowsPath(uri).parts:
+        raise WorldForgeError(f"{name} must not contain path traversal.")
+
+
+def _is_host_local_path(uri: str) -> bool:
+    return (
         PurePosixPath(uri).is_absolute()
         or PureWindowsPath(uri).is_absolute()
         or uri.startswith("~")
-    ):
-        if local_only:
-            return
-        raise WorldForgeError(f"{name} host-local path requires local_only=true.")
-    if ".." in PurePosixPath(uri).parts or ".." in PureWindowsPath(uri).parts:
-        raise WorldForgeError(f"{name} must not contain path traversal.")
+    )
+
+
+def _require_local_only_uri(local_only: bool, *, name: str, message: str) -> None:
+    if not local_only:
+        raise WorldForgeError(f"{name} {message} requires local_only=true.")
 
 
 def _is_private_or_loopback_host(host: str) -> bool:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import json
 import sys
@@ -51,6 +52,51 @@ def test_static_audit_rejects_textual_import_outside_tui(tmp_path: Path) -> None
             "message": "Move Textual imports into src/worldforge/harness/tui.py.",
         }
     ]
+
+
+def test_harness_tui_styles_import_without_textual() -> None:
+    module_names = [
+        "worldforge.harness.tui_base_styles",
+        "worldforge.harness.tui_provider_styles",
+        "worldforge.harness.tui_robotics_styles",
+        "worldforge.harness.tui_styles",
+        "worldforge.harness.tui_world_styles",
+    ]
+    modules = [importlib.import_module(name) for name in module_names]
+
+    saved_textual = sys.modules.pop("textual", None)
+    sys.modules["textual"] = None  # type: ignore[assignment]
+    try:
+        reloaded = [importlib.reload(module) for module in modules]
+        facade = reloaded[module_names.index("worldforge.harness.tui_styles")]
+        assert "Breadcrumb" in facade.BREADCRUMB_DEFAULT_CSS
+        assert "#provider-pill" in facade.THE_WORLD_HARNESS_APP_CSS
+        for module in reloaded:
+            assert "textual" not in module.__dict__
+    finally:
+        if saved_textual is not None:
+            sys.modules["textual"] = saved_textual
+        else:
+            sys.modules.pop("textual", None)
+        for module in modules:
+            importlib.reload(module)
+
+
+def test_harness_report_compare_rows_import_without_textual() -> None:
+    import worldforge.harness.report_compare_rows as module
+
+    saved_textual = sys.modules.pop("textual", None)
+    sys.modules["textual"] = None  # type: ignore[assignment]
+    try:
+        reloaded = importlib.reload(module)
+        assert callable(reloaded.comparison_rows)
+        assert "textual" not in reloaded.__dict__
+    finally:
+        if saved_textual is not None:
+            sys.modules["textual"] = saved_textual
+        else:
+            sys.modules.pop("textual", None)
+        importlib.reload(module)
 
 
 def test_static_audit_allows_rerun_lazy_import_in_rerun_module(tmp_path: Path) -> None:

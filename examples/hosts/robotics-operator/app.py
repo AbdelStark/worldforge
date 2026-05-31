@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ from worldforge.demos.lerobot_e2e import (
     DemoDistanceScoreProvider,
     DemoLeRobotPolicy,
 )
-from worldforge.harness.workspace import create_run_workspace, write_run_manifest
+from worldforge.harness.workspace import RunWorkspace, create_run_workspace, write_run_manifest
 from worldforge.models import JSONDict, ProviderEvent, require_json_dict
 from worldforge.observability import RunJsonLogSink, compose_event_handlers
 from worldforge.providers import LeRobotPolicyProvider
@@ -33,6 +34,28 @@ REQUIRED_CHECKS = (
     "operator_present",
     "controller_isolated",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewRunConfig:
+    workspace_dir: Path
+    state_dir: Path
+    action_translator: ActionTranslator
+    safety_checklist: dict[str, bool]
+    dry_run_approved: bool
+    controller_hook: ControllerExecutionHook | None
+    execute_controller: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewProviders:
+    forge: WorldForge
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewExecution:
+    artifacts: JSON
+    result_summary: JSON
 
 
 def sample_pusht_translator(
@@ -85,215 +108,377 @@ def run_operator_review(
 ) -> JSON:
     """Run an offline operator review and preserve issue-safe artifacts."""
 
-    if action_translator is None:
-        raise WorldForgeError("robotics operator host requires an explicit action translator.")
-    checklist = validate_safety_checklist(safety_checklist)
-    dry_run_approved = _require_bool(dry_run_approved, name="dry_run_approved")
-    if execute_controller and controller_hook is None:
-        raise WorldForgeError(
-            "controller execution is disabled until the host supplies controller_hook."
-        )
-    if execute_controller and not dry_run_approved:
-        raise WorldForgeError("controller execution requires recorded dry-run approval.")
-    if execute_controller and not all(checklist.values()):
-        raise WorldForgeError("controller execution requires every safety checklist item.")
-
-    command = _command_string(
-        [
-            "--workspace",
-            str(workspace_dir),
-            "--state-dir",
-            str(state_dir),
-            "review",
-        ]
+    config = _review_run_config(
+        workspace_dir=workspace_dir,
+        state_dir=state_dir,
+        action_translator=action_translator,
+        safety_checklist=safety_checklist,
+        dry_run_approved=dry_run_approved,
+        controller_hook=controller_hook,
+        execute_controller=execute_controller,
     )
+    command = _review_command(config)
     workspace = create_run_workspace(
-        workspace_dir,
+        config.workspace_dir,
         kind="robotics_operator_review",
         command=command,
         provider="lerobot",
         operation="policy+score",
-        input_summary={
-            "mode": "offline_operator_review",
-            "controller_execution_requested": execute_controller,
-            "dry_run_approved": dry_run_approved,
-            "required_check_count": len(REQUIRED_CHECKS),
-        },
+        input_summary=_review_input_summary(config),
     )
-
     events: list[ProviderEvent] = []
-    event_sink = compose_event_handlers(
-        events.append,
-        RunJsonLogSink(
-            workspace.logs_dir / "provider-events.jsonl",
-            workspace.run_id,
-            extra_fields={"host": "robotics-operator"},
-        ),
-    )
 
     try:
-        forge = WorldForge(
-            state_dir=state_dir,
-            auto_register_remote=False,
-            event_handler=event_sink,
-        )
-        world = forge.create_world("robotics-operator-review", provider="mock")
-        cube = make_blue_cube(world)
-        goal = blue_cube_goal(cube)
-
-        policy_info = sample_policy_info(cube_id=cube.id)
-        score_info: JSONDict = {
-            "goal": [BLUE_CUBE_GOAL.x, BLUE_CUBE_GOAL.y, BLUE_CUBE_GOAL.z],
-            "review_mode": "operator_dry_run",
-        }
-        policy = DemoLeRobotPolicy(sample_candidate_tensors())
-
-        def loader(
-            _policy_path: str,
-            _policy_type: str | None,
-            _device: str | None,
-            _cache_dir: str | None,
-        ) -> DemoLeRobotPolicy:
-            return policy
-
-        forge.register_provider(
-            LeRobotPolicyProvider(
-                policy_path="host/sample-pusht-policy",
-                policy_type="diffusion",
-                embodiment_tag="pusht",
-                device="cpu",
-                policy_loader=loader,
-                action_translator=action_translator,
-                event_handler=event_sink,
-            )
-        )
-        forge.register_provider(DemoDistanceScoreProvider())
-
-        policy_result = forge.select_actions("lerobot", info=policy_info)
-        score_result = forge.score_actions(
-            "demo-distance-score",
-            info=score_info,
-            action_candidates=[
-                [action.to_dict() for action in candidate]
-                for candidate in policy_result.action_candidates
-            ],
-        )
-        selected_actions = list(policy_result.action_candidates[score_result.best_index])
-        action_chunks = [
-            {
-                "index": index,
-                "selected": index == score_result.best_index,
-                "actions": [action.to_dict() for action in candidate],
-                "score": score_result.scores[index],
-            }
-            for index, candidate in enumerate(policy_result.action_candidates)
-        ]
-        approval = {
-            "dry_run_approved": dry_run_approved,
-            "safety_checklist": checklist,
-            "controller_execution_requested": execute_controller,
-            "controller_hook_supplied": controller_hook is not None,
-            "worldforge_certifies_robot_safety": False,
-        }
-        replay = _replay_payload(
-            selected_actions,
-            goal=goal.to_dict(),
-            selected_candidate_index=score_result.best_index,
-            dry_run_approved=dry_run_approved,
-        )
-        controller_result = None
-        if execute_controller and controller_hook is not None:
-            controller_result = require_json_dict(
-                controller_hook(selected_actions, approval),
-                name="controller hook result",
-            )
-
-        artifacts: JSON = {
-            "action_chunks": action_chunks,
-            "approval": approval,
-            "controller_result": controller_result,
-            "events": [event.to_dict() for event in events],
-            "policy": policy_result.to_dict(),
-            "replay": replay,
-            "score_rationale": {
-                "provider": score_result.provider,
-                "score_type": score_result.metadata.get("score_type"),
-                "scores": score_result.scores,
-                "lower_is_better": score_result.lower_is_better,
-                "best_index": score_result.best_index,
-                "best_score": score_result.best_score,
-                "metadata": score_result.metadata,
-            },
-        }
-        workspace.write_json("results/action_chunks.json", artifacts["action_chunks"])
-        workspace.write_json("results/approval.json", artifacts["approval"])
-        workspace.write_json("results/score_rationale.json", artifacts["score_rationale"])
-        workspace.write_json("results/replay.json", artifacts["replay"])
-        workspace.write_json("results/operator_review.json", artifacts)
-        workspace.write_text("reports/operator_review.md", _review_markdown(artifacts))
-
-        artifact_paths = {
-            "action_chunks": "results/action_chunks.json",
-            "approval": "results/approval.json",
-            "operator_review": "results/operator_review.json",
-            "provider_events": "logs/provider-events.jsonl",
-            "replay": "results/replay.json",
-            "report": "reports/operator_review.md",
-            "score_rationale": "results/score_rationale.json",
-        }
-        result_summary = {
-            "selected_candidate_index": score_result.best_index,
-            "selected_action_count": len(selected_actions),
-            "best_score": score_result.best_score,
-            "dry_run_approved": dry_run_approved,
-            "controller_execution_requested": execute_controller,
-            "controller_executed": controller_result is not None,
-        }
-        write_run_manifest(
+        review = _run_review_pipeline(config, workspace, events)
+        _write_review_artifacts(workspace, review.artifacts)
+        _write_review_manifest(
             workspace,
-            kind="robotics_operator_review",
+            config=config,
             command=command,
-            provider="lerobot",
-            operation="policy+score",
             status="completed",
-            input_summary={
-                "mode": "offline_operator_review",
-                "controller_execution_requested": execute_controller,
-                "dry_run_approved": dry_run_approved,
-                "required_check_count": len(REQUIRED_CHECKS),
-            },
-            result_summary=result_summary,
-            artifact_paths=artifact_paths,
+            result_summary=review.result_summary,
+            artifact_paths=_review_artifact_paths(),
             event_count=len(events),
         )
-        return {
-            "status": "passed",
-            "exit_code": 0,
-            "run_id": workspace.run_id,
-            "run_workspace": str(workspace.path),
-            "run_manifest": str(workspace.manifest_path),
-            "artifact_paths": artifact_paths,
-            "summary": result_summary,
-        }
+        return _review_result(workspace, review.result_summary)
     except Exception:
-        write_run_manifest(
+        _write_review_manifest(
             workspace,
-            kind="robotics_operator_review",
+            config=config,
             command=command,
-            provider="lerobot",
-            operation="policy+score",
             status="failed",
-            input_summary={
-                "mode": "offline_operator_review",
-                "controller_execution_requested": execute_controller,
-                "dry_run_approved": dry_run_approved,
-                "required_check_count": len(REQUIRED_CHECKS),
-            },
             result_summary={"error": "operator review failed"},
             artifact_paths={"provider_events": "logs/provider-events.jsonl"},
             event_count=len(events),
         )
         raise
+
+
+def _review_run_config(
+    *,
+    workspace_dir: Path,
+    state_dir: Path,
+    action_translator: ActionTranslator | None,
+    safety_checklist: JSONDict,
+    dry_run_approved: bool,
+    controller_hook: ControllerExecutionHook | None,
+    execute_controller: bool,
+) -> _ReviewRunConfig:
+    if action_translator is None:
+        raise WorldForgeError("robotics operator host requires an explicit action translator.")
+    checklist = validate_safety_checklist(safety_checklist)
+    approved = _require_bool(dry_run_approved, name="dry_run_approved")
+    _validate_controller_request(
+        checklist=checklist,
+        dry_run_approved=approved,
+        controller_hook=controller_hook,
+        execute_controller=execute_controller,
+    )
+    return _ReviewRunConfig(
+        workspace_dir=workspace_dir,
+        state_dir=state_dir,
+        action_translator=action_translator,
+        safety_checklist=checklist,
+        dry_run_approved=approved,
+        controller_hook=controller_hook,
+        execute_controller=execute_controller,
+    )
+
+
+def _validate_controller_request(
+    *,
+    checklist: dict[str, bool],
+    dry_run_approved: bool,
+    controller_hook: ControllerExecutionHook | None,
+    execute_controller: bool,
+) -> None:
+    if not execute_controller:
+        return
+    if controller_hook is None:
+        raise WorldForgeError(
+            "controller execution is disabled until the host supplies controller_hook."
+        )
+    if not dry_run_approved:
+        raise WorldForgeError("controller execution requires recorded dry-run approval.")
+    if not all(checklist.values()):
+        raise WorldForgeError("controller execution requires every safety checklist item.")
+
+
+def _review_command(config: _ReviewRunConfig) -> str:
+    return _command_string(
+        [
+            "--workspace",
+            str(config.workspace_dir),
+            "--state-dir",
+            str(config.state_dir),
+            "review",
+        ]
+    )
+
+
+def _review_input_summary(config: _ReviewRunConfig) -> JSON:
+    return {
+        "mode": "offline_operator_review",
+        "controller_execution_requested": config.execute_controller,
+        "dry_run_approved": config.dry_run_approved,
+        "required_check_count": len(REQUIRED_CHECKS),
+    }
+
+
+def _review_event_sink(
+    workspace_run_id: str,
+    events: list[ProviderEvent],
+    logs_dir: Path,
+) -> Callable[[ProviderEvent], None]:
+    return compose_event_handlers(
+        events.append,
+        RunJsonLogSink(
+            logs_dir / "provider-events.jsonl",
+            workspace_run_id,
+            extra_fields={"host": "robotics-operator"},
+        ),
+    )
+
+
+def _run_review_pipeline(
+    config: _ReviewRunConfig,
+    workspace: RunWorkspace,
+    events: list[ProviderEvent],
+) -> _ReviewExecution:
+    event_sink = _review_event_sink(workspace.run_id, events, workspace.logs_dir)
+    providers = _review_providers(config, event_sink)
+    cube = make_blue_cube(providers.forge.create_world("robotics-operator-review", provider="mock"))
+    goal = blue_cube_goal(cube)
+    policy_result = providers.forge.select_actions(
+        "lerobot",
+        info=sample_policy_info(cube_id=cube.id),
+    )
+    score_result = _score_review_candidates(providers.forge, policy_result.action_candidates)
+    selected_actions = list(policy_result.action_candidates[score_result.best_index])
+    approval = _approval_payload(config)
+    controller_result = _controller_result(config, selected_actions, approval)
+    artifacts = _review_artifacts(
+        policy_result=policy_result,
+        score_result=score_result,
+        selected_actions=selected_actions,
+        goal=goal.to_dict(),
+        approval=approval,
+        controller_result=controller_result,
+        events=events,
+    )
+    return _ReviewExecution(
+        artifacts=artifacts,
+        result_summary=_review_result_summary(
+            score_result=score_result,
+            selected_actions=selected_actions,
+            config=config,
+            controller_result=controller_result,
+        ),
+    )
+
+
+def _review_providers(
+    config: _ReviewRunConfig,
+    event_sink: Callable[[ProviderEvent], None],
+) -> _ReviewProviders:
+    forge = WorldForge(
+        state_dir=config.state_dir,
+        auto_register_remote=False,
+        event_handler=event_sink,
+    )
+    policy = DemoLeRobotPolicy(sample_candidate_tensors())
+    forge.register_provider(
+        LeRobotPolicyProvider(
+            policy_path="host/sample-pusht-policy",
+            policy_type="diffusion",
+            embodiment_tag="pusht",
+            device="cpu",
+            policy_loader=_sample_policy_loader(policy),
+            action_translator=config.action_translator,
+            event_handler=event_sink,
+        )
+    )
+    forge.register_provider(DemoDistanceScoreProvider())
+    return _ReviewProviders(forge=forge)
+
+
+def _sample_policy_loader(
+    policy: DemoLeRobotPolicy,
+) -> Callable[[str, str | None, str | None, str | None], DemoLeRobotPolicy]:
+    def loader(
+        _policy_path: str,
+        _policy_type: str | None,
+        _device: str | None,
+        _cache_dir: str | None,
+    ) -> DemoLeRobotPolicy:
+        return policy
+
+    return loader
+
+
+def _score_review_candidates(
+    forge: WorldForge,
+    action_candidates: Sequence[Sequence[Action]],
+) -> Any:
+    score_info: JSONDict = {
+        "goal": [BLUE_CUBE_GOAL.x, BLUE_CUBE_GOAL.y, BLUE_CUBE_GOAL.z],
+        "review_mode": "operator_dry_run",
+    }
+    return forge.score_actions(
+        "demo-distance-score",
+        info=score_info,
+        action_candidates=[
+            [action.to_dict() for action in candidate] for candidate in action_candidates
+        ],
+    )
+
+
+def _approval_payload(config: _ReviewRunConfig) -> JSON:
+    return {
+        "dry_run_approved": config.dry_run_approved,
+        "safety_checklist": config.safety_checklist,
+        "controller_execution_requested": config.execute_controller,
+        "controller_hook_supplied": config.controller_hook is not None,
+        "worldforge_certifies_robot_safety": False,
+    }
+
+
+def _controller_result(
+    config: _ReviewRunConfig,
+    selected_actions: Sequence[Action],
+    approval: JSONDict,
+) -> JSONDict | None:
+    if not config.execute_controller or config.controller_hook is None:
+        return None
+    return require_json_dict(
+        config.controller_hook(selected_actions, approval),
+        name="controller hook result",
+    )
+
+
+def _review_artifacts(
+    *,
+    policy_result: Any,
+    score_result: Any,
+    selected_actions: Sequence[Action],
+    goal: JSONDict,
+    approval: JSONDict,
+    controller_result: JSONDict | None,
+    events: Sequence[ProviderEvent],
+) -> JSON:
+    return {
+        "action_chunks": _action_chunk_artifacts(policy_result, score_result),
+        "approval": approval,
+        "controller_result": controller_result,
+        "events": [event.to_dict() for event in events],
+        "policy": policy_result.to_dict(),
+        "replay": _replay_payload(
+            selected_actions,
+            goal=goal,
+            selected_candidate_index=score_result.best_index,
+            dry_run_approved=bool(approval["dry_run_approved"]),
+        ),
+        "score_rationale": _score_rationale(score_result),
+    }
+
+
+def _action_chunk_artifacts(policy_result: Any, score_result: Any) -> list[JSON]:
+    return [
+        {
+            "index": index,
+            "selected": index == score_result.best_index,
+            "actions": [action.to_dict() for action in candidate],
+            "score": score_result.scores[index],
+        }
+        for index, candidate in enumerate(policy_result.action_candidates)
+    ]
+
+
+def _score_rationale(score_result: Any) -> JSON:
+    return {
+        "provider": score_result.provider,
+        "score_type": score_result.metadata.get("score_type"),
+        "scores": score_result.scores,
+        "lower_is_better": score_result.lower_is_better,
+        "best_index": score_result.best_index,
+        "best_score": score_result.best_score,
+        "metadata": score_result.metadata,
+    }
+
+
+def _review_result_summary(
+    *,
+    score_result: Any,
+    selected_actions: Sequence[Action],
+    config: _ReviewRunConfig,
+    controller_result: JSONDict | None,
+) -> JSON:
+    return {
+        "selected_candidate_index": score_result.best_index,
+        "selected_action_count": len(selected_actions),
+        "best_score": score_result.best_score,
+        "dry_run_approved": config.dry_run_approved,
+        "controller_execution_requested": config.execute_controller,
+        "controller_executed": controller_result is not None,
+    }
+
+
+def _write_review_artifacts(workspace: RunWorkspace, artifacts: JSON) -> None:
+    workspace.write_json("results/action_chunks.json", artifacts["action_chunks"])
+    workspace.write_json("results/approval.json", artifacts["approval"])
+    workspace.write_json("results/score_rationale.json", artifacts["score_rationale"])
+    workspace.write_json("results/replay.json", artifacts["replay"])
+    workspace.write_json("results/operator_review.json", artifacts)
+    workspace.write_text("reports/operator_review.md", _review_markdown(artifacts))
+
+
+def _review_artifact_paths() -> dict[str, str]:
+    return {
+        "action_chunks": "results/action_chunks.json",
+        "approval": "results/approval.json",
+        "operator_review": "results/operator_review.json",
+        "provider_events": "logs/provider-events.jsonl",
+        "replay": "results/replay.json",
+        "report": "reports/operator_review.md",
+        "score_rationale": "results/score_rationale.json",
+    }
+
+
+def _write_review_manifest(
+    workspace: RunWorkspace,
+    *,
+    config: _ReviewRunConfig,
+    command: str,
+    status: str,
+    result_summary: JSON,
+    artifact_paths: dict[str, str],
+    event_count: int,
+) -> None:
+    write_run_manifest(
+        workspace,
+        kind="robotics_operator_review",
+        command=command,
+        provider="lerobot",
+        operation="policy+score",
+        status=status,
+        input_summary=_review_input_summary(config),
+        result_summary=result_summary,
+        artifact_paths=artifact_paths,
+        event_count=event_count,
+    )
+
+
+def _review_result(workspace: RunWorkspace, result_summary: JSON) -> JSON:
+    artifact_paths = _review_artifact_paths()
+    return {
+        "status": "passed",
+        "exit_code": 0,
+        "run_id": workspace.run_id,
+        "run_workspace": str(workspace.path),
+        "run_manifest": str(workspace.manifest_path),
+        "artifact_paths": artifact_paths,
+        "summary": result_summary,
+    }
 
 
 def validate_safety_checklist(payload: JSONDict) -> dict[str, bool]:

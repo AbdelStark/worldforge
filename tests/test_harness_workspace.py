@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 
 import pytest
 
+from worldforge import WorldForgeError
 from worldforge.cli import main
 from worldforge.harness import run_flow
+from worldforge.harness.run_history import list_run_history, run_history_markdown
 from worldforge.harness.workspace import (
     cleanup_run_workspaces,
     create_run_workspace,
@@ -120,6 +123,58 @@ def test_benchmark_cli_profile_applies_defaults_and_preserves_provenance(
     assert manifest["config_profile"]["state_dir"] == ".worldforge/worlds"
     assert manifest["config_profile"]["sha256"].startswith("sha256:")
     assert "api_token" not in json.dumps(manifest)
+
+
+def test_benchmark_cli_profile_preserves_explicit_cli_options(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "name": "profiled-benchmark",
+                "providers": ["cosmos"],
+                "operations": ["embed"],
+                "run_workspace": ".worldforge/profiled-runs",
+                "state_dir": ".worldforge/profiled-worlds",
+                "output_format": "markdown",
+            }
+        ),
+        encoding="utf-8",
+    )
+    explicit_workspace = tmp_path / "explicit-runs"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worldforge",
+            "benchmark",
+            "--profile",
+            str(profile_path),
+            "--provider",
+            "mock",
+            "--operation",
+            "predict",
+            "--iterations",
+            "1",
+            "--run-workspace",
+            str(explicit_workspace),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"][0]["provider"] == "mock"
+    assert payload["results"][0]["operation"] == "predict"
+    runs = list_run_workspaces(explicit_workspace)
+    assert len(runs) == 1
+    assert not Path(".worldforge/profiled-runs").exists()
 
 
 def test_benchmark_cli_preserves_failed_budget_workspace(tmp_path, monkeypatch, capsys) -> None:
@@ -263,6 +318,134 @@ def test_runs_cli_markdown_and_dry_run_cleanup(tmp_path, monkeypatch, capsys) ->
     assert "# WorldForge Run Cleanup Preview" in cleanup_output
     assert "selected_count: 1" in cleanup_output
     assert len(list_run_workspaces(tmp_path)) == 2
+
+
+def test_run_history_record_derives_safe_failed_run_commands(tmp_path: Path) -> None:
+    command = "worldforge benchmark --api-key secret-value --input /tmp/private-input.json"
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="benchmark",
+        command=command,
+        provider="mock",
+        operation="predict",
+        run_id="20260103T000000Z-00000003",
+        input_summary={"capabilities": ["predict"]},
+    )
+    write_run_manifest(
+        workspace,
+        kind="benchmark",
+        command=command,
+        provider="mock",
+        operation="predict",
+        status="failed",
+        input_summary={"capabilities": ["predict"]},
+        result_summary={"failure_reason": "budget exceeded"},
+        artifact_paths={
+            "json": "reports/report.json",
+            "trace": "logs/events.jsonl",
+            "unsafe": "/tmp/raw.json",
+            "escape": "../secret.txt",
+        },
+        event_count=3,
+    )
+
+    record = list_run_history(tmp_path)[0]
+
+    assert record.run_id == "20260103T000000Z-00000003"
+    assert record.capabilities == ("predict",)
+    assert record.failure_summary == "budget exceeded"
+    assert record.recovery_command == record.issue_bundle_command
+    assert record.comparison_command is not None
+    assert record.display_path in record.comparison_command
+    assert record.safe_artifact_types == ("json", "trace", "jsonl")
+    assert record.artifact_count == 4
+    assert record.event_count == 3
+    assert "secret-value" not in record.rerun_command
+    assert "/tmp/private-input.json" not in record.rerun_command
+    assert "<redacted>" in record.rerun_command
+    assert "<host-local:private-input.json>" in record.rerun_command
+    assert "--run-workspace" in record.rerun_command
+
+
+def test_run_history_failure_summary_uses_validation_and_status_defaults(
+    tmp_path: Path,
+) -> None:
+    validation_workspace = create_run_workspace(
+        tmp_path,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        run_id="20260104T000000Z-00000004",
+        input_summary={"capabilities": ["predict"]},
+    )
+    write_run_manifest(
+        validation_workspace,
+        kind="eval",
+        command="worldforge eval --suite planning --provider mock",
+        provider="mock",
+        operation="planning",
+        status="failed",
+        input_summary={"capabilities": ["predict"]},
+        result_summary={"validation_errors": ["bad metric", "bad artifact"]},
+    )
+    cancelled_workspace = create_run_workspace(
+        tmp_path,
+        kind="flow",
+        command="worldforge-harness --flow diagnostics",
+        provider="mock",
+        operation="diagnostics",
+        run_id="20260105T000000Z-00000005",
+        input_summary={},
+    )
+    write_run_manifest(
+        cancelled_workspace,
+        kind="flow",
+        command="worldforge-harness --flow diagnostics",
+        provider="mock",
+        operation="diagnostics",
+        status="cancelled",
+        input_summary={},
+        result_summary=[],
+    )
+
+    records = {record.run_id: record for record in list_run_history(tmp_path)}
+
+    assert records["20260104T000000Z-00000004"].failure_summary == ("bad metric; bad artifact")
+    assert records["20260105T000000Z-00000005"].failure_summary == (
+        "Run was cancelled before completion."
+    )
+
+
+def test_run_history_markdown_renders_records_and_empty_state(tmp_path: Path) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="benchmark",
+        command="worldforge benchmark --provider mock --operation predict",
+        provider="mock",
+        operation="predict",
+        run_id="20260106T000000Z-00000006",
+        input_summary={"capabilities": ["predict"]},
+    )
+    write_run_manifest(
+        workspace,
+        kind="benchmark",
+        command="worldforge benchmark --provider mock --operation predict",
+        provider="mock",
+        operation="predict",
+        status="passed",
+        input_summary={"capabilities": ["predict"]},
+        result_summary={},
+        artifact_paths={"report": "reports/report.json"},
+    )
+
+    markdown = run_history_markdown(list_run_history(tmp_path))
+    empty_markdown = run_history_markdown(())
+
+    assert "| `20260106T000000Z-00000006` | benchmark | passed | mock | predict |" in markdown
+    assert "`worldforge benchmark --provider mock --operation predict" in markdown
+    assert "| - | - | - | - | - | - | - |" in empty_markdown
+    assert "No preserved runs matched the filter." in empty_markdown
 
 
 def test_runs_compare_exports_benchmark_artifacts(tmp_path, monkeypatch, capsys) -> None:
@@ -422,6 +605,44 @@ def test_workspace_helpers_reject_escape_and_invalid_cleanup(tmp_path) -> None:
     bad_manifest.parent.mkdir(parents=True)
     bad_manifest.write_text("not-json", encoding="utf-8")
     assert [run["run_id"] for run in list_run_workspaces(tmp_path)] == ["20260101T000000Z-00000001"]
+
+
+def test_workspace_json_writes_reject_non_finite_payloads(tmp_path) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="eval",
+        command="worldforge eval",
+        run_id="20260101T000000Z-00000001",
+    )
+
+    target = workspace.path / "artifacts" / "nested" / "non-finite.json"
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        workspace.write_json("artifacts/nested/non-finite.json", {"score": math.nan})
+
+    assert not target.exists()
+    assert not target.parent.exists()
+
+
+def test_run_manifest_rejects_non_finite_payloads_without_overwriting(tmp_path) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="eval",
+        command="worldforge eval",
+        run_id="20260101T000000Z-00000001",
+    )
+    original_manifest = workspace.manifest_path.read_text(encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        write_run_manifest(
+            workspace,
+            kind="eval",
+            command="worldforge eval",
+            status="completed",
+            result_summary={"score": math.inf},
+        )
+
+    assert workspace.manifest_path.read_text(encoding="utf-8") == original_manifest
 
 
 def test_deterministic_controls_pin_preserved_benchmark_snapshot(tmp_path: Path) -> None:

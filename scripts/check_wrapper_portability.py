@@ -173,47 +173,71 @@ def render_wrapper_portability_markdown(payload: dict[str, Any]) -> str:
 
 def _check_contract(contract: WrapperContract) -> WrapperCheckResult:
     path = ROOT / contract.path
-    failures: list[str] = []
     if not path.is_file():
-        return WrapperCheckResult(
-            path=contract.path,
-            passed=False,
-            failures=(f"{contract.path} is missing; {contract.triage_step}",),
-        )
+        return _missing_wrapper_result(contract)
 
     text = path.read_text(encoding="utf-8")
+    failures = (
+        _shebang_failures(contract, text)
+        + _executable_failures(contract, path)
+        + _required_text_failures(contract, text)
+        + _documented_invocation_failures(contract)
+    )
+    return WrapperCheckResult(
+        path=contract.path,
+        passed=not failures,
+        failures=failures,
+    )
+
+
+def _missing_wrapper_result(contract: WrapperContract) -> WrapperCheckResult:
+    return WrapperCheckResult(
+        path=contract.path,
+        passed=False,
+        failures=(f"{contract.path} is missing; {contract.triage_step}",),
+    )
+
+
+def _shebang_failures(contract: WrapperContract, text: str) -> tuple[str, ...]:
     first_line = text.splitlines()[0] if text.splitlines() else ""
     if not first_line.startswith(contract.shebang_prefix):
-        failures.append(
-            f"{contract.path} shebang is {first_line!r}; expected {contract.shebang_prefix!r}"
-        )
+        return (f"{contract.path} shebang is {first_line!r}; expected {contract.shebang_prefix!r}",)
+    return ()
 
+
+def _executable_failures(contract: WrapperContract, path: Path) -> tuple[str, ...]:
     is_executable = os.access(path, os.X_OK)
     if contract.executable and not is_executable:
-        failures.append(f"{contract.path} must be executable; run `chmod +x {contract.path}`")
+        return (f"{contract.path} must be executable; run `chmod +x {contract.path}`",)
     if not contract.executable and is_executable and path.suffix == ".sh":
-        failures.append(f"{contract.path} should be invoked as `{contract.invocation}`")
+        return (f"{contract.path} should be invoked as `{contract.invocation}`",)
+    return ()
 
-    failures.extend(
+
+def _required_text_failures(contract: WrapperContract, text: str) -> tuple[str, ...]:
+    return tuple(
         f"{contract.path} is missing required text: {required!r}"
         for required in contract.required_text
         if required not in text
     )
 
-    for doc in contract.docs:
-        doc_path = ROOT / doc
-        if not doc_path.is_file():
-            failures.append(f"{doc} is missing for documented wrapper command {contract.path}")
-            continue
-        doc_text = doc_path.read_text(encoding="utf-8")
-        if contract.invocation not in doc_text:
-            failures.append(f"{doc} does not document `{contract.invocation}`")
 
-    return WrapperCheckResult(
-        path=contract.path,
-        passed=not failures,
-        failures=tuple(failures),
+def _documented_invocation_failures(contract: WrapperContract) -> tuple[str, ...]:
+    return tuple(
+        failure
+        for doc in contract.docs
+        for failure in _documented_invocation_failure(contract, doc)
     )
+
+
+def _documented_invocation_failure(contract: WrapperContract, doc: str) -> tuple[str, ...]:
+    doc_path = ROOT / doc
+    if not doc_path.is_file():
+        return (f"{doc} is missing for documented wrapper command {contract.path}",)
+    doc_text = doc_path.read_text(encoding="utf-8")
+    if contract.invocation not in doc_text:
+        return (f"{doc} does not document `{contract.invocation}`",)
+    return ()
 
 
 if __name__ == "__main__":

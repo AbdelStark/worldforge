@@ -30,6 +30,7 @@ _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SKIP_STATUSES = frozenset(
     {"not_run", "skipped_missing_runtime", "skipped_missing_credentials", "skipped_not_configured"}
 )
+_TERMINAL_STATUSES = frozenset({"passed", "failed"})
 
 
 def validate_live_smoke_registry(payload: Mapping[str, Any]) -> JSONDict:
@@ -65,6 +66,23 @@ def validate_live_smoke_entry(
     """Validate one registry entry and return a JSON-native copy."""
 
     entry = require_json_dict(payload, name=name, allow_empty=False)
+    provider, status, artifact_path = _validate_live_smoke_entry_fields(entry, name=name)
+    _validate_evidence_state(
+        status=status,
+        artifact_path=artifact_path,
+        skip_reason=entry.get("skip_reason"),
+        name=name,
+    )
+    _validate_known_limitations(entry.get("known_limitations"), name=name)
+    _reject_unsafe_values(entry, name=f"{name} ({provider})")
+    return entry
+
+
+def _validate_live_smoke_entry_fields(
+    entry: Mapping[str, Any],
+    *,
+    name: str,
+) -> tuple[str, str, object]:
     provider = _require_non_empty_string(entry.get("provider"), name=f"{name}.provider")
     _require_non_empty_string(entry.get("capability"), name=f"{name}.capability")
     _require_non_empty_string(entry.get("command"), name=f"{name}.command")
@@ -83,22 +101,31 @@ def validate_live_smoke_entry(
     artifact_path = entry.get("artifact_path")
     if artifact_path is not None:
         _require_safe_string(artifact_path, name=f"{name}.artifact_path")
-    if status in {"passed", "failed"} and artifact_path is None:
+    return provider, status, artifact_path
+
+
+def _validate_evidence_state(
+    *,
+    status: str,
+    artifact_path: object,
+    skip_reason: object,
+    name: str,
+) -> None:
+    if status in _TERMINAL_STATUSES and artifact_path is None:
         raise WorldForgeError(f"{name}.artifact_path is required for {status} evidence.")
-    skip_reason = entry.get("skip_reason")
-    if status in {"passed", "failed"} and skip_reason is not None:
+    if status in _TERMINAL_STATUSES and skip_reason is not None:
         raise WorldForgeError(f"{name}.skip_reason must be null for {status} evidence.")
     if status in _SKIP_STATUSES and artifact_path is not None:
         raise WorldForgeError(f"{name}.artifact_path must be null for skipped evidence.")
     if status in _SKIP_STATUSES:
         _require_non_empty_string(skip_reason, name=f"{name}.skip_reason")
-    limitations = entry.get("known_limitations")
+
+
+def _validate_known_limitations(limitations: object, *, name: str) -> None:
     if not isinstance(limitations, list):
         raise WorldForgeError(f"{name}.known_limitations must be a list.")
     for index, limitation in enumerate(limitations):
         _require_non_empty_string(limitation, name=f"{name}.known_limitations[{index}]")
-    _reject_unsafe_values(entry, name=f"{name} ({provider})")
-    return entry
 
 
 def render_live_smoke_registry_table(payload: Mapping[str, Any]) -> list[str]:
@@ -119,19 +146,36 @@ def render_live_smoke_registry_table(payload: Mapping[str, Any]) -> list[str]:
 
 def _reject_unsafe_values(value: object, *, name: str) -> None:
     if isinstance(value, str):
-        if _redact_observable_value(value) != value:
-            raise WorldForgeError(f"{name} contains secret-like material.")
-        sanitized = _sanitize_observable_target(value)
-        if sanitized != value:
-            raise WorldForgeError(f"{name} contains an unsafe URL.")
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            _reject_unsafe_values(item, name=f"{name}[{index}]")
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            if _redact_observable_value("", key=str(key)) != "":
-                raise WorldForgeError(f"{name}.{key} is a secret-like field.")
-            _reject_unsafe_values(item, name=f"{name}.{key}")
+        _reject_unsafe_string(value, name=name)
+        return
+    if isinstance(value, list):
+        _reject_unsafe_sequence(value, name=name)
+        return
+    if isinstance(value, dict):
+        _reject_unsafe_mapping(value, name=name)
+
+
+def _reject_unsafe_string(value: str, *, name: str) -> None:
+    if _redact_observable_value(value) != value:
+        raise WorldForgeError(f"{name} contains secret-like material.")
+    if _sanitize_observable_target(value) != value:
+        raise WorldForgeError(f"{name} contains an unsafe URL.")
+
+
+def _reject_unsafe_sequence(values: list[object], *, name: str) -> None:
+    for index, item in enumerate(values):
+        _reject_unsafe_values(item, name=f"{name}[{index}]")
+
+
+def _reject_unsafe_mapping(values: dict[object, object], *, name: str) -> None:
+    for key, item in values.items():
+        _reject_unsafe_key(key, name=name)
+        _reject_unsafe_values(item, name=f"{name}.{key}")
+
+
+def _reject_unsafe_key(key: object, *, name: str) -> None:
+    if _redact_observable_value("", key=str(key)) != "":
+        raise WorldForgeError(f"{name}.{key} is a secret-like field.")
 
 
 def _require_safe_string(value: object, *, name: str) -> str:

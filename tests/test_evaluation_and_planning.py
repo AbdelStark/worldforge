@@ -11,6 +11,7 @@ import pytest
 from worldforge import (
     Action,
     BBox,
+    Plan,
     Position,
     SceneObject,
     StructuredGoal,
@@ -166,6 +167,138 @@ def test_evaluation_result_contract_rejects_invalid_public_payloads() -> None:
         )
     with pytest.raises(WorldForgeError, match="EvaluationReport results"):
         EvaluationReport("suite", "Suite", [object()])  # type: ignore[list-item]
+    with pytest.raises(WorldForgeError, match="workflow_trace"):
+        EvaluationReport("suite", "Suite", [], workflow_trace=object())  # type: ignore[arg-type]
+
+
+def test_plan_constructor_validates_and_clones_public_payloads(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("plan-state", "mock")
+    state = world.to_dict()
+    goal_spec = {"kind": "object_at", "position": {"x": 1.0, "y": 0.5, "z": 0.0}}
+    metadata = {"nested": {"value": 1}}
+
+    plan = Plan(
+        goal="move object",
+        planner="sampling",
+        provider="mock",
+        actions=[Action.move_to(1.0, 0.5, 0.0)],
+        predicted_states=[state],
+        success_probability=0.75,
+        goal_spec=goal_spec,
+        metadata=metadata,
+    )
+
+    state["metadata"]["mutated"] = True
+    goal_spec["position"]["x"] = 2.0
+    metadata["nested"]["value"] = 2
+
+    assert plan.predicted_states[0]["metadata"].get("mutated") is None
+    assert plan.goal_spec == {
+        "kind": "object_at",
+        "position": {"x": 1.0, "y": 0.5, "z": 0.0},
+    }
+    assert plan.metadata == {"nested": {"value": 1}}
+
+    with pytest.raises(WorldForgeError, match="Plan actions"):
+        Plan(
+            goal="bad",
+            planner="sampling",
+            provider="mock",
+            actions=[object()],  # type: ignore[list-item]
+            predicted_states=[],
+            success_probability=0.5,
+        )
+    with pytest.raises(WorldForgeError, match="Plan predicted_states"):
+        Plan(
+            goal="bad",
+            planner="sampling",
+            provider="mock",
+            actions=[],
+            predicted_states="not-a-sequence",  # type: ignore[arg-type]
+            success_probability=0.5,
+        )
+    with pytest.raises(WorldForgeError, match=r"Plan predicted_states\[0\]"):
+        Plan(
+            goal="bad",
+            planner="sampling",
+            provider="mock",
+            actions=[],
+            predicted_states=[object()],  # type: ignore[list-item]
+            success_probability=0.5,
+        )
+    with pytest.raises(WorldForgeError, match="Plan metadata"):
+        Plan(
+            goal="bad",
+            planner="sampling",
+            provider="mock",
+            actions=[],
+            predicted_states=[],
+            success_probability=0.5,
+            metadata=[],  # type: ignore[arg-type]
+        )
+
+
+def test_world_plan_facade_delegates_to_world_planning_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    import worldforge._world as world_module
+
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("delegated-plan-world", "mock")
+    captured: dict[str, object] = {}
+
+    def fake_plan_world(**kwargs: object) -> Plan:
+        captured.update(kwargs)
+        return Plan(
+            goal="delegated",
+            planner=str(kwargs["planner"]),
+            provider=str(kwargs["provider"] or kwargs["default_provider"]),
+            actions=[],
+            predicted_states=[],
+            success_probability=1.0,
+        )
+
+    monkeypatch.setattr(world_module, "_plan_world", fake_plan_world)
+
+    plan = world.plan(goal="move cube", provider="mock", max_steps=3)
+
+    assert plan.goal == "delegated"
+    assert captured["forge"] is forge
+    assert captured["scene_objects"] is world.scene_objects
+    assert captured["default_provider"] == "mock"
+    assert captured["goal"] == "move cube"
+    assert captured["max_steps"] == 3
+    snapshot = captured["snapshot"]
+    assert callable(snapshot)
+    assert snapshot()["id"] == world.id
+
+
+def test_execute_plan_uses_metadata_execution_provider(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("execution-provider-world", "mock")
+    cube = world.add_object(
+        SceneObject(
+            "cube",
+            Position(0.0, 0.5, 0.0),
+            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+        )
+    )
+    plan = Plan(
+        goal="execute through metadata provider",
+        planner="fixture",
+        provider="score-only-provider",
+        actions=[Action.move_to(0.4, 0.5, 0.0, object_id=cube.id)],
+        predicted_states=[],
+        success_probability=0.5,
+        metadata={"execution_provider": "mock"},
+    )
+
+    execution = world.execute_plan(plan)
+
+    assert execution.actions_applied == plan.actions
+    assert execution.final_world().provider == "mock"
 
 
 def test_action_candidate_helpers_return_validated_action_sequences() -> None:
@@ -252,6 +385,15 @@ def test_bounded_move_grid_candidates_validate_bounds_and_non_finite_inputs() ->
             y_steps=1,
             z_steps=1,
         )
+    with pytest.raises(WorldForgeError, match="x_bounds must contain exactly two"):
+        bounded_move_grid_candidates(
+            x_bounds=(0.0, 0.5, 1.0),
+            y_bounds=(0.5, 0.5),
+            z_bounds=(0.0, 0.0),
+            x_steps=3,
+            y_steps=1,
+            z_steps=1,
+        )
     with pytest.raises(WorldForgeError, match=r"y_bounds\[1\]"):
         bounded_move_grid_candidates(
             x_bounds=(0.0, 1.0),
@@ -272,6 +414,8 @@ def test_bounded_move_grid_candidates_validate_bounds_and_non_finite_inputs() ->
         )
     with pytest.raises(WorldForgeError, match="offsets"):
         cartesian_offset_candidates(Position(0.0, 0.0, 0.0), [])
+    with pytest.raises(WorldForgeError, match=r"offsets\[0\] must contain only Position"):
+        cartesian_offset_candidates(Position(0.0, 0.0, 0.0), [[object()]])  # type: ignore[list-item]
     with pytest.raises(WorldForgeError, match="distinct"):
         swap_action_candidates(
             first_object_id="cube-1",
@@ -369,6 +513,86 @@ def test_structured_goal_targets_selected_object_and_validates_inputs(tmp_path) 
             goal_spec=StructuredGoal.object_at(
                 object_name="mug",
                 position=Position(0.6, 0.8, 0.0),
+            )
+        )
+
+
+def test_plan_goal_resolution_rejects_invalid_public_inputs(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world, cube, _mug = _seed_world(forge)
+    goal_spec = StructuredGoal.object_at(
+        object_id=cube.id,
+        position=Position(0.4, 0.5, 0.0),
+    )
+
+    with pytest.raises(WorldForgeError, match="goal must be a string"):
+        world.plan(goal=42)  # type: ignore[arg-type]
+
+    with pytest.raises(WorldForgeError, match="goal must not be empty"):
+        world.plan(goal="   ")
+
+    with pytest.raises(WorldForgeError, match="goal_spec must be a StructuredGoal"):
+        world.plan(goal_spec={"kind": "object_at"})  # type: ignore[arg-type]
+
+    with pytest.raises(WorldForgeError, match="goal_json must be a string"):
+        world.plan(goal_json={"kind": "object_at"})  # type: ignore[arg-type]
+
+    with pytest.raises(WorldForgeError, match="at most one"):
+        world.plan(goal_spec=goal_spec, goal_json=json.dumps(goal_spec.to_dict()))
+
+
+def test_text_goal_planning_preserves_default_heuristics(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world, cube, _mug = _seed_world(forge)
+
+    right_plan = world.plan(goal="move the cube right", provider="mock", max_steps=1)
+    right_target = right_plan.actions[0].parameters["target"]
+    assert right_target == {"x": cube.position.x + 1.0, "y": cube.position.y, "z": cube.position.z}
+
+    dishwasher_plan = world.plan(
+        goal="move the cube to the dishwasher", provider="mock", max_steps=1
+    )
+    dishwasher_target = dishwasher_plan.actions[0].parameters["target"]
+    assert dishwasher_target == {
+        "x": cube.position.x + 0.8,
+        "y": cube.position.y,
+        "z": cube.position.z - 0.4,
+    }
+
+    empty_world = forge.create_world("empty-text-goal-world", "mock")
+    spawn_plan = empty_world.plan(goal="make a ball", provider="mock", max_steps=1)
+    assert spawn_plan.actions[0].kind == "spawn_object"
+    assert spawn_plan.actions[0].parameters["name"] == "cube"
+
+
+def test_structured_goal_action_builders_preserve_goal_boundaries(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world, cube, _mug = _seed_world(forge)
+
+    spawn_goal = StructuredGoal.spawn_object(
+        "block",
+        position=Position(0.2, 0.5, 0.1),
+    )
+    spawn_plan = world.plan(goal_spec=spawn_goal, provider="mock", max_steps=2)
+    assert spawn_plan.action_count == 1
+    assert spawn_plan.actions[0].kind == "spawn_object"
+    assert spawn_plan.actions[0].parameters["name"] == "block"
+    assert spawn_plan.goal_spec == spawn_goal.to_dict()
+
+    with pytest.raises(WorldForgeError, match="id/name selectors do not match"):
+        world.plan(
+            goal_spec=StructuredGoal.object_at(
+                object_id=cube.id,
+                object_name="mug",
+                position=Position(0.4, 0.5, 0.0),
+            )
+        )
+
+    with pytest.raises(WorldForgeError, match="missing reference object id 'missing-object'"):
+        world.plan(
+            goal_spec=StructuredGoal.object_near(
+                object_id=cube.id,
+                reference_object_id="missing-object",
             )
         )
 

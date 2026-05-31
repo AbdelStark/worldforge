@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from subprocess import CompletedProcess
 from typing import Any
 
+import pytest
+
+from worldforge.models import WorldForgeError
 from worldforge.testing import DeterministicClock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +25,7 @@ SPEC.loader.exec_module(generate_dependency_audit_evidence_module)
 generate_dependency_audit_evidence = (
     generate_dependency_audit_evidence_module.generate_dependency_audit_evidence
 )
+main = generate_dependency_audit_evidence_module.main
 
 
 def _fake_runner(*, audit_returncode: int, audit_payload: dict[str, Any] | None):
@@ -173,3 +178,28 @@ def test_dependency_audit_evidence_records_tool_unavailable() -> None:
     assert evidence.payload["commands"]["pip_audit"] is None
     assert "Install uv or run pip-audit through uvx" in evidence.payload["first_triage_step"]
     assert "tool-unavailable" in evidence.markdown
+
+
+def test_dependency_audit_main_rejects_non_finite_payload_before_touching_outputs(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    json_output = tmp_path / "nested" / "dependency-audit.json"
+    markdown_output = tmp_path / "reports" / "dependency-audit.md"
+    monkeypatch.setattr(
+        generate_dependency_audit_evidence_module,
+        "generate_dependency_audit_evidence",
+        lambda **_: generate_dependency_audit_evidence_module.DependencyAuditEvidence(
+            status="passed",
+            payload={"schema_version": 1, "duration_ms": math.nan},
+            markdown="# ok\n",
+        ),
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        main(["--json-output", str(json_output), "--markdown-output", str(markdown_output)])
+
+    assert not json_output.exists()
+    assert not json_output.parent.exists()
+    assert not markdown_output.exists()
+    assert not markdown_output.parent.exists()

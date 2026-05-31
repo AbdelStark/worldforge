@@ -43,29 +43,44 @@ def _shape_from_sequence(value: object, *, name: str) -> tuple[int, ...]:
 
 def _shape_from_attr(value: object, *, name: str) -> tuple[int, ...] | None:
     shape = getattr(value, "shape", None)
-    if shape is None:
-        rank = getattr(value, "ndim", None)
-        if rank is None:
-            dim = getattr(value, "dim", None)
-            if callable(dim):
-                rank = dim()
-        if rank is None:
-            return None
-        try:
-            rank_int = int(rank)
-        except (TypeError, ValueError):
-            raise ProviderError(f"{name} tensor rank must be an integer.") from None
-        if rank_int <= 0:
-            raise ProviderError(f"{name} tensor rank must be positive.")
-        return tuple(-1 for _ in range(rank_int))
+    if shape is not None:
+        return _shape_tuple_from_attr(shape, name=name)
+    rank = _rank_from_attr(value)
+    if rank is None:
+        return None
+    return _unknown_shape_from_rank(rank, name=name)
 
+
+def _rank_from_attr(value: object) -> object | None:
+    rank = getattr(value, "ndim", None)
+    if rank is not None:
+        return rank
+    dim = getattr(value, "dim", None)
+    return dim() if callable(dim) else None
+
+
+def _unknown_shape_from_rank(rank: object, *, name: str) -> tuple[int, ...]:
     try:
-        parsed = tuple(int(dimension) for dimension in shape)
+        rank_int = int(rank)
+    except (TypeError, ValueError):
+        raise ProviderError(f"{name} tensor rank must be an integer.") from None
+    if rank_int <= 0:
+        raise ProviderError(f"{name} tensor rank must be positive.")
+    return tuple(-1 for _ in range(rank_int))
+
+
+def _shape_tuple_from_attr(shape: object, *, name: str) -> tuple[int, ...]:
+    try:
+        parsed = tuple(int(dimension) for dimension in shape)  # type: ignore[union-attr]
     except (TypeError, ValueError):
         raise ProviderError(f"{name} tensor shape must contain integer dimensions.") from None
-    if not parsed or any(dimension == 0 for dimension in parsed):
+    if _has_invalid_attr_shape(parsed):
         raise ProviderError(f"{name} tensor shape must contain non-zero dimensions.")
     return parsed
+
+
+def _has_invalid_attr_shape(shape: tuple[int, ...]) -> bool:
+    return not shape or any(dimension == 0 for dimension in shape)
 
 
 def _shape(value: object, *, name: str) -> tuple[int, ...]:

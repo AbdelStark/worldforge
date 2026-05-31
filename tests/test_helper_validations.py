@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import math
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace
 
 import httpx
 import pytest
 
+import worldforge.cli as cli_module
 import worldforge.providers.http_utils as http_utils
 from worldforge import (
     Action,
@@ -18,6 +19,7 @@ from worldforge import (
     GenerationOptions,
     Pose,
     Position,
+    Prediction,
     ProviderBudgetExceededError,
     ProviderCapabilities,
     ProviderEvent,
@@ -239,6 +241,103 @@ def test_cli_public_error_formatter_redacts_secrets_urls_and_host_paths(tmp_path
     assert "<host-local-path>" in message
 
 
+@pytest.mark.parametrize(
+    ("args", "error_message", "expected_triage"),
+    [
+        (
+            Namespace(command="world", world_command="preflight"),
+            "state directory is invalid",
+            "worldforge world preflight --workspace-dir .worldforge",
+        ),
+        (
+            Namespace(command="world", world_command="migration-preview"),
+            "migration blocked",
+            "worldforge world migration-preview <world-id>",
+        ),
+        (
+            Namespace(command="world", world_command="show"),
+            "world not found",
+            "worldforge world list --state-dir <state-dir>",
+        ),
+        (
+            Namespace(command="scenario", scenario_command="run"),
+            "scenario failed",
+            "worldforge scenario validate <scenario.json>",
+        ),
+        (
+            Namespace(command="benchmark"),
+            "budget payload failed",
+            "worldforge benchmark --help",
+        ),
+        (
+            Namespace(command="runs"),
+            "bundle failed",
+            "worldforge runs --help",
+        ),
+        (
+            Namespace(command="drills"),
+            "drill failed",
+            "worldforge drills list",
+        ),
+        (
+            Namespace(command="generate"),
+            "provider unavailable",
+            "worldforge provider health <provider>",
+        ),
+        (
+            Namespace(command="generate"),
+            "prompt failed",
+            "worldforge generate --help",
+        ),
+    ],
+)
+def test_cli_public_error_formatter_selects_command_specific_triage(
+    args: Namespace,
+    error_message: str,
+    expected_triage: str,
+) -> None:
+    message = _format_public_cli_error(args, WorldForgeError(error_message))
+
+    assert "First triage:" in message
+    assert expected_triage in message
+
+
+@pytest.mark.parametrize(
+    ("args", "route_key"),
+    [
+        (Namespace(command="provider", provider_command="docs"), ("provider", "docs")),
+        (
+            Namespace(command="world", world_command="migration-preview"),
+            ("world", "migration-preview"),
+        ),
+        (Namespace(command="scenario", scenario_command="run"), ("scenario", None)),
+        (Namespace(command="runs", runs_command="list"), ("runs", None)),
+    ],
+)
+def test_cli_special_command_dispatch_uses_route_keys(
+    monkeypatch,
+    args: Namespace,
+    route_key: tuple[str, str | None],
+) -> None:
+    parser = ArgumentParser(prog="worldforge")
+    calls: list[tuple[ArgumentParser, Namespace]] = []
+
+    def routed(parser_arg: ArgumentParser, args_arg: Namespace) -> int:
+        calls.append((parser_arg, args_arg))
+        return 17
+
+    monkeypatch.setitem(cli_module._SPECIAL_COMMAND_HANDLERS, route_key, routed)
+
+    assert cli_module._dispatch_special_command(parser, args) == 17
+    assert calls == [(parser, args)]
+
+
+def test_cli_special_command_dispatch_ignores_forge_commands() -> None:
+    parser = ArgumentParser(prog="worldforge")
+
+    assert cli_module._dispatch_special_command(parser, Namespace(command="generate")) is None
+
+
 def test_http_request_policy_budget_can_fail_before_first_attempt(monkeypatch) -> None:
     events: list[ProviderEvent] = []
     attempts = {"count": 0}
@@ -316,6 +415,9 @@ def test_framework_helpers_and_error_paths(tmp_path) -> None:
     artifacts = comparison.artifacts()
     assert set(artifacts) == {"json", "markdown", "csv"}
 
+    multi_comparison = world.compare(Action.move_to(0.2, 0.5, 0.0), ["mock", "mock"], steps=1)
+    assert [prediction.provider for prediction in multi_comparison.results] == ["mock", "mock"]
+
     assert forge.provider_info("mock").name == "mock"
     assert [health.name for health in forge.provider_healths(capability="generate")] == ["mock"]
 
@@ -349,6 +451,32 @@ def test_framework_helpers_and_error_paths(tmp_path) -> None:
         forge.import_world("{}", format="yaml")
 
 
+def test_world_initialization_clones_metadata_and_sets_name(tmp_path) -> None:
+    metadata = {"nested": {"value": 1}}
+
+    world = World(
+        "metadata-world",
+        "mock",
+        forge=WorldForge(state_dir=tmp_path),
+        world_id="metadata-world",
+        metadata=metadata,
+    )
+    metadata["nested"]["value"] = 2
+
+    assert world.metadata == {"nested": {"value": 1}, "name": "metadata-world"}
+    assert world.history()[0].summary == "world initialized"
+
+
+def test_prompt_world_applies_all_matching_seeders_and_resets_history(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+
+    world = forge.create_world_from_prompt("kitchen with a mug", name="prompt-scene")
+
+    assert [scene_object.name for scene_object in world.objects()] == ["countertop", "mug"]
+    assert world.history_length == 1
+    assert world.history()[0].summary == "world seeded from prompt"
+
+
 def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None:
     with pytest.raises(WorldForgeError, match=r"Position\.x"):
         Position(math.nan, 0.0, 0.0)
@@ -372,12 +500,15 @@ def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None
     assert policy_result.to_dict()["embodiment_tag"] == "TEST"
 
     cost_score = ActionScoreResult(
-        provider="score",
+        provider=" score ",
         scores=[0.4, 0.1],
         best_index=1,
         lower_is_better=True,
+        metadata={"run": "a"},
     )
+    assert cost_score.provider == "score"
     assert cost_score.best_score == 0.1
+    assert cost_score.metadata == {"run": "a"}
 
     utility_score = ActionScoreResult(
         provider="score",
@@ -401,6 +532,17 @@ def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None
             scores=[0.4, 0.1],
             best_index=1,
             lower_is_better=False,
+        )
+
+    with pytest.raises(WorldForgeError, match="best_index is out of range"):
+        ActionScoreResult(provider="score", scores=[0.4], best_index=True)  # type: ignore[arg-type]
+
+    with pytest.raises(WorldForgeError, match="metadata"):
+        ActionScoreResult(
+            provider="score",
+            scores=[0.4],
+            best_index=0,
+            metadata={"shape": (1, 2, 3)},
         )
 
     with pytest.raises(WorldForgeError, match="actions"):
@@ -467,15 +609,68 @@ def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None
     with pytest.raises(WorldStateError, match="does not match embedded id"):
         forge.import_world(json.dumps(bad_state))
 
+    bad_key_state = {
+        **bad_state,
+        "scene": {
+            "objects": {
+                "": SceneObject(
+                    "cube",
+                    Position(0.0, 0.5, 0.0),
+                    BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+                ).to_dict()
+            }
+        },
+    }
+    with pytest.raises(WorldStateError, match="scene object ids"):
+        forge.import_world(json.dumps(bad_key_state))
+
 
 def test_public_validation_guards_cover_boundary_failure_modes() -> None:
     assert average([]) == 0.0
+    assert dump_json({"b": 1, "a": [2]}) == '{"a":[2],"b":1}'
+    assert dump_json({"b": 1, "a": [2]}, indent=2) == ('{\n  "a": [\n    2\n  ],\n  "b": 1\n}')
 
     with pytest.raises(WorldForgeError):
         dump_json({"bad": math.nan})
 
     with pytest.raises(WorldForgeError):
         Position.from_dict(["not-a-position"])  # type: ignore[arg-type]
+
+
+def test_prediction_validates_and_clones_public_payloads(tmp_path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("prediction-boundary", "mock")
+    state = world.to_dict()
+    metadata = {"nested": {"value": 1}}
+
+    prediction = Prediction(
+        provider="mock",
+        confidence=0.5,
+        physics_score=0.6,
+        frames=[b"frame"],
+        world_state=state,
+        metadata=metadata,
+        latency_ms=0.0,
+        _forge=forge,
+    )
+    state["metadata"]["mutated"] = True
+    metadata["nested"]["value"] = 2
+
+    assert prediction.frames == [b"frame"]
+    assert prediction.world_state["metadata"].get("mutated") is None
+    assert prediction.metadata == {"nested": {"value": 1}}
+
+    with pytest.raises(WorldForgeError, match="Prediction frames"):
+        Prediction(
+            provider="mock",
+            confidence=0.5,
+            physics_score=0.6,
+            frames=[object()],  # type: ignore[list-item]
+            world_state=world.to_dict(),
+            metadata={},
+            latency_ms=0.0,
+            _forge=forge,
+        )
     with pytest.raises(WorldForgeError):
         Position.from_dict({"x": 0.0, "y": 0.0})
     with pytest.raises(WorldForgeError):
@@ -587,6 +782,16 @@ def test_public_validation_guards_cover_boundary_failure_modes() -> None:
             metadata={"not_json": object()},
         )
 
+    retry_policy = RetryPolicy(
+        max_attempts=2,
+        backoff_seconds=0,
+        backoff_multiplier=2,
+        retryable_status_codes=[429, 503],  # type: ignore[arg-type]
+    )
+    assert retry_policy.backoff_seconds == 0.0
+    assert retry_policy.backoff_multiplier == 2.0
+    assert retry_policy.retryable_status_codes == (429, 503)
+
     with pytest.raises(WorldForgeError):
         RetryPolicy(max_attempts=True)  # type: ignore[arg-type]
     with pytest.raises(WorldForgeError):
@@ -595,6 +800,8 @@ def test_public_validation_guards_cover_boundary_failure_modes() -> None:
         RetryPolicy(backoff_multiplier=0.5)
     with pytest.raises(WorldForgeError):
         RetryPolicy(retryable_status_codes=(99,))
+    with pytest.raises(WorldForgeError):
+        RetryPolicy(retryable_status_codes=500)  # type: ignore[arg-type]
     with pytest.raises(WorldForgeError):
         GenerationOptions(seed=True)  # type: ignore[arg-type]
     with pytest.raises(WorldForgeError):

@@ -283,7 +283,7 @@ WorldForge 在遇到不匹配的动作空间时会报错，而不是填充、投
 - [`src/worldforge/providers/lerobot.py`](https://github.com/AbdelStark/worldforge/blob/main/src/worldforge/providers/lerobot.py) 实现 LeRobot 策略提供方。
 - [`src/worldforge/providers/leworldmodel.py`](https://github.com/AbdelStark/worldforge/blob/main/src/worldforge/providers/leworldmodel.py)
   实现 LeWorldModel 打分提供方。
-- [`src/worldforge/framework.py`](https://github.com/AbdelStark/worldforge/blob/main/src/worldforge/framework.py) 包含策略加打分规划路径。
+- [`src/worldforge/_world.py`](https://github.com/AbdelStark/worldforge/blob/main/src/worldforge/_world.py) 包含策略加打分规划路径。
 
 相关文档：
 

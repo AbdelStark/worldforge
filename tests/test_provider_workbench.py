@@ -4,7 +4,15 @@ import json
 import sys
 
 from worldforge.cli import main as worldforge_main
+from worldforge.harness import workbench as workbench_module
 from worldforge.harness.workbench import provider_workbench_markdown, provider_workbench_report
+from worldforge.harness.workbench_rendering import (
+    provider_workbench_markdown as render_workbench_markdown,
+)
+
+
+def test_provider_workbench_facade_reexports_markdown_renderer() -> None:
+    assert workbench_module.provider_workbench_markdown is render_workbench_markdown
 
 
 def test_provider_workbench_runs_mock_in_clean_checkout() -> None:
@@ -86,6 +94,17 @@ def test_provider_workbench_runs_direct_candidate_in_clean_checkout() -> None:
         "prepared_host_smoke_artifact",
         "release_evidence",
     ]
+
+
+def test_provider_workbench_reports_invalid_fixture_payload(tmp_path) -> None:
+    (tmp_path / "mock_bad.json").write_text("[1, 2, 3]", encoding="utf-8")
+
+    report = provider_workbench_report("mock", fixtures_dir=tmp_path)
+    checks = {check["name"]: check for check in report["checks"]}
+
+    assert report["status"] == "failed"
+    assert checks["fixtures"]["status"] == "failed"
+    assert "must contain a JSON object" in checks["fixtures"]["detail"]
 
 
 def test_provider_workbench_markdown_is_issue_ready() -> None:

@@ -599,6 +599,7 @@ def test_lerobot_provider_rejects_invalid_configuration(
         ({}, "observation"),
         ({"observation": "not-a-dict"}, "observation"),
         ({"observation": {}}, "observation"),
+        ({"observation": {" ": [[0.0]]}}, "observation keys"),
         ({"observation": {"observation.state": [[0.0]]}, "options": "bad"}, "options"),
         ({"observation": {"observation.state": [[0.0]]}, "mode": "rollout"}, "mode"),
         (
@@ -622,6 +623,19 @@ def test_lerobot_provider_rejects_malformed_info(
 
     with pytest.raises(ProviderError, match=match):
         provider.select_actions(info=info)
+
+
+def test_lerobot_provider_rejects_invalid_action_horizon_before_policy_call() -> None:
+    policy = FakeLeRobotPolicy(response=FakeTensor([[0.0]]))
+    provider = LeRobotPolicyProvider(
+        policy=policy,
+        action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
+    )
+
+    with pytest.raises(ProviderError, match="action_horizon"):
+        provider.select_actions(info={**_policy_info(), "action_horizon": 0})
+
+    assert policy.select_action_calls == []
 
 
 @pytest.mark.parametrize(

@@ -353,7 +353,7 @@ spaces.
   LeRobot policy provider.
 - [`src/worldforge/providers/leworldmodel.py`](https://github.com/AbdelStark/worldforge/blob/main/src/worldforge/providers/leworldmodel.py)
   implements the LeWorldModel score provider.
-- [`src/worldforge/framework.py`](https://github.com/AbdelStark/worldforge/blob/main/src/worldforge/framework.py) contains the policy-plus-score
+- [`src/worldforge/_world.py`](https://github.com/AbdelStark/worldforge/blob/main/src/worldforge/_world.py) contains the policy-plus-score
   planning path.
 
 Related docs:

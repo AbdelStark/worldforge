@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from worldforge.harness.flows import available_flows, flow_index, run_flow
+from worldforge.harness.flow_catalog import available_flows, flow_index
+from worldforge.harness.flows import run_flow
 from worldforge.harness.models import HarnessFlow, HarnessMetric, HarnessRun, HarnessStep
 from worldforge.harness.run_history import (
     RunHistoryFilter,

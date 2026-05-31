@@ -293,6 +293,33 @@ def test_inspector_log_checkpoint_summary(tmp_path: Path) -> None:
     assert "worldforge/leworldmodel/checkpoint/created" in scalar_tags
 
 
+def test_inspector_log_checkpoint_summary_uses_checkpoint_fallback(tmp_path: Path) -> None:
+    inspector, captured = _inspector(tmp_path)
+
+    inspector.log_checkpoint_summary(
+        {
+            "created": False,
+            "checkpoint": "/tmp/lewm/fallback/lewm_object.ckpt",
+            "output": "",
+        }
+    )
+
+    writer = captured[0]
+    path_texts = [
+        text
+        for tag, text, _step in writer.texts
+        if tag == "worldforge/leworldmodel/checkpoint/path"
+    ]
+    created_scalars = [
+        value
+        for tag, value, _step in writer.scalars
+        if tag == "worldforge/leworldmodel/checkpoint/created"
+    ]
+    assert path_texts
+    assert "fallback/lewm_object.ckpt" in path_texts[-1]
+    assert created_scalars == [0.0]
+
+
 def test_inspector_log_provider_event_emits_scalars_and_text(tmp_path: Path) -> None:
     inspector, captured = _inspector(tmp_path)
 

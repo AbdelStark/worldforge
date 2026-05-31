@@ -19,12 +19,21 @@ or run ``python scripts/update_public_api_snapshot.py``.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
+import math
 import os
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
+from worldforge.artifact_io import write_json_artifact
+from worldforge.models import WorldForgeError
+
+UPDATE_SCRIPT_PATH = (
+    Path(__file__).resolve().parents[1] / "scripts" / "update_public_api_snapshot.py"
+)
 SNAPSHOT_PATH = Path(__file__).resolve().parent / "fixtures" / "public_api" / "exports.json"
 
 SNAPSHOT_MODULES: tuple[str, ...] = (
@@ -70,12 +79,20 @@ def _format_drift(name: str, expected: list[str], observed: list[str]) -> list[s
     return lines
 
 
-def _write_snapshot(snapshot: dict) -> None:
-    SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT_PATH.write_text(
-        json.dumps(snapshot, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+def _write_snapshot(snapshot: dict, snapshot_path: Path = SNAPSHOT_PATH) -> None:
+    write_json_artifact(snapshot_path, snapshot)
+
+
+def _load_update_script() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "worldforge_update_public_api_snapshot_test_target",
+        UPDATE_SCRIPT_PATH,
     )
+    if spec is None or spec.loader is None:  # pragma: no cover - importlib invariant
+        raise AssertionError(f"Could not load {UPDATE_SCRIPT_PATH}.")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_snapshot_fixture_exists() -> None:
@@ -125,6 +142,38 @@ def test_public_api_matches_snapshot() -> None:
             "renamed, or removed.",
         ]
         pytest.fail("\n".join(message_lines))
+
+
+def test_update_script_rejects_non_finite_snapshot_before_touching_disk(
+    tmp_path, monkeypatch
+) -> None:
+    update_public_api_snapshot = _load_update_script()
+    target = tmp_path / "nested" / "exports.json"
+    monkeypatch.setattr(update_public_api_snapshot, "SNAPSHOT_PATH", target)
+    monkeypatch.setattr(update_public_api_snapshot, "MODULES", ("worldforge",))
+    monkeypatch.setattr(
+        update_public_api_snapshot,
+        "_module_exports",
+        lambda _name: ["WorldForge", math.nan],
+    )
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        update_public_api_snapshot.main()
+
+    assert not target.exists()
+    assert not target.parent.exists()
+
+
+def test_pytest_snapshot_writer_rejects_non_finite_snapshot_before_touching_disk(
+    tmp_path,
+) -> None:
+    target = tmp_path / "nested" / "exports.json"
+
+    with pytest.raises(WorldForgeError, match="finite numbers"):
+        _write_snapshot({"schema_version": 1, "modules": {"worldforge": [math.nan]}}, target)
+
+    assert not target.exists()
+    assert not target.parent.exists()
 
 
 def test_snapshot_is_sorted_and_unique() -> None:

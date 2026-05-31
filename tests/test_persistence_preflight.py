@@ -22,6 +22,17 @@ from worldforge.persistence_preflight import (
 )
 
 
+def test_local_state_preflight_split_modules_preserve_facade_helpers() -> None:
+    from worldforge import persistence_preflight as facade
+    from worldforge import persistence_preflight_rendering as rendering
+    from worldforge import persistence_preflight_runs as runs
+    from worldforge import persistence_preflight_worlds as worlds
+
+    assert facade.render_state_preflight_markdown is rendering.render_state_preflight_markdown
+    assert facade._unsafe_artifact_reason is runs._unsafe_artifact_reason
+    assert facade._check_world_bounding_boxes is worlds._check_world_bounding_boxes
+
+
 def test_local_state_preflight_passes_for_valid_world_and_run_workspace(tmp_path) -> None:
     state_dir = tmp_path / "worlds"
     workspace_dir = tmp_path / "workspace"
@@ -100,6 +111,25 @@ def test_local_state_preflight_reports_corrupt_history_and_bbox_issues(tmp_path)
     assert all(issue["safe_to_attach"] is True for issue in report["issues"])
     assert all("rm " not in issue["recovery_command"] for issue in report["issues"])
     assert any("preflight" in issue["recovery_command"] for issue in report["issues"])
+    assert str(tmp_path) not in json.dumps(report)
+
+
+def test_local_state_preflight_reports_non_finite_world_json_as_corrupt(tmp_path) -> None:
+    state_dir = tmp_path / "worlds"
+    workspace_dir = tmp_path / "workspace"
+    state_dir.mkdir()
+    (state_dir / "non-finite.json").write_text(
+        '{"schema_version": 1, "id": "non-finite", "name": "bad", "provider": "mock", '
+        '"step": 0, "scene": {"objects": {}}, "history": [], "score": NaN}\n',
+        encoding="utf-8",
+    )
+
+    report = preflight_local_state(state_dir=state_dir, workspace_dir=workspace_dir)
+
+    assert report["status"] == "failed"
+    issue = next(issue for issue in report["issues"] if issue["check"] == "corrupted-world-json")
+    assert "finite number" in issue["message"]
+    assert issue["details"]["world_file"] == "non-finite.json"
     assert str(tmp_path) not in json.dumps(report)
 
 
@@ -203,6 +233,26 @@ def test_local_state_preflight_reports_invalid_storage_and_manifest_shapes(tmp_p
     assert str(tmp_path) not in json.dumps(report)
 
 
+def test_local_state_preflight_reports_non_finite_run_manifest_as_issue(tmp_path) -> None:
+    state_dir = tmp_path / "worlds"
+    workspace_dir = tmp_path / "workspace"
+    state_dir.mkdir()
+    run_path = workspace_dir / "runs" / "20260109T000000Z-00000009"
+    run_path.mkdir(parents=True)
+    (run_path / "run_manifest.json").write_text(
+        '{"schema_version": 1, "run_id": "20260109T000000Z-00000009", '
+        '"status": "completed", "artifact_paths": {}, "latency_ms": NaN}\n',
+        encoding="utf-8",
+    )
+
+    report = preflight_local_state(state_dir=state_dir, workspace_dir=workspace_dir)
+
+    assert report["status"] == "failed"
+    issue = next(issue for issue in report["issues"] if issue["check"] == "invalid-run-manifest")
+    assert "finite number" in issue["message"]
+    assert str(tmp_path) not in json.dumps(report)
+
+
 def test_local_state_preflight_helper_boundaries_are_sanitized(tmp_path) -> None:
     with pytest.raises(WorldForgeError, match="retention_keep"):
         preflight_local_state(
@@ -297,6 +347,44 @@ def test_local_state_preflight_helper_boundaries_are_sanitized(tmp_path) -> None
     )
     assert "a\\|b" in markdown
     assert "line break" in markdown
+
+
+def test_local_state_preflight_reports_history_bbox_context(tmp_path) -> None:
+    history_state = {
+        "id": "history-bbox",
+        "scene": {
+            "objects": {
+                "cube-1": {
+                    "id": "cube-1",
+                    "name": "cube",
+                    "pose": {
+                        "position": {"x": 0.0, "y": 0.5, "z": 0.0},
+                        "rotation": {"w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0},
+                    },
+                    "bbox": {
+                        "min": {"x": 10.0, "y": 10.0, "z": 10.0},
+                        "max": {"x": 11.0, "y": 11.0, "z": 11.0},
+                    },
+                    "is_graspable": False,
+                    "metadata": {},
+                }
+            }
+        },
+        "history": [],
+    }
+    state = {"id": "history-bbox", "scene": {"objects": {}}, "history": [{"state": history_state}]}
+    issues = []
+
+    _check_world_bounding_boxes(
+        state,
+        world_file=tmp_path / "worlds" / "history-bbox.json",
+        state_dir=tmp_path / "worlds",
+        issues=issues,
+    )
+
+    assert [issue["check"] for issue in issues] == ["bbox-incoherent"]
+    assert issues[0]["details"]["context"] == "state.history[0].state"
+    assert issues[0]["details"]["world_id"] == "history-bbox"
 
 
 def test_local_state_preflight_reports_stale_runs_unsafe_artifacts_and_retention(tmp_path) -> None:

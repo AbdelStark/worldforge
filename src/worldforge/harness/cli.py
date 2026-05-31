@@ -12,7 +12,7 @@ from worldforge.harness.connectors import (
     provider_connector_summaries,
     provider_connector_summary_markdown,
 )
-from worldforge.harness.flows import available_flows, flow_to_dicts
+from worldforge.harness.flow_catalog import available_flows, flow_to_dicts
 from worldforge.harness.run_history import (
     RunHistoryFilter,
     list_run_history,

@@ -13,6 +13,7 @@ from worldforge.models import JSONDict, WorldForgeError, _redact_observable_text
 from worldforge.providers import BaseProvider
 from worldforge.providers.catalog import ProviderEventHandler
 from worldforge.testing.providers import (
+    ProviderContractReport,
     assert_provider_contract,
     assert_provider_metadata_conformance,
 )
@@ -113,7 +114,7 @@ class ProviderContractEvidence:
         return payload
 
     def to_json(self, *, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent, sort_keys=True) + "\n"
+        return dump_json(self.to_dict(), indent=indent) + "\n"
 
     def to_markdown(self) -> str:
         lines = [
@@ -152,16 +153,44 @@ def provider_from_factory_path(
 ) -> BaseProvider:
     """Load a ``module:factory`` provider factory path and construct its provider."""
 
+    module_name, attribute_path = _parsed_factory_path(factory_path)
+    module = _import_factory_module(module_name)
+    factory = _resolved_factory_attribute(
+        module, factory_path=factory_path, attribute_path=attribute_path
+    )
+    provider = _provider_from_factory(
+        factory, factory_path=factory_path, event_handler=event_handler
+    )
+    if isinstance(provider, BaseProvider):
+        return provider
+    raise WorldForgeError(
+        f"Provider factory returned {type(provider).__name__}, expected BaseProvider."
+    )
+
+
+def _parsed_factory_path(factory_path: str) -> tuple[str, str]:
     module_name, separator, attribute_path = factory_path.partition(":")
     if not separator or not module_name.strip() or not attribute_path.strip():
         raise WorldForgeError("Provider factory path must use 'module:factory' syntax.")
+    return module_name, attribute_path
+
+
+def _import_factory_module(module_name: str) -> object:
     try:
-        module = importlib.import_module(module_name)
+        return importlib.import_module(module_name)
     except ImportError as exc:
         detail = _safe_detail(str(exc))
         raise WorldForgeError(
             f"Provider factory module '{module_name}' could not be imported: {detail}"
         ) from exc
+
+
+def _resolved_factory_attribute(
+    module: object,
+    *,
+    factory_path: str,
+    attribute_path: str,
+) -> Callable[..., object]:
     target: object = module
     for attribute in attribute_path.split("."):
         if not attribute:
@@ -174,16 +203,20 @@ def provider_from_factory_path(
             ) from exc
     if not callable(target):
         raise WorldForgeError("Provider factory path must resolve to a callable.")
+    return target
+
+
+def _provider_from_factory(
+    factory: Callable[..., object],
+    *,
+    factory_path: str,
+    event_handler: ProviderEventHandler,
+) -> object:
     try:
-        provider = _call_provider_factory(target, event_handler=event_handler)
+        return _call_provider_factory(factory, event_handler=event_handler)
     except Exception as exc:
         detail = _safe_detail(str(exc) or type(exc).__name__)
         raise WorldForgeError(f"Provider factory '{factory_path}' raised: {detail}") from exc
-    if not isinstance(provider, BaseProvider):
-        raise WorldForgeError(
-            f"Provider factory returned {type(provider).__name__}, expected BaseProvider."
-        )
-    return provider
 
 
 def run_provider_contract(
@@ -198,107 +231,35 @@ def run_provider_contract(
 ) -> ProviderContractEvidence:
     """Run provider contract checks and return safe-to-attach evidence."""
 
-    checks: list[ProviderContractCheck] = []
-    try:
-        metadata_report = assert_provider_metadata_conformance(provider)
-    except AssertionError as exc:
-        profile = provider.profile().to_dict()
-        health = provider.health().to_dict()
-        checks.append(
-            _failed_check(
-                "metadata",
-                exc,
-                provider=provider.name,
-                factory_path=factory_path,
-            )
-        )
-        return _evidence(
-            provider=provider,
-            registered=registered,
-            configured=provider.configured(),
-            profile=profile,
-            health=health,
-            checks=checks,
+    metadata_result = _provider_metadata_result(
+        provider,
+        registered=registered,
+        factory_path=factory_path,
+        live=live,
+    )
+    if isinstance(metadata_result, ProviderContractEvidence):
+        return metadata_result
+
+    metadata_report = metadata_result
+    checks = [_metadata_passed_check()]
+    checks.extend(
+        _capability_checks(
+            provider,
+            metadata_report=metadata_report,
             factory_path=factory_path,
             live=live,
-        )
-
-    profile = metadata_report.profile
-    health = metadata_report.health
-    configured = metadata_report.configured
-    checks.append(
-        ProviderContractCheck(
-            name="metadata",
-            status="passed",
-            detail="provider profile, info, health, and capability metadata are coherent",
-            next_step="keep metadata and capability declarations synchronized with implementation",
+            score_info=score_info,
+            score_action_candidates=score_action_candidates,
+            policy_info=policy_info,
         )
     )
-    advertised = tuple(
-        capability for capability in profile.capabilities.enabled_names() if capability != "plan"
-    )
-    if not advertised:
-        checks.append(
-            ProviderContractCheck(
-                name="capabilities",
-                status="skipped",
-                detail="provider advertises no executable provider capability",
-                next_step="advertise a capability only after its method passes the contract helper",
-            )
-        )
-    elif configured and not live and not profile.is_local:
-        checks.extend(_host_owned_skips(advertised))
-    else:
-        try:
-            contract_report = assert_provider_contract(
-                provider,
-                score_info=score_info,
-                score_action_candidates=score_action_candidates,
-                policy_info=policy_info,
-            )
-        except Exception as exc:
-            checks.append(
-                _failed_check(
-                    "capability-contract",
-                    exc,
-                    provider=provider.name,
-                    factory_path=factory_path,
-                )
-            )
-        else:
-            exercised = set(contract_report.exercised_operations)
-            for capability in advertised:
-                if capability in exercised:
-                    checks.append(
-                        ProviderContractCheck(
-                            name=capability,
-                            status="passed",
-                            detail=f"{capability} returned a valid WorldForge result",
-                            next_step=f"keep {capability} fixture coverage with the provider",
-                        )
-                    )
-                else:
-                    checks.append(
-                        ProviderContractCheck(
-                            name=capability,
-                            status="skipped",
-                            detail=(
-                                "provider is not configured; fail-closed ProviderError behavior "
-                                "was verified"
-                            ),
-                            next_step=(
-                                "configure the host runtime and rerun with --live only when live "
-                                "provider calls are intended"
-                            ),
-                        )
-                    )
 
     return _evidence(
         provider=provider,
         registered=registered,
-        configured=configured,
-        profile=profile.to_dict(),
-        health=health.to_dict(),
+        configured=metadata_report.configured,
+        profile=metadata_report.profile.to_dict(),
+        health=metadata_report.health.to_dict(),
         checks=checks,
         factory_path=factory_path,
         live=live,
@@ -316,6 +277,14 @@ def load_json_contract_input(path: Path | None, *, name: str) -> object | None:
         raise WorldForgeError(f"Failed to read {name} file {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise WorldForgeError(f"{name} file {path} contains invalid JSON: {exc}") from exc
+    return _contract_input_payload(payload, name=name)
+
+
+def _contract_input_payload(payload: object, *, name: str) -> object:
+    try:
+        dump_json(payload)
+    except WorldForgeError as exc:
+        raise WorldForgeError(f"{name} file must contain JSON-native finite values: {exc}") from exc
     return payload
 
 
@@ -334,6 +303,146 @@ def _call_provider_factory(
                 return factory()
             except TypeError:
                 raise keyword_error from None
+
+
+def _provider_metadata_result(
+    provider: BaseProvider,
+    *,
+    registered: bool,
+    factory_path: str | None,
+    live: bool,
+) -> ProviderContractReport | ProviderContractEvidence:
+    try:
+        return assert_provider_metadata_conformance(provider)
+    except AssertionError as exc:
+        return _evidence(
+            provider=provider,
+            registered=registered,
+            configured=provider.configured(),
+            profile=provider.profile().to_dict(),
+            health=provider.health().to_dict(),
+            checks=[
+                _failed_check(
+                    "metadata",
+                    exc,
+                    provider=provider.name,
+                    factory_path=factory_path,
+                )
+            ],
+            factory_path=factory_path,
+            live=live,
+        )
+
+
+def _metadata_passed_check() -> ProviderContractCheck:
+    return ProviderContractCheck(
+        name="metadata",
+        status="passed",
+        detail="provider profile, info, health, and capability metadata are coherent",
+        next_step="keep metadata and capability declarations synchronized with implementation",
+    )
+
+
+def _advertised_provider_capabilities(metadata_report: ProviderContractReport) -> tuple[str, ...]:
+    return tuple(
+        capability
+        for capability in metadata_report.profile.capabilities.enabled_names()
+        if capability != "plan"
+    )
+
+
+def _capability_checks(
+    provider: BaseProvider,
+    *,
+    metadata_report: ProviderContractReport,
+    factory_path: str | None,
+    live: bool,
+    score_info: JSONDict | None,
+    score_action_candidates: object | None,
+    policy_info: JSONDict | None,
+) -> list[ProviderContractCheck]:
+    advertised = _advertised_provider_capabilities(metadata_report)
+    if not advertised:
+        return [_no_executable_capabilities_check()]
+    if metadata_report.configured and not live and not metadata_report.profile.is_local:
+        return _host_owned_skips(advertised)
+    contract_report = _run_capability_contract(
+        provider,
+        factory_path=factory_path,
+        score_info=score_info,
+        score_action_candidates=score_action_candidates,
+        policy_info=policy_info,
+    )
+    if isinstance(contract_report, ProviderContractCheck):
+        return [contract_report]
+    return _capability_result_checks(advertised, contract_report)
+
+
+def _no_executable_capabilities_check() -> ProviderContractCheck:
+    return ProviderContractCheck(
+        name="capabilities",
+        status="skipped",
+        detail="provider advertises no executable provider capability",
+        next_step="advertise a capability only after its method passes the contract helper",
+    )
+
+
+def _run_capability_contract(
+    provider: BaseProvider,
+    *,
+    factory_path: str | None,
+    score_info: JSONDict | None,
+    score_action_candidates: object | None,
+    policy_info: JSONDict | None,
+) -> ProviderContractReport | ProviderContractCheck:
+    try:
+        return assert_provider_contract(
+            provider,
+            score_info=score_info,
+            score_action_candidates=score_action_candidates,
+            policy_info=policy_info,
+        )
+    except Exception as exc:
+        return _failed_check(
+            "capability-contract",
+            exc,
+            provider=provider.name,
+            factory_path=factory_path,
+        )
+
+
+def _capability_result_checks(
+    advertised: Sequence[str],
+    contract_report: ProviderContractReport,
+) -> list[ProviderContractCheck]:
+    exercised = set(contract_report.exercised_operations)
+    return [
+        _capability_passed_check(capability)
+        if capability in exercised
+        else _capability_skipped_check(capability)
+        for capability in advertised
+    ]
+
+
+def _capability_passed_check(capability: str) -> ProviderContractCheck:
+    return ProviderContractCheck(
+        name=capability,
+        status="passed",
+        detail=f"{capability} returned a valid WorldForge result",
+        next_step=f"keep {capability} fixture coverage with the provider",
+    )
+
+
+def _capability_skipped_check(capability: str) -> ProviderContractCheck:
+    return ProviderContractCheck(
+        name=capability,
+        status="skipped",
+        detail="provider is not configured; fail-closed ProviderError behavior was verified",
+        next_step=(
+            "configure the host runtime and rerun with --live only when live provider calls are "
+            "intended"
+        ),
+    )
 
 
 def _host_owned_skips(capabilities: Sequence[str]) -> list[ProviderContractCheck]:

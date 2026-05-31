@@ -51,44 +51,13 @@ class FixtureSnapshotEntry:
 
         if not isinstance(payload, Mapping):
             raise WorldForgeError(f"{source} fixture snapshot entry must be a JSON object.")
-        path = payload.get("path")
-        if not isinstance(path, str) or not path.strip():
-            raise WorldForgeError(f"{source} fixture snapshot entry 'path' must be non-empty.")
-        sha256 = payload.get("sha256")
-        if not isinstance(sha256, str) or not sha256.strip():
-            raise WorldForgeError(f"{source} fixture snapshot entry 'sha256' must be non-empty.")
-        size_bytes = payload.get("size_bytes")
-        if not _is_int(size_bytes) or size_bytes < 0:
-            raise WorldForgeError(
-                f"{source} fixture snapshot entry 'size_bytes' must be a non-negative integer."
-            )
-        fixture_kind = payload.get("fixture_kind")
-        if not isinstance(fixture_kind, str) or not fixture_kind.strip():
-            raise WorldForgeError(
-                f"{source} fixture snapshot entry 'fixture_kind' must be non-empty."
-            )
-        fixture_schema_version = payload.get("fixture_schema_version")
-        if fixture_schema_version is not None and (
-            isinstance(fixture_schema_version, bool)
-            or not isinstance(fixture_schema_version, int | str)
-        ):
-            raise WorldForgeError(
-                f"{source} fixture snapshot entry 'fixture_schema_version' must be a string, "
-                "integer, or null."
-            )
-        review_status = payload.get("review_status", "tracked")
-        if review_status not in FIXTURE_SNAPSHOT_REVIEW_STATUSES:
-            known = ", ".join(FIXTURE_SNAPSHOT_REVIEW_STATUSES)
-            raise WorldForgeError(
-                f"{source} fixture snapshot entry 'review_status' must be one of {known}."
-            )
         return cls(
-            path=path,
-            sha256=sha256,
-            size_bytes=size_bytes,
-            fixture_kind=fixture_kind,
-            fixture_schema_version=fixture_schema_version,
-            review_status=review_status,
+            path=_snapshot_entry_text(payload, field_name="path", source=source),
+            sha256=_snapshot_entry_text(payload, field_name="sha256", source=source),
+            size_bytes=_snapshot_entry_size_bytes(payload, source=source),
+            fixture_kind=_snapshot_entry_text(payload, field_name="fixture_kind", source=source),
+            fixture_schema_version=_snapshot_entry_schema_version(payload, source=source),
+            review_status=_snapshot_entry_review_status(payload, source=source),
         )
 
     def to_dict(self) -> JSONDict:
@@ -102,6 +71,54 @@ class FixtureSnapshotEntry:
             "fixture_schema_version": self.fixture_schema_version,
             "review_status": self.review_status,
         }
+
+
+def _snapshot_entry_text(
+    payload: Mapping[str, Any],
+    *,
+    field_name: str,
+    source: str,
+) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise WorldForgeError(f"{source} fixture snapshot entry '{field_name}' must be non-empty.")
+    return value
+
+
+def _snapshot_entry_size_bytes(payload: Mapping[str, Any], *, source: str) -> int:
+    size_bytes = payload.get("size_bytes")
+    if not _is_int(size_bytes) or size_bytes < 0:
+        raise WorldForgeError(
+            f"{source} fixture snapshot entry 'size_bytes' must be a non-negative integer."
+        )
+    return size_bytes
+
+
+def _snapshot_entry_schema_version(
+    payload: Mapping[str, Any],
+    *,
+    source: str,
+) -> int | str | None:
+    fixture_schema_version = payload.get("fixture_schema_version")
+    if fixture_schema_version is not None and (
+        isinstance(fixture_schema_version, bool)
+        or not isinstance(fixture_schema_version, int | str)
+    ):
+        raise WorldForgeError(
+            f"{source} fixture snapshot entry 'fixture_schema_version' must be a string, "
+            "integer, or null."
+        )
+    return fixture_schema_version
+
+
+def _snapshot_entry_review_status(payload: Mapping[str, Any], *, source: str) -> str:
+    review_status = payload.get("review_status", "tracked")
+    if review_status not in FIXTURE_SNAPSHOT_REVIEW_STATUSES:
+        known = ", ".join(FIXTURE_SNAPSHOT_REVIEW_STATUSES)
+        raise WorldForgeError(
+            f"{source} fixture snapshot entry 'review_status' must be one of {known}."
+        )
+    return review_status
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,69 +361,147 @@ def _validate_entry(
     root: Path,
     seen: set[str],
 ) -> FixtureSnapshotIssue | None:
+    kind, identity_issue = _validate_entry_identity(entry, seen=seen)
+    if identity_issue is not None or kind is None:
+        return identity_issue
+    path, path_issue = _validate_entry_path(entry, root=root, fixture_kind=kind)
+    if path_issue is not None or path is None:
+        return path_issue
+    return _validate_entry_content(entry, path=path, fixture_kind=kind)
+
+
+def _validate_entry_identity(
+    entry: FixtureSnapshotEntry,
+    *,
+    seen: set[str],
+) -> tuple[str | None, FixtureSnapshotIssue | None]:
     unsafe = _unsafe_path_reason(entry.path)
     kind = _fixture_kind(entry.path)
     if unsafe is not None:
-        return _issue(entry, "unsafe", unsafe, fixture_kind=kind)
+        return kind, _issue(entry, "unsafe", unsafe, fixture_kind=kind)
     if kind is None:
-        return _issue(
+        return None, _issue(
             entry,
             "unsafe",
             "fixture path is outside the managed fixture roots",
             fixture_kind=entry.fixture_kind,
         )
     if kind != entry.fixture_kind:
-        return _issue(
+        return kind, _issue(
             entry,
             "unsafe",
             f"fixture_kind must be {kind!r} for this path, got {entry.fixture_kind!r}",
             fixture_kind=kind,
         )
     if not _is_sha256(entry.sha256):
-        return _issue(entry, "unsafe", "sha256 must be formatted as sha256:<64 hex chars>")
+        return kind, _issue(
+            entry,
+            "unsafe",
+            "sha256 must be formatted as sha256:<64 hex chars>",
+        )
     if entry.path in seen:
-        return _issue(entry, "unsafe", "duplicate fixture path in manifest", fixture_kind=kind)
+        return kind, _issue(
+            entry,
+            "unsafe",
+            "duplicate fixture path in manifest",
+            fixture_kind=kind,
+        )
     seen.add(entry.path)
+    return kind, None
 
+
+def _validate_entry_path(
+    entry: FixtureSnapshotEntry,
+    *,
+    root: Path,
+    fixture_kind: str,
+) -> tuple[Path | None, FixtureSnapshotIssue | None]:
     path = root / entry.path
     try:
         resolved = path.resolve()
     except OSError as exc:
-        return _issue(entry, "unsafe", f"fixture path cannot be resolved: {exc}", fixture_kind=kind)
+        return None, _issue(
+            entry,
+            "unsafe",
+            f"fixture path cannot be resolved: {exc}",
+            fixture_kind=fixture_kind,
+        )
     if not resolved.is_relative_to(root):
-        return _issue(entry, "unsafe", "fixture path resolves outside the repository root")
+        return None, _issue(entry, "unsafe", "fixture path resolves outside the repository root")
     if not path.exists():
-        return _issue(entry, "missing", "fixture path is missing", fixture_kind=kind)
+        return None, _issue(entry, "missing", "fixture path is missing", fixture_kind=fixture_kind)
     if not path.is_file():
-        return _issue(entry, "unsafe", "fixture path is not a regular file", fixture_kind=kind)
+        return None, _issue(
+            entry,
+            "unsafe",
+            "fixture path is not a regular file",
+            fixture_kind=fixture_kind,
+        )
+    return path, None
 
+
+def _validate_entry_content(
+    entry: FixtureSnapshotEntry,
+    *,
+    path: Path,
+    fixture_kind: str,
+) -> FixtureSnapshotIssue | None:
     data = path.read_bytes()
     actual_sha256 = _sha256_bytes(data)
     if actual_sha256 != entry.sha256 or len(data) != entry.size_bytes:
-        status = "intended-update" if entry.review_status == "intended-update" else "changed"
-        message = (
-            "fixture changed and is marked for review"
-            if status == "intended-update"
-            else "fixture digest or size changed without an intended-update marker"
-        )
-        return _issue(
+        return _changed_fixture_issue(
             entry,
-            status,
-            message,
             actual_sha256=actual_sha256,
-            fixture_kind=kind,
+            fixture_kind=fixture_kind,
         )
     actual_schema_version = _json_schema_version(path)
     if actual_schema_version != entry.fixture_schema_version:
-        status = "intended-update" if entry.review_status == "intended-update" else "changed"
-        return _issue(
+        return _schema_changed_fixture_issue(
             entry,
-            status,
-            "fixture schema version metadata changed",
             actual_sha256=actual_sha256,
-            fixture_kind=kind,
+            fixture_kind=fixture_kind,
         )
     return None
+
+
+def _changed_fixture_issue(
+    entry: FixtureSnapshotEntry,
+    *,
+    actual_sha256: str,
+    fixture_kind: str,
+) -> FixtureSnapshotIssue:
+    status = _review_change_status(entry)
+    message = (
+        "fixture changed and is marked for review"
+        if status == "intended-update"
+        else "fixture digest or size changed without an intended-update marker"
+    )
+    return _issue(
+        entry,
+        status,
+        message,
+        actual_sha256=actual_sha256,
+        fixture_kind=fixture_kind,
+    )
+
+
+def _schema_changed_fixture_issue(
+    entry: FixtureSnapshotEntry,
+    *,
+    actual_sha256: str,
+    fixture_kind: str,
+) -> FixtureSnapshotIssue:
+    return _issue(
+        entry,
+        _review_change_status(entry),
+        "fixture schema version metadata changed",
+        actual_sha256=actual_sha256,
+        fixture_kind=fixture_kind,
+    )
+
+
+def _review_change_status(entry: FixtureSnapshotEntry) -> str:
+    return "intended-update" if entry.review_status == "intended-update" else "changed"
 
 
 def _issue(
