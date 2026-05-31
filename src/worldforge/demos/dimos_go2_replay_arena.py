@@ -65,9 +65,10 @@ class Go2ReplayScoreProvider:
     )
 
     def score_actions(self, *, info: JSONDict, action_candidates: object) -> ActionScoreResult:
+        observation, goal = _score_info_payload(info)
         candidates = _candidate_payloads(action_candidates)
         scored = [
-            _score_candidate(candidate[0], observation=info["observation"], goal=info["goal"])
+            _score_candidate(candidate[0], observation=observation, goal=goal)
             for candidate in candidates
         ]
         scores = [candidate.total_cost for candidate in scored]
@@ -270,10 +271,30 @@ def _candidate_action_plans(fixture: JSONDict) -> list[list[Action]]:
 def _candidate_payloads(action_candidates: object) -> list[list[JSONDict]]:
     if not isinstance(action_candidates, list) or not action_candidates:
         raise WorldForgeError("Go2 replay scorer requires a non-empty action candidate list.")
+    validated_candidates: list[list[JSONDict]] = []
     for index, candidate in enumerate(action_candidates):
         if not isinstance(candidate, list) or len(candidate) != 1:
             raise WorldForgeError(f"Go2 replay candidate {index} must be a one-action plan.")
-    return action_candidates  # type: ignore[return-value]
+        action = candidate[0]
+        if not isinstance(action, Mapping):
+            raise WorldForgeError(f"Go2 replay candidate {index} action must be a JSON object.")
+        validated_candidates.append([dict(action)])
+    return validated_candidates
+
+
+def _score_info_payload(info: JSONDict) -> tuple[JSONDict, JSONDict]:
+    for field_name in ("observation", "goal"):
+        if field_name not in info:
+            raise WorldForgeError(f"Go2 replay score info is missing '{field_name}'.")
+    observation = _require_score_mapping(info["observation"], "observation")
+    goal = _require_score_mapping(info["goal"], "goal")
+    return observation, goal
+
+
+def _require_score_mapping(value: object, field_name: str) -> JSONDict:
+    if not isinstance(value, Mapping):
+        raise WorldForgeError(f"Go2 replay score info '{field_name}' must be a JSON object.")
+    return dict(value)
 
 
 def _decision_trace(fixture: JSONDict, plan: Any) -> JSONDict:

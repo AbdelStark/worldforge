@@ -87,6 +87,24 @@ def test_go2_replay_arena_rejects_malformed_fixture(tmp_path: Path) -> None:
         load_go2_replay_fixture(malformed)
 
 
+def test_go2_replay_score_provider_rejects_missing_score_info() -> None:
+    with pytest.raises(WorldForgeError, match="score info is missing 'observation'"):
+        Go2ReplayScoreProvider().score_actions(
+            info={"goal": {}},
+            action_candidates=[[{"type": "go2_base_command", "parameters": {}}]],
+        )
+
+
+def test_go2_replay_score_provider_rejects_non_mapping_candidate() -> None:
+    fixture = load_go2_replay_fixture(DEFAULT_FIXTURE_PATH)
+
+    with pytest.raises(WorldForgeError, match="candidate 0 action must be a JSON object"):
+        Go2ReplayScoreProvider().score_actions(
+            info={"observation": fixture["observation"], "goal": fixture["goal"]},
+            action_candidates=[["not-an-action"]],
+        )
+
+
 def test_go2_replay_arena_rejects_missing_nested_observation(tmp_path: Path) -> None:
     malformed = tmp_path / "bad.json"
     malformed.write_text(
