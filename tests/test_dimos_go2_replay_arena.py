@@ -15,6 +15,8 @@ from worldforge.demos.dimos_go2_replay_arena import (
 )
 from worldforge.models import WorldForgeError
 
+CLEAR_PATH_FIXTURE_PATH = DEFAULT_FIXTURE_PATH.with_name("go2_clear_hallway_replay_frame.json")
+
 
 def test_go2_replay_fixture_loads_checkout_safe_schema() -> None:
     fixture = load_go2_replay_fixture(DEFAULT_FIXTURE_PATH)
@@ -47,6 +49,21 @@ def test_go2_replay_arena_selects_safer_counterfactual(tmp_path: Path) -> None:
     assert trace["plan_metadata"]["planning_mode"] == "score"
     assert trace["plan_metadata"]["score_provider"] == Go2ReplayScoreProvider.name
     assert trace["scored_candidates"][0]["action_id"] == "stop_relocalize"
+
+
+def test_go2_replay_arena_preserves_baseline_when_it_is_best(tmp_path: Path) -> None:
+    result = run_dimos_go2_replay_arena(CLEAR_PATH_FIXTURE_PATH, tmp_path)
+    trace = result.trace
+
+    assert trace["scenario_id"] == "go2-clear-hallway-replay-frame-001"
+    assert trace["candidate_count"] == 5
+    assert trace["selected_action"]["id"] == "baseline_forward"
+    assert trace["baseline_action_id"] == "baseline_forward"
+    assert trace["baseline_regret"] == 0.0
+    assert trace["score_margin"] > 0.0
+    assert trace["worldforge_value"] == "ranked alternatives with a positive counterfactual margin"
+    assert trace["scored_candidates"][0]["action_id"] == "baseline_forward"
+    assert trace["scored_candidates"][1]["action_id"] != "baseline_forward"
 
 
 def test_go2_replay_arena_report_explains_selected_action(tmp_path: Path) -> None:

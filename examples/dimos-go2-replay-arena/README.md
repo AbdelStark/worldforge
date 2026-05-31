@@ -27,9 +27,15 @@ First triage step: open `decision-trace.json` and verify that the candidate coun
 fixture and that every scored candidate has `distance_cost`, `obstacle_risk`, `uncertainty_cost`,
 and `relocalization_cost` components.
 
+The bundled fixtures exercise both sides of the decision-evidence claim:
+
+- `go2_office_replay_frame.json` should reject the hardcoded `baseline_forward` action and choose
+  `stop_relocalize` because localization is weak and forward motion clips risky map geometry.
+- `go2_clear_hallway_replay_frame.json` should preserve `baseline_forward` because the hallway is
+  clear and the baseline reaches the goal with the lowest transparent cost.
+
 ## Kill Criterion
 
 WorldForge earns its place only if it improves robot decision-making evidence. If this arena only
 logs a DimOS command without choosing, explaining, comparing, or exposing counterfactual actions,
 the integration should be stopped or redesigned.
-
