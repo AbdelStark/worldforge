@@ -9,6 +9,12 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added `worldforge-demo-so101-replay-trace`, a checkout-safe SO-101 manipulation replay demo
+  that scores deterministic 6D joint-action candidates, selects the lowest-cost pick-and-place
+  action, mock-executes the selected object placement, and emits a reusable robot decision trace
+  with candidate scores, selected action, measured replay outcome, and counterfactual rejected
+  actions. The demo is shaped after public `lerobot/svla_so101_pickplace` metadata but does not
+  install LeRobot, torch, DimOS, or connect robot hardware.
 - Added a non-interactive TensorBoard launcher CLI:
   `worldforge-open-tensorboard --logdir <path> [--probe] [--no-browser]
   [--keep-running] [--ready-timeout 60] [--poll-interval 0.5]`. Wraps the

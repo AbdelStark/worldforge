@@ -106,6 +106,16 @@ Both packaged demos validate the WorldForge adapter, planning, execution, persis
 event path in a clean checkout. They do not install optional ML runtimes or run upstream neural
 checkpoint inference.
 
+## Robot Decision Traces
+
+| Example | Command | Runtime boundary |
+| --- | --- | --- |
+| `so101-replay-trace` | `uv run worldforge-demo-so101-replay-trace` | Scores deterministic SO-101 pick-and-place candidates and emits a reusable decision trace without LeRobot, torch, DimOS, or hardware. |
+
+The SO-101 replay trace records `observation -> goal -> candidate_actions -> candidate_scores ->
+selected_action -> outcome -> counterfactuals`. It is a checkout-safe replay fixture shaped after
+the public `lerobot/svla_so101_pickplace` metadata, not a hardware-success or policy-quality claim.
+
 ## Service Host Reference
 
 | Example | Command | Runtime boundary |
