@@ -20,6 +20,9 @@ reviews:
     drafts: false
     base_branches:
       - "feat/.*"
+      - "fix/.*"
+      - "docs/.*"
+      - "chore/.*"
       - "integration/.*"
     auto_incremental_review: true
     auto_pause_after_reviewed_commits: 5
@@ -137,11 +140,6 @@ knowledge_base:
     scope: "local"
   web_search:
     enabled: true
-  linked_repositories:
-    - repository: "dimensionalOS/dimos"
-      instructions: |
-        Use DimOS as integration context for Go2/SO-101 runtime, simulation, replay, mapping, and transport surfaces.
-        WorldForge should not vendor DimOS runtime code or duplicate robot control. Reviews should check that WorldForge consumes host-owned DimOS artifacts, scores or compares candidate decisions, and emits reusable decision evidence.
 
 chat:
   auto_reply: true
