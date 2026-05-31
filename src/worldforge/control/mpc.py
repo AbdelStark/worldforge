@@ -94,7 +94,7 @@ class PlannerConfig:
     execute_k: int = 1
     init_std: float = 1.0
     min_std: float = 1e-3
-    seed: int | None = None
+    seed: int = 0
     action_kind: str = "latent_action"
     action_parameter_bounds: Mapping[str, tuple[float, float]] = field(
         default_factory=lambda: {"x": (-1.0, 1.0)}
@@ -120,10 +120,8 @@ class PlannerConfig:
         min_std = _positive_float(self.min_std, name="PlannerConfig.min_std")
         if min_std > init_std:
             raise WorldForgeError("PlannerConfig.min_std must be <= init_std.")
-        if self.seed is not None and (
-            isinstance(self.seed, bool) or not isinstance(self.seed, int)
-        ):
-            raise WorldForgeError("PlannerConfig.seed must be an integer when provided.")
+        if isinstance(self.seed, bool) or not isinstance(self.seed, int):
+            raise WorldForgeError("PlannerConfig.seed must be an integer.")
 
         object.__setattr__(self, "horizon", horizon)
         object.__setattr__(self, "num_samples", num_samples)
@@ -456,8 +454,10 @@ def _score_is_better(candidate: float, incumbent: float, *, lower_is_better: boo
 def _elite_indices(scores: Sequence[float], *, count: int, lower_is_better: bool) -> list[int]:
     return sorted(
         range(len(scores)),
-        key=lambda index: scores[index],
-        reverse=not lower_is_better,
+        key=lambda index: (
+            scores[index] if lower_is_better else -scores[index],
+            index,
+        ),
     )[:count]
 
 

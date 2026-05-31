@@ -68,6 +68,22 @@ class _BadScoreForge:
         return ActionScoreResult(provider=provider, scores=[0.0], best_index=0)
 
 
+class _FlatTieForge:
+    def score_actions(
+        self,
+        provider: str,
+        *,
+        info: JSONDict,
+        action_candidates: object,
+    ) -> ActionScoreResult:
+        candidates = _candidate_payloads(action_candidates)
+        return ActionScoreResult(
+            provider=provider,
+            scores=[0.0 for _ in candidates],
+            best_index=0,
+        )
+
+
 def test_latent_mpc_controller_converges_on_lower_is_better_score() -> None:
     controller = LatentMPCController(
         forge=_ConvexForge(),
@@ -121,6 +137,31 @@ def test_latent_mpc_controller_handles_higher_is_better_scores() -> None:
     assert result.actions[0].parameters["x"] == pytest.approx(-0.4, abs=0.2)
     assert result.lower_is_better is False
     assert result.best_score > 0.8
+
+
+def test_latent_mpc_controller_default_seed_makes_tie_cases_repeatable() -> None:
+    config = PlannerConfig(
+        horizon=1,
+        num_samples=8,
+        num_iterations=2,
+        num_elites=4,
+        action_kind="velocity",
+        action_parameter_bounds={"x": (-1.0, 1.0)},
+    )
+    first = LatentMPCController(
+        forge=_FlatTieForge(),
+        score_provider="flat",
+        config=config,
+    ).plan_step(observation_info={}, goal_info={})
+    second = LatentMPCController(
+        forge=_FlatTieForge(),
+        score_provider="flat",
+        config=config,
+    ).plan_step(observation_info={}, goal_info={})
+
+    assert first.actions[0].to_dict() == second.actions[0].to_dict()
+    assert first.iteration_best_scores == second.iteration_best_scores
+    assert first.metadata["config"]["seed"] == 0
 
 
 def test_latent_mpc_controller_rejects_score_count_mismatch() -> None:
@@ -206,6 +247,21 @@ def test_world_plan_requires_explicit_score_provider_for_latent_mpc(tmp_path: Pa
         world.plan(
             goal="reject implicit world provider as score oracle",
             planner="latent-mpc",
+            score_info={},
+            goal_info={"target_x": 0.0},
+            planner_config=PlannerConfig(),
+        )
+
+
+def test_world_plan_rejects_blank_score_provider_for_latent_mpc(tmp_path: Path) -> None:
+    forge = WorldForge(state_dir=tmp_path)
+    world = forge.create_world("latent-mpc-blank-score-world", "mock")
+
+    with pytest.raises(WorldForgeError, match="non-empty explicit score_provider"):
+        world.plan(
+            goal="reject blank score provider",
+            planner="latent-mpc",
+            score_provider=" ",
             score_info={},
             goal_info={"target_x": 0.0},
             planner_config=PlannerConfig(),

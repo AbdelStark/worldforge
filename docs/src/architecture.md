@@ -587,6 +587,26 @@ plan = world.plan(
 )
 ```
 
+### Validate Locally
+
+Run a focused local check after changing this workflow:
+
+```bash
+uv run pytest tests/test_latent_mpc_controller.py -q
+```
+
+The expected success signal is a `Plan` with `metadata["planning_mode"] == "latent-mpc"`,
+`metadata["control_mode"] == "mpc"`, `metadata["optimizer"] == "cem"`, a non-empty action
+sequence, a populated `iteration_best_scores` list, and a `candidate_count` equal to
+`PlannerConfig.num_samples * PlannerConfig.num_iterations`. In task-specific hosts, the
+post-execution observation should also improve the caller-owned goal metric after the returned
+`execute_k` action chunk is applied.
+
+First triage step: inspect the `PlannerConfig` bounds and sample counts, confirm the
+`score_provider` advertises `score`, verify the `candidate_encoder` maps sampled `Action`
+parameters into the provider-native action payload, and check the score provider error text if
+`World.plan(planner="latent-mpc", ...)` fails before returning a `Plan`.
+
 ## Policy Planning Pipeline
 
 Policy planning treats an embodied policy as an actor that proposes executable action chunks from

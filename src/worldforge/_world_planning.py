@@ -42,6 +42,7 @@ from worldforge.models import (
     SceneObject,
     StructuredGoal,
     WorldForgeError,
+    require_non_empty_text,
     require_positive_int,
 )
 from worldforge.providers import PredictionPayload
@@ -233,7 +234,7 @@ def plan_provider_selection(
     return PlanProviderSelection(
         provider=selected_provider,
         policy_provider=policy_provider or selected_provider,
-        score_provider=score_provider or selected_provider,
+        score_provider=score_provider if score_provider is not None else selected_provider,
         uses_policy_planning=uses_policy_planning(
             policy_info=policy_info,
             policy_provider=policy_provider,
@@ -415,6 +416,11 @@ def validate_mpc_plan_request(
         raise WorldForgeError("Latent MPC planning requires planner_config.")
     if score_provider is None:
         raise WorldForgeError("Latent MPC planning requires an explicit score_provider.")
+    require_non_empty_text(
+        score_provider,
+        name="Latent MPC score_provider",
+        message="Latent MPC planning requires a non-empty explicit score_provider.",
+    )
     if planner_config.execute_k > max_steps:
         raise WorldForgeError("Latent MPC planner_config.execute_k must be <= max_steps.")
     if goal_info is None:
