@@ -218,7 +218,12 @@ def _validate_fixture(payload: object) -> None:
     pose = _require_mapping(observation["pose"], "observation.pose")
     _require_fields(pose, ("x", "y", "yaw_rad"), "observation.pose")
     _number(observation["timestamp_s"], name="observation.timestamp_s")
-    _number(observation["localization_confidence"], name="observation.localization_confidence")
+    localization_confidence = _number(
+        observation["localization_confidence"],
+        name="observation.localization_confidence",
+    )
+    if localization_confidence < 0.0 or localization_confidence > 1.0:
+        raise WorldForgeError("Go2 replay fixture localization_confidence must be between 0 and 1.")
     _number(pose["x"], name="observation.pose.x")
     _number(pose["y"], name="observation.pose.y")
     _number(pose["yaw_rad"], name="observation.pose.yaw_rad")
@@ -231,10 +236,28 @@ def _validate_fixture(payload: object) -> None:
 
     if not isinstance(payload["candidate_actions"], list) or not payload["candidate_actions"]:
         raise WorldForgeError("Go2 replay fixture candidate_actions must be a non-empty list.")
+    candidate_ids: set[str] = set()
     for index, candidate in enumerate(payload["candidate_actions"]):
         candidate_map = _require_mapping(candidate, f"candidate_actions[{index}]")
         _require_fields(candidate_map, ("id", "type", "parameters"), f"candidate_actions[{index}]")
+        candidate_id = _non_empty_string(
+            candidate_map["id"],
+            f"candidate_actions[{index}].id",
+        )
+        if candidate_id in candidate_ids:
+            raise WorldForgeError(
+                f"Go2 replay fixture candidate id '{candidate_id}' is duplicated."
+            )
+        candidate_ids.add(candidate_id)
+        _non_empty_string(candidate_map["type"], f"candidate_actions[{index}].type")
         _require_mapping(candidate_map["parameters"], f"candidate_actions[{index}].parameters")
+    baseline_action_id = payload.get("baseline_action_id")
+    if baseline_action_id is not None:
+        baseline = _non_empty_string(baseline_action_id, "baseline_action_id")
+        if baseline not in candidate_ids:
+            raise WorldForgeError(
+                f"Go2 replay fixture baseline_action_id '{baseline}' does not match a candidate."
+            )
 
 
 def _require_mapping(value: object, field_name: str) -> Mapping[str, Any]:
@@ -251,6 +274,12 @@ def _require_fields(
     for field_name in field_names:
         if field_name not in payload:
             raise WorldForgeError(f"Go2 replay fixture {parent_name} is missing '{field_name}'.")
+
+
+def _non_empty_string(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise WorldForgeError(f"Go2 replay fixture {field_name} must be a non-empty string.")
+    return value.strip()
 
 
 def _candidate_action_plans(fixture: JSONDict) -> list[list[Action]]:
@@ -278,7 +307,20 @@ def _candidate_payloads(action_candidates: object) -> list[list[JSONDict]]:
         action = candidate[0]
         if not isinstance(action, Mapping):
             raise WorldForgeError(f"Go2 replay candidate {index} action must be a JSON object.")
-        validated_candidates.append([dict(action)])
+        if "type" not in action:
+            raise WorldForgeError(f"Go2 replay candidate {index} action is missing 'type'.")
+        if not isinstance(action["type"], str) or not action["type"].strip():
+            raise WorldForgeError(
+                f"Go2 replay candidate {index} action type must be a non-empty string."
+            )
+        if "parameters" not in action:
+            raise WorldForgeError(f"Go2 replay candidate {index} action is missing 'parameters'.")
+        parameters = action["parameters"]
+        if not isinstance(parameters, Mapping):
+            raise WorldForgeError(
+                f"Go2 replay candidate {index} action parameters must be a JSON object."
+            )
+        validated_candidates.append([{**dict(action), "parameters": dict(parameters)}])
     return validated_candidates
 
 
@@ -305,10 +347,7 @@ def _decision_trace(fixture: JSONDict, plan: Any) -> JSONDict:
             "Go2 replay arena expected 'score_result' in plan metadata; "
             f"got keys: {sorted(plan.metadata)}"
         ) from exc
-    scored_candidates = sorted(
-        score_result["metadata"]["scored_candidates"],
-        key=lambda candidate: (candidate["total_cost"], candidate["action_id"]),
-    )
+    scored_candidates = _trace_scored_candidates(score_result)
     best = scored_candidates[0]
     second_best = scored_candidates[1] if len(scored_candidates) > 1 else best
     baseline = _candidate_by_id(scored_candidates, str(fixture.get("baseline_action_id", "")))
@@ -442,6 +481,8 @@ def _zone_cost(endpoint: _Pose2D, zones: object) -> float:
             (_number(zone["x"], name="zone.x"), _number(zone["y"], name="zone.y")),
         )
         radius = _number(zone["radius_m"], name="zone.radius_m")
+        if radius <= 0.0:
+            raise WorldForgeError("Go2 replay zone.radius_m must be greater than 0.")
         if distance <= radius:
             total += _number(zone["cost"], name="zone.cost") * (1.0 - distance / radius)
     return total
@@ -494,6 +535,27 @@ def _candidate_by_id(candidates: Sequence[JSONDict], action_id: str) -> JSONDict
         (candidate for candidate in candidates if candidate["action_id"] == action_id),
         None,
     )
+
+
+def _trace_scored_candidates(score_result: JSONDict) -> list[JSONDict]:
+    metadata = score_result.get("metadata", {})
+    if not isinstance(metadata, Mapping):
+        raise WorldForgeError("Go2 replay score_result metadata must be a JSON object.")
+    scored_candidates = metadata.get("scored_candidates")
+    if not isinstance(scored_candidates, list) or not scored_candidates:
+        raise WorldForgeError("Go2 replay score_result must include scored candidates.")
+    best_index = score_result.get("best_index")
+    if isinstance(best_index, bool) or not isinstance(best_index, int):
+        raise WorldForgeError("Go2 replay score_result best_index must be an integer.")
+    if best_index < 0 or best_index >= len(scored_candidates):
+        raise WorldForgeError("Go2 replay score_result best_index is out of range.")
+    indexed_candidates = list(enumerate(scored_candidates))
+    selected = scored_candidates[best_index]
+    rejected = sorted(
+        (item for item in indexed_candidates if item[0] != best_index),
+        key=lambda item: (float(item[1]["total_cost"]), item[0]),
+    )
+    return [selected, *(candidate for _, candidate in rejected)]
 
 
 def _scored_candidate_payload(candidate: _ScoredCandidate) -> JSONDict:
