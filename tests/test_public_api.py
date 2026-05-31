@@ -32,6 +32,9 @@ def test_top_level_exports_and_subpackages_import() -> None:
         "policy",
     )
     assert worldforge.Cost is not None
+    assert worldforge.LatentMPCController is not None
+    assert worldforge.PlannerConfig is not None
+    assert worldforge.ScoreCandidateBatch is not None
     assert worldforge.Policy is not None
     assert worldforge.Generator is not None
     assert worldforge.Predictor is not None

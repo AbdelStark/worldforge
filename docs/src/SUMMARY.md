@@ -17,6 +17,7 @@
 - System Model
   - [World Model Taxonomy](./world-model-taxonomy.md)
   - [Architecture](./architecture.md)
+  - [Control And Planning](./control-planning.md)
 - Decisions
   - [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md)
 - [Providers](./providers/README.md)

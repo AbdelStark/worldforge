@@ -303,7 +303,8 @@ Expanded:
    - forge.generate(...) requires generate=True
    - forge.transfer(...) requires transfer=True
    - forge.select_actions(...) requires policy=True
-   - world.plan(...) can use predictive, score-based, policy, or policy+score planning
+   - world.plan(...) can use predictive, score-based, policy, policy+score, or latent-MPC
+     planning
    - world.evaluate(...) and benchmark harnesses select operations by capability
 
 4. Provider boundary
@@ -534,6 +535,56 @@ plan = world.plan(
 
 print(plan.metadata["score_result"]["best_index"])
 execution = world.execute_plan(plan)
+```
+
+## Latent MPC Planning Pipeline
+
+Latent MPC is the controller path for score providers that can evaluate many action horizons. It
+keeps the optimizer inside WorldForge while keeping task-specific tensors and environment stepping
+outside the base package.
+
+```text
+Host owns observation and goal construction
+  |
+  |-- score_info      current observation payload
+  |-- goal_info       target or goal payload
+  |-- planner_config  CEM horizon, samples, iterations, elites, execute_k, bounds
+  `-- candidate_encoder (optional)
+        `-- maps sampled WorldForge actions to score-provider-native payloads
+
+World.plan(planner="latent-mpc", score_provider="...", ...)
+  |
+  |-- require explicit score_provider with capabilities.score
+  |-- sample action horizons in WorldForge Action space
+  |-- encode candidates for provider.score_actions(...)
+  |-- score candidates and refit elites for each CEM iteration
+  `-- return Plan(planning_mode="latent-mpc", control_mode="mpc", optimizer="cem")
+```
+
+The host closes the receding horizon by executing the returned `execute_k` actions, re-observing,
+and calling `World.plan(planner="latent-mpc", ...)` again. WorldForge does not step a simulator or
+robot controller in the planner contract.
+
+```python
+from worldforge import PlannerConfig
+
+plan = world.plan(
+    goal="optimize one action chunk",
+    planner="latent-mpc",
+    score_provider="leworldmodel",
+    score_info=observation_info,
+    goal_info=goal_info,
+    planner_config=PlannerConfig(
+        horizon=4,
+        num_samples=256,
+        num_iterations=5,
+        num_elites=32,
+        execute_k=1,
+        action_kind="ee_delta",
+        action_parameter_bounds={"x": (-0.05, 0.05), "y": (-0.05, 0.05)},
+    ),
+    candidate_encoder=my_task_encoder,
+)
 ```
 
 ## Policy Planning Pipeline

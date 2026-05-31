@@ -33,6 +33,9 @@ evaluation harnesses, and testable prototypes.
 - `src/worldforge/capabilities/__init__.py`: runtime-checkable capability protocols for narrow
   `Cost`, `Policy`, `Generator`, `Predictor`, `Reasoner`, `Embedder`, `Transferer`, and
   `RunnableModel` integrations.
+- `src/worldforge/control/`: score-driven controller primitives. `LatentMPCController` samples
+  action horizons in pure Python, scores them through `score_actions`, and returns an optimized
+  chunk without importing optional ML runtimes or stepping host environments.
 - `src/worldforge/framework_capabilities.py`: internal capability-protocol registry, structural
   dispatch, observable-wrapper ownership, and direct/named capability target resolution.
 - `src/worldforge/framework.py`: `WorldForge`, provider registration, persistence, diagnostics,
@@ -481,6 +484,10 @@ release scripts, and generated documentation surfaces.
 - Policy+score planning uses `policy_provider="cosmos-policy"`, `policy_provider="gr00t"`, or
   `policy_provider="lerobot"` plus `score_provider="leworldmodel"` or another score provider;
   score tensors remain host-preprocessed and provider-native.
+- Latent-MPC planning uses `World.plan(planner="latent-mpc", score_provider=..., ...)` with an
+  explicit score provider. The controller may sample and refit WorldForge `Action` horizons, but
+  tensor encoding, image preprocessing, simulator stepping, hardware execution, policy warm-start,
+  and safety interlocks remain provider- or host-owned unless a dedicated contract adds them.
 - `scripts/robotics-showcase` is the prominent PushT real robotics entrypoint. It installs the
   optional host-owned runtime packages for the process, uses packaged PushT hooks, writes a Rerun
   `.rrd` visual artifact by default for normal runs, and filters common macOS native-library

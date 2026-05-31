@@ -9,6 +9,15 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- Added a first-slice latent-MPC controller for score-provider planning. The new
+  `worldforge.control` module exposes `LatentMPCController`, `PlannerConfig`,
+  `ScoreCandidateEncoder`, `ScoreCandidateBatch`, and `ActionPlanCandidateEncoder`, and
+  `World.plan(planner="latent-mpc", score_provider=..., score_info=..., goal_info=...,
+  planner_config=...)` now runs a pure-Python Gaussian CEM solve over `score_actions(...)`.
+  The planner requires an explicit score provider, records `control_mode="mpc"`,
+  `optimizer="cem"`, candidate counts, and per-iteration score/cost diagnostics in plan
+  metadata, and leaves tensor encoding, environment stepping, robot execution, optional ML
+  runtimes, and policy warm-start outside the base package.
 - Added a non-interactive TensorBoard launcher CLI:
   `worldforge-open-tensorboard --logdir <path> [--probe] [--no-browser]
   [--keep-running] [--ready-timeout 60] [--poll-interval 0.5]`. Wraps the
