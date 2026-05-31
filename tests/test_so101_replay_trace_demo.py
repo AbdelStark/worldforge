@@ -58,9 +58,27 @@ def test_so101_replay_trace_demo_selects_and_explains_best_candidate(tmp_path: P
     assert trace["outcome"]["success"] is True
     assert trace["outcome"]["success_label"] == "placed_at_target"
     assert trace["outcome"]["hardware_executed"] is False
+    assert all(
+        "total_cost_raw" in item["components"] and "total_cost_display" in item["components"]
+        for item in trace["candidate_scores"]
+    )
     assert summary["final_object_position"] == {"x": 0.52, "y": 0.08, "z": 0.03}
-    assert summary["saved_world_id"] in summary["saved_worlds"]
+    assert summary["persistence"]["state_dir_provided"] is True
+    assert summary["persistence"]["saved_world_id"] in summary["persistence"]["saved_worlds"]
     json.dumps(summary)
+
+
+def test_so101_replay_trace_default_json_summary_is_deterministic() -> None:
+    first = so101_replay_trace.run_demo(emit=False)
+    second = so101_replay_trace.run_demo(emit=False)
+
+    assert first == second
+    assert first["persistence"] == {
+        "state_dir_provided": False,
+        "state_dir": "<temporary>",
+        "saved_world_id": "<temporary-world-id>",
+        "saved_worlds": ["<temporary-world-id>"],
+    }
 
 
 def test_so101_replay_trace_demo_main_json_only(

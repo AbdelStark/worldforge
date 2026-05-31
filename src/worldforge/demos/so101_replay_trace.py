@@ -92,7 +92,7 @@ class SO101ReplayScoreProvider(BaseProvider):
                 raise WorldForgeError("SO-101 replay candidates must be JSON objects.")
             scored = _score_candidate(candidate, target_pose=target_pose)
             components.append({"candidate_index": index, **scored})
-            scores.append(float(scored["total_cost"]))
+            scores.append(float(scored["total_cost_raw"]))
 
         best_index = min(range(len(scores)), key=scores.__getitem__)
         ranked_indices = sorted(range(len(scores)), key=scores.__getitem__)
@@ -188,7 +188,8 @@ def _score_candidate(candidate: JSONDict, *, target_pose: JSONDict) -> JSONDict:
         "contact_risk": round(contact_risk, 4),
         "occlusion_risk": round(occlusion_risk, 4),
         "clearance_penalty": round(clearance_penalty, 4),
-        "total_cost": round(total_cost, 4),
+        "total_cost_raw": total_cost,
+        "total_cost_display": round(total_cost, 4),
         "risk_flags": risk_flags,
     }
 
@@ -362,6 +363,7 @@ def _action_plans(candidates: list[JSONDict], *, cube_id: str) -> list[list[Acti
 def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
     """Run the SO-101 replay trace demo and return a JSON-serializable summary."""
 
+    explicit_state_dir = state_dir is not None
     resolved_state_dir = state_dir or Path(tempfile.mkdtemp(prefix="worldforge-so101-demo-"))
     forge = WorldForge(state_dir=resolved_state_dir, auto_register_remote=False)
     world = forge.create_world("so101-replay-trace-demo", provider="mock")
@@ -408,7 +410,12 @@ def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
         "uses_real_robot_hardware": False,
         "uses_lerobot_runtime": False,
         "uses_dimos_runtime": False,
-        "state_dir": str(resolved_state_dir),
+        "persistence": _persistence_summary(
+            explicit_state_dir=explicit_state_dir,
+            state_dir=resolved_state_dir,
+            saved_world_id=saved_world_id,
+            saved_worlds=forge.list_worlds(),
+        ),
         "providers": forge.providers(),
         "score_provider_health": forge.provider_health(SO101_SCORE_PROVIDER).to_dict(),
         "dataset_reference": dict(SO101_DATASET_REFERENCE),
@@ -420,12 +427,32 @@ def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
         "counterfactual_count": len(trace["counterfactuals"]),
         "outcome": trace["outcome"],
         "final_object_position": final_cube.position.to_dict(),
-        "saved_world_id": saved_world_id,
-        "saved_worlds": forge.list_worlds(),
     }
     if emit:
         _print_summary(summary)
     return summary
+
+
+def _persistence_summary(
+    *,
+    explicit_state_dir: bool,
+    state_dir: Path,
+    saved_world_id: str,
+    saved_worlds: list[str],
+) -> JSONDict:
+    if explicit_state_dir:
+        return {
+            "state_dir_provided": True,
+            "state_dir": str(state_dir),
+            "saved_world_id": saved_world_id,
+            "saved_worlds": list(saved_worlds),
+        }
+    return {
+        "state_dir_provided": False,
+        "state_dir": "<temporary>",
+        "saved_world_id": "<temporary-world-id>",
+        "saved_worlds": ["<temporary-world-id>"],
+    }
 
 
 def _decision_trace(
@@ -579,7 +606,7 @@ def _print_summary(summary: JSONDict) -> None:
     print("Runtime: deterministic replay fixture")
     print("Hardware: not used")
     print("Optional runtimes: LeRobot/torch/DimOS not imported")
-    print(f"State directory: {summary['state_dir']}")
+    print(f"State directory: {summary['persistence']['state_dir']}")
     print(f"Registered providers: {', '.join(summary['providers'])}")
     print()
     print("Candidate costs, lower is better:")
