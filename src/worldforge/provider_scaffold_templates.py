@@ -21,9 +21,6 @@ class CapabilityStubTemplate:
 
 CAPABILITY_MODEL_IMPORTS: dict[str, tuple[str, ...]] = {
     "predict": ("Action", "JSONDict"),
-    "generate": ("GenerationOptions", "VideoClip"),
-    "transfer": ("GenerationOptions", "VideoClip"),
-    "reason": ("JSONDict", "ReasoningResult"),
     "embed": ("EmbeddingResult",),
     "score": ("ActionScoreResult", "JSONDict"),
     "policy": ("ActionPolicyResult", "JSONDict"),
@@ -37,48 +34,6 @@ CAPABILITY_STUB_TEMPLATES = (
     def predict(self, world_state: JSONDict, action: Action, steps: int) -> PredictionPayload:
         raise ProviderError(
             f"Provider '{self.name}' predict() scaffold is not implemented yet."
-        )
-""",
-    ),
-    CapabilityStubTemplate(
-        capability="generate",
-        source="""
-    def generate(
-        self,
-        prompt: str,
-        duration_seconds: float,
-        *,
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        raise ProviderError(
-            f"Provider '{self.name}' generate() scaffold is not implemented yet."
-        )
-""",
-    ),
-    CapabilityStubTemplate(
-        capability="transfer",
-        source="""
-    def transfer(
-        self,
-        clip: VideoClip,
-        *,
-        width: int,
-        height: int,
-        fps: float,
-        prompt: str = "",
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        raise ProviderError(
-            f"Provider '{self.name}' transfer() scaffold is not implemented yet."
-        )
-""",
-    ),
-    CapabilityStubTemplate(
-        capability="reason",
-        source="""
-    def reason(self, query: str, *, world_state: JSONDict | None = None) -> ReasoningResult:
-        raise ProviderError(
-            f"Provider '{self.name}' reason() scaffold is not implemented yet."
         )
 """,
     ),
@@ -118,32 +73,6 @@ CAPABILITY_TEST_TEMPLATES = (
         function_suffix="predict",
         setup_lines=(),
         call_lines=("        provider.predict({}, Action.noop(), 1)",),
-    ),
-    CapabilityTestTemplate(
-        capability="generate",
-        function_suffix="generate",
-        setup_lines=(),
-        call_lines=('        provider.generate("prompt", 1.0)',),
-    ),
-    CapabilityTestTemplate(
-        capability="transfer",
-        function_suffix="transfer",
-        setup_lines=(
-            "    clip = VideoClip(",
-            '        frames=[b"frame"],',
-            "        fps=1.0,",
-            "        resolution=(1, 1),",
-            "        duration_seconds=1.0,",
-            "    )",
-            "",
-        ),
-        call_lines=("        provider.transfer(clip, width=1, height=1, fps=1.0)",),
-    ),
-    CapabilityTestTemplate(
-        capability="reason",
-        function_suffix="reason",
-        setup_lines=(),
-        call_lines=('        provider.reason("query")',),
     ),
     CapabilityTestTemplate(
         capability="embed",

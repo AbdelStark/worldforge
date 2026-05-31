@@ -1,4 +1,4 @@
-"""Public run-history records and filters for TheWorldHarness."""
+"""Public run-history records and filters."""
 
 from __future__ import annotations
 

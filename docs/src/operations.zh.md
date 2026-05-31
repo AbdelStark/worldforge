@@ -65,18 +65,11 @@ WorldForge 报告本地提供方状态和适配器错误，不拥有上游提供
 
 配置来源于构造函数参数和 `.env.example` 中记录的环境变量。生成的 [提供方配置索引](./provider-configuration-index.md) 是跨提供方的规范化表格，涵盖必填输入、可选输入、宿主方拥有的包、已准备好宿主方的资产、默认请求超时、首要诊断命令和冒烟命令。
 
-- `COSMOS_BASE_URL` 启用 Cosmos 适配器。
-- `NVIDIA_API_KEY` 是 Cosmos 的可选 bearer 认证。
 - `COSMOS_POLICY_BASE_URL` 启用可选的 Cosmos-Policy 具身策略适配器。
 - `COSMOS_POLICY_API_TOKEN`、`COSMOS_POLICY_TIMEOUT_SECONDS`、`COSMOS_POLICY_EMBODIMENT_TAG`、
   `COSMOS_POLICY_MODEL`、`COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS`、
   `COSMOS_POLICY_ALLOW_LOCAL_BASE_URL` 和 `COSMOS_POLICY_ALLOWED_HOSTS` 是可选的
   Cosmos-Policy `/act` 设置。
-- `RUNWAYML_API_SECRET` 启用 Runway 适配器。
-- `RUNWAY_API_SECRET` 保留为 Runway 的旧版别名，仍受支持。
-- `RUNWAYML_BASE_URL` 覆盖默认的 Runway API 端点。
-- `RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS` 是仅用于测试的可信本地 Runway 兼容工件 URL 选项。在常规远程提供方部署中保持未设置。
-- `RUNWAYML_RESOLVE_ARTIFACT_DNS` 覆盖工件 URL 的 DNS 验证，用于自定义传输层。自动模式下保持未设置，或在仍使用系统 DNS 的自定义网络传输中进行设置。
 - `LEWORLDMODEL_POLICY` 或 `LEWM_POLICY` 启用可选的 LeWorldModel 适配器。
 - `LEWORLDMODEL_CACHE_DIR` 覆盖 LeWorldModel 检查点根目录。
 - `LEWORLDMODEL_REVISION` 固定案例展示自动构建缺失对象检查点时使用的 Hugging Face LeWM 提交版本。
@@ -234,7 +227,7 @@ uv run worldforge runs cleanup --keep 20
 
 对于公开问题，请先运行 `worldforge runs bundle <run-id> --workspace-dir .worldforge`。该命令写入 `.worldforge/issue-bundles/<run-id>/evidence_manifest.json`、`summary.md` 和 `issue.md`，然后打印问题模板。成功信号：`safe_to_attach` 为 `true`，或清单明确列出了被排除/仅本地文件及原因。导出后的首要排查步骤：打开 `evidence_manifest.json`；若有任何被排除或仅本地的内容，请在附加包之前移除或替换不安全的工件。
 
-对于重复的本地操作，在打开单个工件之前，请先使用 `worldforge harness --runs` 或 TheWorldHarness 运行屏幕。它无需可选模型运行时即可读取已保留的清单，按提供方、能力、状态、创建日期和安全工件类型进行筛选，并打印脱敏的重新运行、比较和问题包命令。失败、跳过和已取消的行会优先显示 `worldforge runs bundle <run-id>` 恢复命令。
+对于重复的本地操作，在打开单个工件之前，请先使用 `worldforge runs list`。它无需可选模型运行时即可读取已保留的清单，按提供方、能力、状态、创建日期和安全工件类型进行筛选，并打印脱敏的重新运行、比较和问题包命令。失败、跳过和已取消的行会优先显示 `worldforge runs bundle <run-id>` 恢复命令。
 
 保留策略由宿主方负责。`worldforge runs cleanup --keep <n>` 保留最新的运行 ID 并删除较旧的目录；在删除与故障或发布门禁相关的证据之前，请先使用 `--dry-run`。不要附加包含私有路径、提示词、凭据、已签名 URL 或提供方原生有效负载的原始宿主创建工件。
 
@@ -323,12 +316,12 @@ JSON 日志记录示例：
   "method": "POST",
   "operation": "task create",
   "phase": "success",
-  "provider": "runway",
+  "provider": "cosmos-policy",
   "request_id": "host-request-id",
   "run_id": "20260430T120000Z-batch-eval",
   "span_id": "span-456",
   "status_code": 200,
-  "target": "https://api.runwayml.com/v1/tasks",
+  "target": "https://policy.example.test/act",
   "trace_id": "trace-123"
 }
 ```
@@ -395,8 +388,6 @@ WorldForge 仅证明其类型化的提供方、事件、回放和清单工件满
 - 远程创建类请求默认单次尝试；健康检查、轮询和下载按照 `ProviderRequestPolicy` 进行重试。
 - 提供方请求预算按操作设置。`timeout_seconds` 限制单次 HTTP 尝试；可选的 `max_elapsed_seconds` 限制包含重试、退避和任务轮询在内的整个操作时长。超出预算会抛出 `ProviderBudgetExceededError`，并在附加了事件处理器时发出 `budget_exceeded` 提供方事件。
 - 熔断器由宿主方持有。服务可以统计 `ProviderMetricsSink` 中近期的 `failure`、`retry` 和 `budget_exceeded` 事件，停止向退化的提供方路由新工作，并在不让 WorldForge 拥有告警通道或上游 SLA 的情况下继续处理缓存/只读路径。
-- Cosmos 和 Runway 在创建返回的媒体对象之前会验证类型化的上游响应有效负载。解析器夹具覆盖了格式错误的上游有效负载、认证失败、任务失败有效负载、超时事件元数据和不支持的工件引用响应，以便发布证据可以引用精确的故障形态。
-- Runway 工件下载在过期/不可用 URL、空下载和明确不支持的内容类型时明确失败。
 - LeWorldModel 打分在以下情况明确失败：可选依赖不可用、检查点无法加载、缺少必要的 `pixels`/`goal`/`action` 字段、动作候选形状不为 `(batch=1, samples, horizon, action_dim)`、返回的打分数量与候选样本数不匹配，或返回的打分不是有限值。
 - GR00T 策略选择在以下情况明确失败：PolicyClient 依赖不可用、策略服务器不可达、观测数据格式错误、原始动作不兼容 JSON，或未提供宿主方拥有的动作转换器。
 - LeRobot 策略选择在以下情况明确失败：LeRobot 依赖不可用、策略加载失败、观测数据格式错误、原始动作不兼容 JSON，或未提供宿主方拥有的动作转换器。
@@ -406,7 +397,6 @@ WorldForge 仅证明其类型化的提供方、事件、回放和清单工件满
 - 对于本地状态损坏，请从宿主应用程序对导出世界 JSON 的备份中恢复。
 - 对于缺少凭据，请修复环境并重启宿主进程，以便重新运行提供方自动注册。
 - 对于瞬时远程故障，请检查发出的 `ProviderEvent` 记录中的 `operation`、`phase`、`status_code`、`attempt` 和脱敏的 `target`。
-- 对于过期的 Runway 工件 URL，请在任务完成后立即重新生成或持久化已下载的输出。
 - 对于 LeWorldModel 故障，请运行 `worldforge provider health leworldmodel`，验证 `stable-worldmodel`、`torch`、`opencv-python` 和 `imageio` 是否已安装在宿主环境中，然后确认配置的策略存在于 `$STABLEWM_HOME` 或 `LEWORLDMODEL_CACHE_DIR` 下。
 - 如需冒烟测试真实的 LeWorldModel 检查点，请运行
   `scripts/lewm-real --checkpoint ~/.stable-wm/pusht/lewm_object.ckpt --device cpu`。这需要宿主方拥有的上游依赖和已提取的对象检查点。
@@ -560,8 +550,7 @@ uv run python scripts/generate_release_evidence.py \
 
 ## 提供方加固标准
 
-- Cosmos 和 Runway 响应解析器通过夹具测试覆盖成功和格式错误的上游有效负载。
-- 远程提供方非正常路径测试覆盖传输重试、格式错误的 JSON、缺失的任务 ID、任务失败、部分输出、过期工件、错误的工件内容类型和提供方限制。
+- 远程提供方非正常路径测试覆盖传输重试、格式错误的 JSON、错误动作载荷、缺少可选运行时、脱敏和提供方限制。
 - 持久化仍记录为宿主方持有，除非专用的持久化适配器已完成设计。
 - API 文档列出公开异常系列和提供方工作流故障模式。
 - 剩余工作在提供方能力声明为完成之前，以可量化的退出标准进行追踪。

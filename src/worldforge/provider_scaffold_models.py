@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-CAPABILITIES = ("predict", "generate", "transfer", "reason", "embed", "score", "policy")
+CAPABILITIES = ("predict", "embed", "score", "policy")
 DEFAULT_TAXONOMY = "unclassified provider scaffold"
 IMPLEMENTATION_STATUSES = ("scaffold",)
 

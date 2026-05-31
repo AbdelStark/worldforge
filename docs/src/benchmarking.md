@@ -2,9 +2,8 @@
 
 WorldForge includes a capability-aware benchmark harness for registered full providers and
 registered capability protocol implementations. It can measure direct provider surfaces:
-`predict`, `reason`, `generate`, `transfer`, `embed`, `score`, and `policy`. `plan` remains a
-WorldForge facade workflow, so benchmark score providers and policy providers directly when you
-need planning-path latency.
+`predict`, `embed`, `score`, and `policy`. `plan` remains a WorldForge facade workflow, so
+benchmark score providers and policy providers directly when you need planning-path latency.
 
 ## Python
 
@@ -15,7 +14,7 @@ from worldforge import ProviderBenchmarkHarness
 harness = ProviderBenchmarkHarness(forge=forge)
 report = harness.run(
     ["mock"],
-    operations=["predict", "generate", "transfer", "embed"],
+    operations=["predict", "embed"],
     iterations=5,
     concurrency=2,
 )
@@ -60,7 +59,7 @@ report = ProviderBenchmarkHarness(forge=forge).run(
 
 ```bash
 uv run worldforge benchmark --provider mock --iterations 5
-uv run worldforge benchmark --provider mock --operation generate --format json
+uv run worldforge benchmark --provider mock --operation predict --format json
 uv run worldforge benchmark --provider mock --operation embed --format markdown
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
 ```
@@ -119,9 +118,8 @@ they do not update baselines or weaken budgets automatically.
 
 Use `--input-file` when a benchmark result needs to be reproducible from preserved inputs. The
 file can contain input fields directly, or an `inputs` object plus metadata. The checked-in
-`examples/benchmark-inputs.json` fixture is checkout-safe for the mock provider's `predict`,
-`generate`, `transfer`, and `embed` operations; score and policy entries require providers that
-advertise those capabilities.
+`examples/benchmark-inputs.json` fixture is checkout-safe for the mock provider's `predict` and
+`embed` operations; score and policy entries require providers that advertise those capabilities.
 
 <!-- worldforge-snippet: parse -->
 ```json
@@ -138,20 +136,6 @@ advertise those capabilities.
       }
     },
     "prediction_steps": 2,
-    "reason_query": "How many objects are tracked?",
-    "generation_prompt": "benchmark orbiting cube",
-    "generation_duration_seconds": 1.0,
-    "transfer_prompt": "benchmark transfer rerender",
-    "transfer_width": 320,
-    "transfer_height": 180,
-    "transfer_fps": 12.0,
-    "transfer_clip": {
-      "path": "seed-transfer.bin",
-      "fps": 8.0,
-      "resolution": [160, 90],
-      "duration_seconds": 1.0,
-      "metadata": { "content_type": "application/octet-stream" }
-    },
     "embedding_text": "benchmark cube state",
     "score_info": {
       "pixels": [[[[0.0]]]],
@@ -170,30 +154,17 @@ advertise those capabilities.
 }
 ```
 
-Omitted fields keep deterministic defaults. A `transfer_clip.path` is resolved relative to the
-input JSON file; use `frames_base64` instead of `path` when the clip bytes must be contained
-inside the JSON fixture.
+Omitted fields keep deterministic defaults. Provider-specific score and policy inputs should stay
+JSON-native so benchmark fixtures can be preserved as attachable evidence.
 
-Remote media providers can need capability-specific fixtures because generate and transfer exercise
-different upstream surfaces. Runway includes separate examples so a host can benchmark each surface
-without accidentally reusing a transfer seed for generation:
+Use the CLI runner for provider-operation comparisons:
 
 ```bash
-uv run worldforge benchmark --provider runway --operation generate \
-  --input-file examples/runway-generate-benchmark-inputs.json
-uv run worldforge benchmark --provider runway --operation transfer \
-  --input-file examples/runway-transfer-benchmark-inputs.json
+uv run worldforge benchmark --provider mock --operation predict --iterations 5
 ```
 
-The same provider-operation runner is available from TheWorldHarness:
-
-```bash
-uv run --extra harness worldforge-harness --flow benchmark
-```
-
-The TUI streams per-sample latency while the run is active, then writes the canonical JSON report
-under `.worldforge/reports/` and opens it in the Run Inspector. Treat those reports like CLI
-benchmark artifacts: cite numbers only when the JSON behind them is preserved.
+The CLI writes the canonical JSON report under `.worldforge/reports/`. Treat those reports as
+evidence artifacts: cite numbers only when the JSON behind them is preserved.
 
 Use a budget file when a benchmark run is part of a release gate, regression check, or public
 claim. Budget selectors can pin a provider and operation, or omit either field to apply the
@@ -205,7 +176,7 @@ threshold to every matching result:
   "budgets": [
     {
       "provider": "mock",
-      "operation": "generate",
+      "operation": "predict",
       "min_success_rate": 1.0,
       "max_error_count": 0,
       "max_retry_count": 0,
@@ -220,7 +191,7 @@ threshold to every matching result:
 ```bash
 uv run worldforge benchmark \
   --provider mock \
-  --operation generate \
+  --operation predict \
   --iterations 5 \
   --format json \
   --budget-file examples/benchmark-budget.json
@@ -306,15 +277,14 @@ production load capacity.
 
 Named presets bundle a deterministic input fixture, an optional budget file, and a runtime
 gate so maintainers can run release-regression workloads without re-deriving inputs and
-budgets each time. Five presets ship with the wheel today, grouped into four categories:
+budgets each time. Four presets ship with the wheel today, grouped into three categories:
 
 | Preset | Category | Providers | Operations | Iterations | Failure tolerance |
 | --- | --- | --- | --- | ---: | --- |
-| `mock-smoke` | checkout-safe | `mock` | predict, generate, embed | 5 | fail-on-violation |
-| `parser-overhead` | checkout-safe | `mock` | predict, reason, generate, transfer, embed | 20 | fail-on-violation |
-| `remote-media-dryrun` | remote-media | `cosmos`, `runway` | generate | 1 | skip-when-env-missing |
+| `mock-smoke` | checkout-safe | `mock` | predict, embed | 5 | fail-on-violation |
+| `parser-overhead` | checkout-safe | `mock` | predict, embed | 20 | fail-on-violation |
 | `prepared-host` | prepared-host | `leworldmodel`, `lerobot`, `gr00t` | score, policy | 3 | skip-when-env-missing |
-| `release-evidence` | release | `mock` | predict, reason, generate, transfer, embed | 10 | fail-on-violation |
+| `release-evidence` | release | `mock` | predict, embed | 10 | fail-on-violation |
 
 List, inspect, and run presets through the existing `benchmark` subcommand:
 

@@ -58,24 +58,20 @@ WorldForge makes mixed physical-AI workflows explicit and inspectable.
 - **Score and world-model providers rank candidate futures** instead of pretending every model has
   the same interface.
 - **WorldForge validates, records, replays, and compares runs** through typed provider contracts.
-- **TheWorldHarness and Rerun make the loop visible** before a host connects real robot hardware.
+- **The robotics showcase TUI and Rerun make the loop visible** before a host connects real robot hardware.
 
 ## First Run
 
-Install the package, then open the checkout-safe robotics comparison flow:
+Install the package, then run the checkout-safe local planning path:
 
 ```bash
-uv add "worldforge-ai[harness]"
-uv run worldforge-harness --flow robotics-compare
+uv add worldforge-ai
+uv run worldforge world create lab --provider mock
+uv run worldforge benchmark --provider mock --operation predict --operation embed
 ```
 
-The flow compares LeRobot, Cosmos-Policy, and GR00T policy surfaces from sanitized replay artifacts,
-so it does not need credentials, checkpoints, a GPU, or a robot.
-
-Success looks like the TUI opening on **Robotics Policy Replay Comparison** with successful provider
-events and `gpu_required=false`. If it fails, first rerun
-`uv run worldforge-harness --flow robotics-compare --no-animation` to remove reveal delays and make
-the failed step or traceback appear immediately in the TUI.
+The mock provider needs no credentials, checkpoints, GPU, or robot. Success is a saved local world
+and a benchmark report covering `predict` and `embed`.
 
 ## Robotics Showcase: LeRobot + LeWorldModel
 
@@ -136,51 +132,16 @@ Read the walkthrough and implementation notes: [Robotics Replay Showcase](https:
 and [Robotics Showcase Technical Deep Dive](https://abdelstark.github.io/worldforge/robotics-showcase-deep-dive/).
 
 <details>
-<summary><strong>TheWorldHarness TUI</strong> - checkout-safe visual harness for worlds, providers, evals, benchmarks, and packaged flows</summary>
+<summary><strong>Robotics showcase TUI</strong> - optional Textual report for the LeRobot + LeWorldModel showcase</summary>
 
-TheWorldHarness is the optional Textual workspace for inspecting WorldForge flows without installing
-robotics or model runtimes. It runs checkout-safe demos, provider diagnostics, benchmark comparison,
-world editing, and saved report previews through the `harness` extra.
+The only Textual interface kept in WorldForge is the robotics showcase report. It is launched by
+the host-owned robotics wrapper and focuses on policy proposals, score-model ranking, tensor
+contracts, provider events, and the local replay result.
 
 ```bash
-uv run --extra harness worldforge-harness
-uv run --extra harness worldforge-harness --flow lerobot
-uv run --extra harness worldforge-harness --flow cosmos-policy
-uv run --extra harness worldforge-harness --flow gr00t-replay
-uv run --extra harness worldforge-harness --flow robotics-compare
-uv run --extra harness worldforge-harness --flow diagnostics
+scripts/robotics-showcase
+scripts/robotics-showcase --no-tui
 ```
-
-<div align="center">
-<table>
-  <tr>
-    <td width="50%">
-      <img src="./docs/src/assets/img/theworldharness-home-launchpad.png" alt="TheWorldHarness home screen with keyboard-first launch targets" width="100%" />
-      <br />
-      <sub><strong>Home:</strong> keyboard-first launchpad for worlds, providers, evals, and help.</sub>
-    </td>
-    <td width="50%">
-      <img src="./docs/src/assets/img/theworldharness-run-inspector-score-planning.png" alt="TheWorldHarness run inspector showing a score-planning flow" width="100%" />
-      <br />
-      <sub><strong>Run inspector:</strong> flow trace with scored plans, metrics, and transcript.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="./docs/src/assets/img/theworldharness-world-editor.png" alt="TheWorldHarness world editor with saved state preview" width="100%" />
-      <br />
-      <sub><strong>World editor:</strong> persisted scene state, objects, provider, and preview in one place.</sub>
-    </td>
-    <td width="50%">
-      <img src="./docs/src/assets/img/theworldharness-provider-help-overlay.png" alt="TheWorldHarness provider screen with bindings help overlay" width="100%" />
-      <br />
-      <sub><strong>Provider help:</strong> discoverable bindings over live provider diagnostics.</sub>
-    </td>
-  </tr>
-</table>
-</div>
-
-More detail: [TheWorldHarness docs](https://abdelstark.github.io/worldforge/theworldharness/).
 
 </details>
 
@@ -212,10 +173,10 @@ More detail: [Rerun integration docs](https://abdelstark.github.io/worldforge/re
 
 ## Overview
 
-A score model, a robot policy server, a video simulator, and a remote media API have different
-inputs, runtimes, and failure modes. WorldForge does not flatten those differences. Each provider
-adapter declares which of eight capabilities it supports (`predict`, `score`, `policy`, `generate`,
-`transfer`, `reason`, `embed`, `plan`). The contract is strict and fail-closed: calling an
+A predictive model, a score model, and a robot policy server have different inputs, runtimes, and
+failure modes. WorldForge does not flatten those differences. Each provider adapter declares which
+of five capabilities it supports (`predict`, `score`, `policy`, `embed`, `plan`). The contract is
+strict and fail-closed: calling an
 unsupported capability raises rather than quietly returning empty results.
 
 Planning, evaluation, benchmarks, diagnostics, and persistence are built on top of that contract,
@@ -233,11 +194,11 @@ application's responsibility.
 
 | | |
 | --- | --- |
-| **Capability contracts** | Eight named capabilities. Adapters advertise only what they actually implement and return typed WorldForge results. Unknown names raise instead of behaving like empty filters. |
+| **Capability contracts** | Five named capabilities. Adapters advertise only what they actually implement and return typed WorldForge results. Unknown names raise instead of behaving like empty filters. |
 | **Composable planning** | Combine predictive, score, and policy providers in a single planning loop. Rank candidates, roll out futures, execute actions, persist state. |
 | **Deterministic by default** | Built-in `mock` provider, reusable contract assertions (`worldforge.testing`), and packaged demos that run from a clean checkout without credentials or GPUs. |
-| **Host-owned runtimes** | No torch, CUDA, robot controllers, or checkpoints in base dependencies. LeWorldModel, GR00T, LeRobot, Cosmos, and Runway integrate through their own surfaces. |
-| **Diagnostics** | `worldforge doctor`, provider events, workflow traces, benchmark and evaluation harnesses, and an optional Textual TUI (`TheWorldHarness`). |
+| **Host-owned runtimes** | No torch, CUDA, robot controllers, or checkpoints in base dependencies. LeWorldModel, GR00T, LeRobot, and Cosmos-Policy integrate through their own surfaces. |
+| **Diagnostics** | `worldforge doctor`, provider events, workflow traces, benchmark and evaluation reports, run workspaces, and the robotics showcase TUI. |
 | **Rerun observability** | Optional `rerun-sdk` bridge for event streams, workflow traces, world snapshots, plans, and benchmark artifacts. |
 | **Quality gates** | `py.typed`, import-isolated pytest, ruff, a 90% coverage floor, strict docs, and wheel + sdist contract tests in CI on Python 3.13. |
 
@@ -295,7 +256,7 @@ cp .env.example .env
 Optional extras:
 
 ```bash
-uv sync --group dev --extra harness   # TheWorldHarness Textual TUI
+uv sync --group dev --extra harness   # robotics showcase Textual report
 uv sync --group dev --extra rerun     # Rerun event and artifact recording
 uv sync --group dev --extra tensorboard  # TensorBoard LeWorldModel checkpoint inspection
 ```
@@ -369,7 +330,7 @@ uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --step
 uv run worldforge eval --suite planning --provider mock --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 ```
 
 Scene mutations append persisted history entries with typed action payloads. Position patches keep
@@ -389,21 +350,18 @@ model's branding.
 | `predict` | `state + action → predicted state` | `mock` |
 | `score` | `observations + goal + candidates → ranked candidates` | `leworldmodel` |
 | `policy` | `observation + instruction → action chunks` | `cosmos-policy`, `gr00t`, `lerobot` |
-| `generate` | `prompt + options → media artifact` | `cosmos`, `runway`, `mock` |
-| `transfer` | `artifact + prompt/options → artifact` | `runway`, `mock` |
-| `reason` | structured reasoning over state | `mock` |
 | `embed` | observation → embedding | `mock` |
 | `plan` | facade over composed surfaces | WorldForge facade |
 
 Adapters can register a full `BaseProvider` or a narrow capability protocol implementation such
-as a `Cost`, `Policy`, `Generator`, or `Predictor`. The protocol path is intentionally small:
+as a `Cost`, `Policy`, `Predictor`, or `Embedder`. The protocol path is intentionally small:
 declare `name`, optional profile metadata, and the one method behind the advertised capability.
 Registered protocol implementations are visible through diagnostics, planning, and benchmarks
 without forcing unrelated provider methods into the adapter.
 
 LeWorldModel is a score provider, not a video generator. Cosmos-Policy, GR00T, and LeRobot are
-policy providers, not predictive world models. Cosmos and Runway are media generators, not
-controllable physical planning.
+policy providers, not predictive world models. The planning backbone composes these narrow
+surfaces instead of treating every runtime as a generic media or chat model.
 
 The canonical loop:
 
@@ -421,10 +379,8 @@ observe state
 <!-- provider-catalog-readme:start -->
 | Provider | Maturity | Capability surface | Registration | Runtime ownership |
 | --- | --- | --- | --- | --- |
-| `mock` | `stable` | `predict`, `generate`, `transfer`, `reason`, `embed` | always registered | in-repo deterministic local provider |
-| [`cosmos`](https://abdelstark.github.io/worldforge/providers/cosmos/) | `beta` | `generate` | `COSMOS_BASE_URL` | host supplies a reachable Cosmos deployment and optional `NVIDIA_API_KEY` |
+| `mock` | `stable` | `predict`, `embed` | always registered | in-repo deterministic local provider |
 | [`cosmos-policy`](https://abdelstark.github.io/worldforge/providers/cosmos-policy/) | `beta` | none (`policy` requires host `action_translator`) | `COSMOS_POLICY_BASE_URL` | WorldForge validates `/act` request/response and planning composition; host owns Cosmos-Policy reachability/CUDA/runtime, ALOHA observation construction, and translation of raw 14D rows into executable `Action` objects |
-| [`runway`](https://abdelstark.github.io/worldforge/providers/runway/) | `beta` | `generate`, `transfer` | `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` | host supplies Runway credentials and persists returned artifacts |
 | [`leworldmodel`](https://abdelstark.github.io/worldforge/providers/leworldmodel/) | `stable` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
 | [`gr00t`](https://abdelstark.github.io/worldforge/providers/gr00t/) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |
 | [`lerobot`](https://abdelstark.github.io/worldforge/providers/lerobot/) | `stable` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | host installs LeRobot and compatible policy checkpoints |
@@ -543,7 +499,6 @@ WorldForge is released under the [MIT License](./LICENSE).
 
 - Documentation: <https://abdelstark.github.io/worldforge/>
 - Quickstart: <https://abdelstark.github.io/worldforge/quickstart/>
-- TheWorldHarness: <https://abdelstark.github.io/worldforge/theworldharness/>
 - Provider authoring guide: <https://abdelstark.github.io/worldforge/provider-authoring-guide/>
 - Rerun integration: <https://abdelstark.github.io/worldforge/rerun/>
 - Playbooks: <https://abdelstark.github.io/worldforge/playbooks/>

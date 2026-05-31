@@ -1,4 +1,4 @@
-"""Static flow metadata for TheWorldHarness."""
+"""Static metadata for packaged checkout-safe showcase flows."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ FLOWS: tuple[HarnessFlow, ...] = (
         focus="saved ALOHA /act replay",
         provider="CosmosPolicyProvider",
         capability="policy",
-        command="uv run --extra harness worldforge-harness --flow cosmos-policy",
+        command="uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison",
         accent="#74d7f7",
         summary=(
             "Replay a sanitized NVIDIA Cosmos-Policy ALOHA /act response through the real "
@@ -56,7 +56,7 @@ FLOWS: tuple[HarnessFlow, ...] = (
         focus="saved GR00T PolicyClient replay",
         provider="GrootPolicyClientProvider",
         capability="policy",
-        command="uv run --extra harness worldforge-harness --flow gr00t-replay",
+        command="uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison",
         accent="#b6f377",
         summary=(
             "Replay a sanitized NVIDIA GR00T N1.7 PolicyClient response through the real provider "
@@ -71,7 +71,7 @@ FLOWS: tuple[HarnessFlow, ...] = (
         focus="cross-provider policy inspection",
         provider="LeRobot + Cosmos-Policy + GR00T",
         capability="policy",
-        command="uv run --extra harness worldforge-harness --flow robotics-compare",
+        command="uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison",
         accent="#ffcc66",
         summary=(
             "Run the checkout-safe LeRobot, Cosmos-Policy, and GR00T policy paths side by side, "
@@ -86,7 +86,7 @@ FLOWS: tuple[HarnessFlow, ...] = (
         focus="provider diagnostics and benchmark comparison",
         provider="WorldForge + ProviderBenchmarkHarness",
         capability="diagnostics",
-        command="uv run worldforge harness --flow diagnostics",
+        command="uv run worldforge benchmark --provider mock --operation predict --operation embed",
         accent="#91b7ff",
         summary=(
             "Inspect the provider catalog, surface registered and unavailable adapters, run the "
@@ -112,7 +112,7 @@ FLOWS: tuple[HarnessFlow, ...] = (
 
 
 def available_flows() -> tuple[HarnessFlow, ...]:
-    """Return flows available through TheWorldHarness."""
+    """Return packaged checkout-safe showcase flows."""
 
     return FLOWS
 

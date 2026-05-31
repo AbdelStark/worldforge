@@ -10,12 +10,9 @@ from worldforge.models import (
     Action,
     ActionScoreResult,
     EmbeddingResult,
-    GenerationOptions,
     JSONDict,
     ProviderCapabilities,
     ProviderEvent,
-    ReasoningResult,
-    VideoClip,
     WorldForgeError,
 )
 
@@ -64,51 +61,6 @@ class StubRemoteProvider(RemoteProvider):
         payload.metadata["mode"] = "stub-remote-adapter"
         payload.metadata["credential_env"] = self.env_var
         return payload
-
-    def generate(
-        self,
-        prompt: str,
-        duration_seconds: float,
-        *,
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        self._require_scaffold_surrogate_enabled()
-        self._require_credentials()
-        clip = self._surrogate.generate(prompt, duration_seconds, options=options)
-        clip.metadata["mode"] = "stub-remote-adapter"
-        clip.metadata["credential_env"] = self.env_var
-        return clip
-
-    def transfer(
-        self,
-        clip: VideoClip,
-        *,
-        width: int,
-        height: int,
-        fps: float,
-        prompt: str = "",
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        self._require_scaffold_surrogate_enabled()
-        self._require_credentials()
-        transferred = self._surrogate.transfer(
-            clip,
-            width=width,
-            height=height,
-            fps=fps,
-            prompt=prompt,
-            options=options,
-        )
-        transferred.metadata["mode"] = "stub-remote-adapter"
-        transferred.metadata["credential_env"] = self.env_var
-        return transferred
-
-    def reason(self, query: str, *, world_state: JSONDict | None = None) -> ReasoningResult:
-        self._require_scaffold_surrogate_enabled()
-        self._require_credentials()
-        result = self._surrogate.reason(query, world_state=world_state)
-        result.evidence.append(f"Executed via stub adapter gated by {self.env_var}")
-        return result
 
     def embed(self, *, text: str) -> EmbeddingResult:
         self._require_scaffold_surrogate_enabled()
@@ -292,7 +244,7 @@ class GenieProvider(StubRemoteProvider):
             profile=ProviderProfileSpec(
                 description="Python adapter surface for Genie-family models.",
                 implementation_status="scaffold",
-                supported_modalities=("world_state", "text", "video"),
+                supported_modalities=("world_state", "text"),
                 artifact_types=(),
                 notes=(
                     "Capability-fail-closed scaffold adapter; it is not a real Genie runtime.",

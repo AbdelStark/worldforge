@@ -37,12 +37,11 @@ def test_docs_live_smoke_registry_validates_and_records_first_class_skips() -> N
     assert registry["schema_version"] == LIVE_SMOKE_EVIDENCE_SCHEMA_VERSION
     statuses = {entry["status"] for entry in registry["entries"]}
     assert "skipped_missing_runtime" in statuses
-    assert "skipped_missing_credentials" in statuses
     assert "not_run" in statuses
     assert statuses <= LIVE_SMOKE_EVIDENCE_STATUSES
 
     providers = {(entry["provider"], entry["capability"]) for entry in registry["entries"]}
-    assert ("runway", "generate") in providers
+    assert ("leworldmodel", "score") in providers
     assert ("jepa-wms", "score") in providers
 
     for entry in registry["entries"]:
@@ -55,10 +54,10 @@ def test_docs_live_smoke_registry_validates_and_records_first_class_skips() -> N
 
 def test_live_smoke_registry_rejects_unsafe_entries() -> None:
     entry = {
-        "provider": "runway",
-        "capability": "generate",
-        "command": "uv run worldforge-smoke-runway",
-        "runtime_manifest": "runway:schema-1",
+        "provider": "leworldmodel",
+        "capability": "score",
+        "command": "uv run worldforge-smoke-leworldmodel",
+        "runtime_manifest": "leworldmodel:schema-1",
         "date": "2026-05-05",
         "version": "0.5.0",
         "status": "passed",
@@ -70,7 +69,7 @@ def test_live_smoke_registry_rejects_unsafe_entries() -> None:
     with pytest.raises(WorldForgeError, match="query strings"):
         validate_live_smoke_entry(entry)
 
-    entry = {**entry, "artifact_path": ".worldforge/runs/runway/run_manifest.json"}
+    entry = {**entry, "artifact_path": ".worldforge/runs/leworldmodel/run_manifest.json"}
     entry["secret_token"] = "redacted"
 
     with pytest.raises(WorldForgeError, match="secret-like field"):
@@ -79,14 +78,14 @@ def test_live_smoke_registry_rejects_unsafe_entries() -> None:
 
 def test_live_smoke_registry_rejects_nested_unsafe_values() -> None:
     entry = {
-        "provider": "runway",
-        "capability": "generate",
-        "command": "uv run worldforge-smoke-runway",
-        "runtime_manifest": "runway:schema-1",
+        "provider": "leworldmodel",
+        "capability": "score",
+        "command": "uv run worldforge-smoke-leworldmodel",
+        "runtime_manifest": "leworldmodel:schema-1",
         "date": "2026-05-05",
         "version": "0.5.0",
         "status": "passed",
-        "artifact_path": ".worldforge/runs/runway/run_manifest.json",
+        "artifact_path": ".worldforge/runs/leworldmodel/run_manifest.json",
         "skip_reason": None,
         "known_limitations": ["fixture"],
         "notes": {"triage": ["Bearer abc123"]},
@@ -98,10 +97,10 @@ def test_live_smoke_registry_rejects_nested_unsafe_values() -> None:
 
 def test_live_smoke_registry_requires_skip_reasons_and_artifacts() -> None:
     skipped = {
-        "provider": "cosmos",
-        "capability": "generate",
-        "command": "uv run worldforge-smoke-cosmos",
-        "runtime_manifest": "cosmos:schema-1",
+        "provider": "leworldmodel",
+        "capability": "score",
+        "command": "uv run worldforge-smoke-leworldmodel",
+        "runtime_manifest": "leworldmodel:schema-1",
         "date": "2026-05-05",
         "version": "0.5.0",
         "status": "skipped_missing_runtime",
@@ -121,15 +120,15 @@ def test_live_smoke_registry_requires_skip_reasons_and_artifacts() -> None:
 
 def test_live_smoke_registry_rejects_stale_skip_or_artifact_state() -> None:
     skipped = {
-        "provider": "cosmos",
-        "capability": "generate",
-        "command": "uv run worldforge-smoke-cosmos",
-        "runtime_manifest": "cosmos:schema-1",
+        "provider": "leworldmodel",
+        "capability": "score",
+        "command": "uv run worldforge-smoke-leworldmodel",
+        "runtime_manifest": "leworldmodel:schema-1",
         "date": "2026-05-05",
         "version": "0.5.0",
         "status": "skipped_missing_runtime",
-        "artifact_path": ".worldforge/runs/cosmos/run_manifest.json",
-        "skip_reason": "requires a prepared Cosmos endpoint",
+        "artifact_path": ".worldforge/runs/leworldmodel/run_manifest.json",
+        "skip_reason": "requires a prepared LeWorldModel checkpoint",
         "known_limitations": ["host-owned runtime"],
     }
 
@@ -148,15 +147,15 @@ def test_live_smoke_registry_rejects_stale_skip_or_artifact_state() -> None:
 
 def test_live_smoke_entry_rejects_malformed_dates_and_limitations() -> None:
     entry = {
-        "provider": "cosmos",
-        "capability": "generate",
-        "command": "uv run worldforge-smoke-cosmos",
-        "runtime_manifest": "cosmos:schema-1",
+        "provider": "leworldmodel",
+        "capability": "score",
+        "command": "uv run worldforge-smoke-leworldmodel",
+        "runtime_manifest": "leworldmodel:schema-1",
         "date": "2026/05/05",
         "version": "0.5.0",
         "status": "skipped_missing_runtime",
         "artifact_path": None,
-        "skip_reason": "requires a prepared Cosmos endpoint",
+        "skip_reason": "requires a prepared LeWorldModel checkpoint",
         "known_limitations": ["host-owned runtime"],
     }
 
@@ -180,8 +179,8 @@ def test_release_evidence_can_include_registry_without_manual_copy_paste(tmp_pat
     )
 
     assert "## Live Smoke Evidence Registry" in report
-    assert "| `runway` | `generate` | skipped_missing_credentials |" in report
-    assert "requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET" in report
+    assert "| `leworldmodel` | `score` | skipped_missing_runtime |" in report
+    assert "requires stable-worldmodel" in report
 
 
 def test_live_smoke_registry_markdown_renderer_is_stable() -> None:

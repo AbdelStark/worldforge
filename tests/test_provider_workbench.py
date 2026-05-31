@@ -22,9 +22,6 @@ def test_provider_workbench_runs_mock_in_clean_checkout() -> None:
     assert report["live"] is False
     assert report["required_tests"] == [
         "assert_predict_conformance",
-        "assert_generate_conformance",
-        "assert_transfer_conformance",
-        "assert_reason_conformance",
         "assert_embed_conformance",
     ]
     checks = {check["name"]: check for check in report["checks"]}
@@ -37,23 +34,6 @@ def test_provider_workbench_runs_mock_in_clean_checkout() -> None:
     assert (
         report["docs"]["catalog_check"] == "uv run python scripts/generate_provider_docs.py --check"
     )
-
-
-def test_provider_workbench_skips_live_runway_but_validates_fixtures() -> None:
-    report = provider_workbench_report("runway")
-
-    assert report["status"] == "passed"
-    assert report["required_tests"] == [
-        "assert_generate_conformance",
-        "assert_transfer_conformance",
-    ]
-    checks = {check["name"]: check for check in report["checks"]}
-    assert checks["health"]["status"] == "passed"
-    assert checks["health"]["configured"] is False
-    assert checks["conformance"]["status"] == "skipped"
-    assert "--live" in checks["conformance"]["detail"]
-    assert checks["fixtures"]["status"] == "passed"
-    assert checks["fixtures"]["paths"]
 
 
 def test_provider_workbench_runs_scaffold_and_names_promotion_gaps() -> None:

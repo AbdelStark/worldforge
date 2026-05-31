@@ -9,13 +9,10 @@ import pytest
 from worldforge import (
     Cost,
     Embedder,
-    Generator,
     Planner,
     Policy,
     Predictor,
-    Reasoner,
     RunnableModel,
-    Transferer,
     WorldForge,
     WorldForgeError,
 )
@@ -24,10 +21,8 @@ from worldforge.models import (
     Action,
     ActionPolicyResult,
     ActionScoreResult,
-    GenerationOptions,
     JSONDict,
     ProviderEvent,
-    VideoClip,
 )
 from worldforge.providers.base import ProviderError, ProviderProfileSpec
 from worldforge.providers.mock import MockProvider
@@ -61,29 +56,6 @@ class _PurePolicy:
         )
 
 
-class _PureGenerator:
-    name = "pure_gen"
-    profile = None
-
-    def generate(
-        self,
-        prompt: str,
-        duration_seconds: float,
-        *,
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        return VideoClip(
-            provider=self.name,
-            prompt=prompt,
-            duration_seconds=duration_seconds,
-            width=64,
-            height=64,
-            fps=4.0,
-            frames=[b"\x00\x01"],
-            metadata={"src": "pure-gen"},
-        )
-
-
 class _MultiCapability:
     """Implements both Cost and Policy structurally."""
 
@@ -111,7 +83,6 @@ class _NoCapability:
 def test_capability_protocols_are_runtime_checkable():
     assert isinstance(_PureCost(), Cost)
     assert isinstance(_PurePolicy(), Policy)
-    assert isinstance(_PureGenerator(), Generator)
     assert not isinstance(_PureCost(), Policy)
     assert not isinstance(_PurePolicy(), Cost)
     assert not isinstance(_NoCapability(), Cost)
@@ -121,11 +92,8 @@ def test_capability_protocol_names_match_field_names():
     assert set(CAPABILITY_PROTOCOLS) == set(CAPABILITY_FIELD_NAMES)
     assert CAPABILITY_PROTOCOLS["cost"] is Cost
     assert CAPABILITY_PROTOCOLS["policy"] is Policy
-    assert CAPABILITY_PROTOCOLS["generator"] is Generator
     assert CAPABILITY_PROTOCOLS["predictor"] is Predictor
-    assert CAPABILITY_PROTOCOLS["reasoner"] is Reasoner
     assert CAPABILITY_PROTOCOLS["embedder"] is Embedder
-    assert CAPABILITY_PROTOCOLS["transferer"] is Transferer
     assert CAPABILITY_PROTOCOLS["planner"] is Planner
 
 
@@ -140,13 +108,11 @@ def test_runnable_model_capability_fields_iterates_only_set_fields():
 def test_runnable_model_capability_fields_yields_in_canonical_order():
     bundle = RunnableModel(
         name="bundle",
-        generator=_PureGenerator(),
         cost=_PureCost(),
         policy=_PurePolicy(),
     )
     ordered = [field for field, _ in bundle.capability_fields()]
-    # Canonical order: policy, cost, generator, predictor, reasoner, embedder, transferer, planner.
-    assert ordered == ["policy", "cost", "generator"]
+    assert ordered == ["policy", "cost"]
 
 
 def test_observable_capability_emits_success_event(tmp_path: Path):
@@ -231,7 +197,7 @@ def test_register_dispatches_by_protocol_membership(tmp_path: Path):
     assert "multi" in forge._capability_registries["cost"]
     assert "multi" in forge._capability_registries["policy"]
     # Other registries untouched.
-    assert "multi" not in forge._capability_registries["generator"]
+    assert "multi" not in forge._capability_registries["predictor"]
 
 
 def test_register_base_provider_uses_legacy_provider_registry(tmp_path: Path):
@@ -247,12 +213,10 @@ def test_register_unpacks_runnable_model(tmp_path: Path):
         name="bundle",
         cost=_PureCost(),
         policy=_PurePolicy(),
-        generator=_PureGenerator(),
     )
     forge.register(bundle)
     assert "pure_cost" in forge._capability_registries["cost"]
     assert "pure_policy" in forge._capability_registries["policy"]
-    assert "pure_gen" in forge._capability_registries["generator"]
 
 
 def test_register_rejects_empty_runnable_model(tmp_path: Path):

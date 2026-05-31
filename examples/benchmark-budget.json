@@ -2,7 +2,7 @@
   "budgets": [
     {
       "provider": "mock",
-      "operation": "generate",
+      "operation": "predict",
       "min_success_rate": 1.0,
       "max_error_count": 0,
       "max_retry_count": 0,

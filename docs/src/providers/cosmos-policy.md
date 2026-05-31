@@ -20,8 +20,8 @@ ALOHA images + proprio + task text
   -> ActionPolicyResult
 ```
 
-This provider is separate from `cosmos`. `cosmos` is a media-generation adapter for Cosmos NIM
-`/v1/infer`; `cosmos-policy` is a policy adapter for robot action selection.
+This provider is the only Cosmos-family provider in the current catalog. It is a policy adapter for
+robot action selection, not a media or generative-model adapter.
 
 ## Runtime Ownership
 

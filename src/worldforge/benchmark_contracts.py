@@ -15,9 +15,6 @@ from worldforge.models import (
 
 BENCHMARKABLE_OPERATIONS = (
     "predict",
-    "reason",
-    "generate",
-    "transfer",
     "embed",
     "score",
     "policy",
@@ -110,19 +107,6 @@ def _positive_number(value: object, *, name: str) -> float:
 
 def _positive_int(value: object, *, name: str) -> int:
     return require_positive_int(value, name=name)
-
-
-def _positive_resolution(value: object, *, name: str) -> tuple[int, int]:
-    if (
-        not isinstance(value, list | tuple)
-        or len(value) != 2
-        or any(isinstance(dimension, bool) or not isinstance(dimension, int) for dimension in value)
-    ):
-        raise WorldForgeError(f"{name} must contain integer width and height.")
-    width, height = value
-    if width <= 0 or height <= 0:
-        raise WorldForgeError(f"{name} values must be greater than 0.")
-    return (width, height)
 
 
 def _comma_join_or_dash(values: Sequence[str]) -> str:

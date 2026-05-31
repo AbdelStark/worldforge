@@ -37,13 +37,7 @@ def _load_custom_eval_example():
 
 
 def test_builtin_evaluation_suite_names_are_stable() -> None:
-    assert EvaluationSuite.builtin_names() == [
-        "generation",
-        "physics",
-        "planning",
-        "reasoning",
-        "transfer",
-    ]
+    assert EvaluationSuite.builtin_names() == ["physics", "planning"]
 
 
 def test_builtin_evaluation_reports_export_failure_gallery_artifacts(tmp_path) -> None:

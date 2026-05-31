@@ -26,13 +26,11 @@ real callable behavior or unlock a concrete host workflow.
 
 ## Recommended Next Batch
 
-The next batch should contain no more than these three provider additions or promotions.
+The next batch should contain no more than these provider additions or promotions.
 
 | Candidate | Capability | Owner | Validation path | Issue outline |
 | --- | --- | --- | --- | --- |
 | JEPA-WMS score adapter | `score` | provider platform maintainer | injected runtime tests, fixture-backed score outputs, runtime manifest, optional prepared-host smoke manifest | Promote the direct-construction candidate only after upstream runtime loading, tensor shape validation, finite scores, JSON-native metadata, and failure typing are covered. |
-| Genie interactive-world adapter | `generate` | media provider maintainer | fail-closed scaffold tests first, then fixture-backed artifact generation and smoke manifest once a runtime/API contract is selected | Replace the scaffold with one explicit upstream contract; document artifact type, prompt/state inputs, and why generated worlds are not planning proofs. |
-| Spatial/3D scene adapter | `generate` | provider platform maintainer | design issue, fixture schema for scene artifacts, artifact redaction tests, optional runtime manifest after contract selection | Add a new issue before implementation that chooses one concrete scene/runtime API and defines the minimal JSON-native scene artifact boundary. |
 
 ### JEPA-WMS Issue Outline
 
@@ -63,8 +61,8 @@ through `torch.hub.load("facebookresearch/jepa-wms", model_name)`.
 
 Decision: promote the public `jepa` catalog entry from a fail-closed reservation to an
 experimental score-only adapter that reuses the JEPA-WMS runtime contract. The adapter requires
-`JEPA_MODEL_NAME`, keeps PyTorch and checkpoints host-owned, and does not expose `predict`,
-`embed`, generation, transfer, or reasoning.
+`JEPA_MODEL_NAME`, keeps PyTorch and checkpoints host-owned, and does not expose `predict` or
+`embed`.
 
 Migration: `JEPA_MODEL_PATH` was the old scaffold reservation variable. It is retained only as
 value-free diagnostic metadata; hosts must set `JEPA_MODEL_NAME` to load a real upstream model.
@@ -73,48 +71,12 @@ Why this does not promote every JEPA surface: upstream action-conditioned JEPA-W
 cleanly to candidate-action scoring. Latent rollout and embedding APIs need separate contracts
 before WorldForge can advertise `predict` or `embed`.
 
-### Genie Issue Outline
-
-Capability: `generate`.
-
-Owner: media provider maintainer.
-
-Validation path:
-
-- pick one concrete upstream runtime or hosted API before enabling capabilities;
-- keep the current scaffold fail-closed until that contract exists;
-- validate prompt/state inputs, generated artifact metadata, MIME/type hints, and artifact safety;
-- add fixtures for successful artifact creation and upstream failure payloads;
-- document the smoke command and preserved run manifest for prepared hosts.
-
-Why now: Genie-style interactive-world generation is valuable, but only after the runtime boundary
-is concrete enough to test.
-
-### Spatial/3D Scene Issue Outline
-
-Capability: `generate`.
-
-Owner: provider platform maintainer.
-
-Boundary record: [Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md).
-
-Validation path:
-
-- write a design issue selecting one concrete scene or 3D-world API;
-- define a minimal scene artifact schema before adding provider code;
-- require fixtures for asset references, dimensions/units, safe metadata, and malformed payloads;
-- keep large assets, credentials, viewers, and GPU/runtime packages host-owned;
-- add a prepared-host smoke only after the artifact boundary is stable.
-
-Why now: spatial artifacts are a distinct provider family and should not be squeezed into video or
-planning contracts.
-
 ## Deferred Candidates
 
 | Candidate class | Deferred reason |
 | --- | --- |
-| Additional remote video APIs | Runway and Cosmos already cover the current remote media hardening path; add another only after it has a clearly different capability or user workflow. |
-| General LLM reasoning providers | The `reason` capability needs a stronger world-state question-answering contract before adding ordinary chat/completion adapters. |
+| Additional remote providers | Add another only after it has a clearly different planning, prediction, score, or policy workflow. |
+| General LLM QA providers | World-state question-answering needs a separate typed contract before adding ordinary chat/completion adapters. |
 | Simulator bridges | The public scene/state boundary and host-owned simulator process model need a design record first. |
 | New embodied policy stacks beyond LeRobot/GR00T | Robotics validation cost is high; finish policy conformance, translator contracts, and prepared-host evidence before adding more policy runtimes. |
 | Active inference or probabilistic belief adapters | Useful direction, but WorldForge does not yet have typed belief/uncertainty result contracts. |

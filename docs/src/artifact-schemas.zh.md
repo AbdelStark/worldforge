@@ -34,7 +34,6 @@ WorldForge 工件是可能跨进程传递的 JSON 原生记录：运行清单、
 | 世界迁移预览 | 通过 `WORLD_MIGRATION_PREVIEW_SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/world_migration_preview.py` | `tests/test_world_lifecycle.py`、`tests/test_cli_world_commands.py` | `worldforge world migration-preview`、[Operations](./operations.md) | 持久化所有者 |
 | 工作流追踪工件 | 通过 `WORKFLOW_TRACE_SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/workflow_trace.py` | `tests/test_provider_events.py`、`tests/test_evaluation_and_planning.py`、`tests/test_rerun_integration.py` | 规划元数据、评估工件、Rerun 工件记录、[Operations](./operations.md) | 可观测性与工件所有者 |
 | 静态 HTML 报告元数据 | 通过 `HTML_REPORT_SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/html_report.py` | `tests/test_html_report.py` | `--format html`、[Static HTML Reports](./html-reports.md) | 报告渲染所有者 |
-| 场景工件 | 通过 `SCENE_ARTIFACT_SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/scene_artifacts.py` | `tests/test_scene_artifacts.py` | [Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md) | 提供方工件所有者 |
 | 冒烟测试实时证据注册表 | 通过 `LIVE_SMOKE_EVIDENCE_SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/live_smoke_evidence.py`、`docs/src/live-smoke-evidence.json` | `tests/test_live_smoke_evidence.py` | [冒烟测试实时证据注册表](./live-smoke-evidence.md) | 可选运行时与冒烟测试所有者 |
 | 能力特定的回放工件 | 各族专属的 `schema_version` 常量 | `src/worldforge/harness/flows.py` | `tests/test_cosmos_policy_provider.py`、`tests/test_harness_flows.py` | [Robotics Replay Showcase](./robotics-showcase.md) | Harness 与机器人所有者 |
 

@@ -9,21 +9,19 @@ uv run worldforge examples
 uv run worldforge examples --format json
 ```
 
-## Visual Harness
+## Robotics Showcase TUI
 
 | Example | Surface | Command |
 | --- | --- | --- |
-| `theworldharness` | E2E flows, provider diagnostics, benchmark comparison | `uv run --extra harness worldforge-harness` |
+| `robotics-showcase` | real LeRobot policy plus LeWorldModel score report | `scripts/robotics-showcase` |
 
 ```bash
-uv run --extra harness worldforge-harness
-uv run --extra harness worldforge-harness --flow lerobot
-uv run --extra harness worldforge-harness --flow diagnostics
+scripts/robotics-showcase
+scripts/robotics-showcase --no-tui
 ```
 
-TheWorldHarness is optional and depends on Textual through the `harness` extra. It currently
-includes score-planning, policy-plus-score planning, and provider diagnostics plus benchmark
-comparison flows.
+The robotics showcase report is optional and depends on Textual through the `harness` extra. The
+terminal and JSON paths remain available with `--no-tui`.
 
 ## Prediction And Evaluation
 
@@ -66,7 +64,7 @@ connecting robot hardware.
 
 | Example | Surface | Command |
 | --- | --- | --- |
-| `service-host` | HTTP liveness/readiness, provider diagnostics, mock workflow, configurable generate workflow | `uv run python examples/hosts/service/app.py --provider mock --port 8080` |
+| `service-host` | HTTP liveness/readiness, provider diagnostics, and mock prediction workflow | `uv run python examples/hosts/service/app.py --provider mock --port 8080` |
 
 The service host uses Python's stdlib HTTP server so it does not add a base dependency. It is a
 reference for embedding WorldForge in a host process, not a WorldForge deployment boundary:

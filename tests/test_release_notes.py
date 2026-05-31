@@ -77,9 +77,9 @@ def test_release_notes_draft_collects_changelog_issues_and_evidence(tmp_path: Pa
                 ],
                 "live_provider_evidence": [
                     {
-                        "provider": "runway",
+                        "provider": "leworldmodel",
                         "status": "passed",
-                        "manifests": [{"path": ".worldforge/runs/runway/run_manifest.json"}],
+                        "manifests": [{"path": ".worldforge/runs/leworldmodel/run_manifest.json"}],
                         "reason": "",
                     },
                     {
@@ -137,7 +137,7 @@ def test_release_notes_draft_collects_changelog_issues_and_evidence(tmp_path: Pa
     assert "### `release`" in draft.markdown
     assert "`passed`=2" in draft.markdown
     assert ".worldforge/reports/benchmark.json" in draft.markdown
-    assert "| `runway` | passed | 1 manifest(s) |" in draft.markdown
+    assert "| `leworldmodel` | passed | 1 manifest(s) |" in draft.markdown
     assert "| `gr00t` | host-owned | missing host-owned configuration: GROOT_POLICY_HOST |" in (
         draft.markdown
     )
@@ -329,7 +329,7 @@ def test_release_notes_draft_redacts_secret_shapes_from_all_user_inputs(tmp_path
                 "claim_boundary": "claim secret=claim-secret at /var/folders/private/claim",
                 "live_provider_evidence": [
                     {
-                        "provider": "runway",
+                        "provider": "leworldmodel",
                         "status": "host-owned",
                         "manifests": [],
                         "reason": "skip token=provider-secret at /private/tmp/provider",

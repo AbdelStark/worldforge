@@ -1,12 +1,9 @@
 # 评估
 
-WorldForge 内置了五个评估套件：
+WorldForge 内置了两个评估套件：
 
-- `generation`：仅提示词和图像条件的视频生成检查
 - `physics`：确定性的对象稳定性和动作响应检查
-- `planning`：基于预测驱动的规划器，对重新定位、邻近放置、交换和生成执行进行验证
-- `reasoning`：针对实现了 `reason()` 的提供方进行场景计数和场景识别检查
-- `transfer`：提示词引导和参考引导的视频转换检查
+- `planning`：基于预测驱动的规划器，对重新定位、邻近放置和交换执行进行验证
 
 ## Python
 
@@ -74,11 +71,8 @@ uv run python scripts/demo_showcases.py run custom-evaluation-suite --workspace-
 ## CLI
 
 ```bash
-uv run worldforge eval --suite generation --provider mock
 uv run worldforge eval --suite physics --provider mock
 uv run worldforge eval --suite planning --provider mock --format json
-uv run worldforge eval --suite reasoning --provider mock --format csv
-uv run worldforge eval --suite transfer --provider mock
 ```
 
 重复 `--provider` 可在一份报告中比较多个已注册的提供方。
@@ -127,8 +121,6 @@ uv run python scripts/generate_evidence_bundle.py --workspace-dir .worldforge
 
 使用 `worldforge runs bundle <run-id>` 可导出单次运行的更小的 Issue 就绪归档。它在摘要清单和摘要旁边写入 `issue.md`，打印的 Issue 模板包含命令、预期信号、观测到的失败、可安全附加的说明及首要排查步骤。
 
-同样的内置套件也可从 TheWorldHarness 使用。启动 `uv run --extra harness worldforge-harness --flow eval`，选择套件和提供方，TUI 会在打开运行检查器之前将规范的 JSON 报告写入 `.worldforge/reports/`。能力不匹配仍以 `WorldForgeError` 失败；TUI 会显示错误消息，而非静默跳过套件。
-
 ## 报告格式
 
 - Markdown：来源溯源部分、提供方摘要表、场景级别详情表
@@ -168,9 +160,6 @@ uv run python scripts/generate_evidence_bundle.py --workspace-dir .worldforge
 
 每个套件声明其所需的提供方能力。例如：
 
-- `generation` 需要 `generate`
 - `physics` 和 `planning` 需要 `predict`
-- `reasoning` 需要 `reason`
-- `transfer` 需要 `transfer`
 
 当调用方要求提供方运行其无法满足的套件时，WorldForge 会引发 `WorldForgeError`。

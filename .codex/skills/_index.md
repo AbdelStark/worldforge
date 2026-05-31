@@ -11,7 +11,7 @@ Keep this directory boring: one folder per repeated workflow, one `SKILL.md` per
 | `evaluation-benchmarking` | benchmark inputs, budget gates, eval suites, report claims | Protects claim boundaries and reproducibility. |
 | `optional-runtime-smokes` | LeWorldModel, GR00T, LeRobot, PushT, checkpoint/live smoke work | Keeps host-owned runtime dependencies out of the base package. |
 | `persistence-state` | local JSON worlds, world IDs, history, import/export/fork | Persistence failures corrupt user state. |
-| `tui-development` | TheWorldHarness flows, Textual screens, screenshots | Textual must stay optional and isolated. |
+| `tui-development` | robotics showcase Textual report UI, panes, launch helpers, screenshots | Textual must stay optional and isolated. |
 | `public-docs-release` | README/docs/changelog/release-surface alignment | Public behavior changes have many synchronized surfaces. |
 
 Do not add a new skill unless the workflow is repeated, multi-step, and has a stable definition of done.

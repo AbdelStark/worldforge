@@ -165,10 +165,17 @@ def provider_list_payload(forge: WorldForge) -> JSON:
     }
 
 
-def mock_prediction_payload(forge: WorldForge, *, request_id: str) -> JSON:
-    """Run one deterministic, non-mutating mock workflow for service smoke checks."""
+def prediction_payload(
+    forge: WorldForge,
+    payload: JSON,
+    *,
+    provider: str,
+    request_id: str,
+) -> JSON:
+    """Run one deterministic, non-mutating prediction workflow for service smoke checks."""
 
-    world = forge.create_world("service-smoke", provider="mock")
+    world_id = str(payload.get("world_id", "service-smoke"))
+    world = forge.create_world(world_id, provider=provider)
     world.add_object(
         SceneObject(
             "cube",
@@ -176,7 +183,14 @@ def mock_prediction_payload(forge: WorldForge, *, request_id: str) -> JSON:
             BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
         )
     )
-    prediction = world.predict(Action.move_to(0.2, 0.5, 0.0), steps=1, provider="mock")
+    target = payload.get("target")
+    if isinstance(target, dict):
+        x = target.get("x", 0.2)
+        y = target.get("y", 0.5)
+        z = target.get("z", 0.0)
+    else:
+        x, y, z = 0.2, 0.5, 0.0
+    prediction = world.predict(Action.move_to(x, y, z), steps=1, provider=provider)
     return {
         "request_id": request_id,
         "provider": prediction.provider,
@@ -187,33 +201,6 @@ def mock_prediction_payload(forge: WorldForge, *, request_id: str) -> JSON:
             "object_count": world.object_count,
             "step": world.step,
         },
-    }
-
-
-def generate_payload(
-    forge: WorldForge,
-    payload: JSON,
-    *,
-    provider: str,
-    request_id: str,
-) -> JSON:
-    """Run the configurable provider generate workflow with explicit inputs."""
-
-    prompt = payload.get("prompt", "service host smoke clip")
-    duration_seconds = payload.get("duration_seconds", 1.0)
-    clip = forge.generate(
-        prompt,
-        provider=provider,
-        duration_seconds=duration_seconds,
-    )
-    return {
-        "request_id": request_id,
-        "provider": str(clip.metadata.get("provider", provider)),
-        "duration_seconds": clip.duration_seconds,
-        "fps": clip.fps,
-        "resolution": list(clip.resolution),
-        "frame_count": len(clip.frames),
-        "metadata": clip.metadata,
     }
 
 
@@ -346,21 +333,22 @@ def _providers_payload(forge: WorldForge, _config: ServiceConfig, request_id: st
 
 def _mock_predict_workflow_payload(
     forge: WorldForge,
-    _config: ServiceConfig,
+    config: ServiceConfig,
     request_id: str,
-    _body: JSON,
+    body: JSON,
 ) -> JSON:
-    return mock_prediction_payload(forge, request_id=request_id)
+    provider = str(body.get("provider") or config.provider)
+    return prediction_payload(forge, body, provider=provider, request_id=request_id)
 
 
-def _generate_workflow_payload(
+def _predict_workflow_payload(
     forge: WorldForge,
     config: ServiceConfig,
     request_id: str,
     body: JSON,
 ) -> JSON:
     provider = str(body.get("provider") or config.provider)
-    return generate_payload(forge, body, provider=provider, request_id=request_id)
+    return prediction_payload(forge, body, provider=provider, request_id=request_id)
 
 
 _GET_ROUTES: dict[str, GetRoute] = {
@@ -371,7 +359,7 @@ _GET_ROUTES: dict[str, GetRoute] = {
 
 _POST_ROUTES: dict[str, PostRoute] = {
     "/workflows/mock-predict": _mock_predict_workflow_payload,
-    "/workflows/generate": _generate_workflow_payload,
+    "/workflows/predict": _predict_workflow_payload,
 }
 
 

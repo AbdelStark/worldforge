@@ -171,16 +171,16 @@ def test_runtime_markers_require_explicit_opt_in() -> None:
 
 
 def test_provider_profile_reports_missing_any_env_group() -> None:
-    reason = provider_profile_skip_reason("runway", {})
+    reason = provider_profile_skip_reason("leworldmodel", {})
 
     assert reason == (
-        "provider profile 'runway' is not configured: "
-        "missing RUNWAYML_API_SECRET or RUNWAY_API_SECRET"
+        "provider profile 'leworldmodel' is not configured: "
+        "missing LEWORLDMODEL_POLICY or LEWM_POLICY"
     )
 
 
 def test_provider_profile_accepts_any_env_alias() -> None:
-    reason = provider_profile_skip_reason("runway", {"RUNWAY_API_SECRET": "secret"})
+    reason = provider_profile_skip_reason("leworldmodel", {"LEWM_POLICY": "pusht/lewm"})
 
     assert reason is None
 
@@ -197,9 +197,7 @@ def test_marker_definitions_cover_runtime_profiles() -> None:
     assert "live:" in definitions
     assert "provider_profile(name)" in definitions
     assert set(PROVIDER_RUNTIME_PROFILES_BY_NAME) == {
-        "cosmos",
         "cosmos-policy",
-        "runway",
         "leworldmodel",
         "gr00t",
         "lerobot",
@@ -241,18 +239,18 @@ def test_pytest_plugin_runs_configured_provider_profile(
         @pytest.mark.live
         @pytest.mark.network
         @pytest.mark.credentialed
-        @pytest.mark.provider_profile("runway")
-        def test_runway_runtime():
+        @pytest.mark.provider_profile("leworldmodel")
+        def test_leworldmodel_runtime():
             assert True
     """)
-    monkeypatch.setenv("RUNWAY_API_SECRET", "test-secret")
+    monkeypatch.setenv("LEWM_POLICY", "pusht/lewm")
 
     result = pytester.runpytest(
         "--run-live",
         "--run-network",
         "--run-credentialed",
         "--provider-profile",
-        "runway",
+        "leworldmodel",
     )
 
     result.assert_outcomes(passed=1)
@@ -263,15 +261,17 @@ def test_pytest_plugin_skips_unselected_provider_profile(pytester: pytest.Pytest
         import pytest
 
         @pytest.mark.live
-        @pytest.mark.provider_profile("runway")
-        def test_runway_runtime():
+        @pytest.mark.provider_profile("leworldmodel")
+        def test_leworldmodel_runtime():
             raise AssertionError("should be skipped before test body runs")
     """)
 
-    result = pytester.runpytest("-rs", "--run-live", "--provider-profile", "cosmos")
+    result = pytester.runpytest("-rs", "--run-live", "--provider-profile", "cosmos-policy")
 
     result.assert_outcomes(skipped=1)
-    result.stdout.fnmatch_lines(["*selected provider profile is 'cosmos', not 'runway'*"])
+    result.stdout.fnmatch_lines(
+        ["*selected provider profile is 'cosmos-policy', not 'leworldmodel'*"]
+    )
 
 
 class _PluginOptionGroup:
@@ -356,33 +356,37 @@ def test_pytest_plugin_direct_hooks_cover_runtime_profile_branches(
     plugin.pytest_configure(config)  # type: ignore[arg-type]
     assert any(definition.startswith("live:") for definition in config.marker_definitions)
 
-    monkeypatch.delenv("COSMOS_BASE_URL", raising=False)
+    monkeypatch.delenv("COSMOS_POLICY_BASE_URL", raising=False)
     items = [
         _PluginItem(closest_markers={"gpu"}),
-        _PluginItem(provider_markers=[_PluginMarker("runway")]),
+        _PluginItem(provider_markers=[_PluginMarker("leworldmodel")]),
         _PluginItem(provider_markers=[_PluginMarker()]),
     ]
     plugin.pytest_collection_modifyitems(config, items)  # type: ignore[arg-type]
     assert items[0].skip_reasons == ["requires an explicit --run-gpu opt-in"]
-    assert items[1].skip_reasons == ["provider profile 'runway' requires --provider-profile runway"]
+    assert items[1].skip_reasons == [
+        "provider profile 'leworldmodel' requires --provider-profile leworldmodel"
+    ]
     assert items[2].skip_reasons == ["provider profile '' requires --provider-profile "]
 
-    selected_config = _PluginConfig(selected_provider_profile="cosmos")
-    runway_item = _PluginItem(provider_markers=[_PluginMarker("runway")])
-    cosmos_item = _PluginItem(provider_markers=[_PluginMarker("cosmos")])
+    selected_config = _PluginConfig(selected_provider_profile="cosmos-policy")
+    leworldmodel_item = _PluginItem(provider_markers=[_PluginMarker("leworldmodel")])
+    cosmos_policy_item = _PluginItem(provider_markers=[_PluginMarker("cosmos-policy")])
     non_string_item = _PluginItem(provider_markers=[_PluginMarker(123)])
     plugin.pytest_collection_modifyitems(  # type: ignore[arg-type]
         selected_config,
-        [runway_item, cosmos_item, non_string_item],
+        [leworldmodel_item, cosmos_policy_item, non_string_item],
     )
-    assert runway_item.skip_reasons == ["selected provider profile is 'cosmos', not 'runway'"]
-    assert cosmos_item.skip_reasons == [
-        "provider profile 'cosmos' is not configured: missing COSMOS_BASE_URL"
+    assert leworldmodel_item.skip_reasons == [
+        "selected provider profile is 'cosmos-policy', not 'leworldmodel'"
     ]
-    assert non_string_item.skip_reasons == ["selected provider profile is 'cosmos', not ''"]
+    assert cosmos_policy_item.skip_reasons == [
+        "provider profile 'cosmos-policy' is not configured: missing COSMOS_POLICY_BASE_URL"
+    ]
+    assert non_string_item.skip_reasons == ["selected provider profile is 'cosmos-policy', not ''"]
 
-    monkeypatch.setenv("COSMOS_BASE_URL", "https://cosmos.example.test")
-    configured_item = _PluginItem(provider_markers=[_PluginMarker("cosmos")])
+    monkeypatch.setenv("COSMOS_POLICY_BASE_URL", "https://cosmos-policy.example.test")
+    configured_item = _PluginItem(provider_markers=[_PluginMarker("cosmos-policy")])
     plugin.pytest_collection_modifyitems(  # type: ignore[arg-type]
         selected_config,
         [configured_item],

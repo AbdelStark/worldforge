@@ -31,9 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEMO_SHOWCASES = ROOT / "scripts" / "demo_showcases.py"
 
 REMOTE_ENV_VARS = (
-    "COSMOS_BASE_URL",
-    "RUNWAYML_API_SECRET",
-    "RUNWAY_API_SECRET",
+    "COSMOS_POLICY_BASE_URL",
     "LEWORLDMODEL_POLICY",
     "LEWM_POLICY",
     "LEROBOT_POLICY_PATH",
@@ -51,7 +49,7 @@ def test_known_workflows_are_listed_in_display_order() -> None:
     names = list_workflow_names()
     workflows = list_workflows()
     assert names == tuple(spec.name for spec in workflows)
-    assert "generate-only" in names
+    assert "predict-only" in names
     assert "policy-plus-score" in names
     assert "evaluation-physics" in names
 
@@ -132,34 +130,55 @@ def test_policy_plus_score_workflow_lists_both_provider_pools(monkeypatch, tmp_p
     assert any("score" in action for action in negotiation.recommended_actions)
 
 
-def test_workflow_becomes_ready_once_runtime_env_is_set(monkeypatch, tmp_path) -> None:
+def test_score_workflow_becomes_ready_with_registered_score_provider(monkeypatch, tmp_path) -> None:
     _clear_remote_env(monkeypatch)
-    monkeypatch.setenv("COSMOS_BASE_URL", "https://cosmos.example/api")
     forge = WorldForge(state_dir=tmp_path)
-    report = negotiate(["generate-only"], forge=forge)
+
+    class _ReadyScoreProvider(BaseProvider):
+        def __init__(self) -> None:
+            super().__init__(
+                name="ready-score",
+                capabilities=ProviderCapabilities(score=True),
+                profile=ProviderProfileSpec(
+                    description="Ready local score provider.",
+                    is_local=True,
+                    deterministic=True,
+                    requires_credentials=False,
+                ),
+            )
+
+        def health(self) -> ProviderHealth:
+            return ProviderHealth(
+                name=self.name,
+                healthy=True,
+                latency_ms=0.0,
+                details="ready",
+            )
+
+    forge.register_provider(_ReadyScoreProvider())
+    report = negotiate(["score-only"], forge=forge)
     negotiation = report.workflows[0]
-    # generate-only is satisfied by mock alone; the test still confirms cosmos is no longer
-    # blocked on missing-config now that COSMOS_BASE_URL is set.
     assert negotiation.ready is True
     requirement = negotiation.requirements[0]
-    cosmos = next((status for status in requirement.candidates if status.name == "cosmos"), None)
-    assert cosmos is not None
-    assert cosmos.readiness != "missing-config"
+    ready_score = next(status for status in requirement.candidates if status.name == "ready-score")
+    assert ready_score.readiness == "ready"
 
 
-def test_unsupported_capability_for_unconfigured_provider_classifies_correctly(
+def test_unconfigured_score_provider_classifies_missing_config(
     monkeypatch,
     tmp_path,
 ) -> None:
     _clear_remote_env(monkeypatch)
     forge = WorldForge(state_dir=tmp_path)
-    report = negotiate(["generate-only"], forge=forge)
+    report = negotiate(["score-only"], forge=forge)
     negotiation = report.workflows[0]
     requirement = negotiation.requirements[0]
-    cosmos = next(status for status in requirement.candidates if status.name == "cosmos")
-    assert cosmos.capability_compatible is True
-    assert cosmos.readiness == "missing-config"
-    assert "COSMOS_BASE_URL" in (cosmos.reason or "")
+    leworldmodel = next(
+        status for status in requirement.candidates if status.name == "leworldmodel"
+    )
+    assert leworldmodel.capability_compatible is True
+    assert leworldmodel.readiness == "missing-config"
+    assert "LEWORLDMODEL_POLICY" in (leworldmodel.reason or "")
 
 
 def test_negotiate_default_covers_every_workflow(monkeypatch, tmp_path) -> None:
@@ -215,9 +234,9 @@ def test_capability_negotiation_preflight_demo_preserves_blockers(tmp_path) -> N
 def test_workflow_negotiation_to_dict_round_trip(tmp_path, monkeypatch) -> None:
     _clear_remote_env(monkeypatch)
     forge = WorldForge(state_dir=tmp_path)
-    report = negotiate(["generate-only"], forge=forge)
+    report = negotiate(["predict-only"], forge=forge)
     payload = report.workflows[0].to_dict()
-    assert payload["workflow"]["name"] == "generate-only"
+    assert payload["workflow"]["name"] == "predict-only"
     assert payload["ready"] is True
     assert payload["requirements"][0]["candidates"]
 

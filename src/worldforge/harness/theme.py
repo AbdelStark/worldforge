@@ -1,4 +1,4 @@
-"""Color palette for TheWorldHarness themes.
+"""Color palette for robotics showcase themes.
 
 This module defines the raw color tokens used by ``worldforge-dark``,
 ``worldforge-light``, and ``worldforge-high-contrast``. It is deliberately

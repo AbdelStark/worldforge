@@ -5,8 +5,8 @@ The concrete model implementations live in narrower leaf modules:
 - :mod:`worldforge.scene_models` owns geometry, actions, scene objects, and local world-history
   entries.
 - :mod:`worldforge.structured_goals` owns structured planning-goal parsing and serialization.
-- :mod:`worldforge.capability_results` owns capability return payloads such as media,
-  reasoning, embedding, score, and policy results.
+- :mod:`worldforge.capability_results` owns capability return payloads such as embedding,
+  score, and policy results.
 - :mod:`worldforge._model_utils` owns public framework errors and shared JSON/native validators.
 - :mod:`worldforge.provider_models` owns provider-facing profile, lifecycle, event, and request
   policy contracts.
@@ -38,20 +38,12 @@ from worldforge.capability_results import (  # noqa: F401
     ActionPolicyResult,
     ActionScoreResult,
     EmbeddingResult,
-    ReasoningResult,
-    VideoClip,
-    _positive_int_dimension,
     _validate_score_best_index_direction,
     _validated_action_scores,
     _validated_score_best_index,
     _validated_score_direction,
     _validated_score_metadata,
     _validated_score_provider,
-    _validated_video_duration,
-    _validated_video_fps,
-    _validated_video_frames,
-    _validated_video_metadata,
-    _validated_video_resolution,
 )
 from worldforge.provider_diagnostics import (  # noqa: F401
     PROVIDER_LIFECYCLE_HOOKS,
@@ -65,7 +57,6 @@ from worldforge.provider_diagnostics import (  # noqa: F401
 from worldforge.provider_events import ProviderEvent  # noqa: F401
 from worldforge.provider_profiles import (  # noqa: F401
     CAPABILITY_NAMES,
-    GenerationOptions,
     ProviderCapabilities,
     ProviderInfo,
     ProviderProfile,

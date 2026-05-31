@@ -98,12 +98,18 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
     payload = flow_to_dicts()
     assert payload[0]["command"] == "uv run worldforge-demo-leworldmodel"
     assert payload[1]["focus"] == "policy plus score planning"
-    assert payload[2]["command"] == "uv run --extra harness worldforge-harness --flow cosmos-policy"
-    assert payload[3]["command"] == "uv run --extra harness worldforge-harness --flow gr00t-replay"
-    assert payload[4]["command"] == (
-        "uv run --extra harness worldforge-harness --flow robotics-compare"
+    assert payload[2]["command"] == (
+        "uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison"
     )
-    assert payload[5]["command"] == "uv run worldforge harness --flow diagnostics"
+    assert payload[3]["command"] == (
+        "uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison"
+    )
+    assert payload[4]["command"] == (
+        "uv run python scripts/demo_showcases.py run embodied-policy-replay-comparison"
+    )
+    assert payload[5]["command"] == (
+        "uv run worldforge benchmark --provider mock --operation predict --operation embed"
+    )
     assert payload[6]["command"] == "uv run worldforge provider workbench mock"
 
 
@@ -1271,16 +1277,13 @@ def test_harness_runs_diagnostics_flow(tmp_path) -> None:
     assert len(run.steps) == 6
     assert len(run.metrics) == 6
     assert run.summary["registered_providers"] == ["mock"]
-    assert run.summary["benchmark_operation_count"] == 5
+    assert run.summary["benchmark_operation_count"] == 2
     assert run.summary["mock_supported_operations"] == [
         "predict",
-        "reason",
-        "generate",
-        "transfer",
         "embed",
     ]
-    assert run.summary["benchmark_event_count"] >= 10
-    assert "benchmark_operations: predict, reason, generate, transfer, embed" in run.transcript
+    assert run.summary["benchmark_event_count"] >= 4
+    assert "benchmark_operations: predict, embed" in run.transcript
 
 
 def test_harness_runs_workbench_flow(tmp_path) -> None:
@@ -1522,10 +1525,10 @@ def test_run_history_markdown_and_filter_boundaries(tmp_path: Path) -> None:
     all_records = list_run_history(tmp_path, limit=1)
     assert len(all_records) == 1
     markdown = run_history_markdown(all_records)
-    assert "# TheWorldHarness Run History" in markdown
+    assert "# WorldForge Run History" in markdown
     assert "Rerun Commands" in markdown
     assert run_history_markdown(()) == (
-        "# TheWorldHarness Run History\n\n"
+        "# WorldForge Run History\n\n"
         "| Run | Kind | Status | Provider | Capability | Artifacts | Recovery |\n"
         "| --- | --- | --- | --- | --- | --- | --- |\n"
         "| - | - | - | - | - | - | - |\n\n"
@@ -1533,8 +1536,8 @@ def test_run_history_markdown_and_filter_boundaries(tmp_path: Path) -> None:
         "- No preserved runs matched the filter.\n"
     )
 
-    assert not list_run_history(tmp_path, filters=RunHistoryFilter(provider="runway"))
-    assert not list_run_history(tmp_path, filters=RunHistoryFilter(capability="generate"))
+    assert not list_run_history(tmp_path, filters=RunHistoryFilter(provider="leworldmodel"))
+    assert not list_run_history(tmp_path, filters=RunHistoryFilter(capability="score"))
     assert not list_run_history(tmp_path, filters=RunHistoryFilter(status="cancelled"))
     assert not list_run_history(
         tmp_path,
@@ -1617,7 +1620,7 @@ def test_preserved_generic_failed_run_uses_recovery_fallbacks(tmp_path: Path) ->
     records = list_run_history(tmp_path)
     record = records[0]
     assert record.provider == ""
-    assert record.rerun_command == "worldforge harness --flow custom-flow"
+    assert record.rerun_command == "worldforge runs list --status failed"
     assert record.failure_summary == "custom failure"
     assert record.safe_artifact_types == ("summary", "json")
     assert record.recovery_command is not None
@@ -1702,14 +1705,10 @@ def test_run_history_module_imports_without_textual(monkeypatch: pytest.MonkeyPa
             importlib.import_module("worldforge.harness.run_history_rendering")
         )
         history_module = importlib.reload(importlib.import_module("worldforge.harness.run_history"))
-        view_module = importlib.reload(
-            importlib.import_module("worldforge.harness.run_history_view")
-        )
         assert hasattr(history_module, "list_run_history")
         assert history_module.RunHistoryRecord is models_module.RunHistoryRecord
         assert history_module.RunHistoryFilter is models_module.RunHistoryFilter
         assert history_module.run_history_markdown is rendering_module.run_history_markdown
-        assert hasattr(view_module, "run_history_detail_text")
     finally:
         if saved_textual is not None:
             sys.modules["textual"] = saved_textual
@@ -1720,7 +1719,7 @@ def test_run_history_module_imports_without_textual(monkeypatch: pytest.MonkeyPa
 def test_eval_capability_mismatch_propagates(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
     with pytest.raises(WorldForgeError, match="missing required capabilities"):
-        eval_run_artifacts(forge, "generation", "leworldmodel")
+        eval_run_artifacts(forge, "physics", "leworldmodel")
 
 
 def _preserved_run_history_eval(workspace_dir: Path):

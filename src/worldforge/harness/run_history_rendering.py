@@ -1,4 +1,4 @@
-"""Markdown rendering helpers for preserved TheWorldHarness runs."""
+"""Markdown rendering helpers for preserved runs."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ def run_history_markdown(records: tuple[RunHistoryRecord, ...]) -> str:
     """Render preserved run history as Markdown."""
 
     lines = [
-        "# TheWorldHarness Run History",
+        "# WorldForge Run History",
         "",
         *_run_history_table_lines(records),
         "",

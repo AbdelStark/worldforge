@@ -6,7 +6,7 @@ Taxonomy category: JEPA latent predictive world model
 
 `jepa` is the public, score-only JEPA adapter. The first runtime surface is intentionally narrow:
 it scores candidate action tensors with upstream JEPA-WM models and returns `ActionScoreResult`.
-It does not expose `predict`, `embed`, `generate`, `transfer`, or `reason`.
+It does not expose `predict`, `embed`, `policy`, or `plan`.
 
 ## Provider Selection RFC
 

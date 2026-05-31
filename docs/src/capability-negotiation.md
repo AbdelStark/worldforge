@@ -12,18 +12,12 @@ Out of the box, WorldForge knows the following workflow shapes:
 | Workflow | Required capabilities |
 | --- | --- |
 | `predict-only` | predict |
-| `generate-only` | generate |
 | `score-only` | score |
 | `policy-only` | policy |
-| `transfer-only` | transfer |
-| `reason-only` | reason |
 | `embed-only` | embed |
 | `policy-plus-score` | policy, score |
-| `evaluation-generation` | generate |
 | `evaluation-physics` | predict |
 | `evaluation-planning` | predict |
-| `evaluation-reasoning` | reason |
-| `evaluation-transfer` | transfer |
 
 The `evaluation-*` workflows mirror the built-in evaluation suites' required capabilities.
 Hosts can register additional providers through `WorldForge.register_provider()`; the
@@ -34,7 +28,7 @@ negotiation report includes them automatically.
 ```bash
 uv run worldforge negotiate --list
 uv run worldforge negotiate --workflow policy-plus-score
-uv run worldforge negotiate --workflow generate-only --format json
+uv run worldforge negotiate --workflow score-only --format json
 uv run worldforge negotiate                                # every workflow at once
 ```
 
@@ -93,7 +87,7 @@ Public surface (provisional under
 | State | Meaning |
 | --- | --- |
 | `ready` | Provider is registered, configured, healthy, and supports the capability. |
-| `missing-config` | Provider supports the capability but its runtime profile is missing required environment (e.g. `COSMOS_BASE_URL`). |
+| `missing-config` | Provider supports the capability but its runtime profile is missing required environment (e.g. `LEWORLDMODEL_POLICY`). |
 | `missing-dependency` | Provider is registered and configured but its health check is unhealthy (e.g. an optional runtime is not reachable). |
 | `unsupported` | Provider is in the catalog but does not advertise the capability. |
 | `not-registered` | Provider is in the catalog and would satisfy the capability but is not currently registered on this forge. |
@@ -102,7 +96,7 @@ Public surface (provisional under
 
 Each blocked capability emits one focused recommendation. Examples:
 
-- `Configure provider 'cosmos' to serve capability 'generate': provider profile 'cosmos' is not configured: missing COSMOS_BASE_URL.`
+- `Configure provider 'leworldmodel' to serve capability 'score': provider profile 'leworldmodel' is not configured: missing LEWORLDMODEL_POLICY.`
 - `Register or configure a provider that supports capability 'score'.`
 
 These are human-readable diagnostics, not machine-parseable command strings. Follow the

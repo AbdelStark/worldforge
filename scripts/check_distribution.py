@@ -71,7 +71,6 @@ SDIST_REQUIRED_SUFFIXES = (
 
 REQUIRED_CONSOLE_SCRIPTS = (
     "worldforge",
-    "worldforge-harness",
     "worldforge-demo-leworldmodel",
     "worldforge-demo-lerobot",
     "worldforge-demo-rerun",

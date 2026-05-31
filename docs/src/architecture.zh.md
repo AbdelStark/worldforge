@@ -2,7 +2,7 @@
 
 WorldForge 是围绕可测试的物理 AI 世界模型工作流的 Python 集成层。其职责是通过诚实的类型化能力接口暴露每个提供方、验证边界，并让宿主应用程序能够组合规划、预测、生成、评估、持久化和可观测性，而无需假设每个提供方对"世界模型"的理解都相同。
 
-该架构以能力专用契约为核心。LeWorldModel 对动作候选集进行打分。GR00T 和 LeRobot 选择具身动作块。Cosmos 和 Runway 返回媒体工件。框架保持这些接口的独立性，再通过类型化的规划、评估、诊断和可观测性将其组合起来。
+该架构以能力专用契约为核心。LeWorldModel 对动作候选集进行打分。GR00T、Cosmos-Policy 和 LeRobot 选择具身动作块。框架保持这些接口的独立性，再通过类型化的规划、评估、诊断和可观测性将其组合起来。
 
 ## 系统全图
 
@@ -18,9 +18,9 @@ worldforge/
 |   |-- _model_utils.py    # 共享 JSON、ID、数值与概率验证辅助工具
 |   |-- models.py          # 公共兼容门面与模型重导出
 |   |-- scene_models.py    # 几何、动作、场景对象、目标与历史契约
-|   |-- capability_results.py # 媒体、推理、嵌入、评分与策略结果
+|   |-- capability_results.py # 嵌入、评分与策略结果
 |   |-- provider_models.py # 提供方面向契约的兼容门面
-|   |-- provider_profiles.py # 提供方能力、生成选项与元数据
+|   |-- provider_profiles.py # 提供方能力与元数据
 |   |-- provider_request_policy.py # 重试/退避与操作超时策略
 |   |-- provider_events.py # 提供方事件验证与序列化
 |   |-- provider_diagnostics.py # 提供方健康、生命周期就绪与 doctor 报告
@@ -33,10 +33,9 @@ worldforge/
 |   |   |-- mock.py        # 确定性的参考提供方
 |   |   |-- observable.py  # 用于协议实现的事件/健康包装器
 |   |   |-- leworldmodel.py# 本地 JEPA 代价模型适配器
-|   |   |-- cosmos.py      # HTTP 视频生成适配器
 |   |   |-- gr00t.py       # 由宿主方持有的具身策略客户端适配器
+|   |   |-- cosmos_policy.py # 由宿主方持有的 Cosmos-Policy 策略适配器
 |   |   |-- lerobot.py     # 由宿主方持有的 LeRobot 策略适配器
-|   |   |-- runway.py      # HTTP 视频生成/迁移适配器
 |   |   `-- remote.py      # JEPA 与 Genie 的脚手架适配器
 |   |-- observability.py   # ProviderEvent 数据汇
 |   |-- rerun.py           # 可选的 Rerun 事件与工件桥接
@@ -85,10 +84,9 @@ worldforge/
 +-------------------+
 | 类型化结果        |
 | Prediction        |
-| VideoClip         |
 | ActionScoreResult |
 | ActionPolicyResult|
-| ReasoningResult   |
+| EmbeddingResult   |
 +-------------------+
 ```
 
@@ -100,8 +98,8 @@ flowchart TD
     Forge[WorldForge facade\nprovider + capability registries,\ndiagnostics, persistence]
     World[World\nstate, history, planning]
     Provider[Provider adapter or capability impl\ncapability contract]
-    Upstream[Upstream runtime or API\nLeWM, GR00T, LeRobot, Cosmos, Runway, mock]
-    Models[Typed public models\nPrediction, VideoClip, ActionScoreResult, ActionPolicyResult]
+    Upstream[Upstream runtime or API\nLeWM, GR00T, LeRobot, Cosmos-Policy, mock]
+    Models[Typed public models\nPrediction, EmbeddingResult, ActionScoreResult, ActionPolicyResult]
     Obs[ProviderEvent sinks\nlogs, recorder, metrics]
     Store[Local JSON state]
 
@@ -135,7 +133,7 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 
 `framework.py`
 
-- `WorldForge`：用于提供方注册、诊断、持久化辅助工具，以及提供方范围操作（如 `generate(...)`、`transfer(...)`、`reason(...)`、`embed(...)`、`score_actions(...)` 和 `select_actions(...)`）的顶层对象。
+- `WorldForge`：用于提供方注册、诊断、持久化辅助工具，以及提供方范围操作（如 `predict(...)`、`embed(...)`、`score_actions(...)` 和 `select_actions(...)`）的顶层对象。
 
 `_world.py`
 
@@ -159,7 +157,7 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 
 `capability_results.py`
 
-- 公共能力返回载荷，如 `VideoClip`、`ReasoningResult`、`EmbeddingResult`、`ActionScoreResult` 和 `ActionPolicyResult`。
+- 公共能力返回载荷，如 `EmbeddingResult`、`ActionScoreResult` 和 `ActionPolicyResult`。
 
 `_model_utils.py`
 
@@ -168,7 +166,7 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 `provider_models.py` 与聚焦的提供方契约模块
 
 - `provider_models.py` 保留为旧导入路径的兼容门面。
-- `provider_profiles.py` 拥有 `ProviderCapabilities`、`GenerationOptions`、`ProviderInfo` 和 `ProviderProfile`。
+- `provider_profiles.py` 拥有 `ProviderCapabilities`、`ProviderInfo` 和 `ProviderProfile`。
 - `provider_request_policy.py` 拥有 `RetryPolicy`、`RequestOperationPolicy` 和 `ProviderRequestPolicy`。
 - `provider_events.py` 拥有 `ProviderEvent` 验证与序列化。
 - `provider_diagnostics.py` 拥有 `ProviderHealth`、`ProviderLifecycleStatus` 和 `DoctorReport`。
@@ -186,7 +184,7 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 
 `capabilities/__init__.py`
 
-- 用于窄范围集成的运行时可检查协议契约：`Cost`、`Policy`、`Generator`、`Predictor`、`Reasoner`、`Embedder`、`Transferer` 以及保留的 `Planner`。
+- 用于窄范围集成的运行时可检查协议契约：`Cost`、`Policy`、`Predictor`、`Embedder` 以及保留的 `Planner`。
 - `RunnableModel`，用于在一个逻辑模型下真正暴露多个能力协议的实现的可选捆绑包。
 
 `providers/observable.py`
@@ -205,13 +203,9 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 - 仅暴露 `score=True`。
 - 验证 `pixels`、`goal`、`action`、四维动作候选集、有限代价输出和方向一致的 `best_index`。
 
-`providers/cosmos.py` 和 `providers/runway.py`
+`providers/gr00t.py`、`providers/cosmos_policy.py` 和 `providers/lerobot.py`
 
-- 具有类型化请求策略、解析器边界、重试事件和工件验证的真实 HTTP 适配器。
-
-`providers/gr00t.py` 和 `providers/lerobot.py`
-
-- 用于 NVIDIA Isaac GR00T PolicyClient 和 Hugging Face LeRobot `PreTrainedPolicy` 推理的、由宿主方持有的策略适配器。
+- 用于 NVIDIA Isaac GR00T PolicyClient、Cosmos-Policy ALOHA `/act` 和 Hugging Face LeRobot `PreTrainedPolicy` 推理的、由宿主方持有的策略适配器。
 - 仅暴露 `policy=True`。
 - 需要显式的动作转换器，因为机器人动作与具体机器人形态相关。
 
@@ -264,20 +258,17 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 
 3. 工作流调用
    - world.predict(...) 需要 predict=True 的提供方
-   - forge.generate(...) 需要 generate=True
-   - forge.transfer(...) 需要 transfer=True
    - forge.select_actions(...) 需要 policy=True
    - world.plan(...) 可使用预测式、基于打分的、策略式或策略+打分规划
    - world.evaluate(...) 和基准测试框架按能力选择操作
 
 4. 提供方边界
-   - 提供方接收 JSON 世界快照、媒体请求、查询、嵌入请求、打分载荷或策略观测
+   - 提供方接收 JSON 世界快照、嵌入请求、打分载荷或策略观测
    - 适配器在网络/模型调用前尽可能在本地验证输入
    - 提供方在支持的情况下为成功、失败和重试发射 ProviderEvent 记录
 
 5. 结果边界
    - PredictionPayload 仅在验证后才更新世界状态
-   - VideoClip 验证媒体元数据及字节/源路径
    - ActionScoreResult 验证有限分数和方向一致的 best_index
    - ActionPolicyResult 验证可执行动作和 JSON 兼容的原始动作
    - ProviderError 附带上下文地暴露提供方/运行时失败
@@ -298,8 +289,7 @@ WorldForge 拥有框架边界。宿主方拥有该边界之外的生产运营。
 WorldForge(auto_register_remote=True)
   |
   |-- mock              始终注册
-  |-- cosmos            若设置了 COSMOS_BASE_URL
-  |-- runway            若设置了 RUNWAYML_API_SECRET 或 RUNWAY_API_SECRET
+  |-- cosmos-policy     若设置了 COSMOS_POLICY_BASE_URL
   |-- leworldmodel      若设置了 LEWORLDMODEL_POLICY 或 LEWM_POLICY
   |-- gr00t             若设置了 GROOT_POLICY_HOST
   |-- jepa              若设置了 JEPA_MODEL_NAME
@@ -340,7 +330,7 @@ world.predict(action)                         # 使用 world.provider
 world.predict(action, provider="other")       # 仅覆盖本次调用
 world.plan(..., provider="leworldmodel")      # 规划器/打分器提供方
 world.execute_plan(plan, provider="mock")     # 执行提供方
-forge.generate("prompt", generator=impl)      # 直接单次使用能力实例
+forge.score_actions("local-score", info={}, action_candidates=[{}])
 ```
 
 提供方查找对已注册的完整提供方和已注册的协议实现均基于名称。提供方分发基于能力。完整提供方绝不应宣传某项能力，除非对应方法已端到端实现；协议实现仅被索引到其结构性实现的方法所对应的注册表中。
@@ -566,12 +556,11 @@ BaseProvider 子类
 
 | 提供方 | 接口 | 主要能力 | 运行时类型 |
 | --- | --- | --- | --- |
-| `mock` | 已实现 | predict, generate, reason, embed, transfer | 确定性的本地代理 |
+| `mock` | 已实现 | predict, embed | 确定性的本地代理 |
 | `leworldmodel` | 可选运行时适配器 | score | 本地 JEPA 代价模型 |
 | `gr00t` | 可选运行时适配器 | policy | 由宿主方持有的 Isaac GR00T 策略客户端 |
+| `cosmos-policy` | 可选运行时适配器 | policy | 由宿主方持有的 Cosmos-Policy ALOHA 策略服务器 |
 | `lerobot` | 可选运行时适配器 | policy | 由宿主方持有的 LeRobot 策略检查点 |
-| `cosmos` | HTTP 适配器 | generate | 远程物理 AI 视频基础模型 API |
-| `runway` | HTTP 适配器 | generate, transfer | 远程视频生成 API |
 | `jepa` | 可选运行时适配器 | score | 由宿主方持有的 `facebookresearch/jepa-wms` torch-hub 运行时 |
 | `genie` | 脚手架 | 能力失败关闭 | 为未来交互式模拟器工作预留 |
 
@@ -639,7 +628,6 @@ Plan
 - 无效的公共输入会显式失败，而不是被静默强制转换
 - 打分提供方返回有限的分数和与 `lower_is_better` 匹配的 `best_index`
 - 策略提供方返回可执行动作并保留提供方原始动作
-- 远程媒体工件在返回 `VideoClip` 前拒绝不支持的内容类型
 - 提供方事件在事件数据汇记录前，对面向日志的目标、消息和元数据进行净化；签名 URL 查询字符串和明显的凭据字段会被脱敏
 
 ## 失败边界
@@ -655,8 +643,7 @@ WorldStateError
 
 ProviderError
   提供方凭据、可选依赖项失败、传输失败、格式错误的上游响应、
-  提供方特定的输入限制、过期的工件、无效的下载媒体、
-  不支持的提供方操作、格式错误的模型输出
+  提供方特定的输入限制、不支持的提供方操作、格式错误的模型输出
 ```
 
 边界规则：
@@ -665,7 +652,6 @@ ProviderError
 调用方输入错误     -> 尽可能在提供方调用前失败
 提供方/运行时错误  -> 附带提供方特定上下文的 ProviderError
 状态变更           -> 仅在提供方输出验证后进行
-远程工件           -> 在返回 VideoClip 前验证内容类型和主体
 打分输出           -> 在返回 Plan 前验证有限分数和方向一致的 best_index
 ```
 
@@ -695,7 +681,7 @@ ProviderError
 import logging
 from pathlib import Path
 
-from worldforge import WorldForge
+from worldforge import Action, WorldForge
 from worldforge.observability import (
     JsonLoggerSink,
     OpenTelemetryProviderEventSink,
@@ -720,8 +706,9 @@ forge = WorldForge(
     )
 )
 
-forge.generate("orbiting cube", "mock", duration_seconds=1.0)
-print(metrics.get("mock", "generate").to_dict())
+world = forge.create_world_from_prompt("cube", provider="mock")
+world.predict(Action(type="move_to", parameters={"target": {"x": 0.2, "y": 0.5, "z": 0.0}}))
+print(metrics.get("mock", "predict").to_dict())
 rerun_session.close()
 ```
 

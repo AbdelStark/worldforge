@@ -30,7 +30,7 @@ MAX_CAPTURE_CHARS = 4_000
 
 SECRET_PATTERN = re.compile(
     r"(api[_-]?key|authorization|bearer\s+[a-z0-9._~-]+|password|secret|signature|token=|"
-    r"x-amz-signature|runwayml_api_secret|nvidia_api_key)",
+    r"x-amz-signature|nvidia_api_key)",
     re.IGNORECASE,
 )
 HOST_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes|var/folders)/[^\s)`|]+")

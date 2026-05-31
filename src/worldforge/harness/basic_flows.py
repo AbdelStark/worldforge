@@ -1,4 +1,4 @@
-"""Checkout-safe non-robotics flow runners for TheWorldHarness."""
+"""Checkout-safe non-robotics flow runners for preserved showcase evidence."""
 
 from __future__ import annotations
 

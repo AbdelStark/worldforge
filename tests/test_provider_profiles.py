@@ -5,11 +5,11 @@ import math
 import pytest
 
 from worldforge import (
+    ActionScoreResult,
     DoctorReport,
     ProviderDoctorStatus,
     ProviderLifecycleResult,
     ProviderLifecycleStatus,
-    ReasoningResult,
     WorldForge,
     WorldForgeError,
 )
@@ -59,8 +59,6 @@ def test_worldforge_doctor_facade_delegates_to_diagnostics_helper(
 
 def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, monkeypatch) -> None:
     for env_var in (
-        "COSMOS_BASE_URL",
-        "NVIDIA_API_KEY",
         "COSMOS_POLICY_BASE_URL",
         "COSMOS_POLICY_API_TOKEN",
         "COSMOS_POLICY_TIMEOUT_SECONDS",
@@ -68,8 +66,6 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
         "COSMOS_POLICY_MODEL",
         "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
         "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
-        "RUNWAYML_API_SECRET",
-        "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",
         "LEWM_POLICY",
         "LEWORLDMODEL_CACHE_DIR",
@@ -104,32 +100,19 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     builtin_profiles = {profile.name: profile for profile in forge.builtin_provider_profiles()}
     assert {
         "mock",
-        "cosmos",
         "cosmos-policy",
-        "runway",
         "leworldmodel",
         "gr00t",
         "lerobot",
         "jepa",
         "genie",
     } <= set(builtin_profiles)
-    assert builtin_profiles["cosmos"].implementation_status == "beta"
-    assert builtin_profiles["cosmos"].required_env_vars == ["COSMOS_BASE_URL"]
-    assert builtin_profiles["cosmos"].request_policy is not None
-    assert builtin_profiles["cosmos"].request_policy.request.retry.max_attempts == 1
-    assert builtin_profiles["cosmos"].request_policy.health.retry.max_attempts == 3
     assert builtin_profiles["cosmos-policy"].implementation_status == "beta"
     assert builtin_profiles["cosmos-policy"].capabilities.enabled_names() == []
     assert builtin_profiles["cosmos-policy"].capabilities.predict is False
     assert builtin_profiles["cosmos-policy"].required_env_vars == ["COSMOS_POLICY_BASE_URL"]
     assert builtin_profiles["cosmos-policy"].request_policy is not None
     assert builtin_profiles["cosmos-policy"].request_policy.request.retry.max_attempts == 1
-    assert builtin_profiles["runway"].required_env_vars == [
-        "RUNWAYML_API_SECRET",
-        "RUNWAY_API_SECRET",
-    ]
-    assert builtin_profiles["runway"].request_policy is not None
-    assert builtin_profiles["runway"].request_policy.download.retry.max_attempts == 3
     assert builtin_profiles["leworldmodel"].implementation_status == "stable"
     assert builtin_profiles["leworldmodel"].capabilities.score is True
     assert builtin_profiles["leworldmodel"].capabilities.predict is False
@@ -159,9 +142,6 @@ def test_provider_profiles_and_doctor_report_include_known_scaffolds(tmp_path, m
     provider_statuses = {status.profile.name: status for status in report.providers}
     assert provider_statuses["mock"].registered is True
     assert provider_statuses["mock"].health.healthy is True
-    assert provider_statuses["cosmos"].registered is False
-    assert provider_statuses["cosmos"].health.healthy is False
-    assert any("COSMOS_BASE_URL" in issue for issue in report.issues)
     assert provider_statuses["cosmos-policy"].registered is False
     assert provider_statuses["cosmos-policy"].health.healthy is False
     assert any("COSMOS_POLICY_BASE_URL" in issue for issue in report.issues)
@@ -190,10 +170,10 @@ def test_doctor_capability_filter_includes_known_unregistered_providers(
     assert any("LEWORLDMODEL_POLICY" in issue for issue in report.issues)
 
 
-class _LifecycleReadyReasoner:
+class _LifecycleReadyCost:
     name = "lifecycle-ready"
     profile = ProviderProfileSpec(
-        description="Reasoner with lifecycle hooks for diagnostics.",
+        description="Cost model with lifecycle hooks for diagnostics.",
         implementation_status="experimental",
         deterministic=True,
     )
@@ -220,12 +200,12 @@ class _LifecycleReadyReasoner:
             evidence={"cache": "prepared"},
         )
 
-    def reason(self, query: str, *, world_state=None) -> ReasoningResult:
-        return ReasoningResult(
+    def score_actions(self, *, info, action_candidates) -> ActionScoreResult:
+        return ActionScoreResult(
             provider=self.name,
-            answer=f"answer: {query}",
-            confidence=0.9,
-            evidence=["fixture"],
+            scores=[0.1],
+            best_index=0,
+            metadata={"fixture": info.get("fixture", "lifecycle")},
         )
 
 
@@ -503,8 +483,8 @@ def test_provider_lifecycle_status_covers_noop_ready_skipped_failed_and_teardown
     assert skipped_status.ready is False
     assert "WF_LIFECYCLE_REQUIRED" in skipped_status.skip_reason
 
-    ready_reasoner = _LifecycleReadyReasoner()
-    forge.register_reasoner(ready_reasoner)
+    ready_cost = _LifecycleReadyCost()
+    forge.register_cost(ready_cost)
     ready_status = forge.provider_lifecycle_status("lifecycle-ready", run_warmup=True)
     assert ready_status.status == "ready"
     assert ready_status.ready is True

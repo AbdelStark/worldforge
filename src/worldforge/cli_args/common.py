@@ -8,7 +8,7 @@ from pathlib import Path
 from worldforge.models import CAPABILITY_NAMES
 
 CLI_DESCRIPTION = (
-    "CLI for WorldForge provider diagnostics, prediction, generation, evaluation, "
+    "CLI for WorldForge provider diagnostics, prediction, planning, evaluation, "
     "benchmarking, and runnable demos."
 )
 
@@ -29,7 +29,6 @@ CLI_EPILOG = """Common commands:
   worldforge provider info mock
   worldforge provider contract mock
   worldforge provider workbench mock
-  worldforge harness --list
   worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
   worldforge eval --suite planning --provider mock --format json
   worldforge benchmark --provider mock --iterations 5 --format json
@@ -119,28 +118,6 @@ def _add_provider_repeat_argument(parser: argparse.ArgumentParser, *, help_text:
         action="append",
         default=None,
         help=help_text,
-    )
-
-
-def _add_generation_arguments(
-    parser: argparse.ArgumentParser,
-    *,
-    include_fps: bool = True,
-) -> None:
-    parser.add_argument("--image", help="Input image path, URL, or provider-native reference.")
-    parser.add_argument("--video", help="Input video path, URL, or provider-native reference.")
-    parser.add_argument("--model", help="Provider model identifier.")
-    parser.add_argument("--ratio", help="Provider aspect-ratio option.")
-    parser.add_argument("--size", help="Provider resolution or size option.")
-    if include_fps:
-        parser.add_argument("--fps", type=float, help="Requested frames per second.")
-    parser.add_argument("--seed", type=int, help="Provider seed when supported.")
-    parser.add_argument("--negative-prompt", help="Negative prompt when supported.")
-    parser.add_argument(
-        "--reference-image",
-        action="append",
-        default=[],
-        help="Reference image path, URL, or data URI. Can be repeated.",
     )
 
 

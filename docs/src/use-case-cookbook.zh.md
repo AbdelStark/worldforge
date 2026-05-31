@@ -32,13 +32,13 @@
 | 首要排查步骤 | 在运行 `scripts/robotics-showcase --health-only` 之前先运行 `uv run worldforge-demo-lerobot` |
 | 边界 | 仅限确定性重放；机器人硬件、控制器、安全检查和检查点由宿主方持有 |
 
-### 方案 4：远程媒体干运行
+### 方案 4：提供方事件脱敏干运行
 
 | 字段 | 值 |
 | --- | --- |
-| 命令 | `uv run python scripts/demo_showcases.py run remote-media-dry-run --workspace-dir .worldforge/demo-showcases --overwrite` |
-| 预期输出 | 经脱敏处理的 Cosmos 成功事件和 Runway 工件过期事件 |
-| 工件 | `.worldforge/demo-showcases/remote-media-dry-run/remote-media-events.json` |
+| 命令 | `uv run python scripts/demo_showcases.py run provider-event-redaction-dry-run --workspace-dir .worldforge/demo-showcases --overwrite` |
+| 预期输出 | 经脱敏处理的提供方事件夹具 |
+| 工件 | `.worldforge/demo-showcases/provider-event-redaction-dry-run/provider-event-redaction-events.json` |
 | 首要排查步骤 | 在实时冒烟测试前检查提供方事件的 `target`、`message` 和 `metadata` 是否经过脱敏处理 |
 | 边界 | 仅限夹具支撑的干运行；不进行付费 API 调用，亦不保证工件保留 |
 

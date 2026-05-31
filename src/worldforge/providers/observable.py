@@ -30,8 +30,6 @@ from worldforge.models import (
     ProviderLifecycleResult,
     ProviderLifecycleStatus,
     ProviderProfile,
-    ReasoningResult,
-    VideoClip,
     WorldForgeError,
 )
 from worldforge.providers.base import (
@@ -51,21 +49,15 @@ ProviderEventHandler = Callable[[ProviderEvent], None]
 CAPABILITY_METHOD_MAP: dict[str, tuple[str, str]] = {
     "policy": ("select_actions", "policy"),
     "cost": ("score_actions", "score"),
-    "generator": ("generate", "generate"),
     "predictor": ("predict", "predict"),
-    "reasoner": ("reason", "reason"),
     "embedder": ("embed", "embed"),
-    "transferer": ("transfer", "transfer"),
     "planner": ("plan", "plan"),
 }
 _CAPABILITY_RESULT_TYPES: dict[str, type] = {
     "policy": ActionPolicyResult,
     "cost": ActionScoreResult,
-    "generator": VideoClip,
     "predictor": PredictionPayload,
-    "reasoner": ReasoningResult,
     "embedder": EmbeddingResult,
-    "transferer": VideoClip,
     "planner": ActionPolicyResult,
 }
 

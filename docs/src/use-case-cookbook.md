@@ -34,15 +34,15 @@ matching demo workflow when you want a preserved showcase run for issue or relea
 | First triage step | run `uv run worldforge-demo-lerobot` before `scripts/robotics-showcase --health-only` |
 | Boundary | deterministic replay only; robot hardware, controllers, safety checks, and checkpoints stay host-owned |
 
-### Recipe 4: Remote Media Dry Run
+### Recipe 4: Provider Event Redaction Dry Run
 
 | Field | Value |
 | --- | --- |
-| Command | `uv run python scripts/demo_showcases.py run remote-media-dry-run --workspace-dir .worldforge/demo-showcases --overwrite` |
-| Expected output | redacted Cosmos success and Runway expired-artifact events |
-| Artifact | `.worldforge/demo-showcases/remote-media-dry-run/remote-media-events.json` |
+| Command | `uv run python scripts/demo_showcases.py run provider-event-redaction-dry-run --workspace-dir .worldforge/demo-showcases --overwrite` |
+| Expected output | redacted provider event fixtures |
+| Artifact | `.worldforge/demo-showcases/provider-event-redaction-dry-run/provider-event-redaction-events.json` |
 | First triage step | inspect provider event `target`, `message`, and `metadata` for redaction before live smoke |
-| Boundary | fixture-backed dry run only; no paid API calls or artifact-retention guarantee |
+| Boundary | fixture-backed dry run only; no paid API calls or remote artifact-retention guarantee |
 
 ### Recipe 5: Adapter Author Scaffold
 

@@ -16,12 +16,14 @@ def _labels(
     *,
     status_class: str = "none",
     capability: str = "unknown",
+    operation: str = "score",
+    provider: str = "leworldmodel",
 ) -> dict[str, str]:
     return {
         "capability": capability,
-        "operation": "task poll",
+        "operation": operation,
         "phase": phase,
-        "provider": "runway",
+        "provider": provider,
         "status_class": status_class,
     }
 
@@ -32,13 +34,13 @@ def test_provider_metrics_exporter_sink_exports_bounded_counters_and_latency() -
 
     sink(
         ProviderEvent(
-            provider="runway",
-            operation="task poll",
+            provider="leworldmodel",
+            operation="score",
             phase="retry",
             status_code=429,
             duration_ms=25.0,
             metadata={
-                "capability": "generate",
+                "capability": "score",
                 "prompt": "do not export as a label",
                 "world_id": "world-123",
                 "metadata_key": "unsafe-cardinality",
@@ -47,17 +49,17 @@ def test_provider_metrics_exporter_sink_exports_bounded_counters_and_latency() -
     )
     sink(
         ProviderEvent(
-            provider="runway",
-            operation="task poll",
+            provider="leworldmodel",
+            operation="score",
             phase="success",
             status_code=200,
             duration_ms=40.0,
-            metadata={"capability": "generate"},
+            metadata={"capability": "score"},
         )
     )
 
-    retry_labels = _labels("retry", status_class="4xx", capability="generate")
-    success_labels = _labels("success", status_class="2xx", capability="generate")
+    retry_labels = _labels("retry", status_class="4xx", capability="score")
+    success_labels = _labels("success", status_class="2xx", capability="score")
     assert exporter.counter_value("worldforge_provider_events_total", labels=retry_labels) == 1.0
     assert exporter.counter_value("worldforge_provider_retries_total", labels=retry_labels) == 1.0
     assert (
@@ -90,16 +92,16 @@ def test_provider_metrics_exporter_sink_counts_errors_without_retries() -> None:
 
     sink(
         ProviderEvent(
-            provider="runway",
-            operation="task poll",
+            provider="leworldmodel",
+            operation="score",
             phase="failure",
             status_code=503,
         )
     )
     sink(
         ProviderEvent(
-            provider="runway",
-            operation="task poll",
+            provider="leworldmodel",
+            operation="score",
             phase="budget_exceeded",
         )
     )

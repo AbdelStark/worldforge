@@ -42,10 +42,7 @@ def test_release_evidence_renders_without_credentials(
     tmp_path: Path,
 ) -> None:
     for name in (
-        "COSMOS_BASE_URL",
         "COSMOS_POLICY_BASE_URL",
-        "RUNWAYML_API_SECRET",
-        "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",
         "LEWM_POLICY",
         "GROOT_POLICY_HOST",
@@ -65,8 +62,8 @@ def test_release_evidence_renders_without_credentials(
         known_limitations=("No prepared-host smokes were run for this branch.",),
     )
 
-    assert "| `runway` | host-owned |" in report
-    assert "missing host-owned configuration: `RUNWAYML_API_SECRET`, `RUNWAY_API_SECRET`" in report
+    assert "| `leworldmodel` | host-owned |" in report
+    assert "missing host-owned configuration: `LEWORLDMODEL_POLICY`, `LEWM_POLICY`" in report
     assert "| `cosmos-policy` | host-owned |" in report
     assert "missing host-owned configuration: `COSMOS_POLICY_BASE_URL`" in report
     assert "uv run python scripts/generate_provider_docs.py --check" in report
@@ -81,19 +78,19 @@ def test_release_evidence_renders_without_credentials(
 
 def test_release_evidence_links_live_manifest_and_artifact(tmp_path: Path) -> None:
     output = tmp_path / "bundle" / "release-evidence.md"
-    manifest_path = tmp_path / "runs" / "runway-smoke" / "run_manifest.json"
-    video_path = tmp_path / "runs" / "runway-smoke" / "video.mp4"
-    video_path.parent.mkdir(parents=True)
-    video_path.write_bytes(b"fake-video")
+    manifest_path = tmp_path / "runs" / "leworldmodel-smoke" / "run_manifest.json"
+    score_path = tmp_path / "runs" / "leworldmodel-smoke" / "score-report.json"
+    score_path.parent.mkdir(parents=True)
+    score_path.write_text('{"score": 0.12}', encoding="utf-8")
     manifest = build_run_manifest(
-        run_id="runway-smoke",
-        provider_profile="runway",
-        capability="generate",
+        run_id="leworldmodel-smoke",
+        provider_profile="leworldmodel",
+        capability="score",
         status="passed",
-        env_vars=("RUNWAYML_API_SECRET",),
-        command_argv=("worldforge-smoke-runway",),
+        env_vars=("LEWM_POLICY",),
+        command_argv=("worldforge-smoke-leworldmodel",),
         event_count=3,
-        artifact_paths={"video": video_path},
+        artifact_paths={"score_report": score_path},
         artifact_root=manifest_path.parent,
         created_at="2026-01-01T00:00:00+00:00",
     )
@@ -104,15 +101,15 @@ def test_release_evidence_links_live_manifest_and_artifact(tmp_path: Path) -> No
         output=output,
         manifests=(ManifestEvidence(path=manifest_path, payload=payload),),
         benchmark_artifacts=(),
-        artifacts=(video_path,),
+        artifacts=(score_path,),
     )
 
-    assert "| `runway` | passed |" in report
+    assert "| `leworldmodel` | passed |" in report
     assert payload["created_at"] == "2026-01-01T00:00:00+00:00"
     assert "run_manifest.json" in report
-    assert "`generate`" in report
-    assert "`video`=" in report
-    assert "video.mp4" in report
+    assert "`score`" in report
+    assert "`score_report`=" in report
+    assert "score-report.json" in report
 
 
 def test_release_evidence_redacts_host_local_artifact_paths(tmp_path: Path) -> None:

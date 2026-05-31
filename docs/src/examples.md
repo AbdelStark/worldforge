@@ -27,28 +27,21 @@ not install optional model runtimes, call paid providers, open a GUI, or control
 [Demo Showcase Workflows](./demo-showcases.md) for the artifact matrix and
 [Use Case Cookbook](./use-case-cookbook.md) for task-oriented recipes.
 
-## Visual Harness
+## Robotics Showcase TUI
 
 | Example | Surface | Command |
 | --- | --- | --- |
-| `theworldharness` | E2E flows, provider diagnostics, benchmark comparison | `uv run --extra harness worldforge-harness` |
+| `robotics-showcase` | Real PushT policy+score run with Textual report | `scripts/robotics-showcase` |
 
-`TheWorldHarness` is an optional Textual TUI for running the packaged E2E demos as visible
-provider workflows.
+The robotics showcase report is optional and Textual-backed. The same run can be executed without
+the TUI for JSON, Rerun, and terminal evidence.
 
 ```bash
-uv run --extra harness worldforge-harness
-uv run --extra harness worldforge-harness --flow lerobot
-uv run --extra harness worldforge-harness --flow cosmos-policy
-uv run --extra harness worldforge-harness --flow gr00t-replay
-uv run --extra harness worldforge-harness --flow robotics-compare
-uv run --extra harness worldforge-harness --flow diagnostics
-uv run --extra harness worldforge-harness --flow workbench
-uv run worldforge harness --list
+scripts/robotics-showcase
+scripts/robotics-showcase --no-tui
 ```
 
-The harness keeps Textual out of the base dependency set. Install or run with the `harness` extra
-when you want the visual interface.
+Textual stays out of the base dependency set.
 
 Available flows:
 
@@ -130,7 +123,7 @@ The service host exposes:
 | `GET /readyz` | Framework alive, configured provider, provider health, traffic decision, and `doctor()` summary. |
 | `GET /providers` | Registered-provider diagnostics for the current host process. |
 | `POST /workflows/mock-predict` | Safe deterministic mock prediction smoke. |
-| `POST /workflows/generate` | Configurable provider generate workflow using a JSON body with `provider`, `prompt`, and `duration_seconds`. |
+| `POST /workflows/predict` | Configurable provider prediction workflow using a JSON body with `provider`, `world_state`, and `action`. |
 
 `/readyz` reports `ready`, `provider_unconfigured`, or `provider_unhealthy`. Only `ready`
 means the host should accept provider-backed workflow traffic; the other states tell the host
@@ -157,7 +150,7 @@ uv run python examples/hosts/batch-eval/app.py \
 
 uv run python examples/hosts/batch-eval/app.py \
   --workspace .worldforge/batch-eval \
-  benchmark --provider mock --operation generate --iterations 1 \
+  benchmark --provider mock --operation predict --iterations 1 \
   --input-file examples/benchmark-inputs.json \
   --budget-file examples/benchmark-budget.json
 ```
@@ -208,7 +201,7 @@ Path taxonomy:
 | --- | --- | --- | --- |
 | checkout-safe | `mock` provider, deterministic examples, no credentials | command exits `0`, `/readyz` is `ready`, or a run manifest is written | no physical-fidelity, uptime, or durability claim |
 | prepared-host | optional provider/runtime already installed by the host | provider health is healthy and the smoke writes evidence | dependency install, checkpoints, cache directories, and runtime patches |
-| credentialed | Cosmos, Runway, or another remote provider with secrets loaded outside the repo | `provider info` shows redacted config and health passes | secret storage, credential rotation, upstream SLA, and network egress |
+| credentialed | a remote provider with secrets loaded outside the repo | `provider info` shows redacted config and health passes | secret storage, credential rotation, upstream SLA, and network egress |
 | GPU-bound | LeWorldModel, LeRobot, GR00T, or another device-bound runtime | host preflight names the device and the smoke records a manifest | CUDA/Metal drivers, device scheduling, model assets, and memory pressure |
 | robotics-lab | operator review around task-specific policy/action translation | dry-run review records approval and no controller calls by default | workspace safety, interlocks, controller hooks, operator approval, and safety certification |
 
@@ -218,7 +211,7 @@ unchanged unless a future provider adds real configuration.
 ### Stdlib Service Host Recipe
 
 Owned boundary: WorldForge maps provider diagnostics to `/readyz`, emits typed public errors, and
-can run deterministic mock or generate workflows. The embedding service owns HTTP deployment,
+can run deterministic mock prediction workflows. The embedding service owns HTTP deployment,
 request authentication, routing, queueing, durable state, log shipping, alerting, upstream SLA
 policy, and rollback.
 
@@ -228,7 +221,7 @@ Env template:
 export WORLDFORGE_SERVICE_PROVIDER=mock
 export WORLDFORGE_SERVICE_STATE_DIR=.worldforge/service-worlds
 export WORLDFORGE_SERVICE_PORT=8080
-# Credentialed path only: export COSMOS_BASE_URL=... or RUNWAYML_API_SECRET=...
+# Prepared-host path only: export LEWORLDMODEL_POLICY=... or LEROBOT_POLICY_PATH=...
 ```
 
 Process command:
@@ -300,7 +293,7 @@ Readiness command:
 
 ```bash
 uv run worldforge doctor --registered-only
-uv run worldforge doctor --capability generate
+uv run worldforge doctor --capability predict
 uv run worldforge provider health mock
 ```
 
@@ -310,7 +303,7 @@ Process command:
 uv run python examples/hosts/batch-eval/app.py \
   --workspace "${WORLDFORGE_BATCH_WORKSPACE:-.worldforge/batch-eval}" \
   --state-dir "${WORLDFORGE_BATCH_STATE_DIR:-.worldforge/batch-eval/worlds}" \
-  benchmark --provider mock --operation generate --iterations 1 \
+  benchmark --provider mock --operation predict --iterations 1 \
   --input-file examples/benchmark-inputs.json \
   --budget-file examples/benchmark-budget.json
 ```

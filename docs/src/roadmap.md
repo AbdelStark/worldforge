@@ -14,8 +14,8 @@ upstream runtimes or robot controllers are involved.
 - Preserve reproducible artifacts for evaluation and benchmark claims.
 - Keep optional model runtimes out of the base package while making their wrapper commands clear
   enough to run on a prepared host.
-- Grow TheWorldHarness as the visual inspection layer for worlds, providers, evals, benchmarks,
-  and packaged flows.
+- Keep the robotics showcase TUI focused on prepared-host policy+score evidence while core world,
+  provider, eval, and benchmark workflows remain CLI-first.
 
 ## Near-Term Milestones
 

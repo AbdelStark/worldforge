@@ -94,7 +94,7 @@ LeWorldModel 是该设计的第一等级提供方，因为它是一个基于 JEP
 | 显式仿真 | 在已知物理和几何条件下会发生什么？ | 方程、网格、接触、引擎 | 状态展开、传感器渲染 | 适配器目标，非核心运行时 |
 | 基于模型的 RL 隐动力学 | 智能体能否在想象的未来中学习？ | 紧凑隐状态 | 展开序列、价值、策略 | 适合 `predict`、`score` 及评估 |
 | JEPA 隐预测世界模型 | 哪个动作能使隐式未来匹配目标或实现低代价？ | 学习到的嵌入 | 分数、代价、隐式展开 | 架构核心 |
-| 生成式视频仿真器 | 模型能否合成可信的未来像素或交互式帧？ | 像素、隐变量、视频 token | 视频片段、交互式帧 | 适合 `generate`、`transfer`，未来可能适合 `predict` |
+| 生成式视频仿真器 | 模型能否合成可信的未来像素或交互式帧？ | 像素、隐变量、视频 token | 视频片段、交互式帧 | 不在当前提供方表面内 |
 | 空间 / 3D 世界模型 | 能否重建或生成持久的 3D 世界？ | 几何、深度、辐射场、资产 | 3D 场景、网格、相机路径 | 未来的提供方家族 |
 | 物理 AI 基础设施 | 如何大规模生产数据、分词器、微调和评估？ | 运行时/工具栈 | 模型、合成数据、API | 提供方适配器 |
 | 具身策略 / VLA 动作模型 | 机器人应根据当前观测和指令执行哪个动作块？ | 视觉-语言-动作策略状态 | 机器人动作块 | 第一等级的动作者提供方家族 |
@@ -177,11 +177,7 @@ World Labs 的 Marble 是世界模型空间智能含义的一个好例子：从�
 
 NVIDIA Cosmos 最好被理解为物理 AI 基础设施：世界基础模型、分词器、护栏、视频处理、合成数据生成、微调和部署路由。它可以为世界模型工作流提供素材，但它不是单一的窄范围模型契约。
 
-WorldForge 应通过显式的提供方能力集成上游组件：
-
-- `generate` 用于视频合成
-- `transfer` 用于视频到视频的变换
-- 若数据整理或分词器适配器进入库的范畴，则为未来的此类适配器
+WorldForge 仅应在上游组件能映射到当前规划、预测、打分、策略或嵌入表面时才集成它们。
 - 若上游 API 暴露稳定契约，则为未来的评估适配器
 
 ### 具身策略 / VLA 动作模型
@@ -230,20 +226,10 @@ leworldmodel
   打分提供方
   第一等级的架构参考
 
-cosmos
-  远程物理 AI 视频基础模型适配器
-  生成提供方
-  适用于合成视频和物理 AI 工件
-
 gr00t
   由宿主方持有的具身策略客户端适配器
   策略提供方
   适用作提出机器人动作块的动作者
-
-runway
-  远程视频生成与迁移适配器
-  生成/迁移提供方
-  适用于工件工作流
 
 jepa
   脚手架
@@ -261,16 +247,14 @@ flowchart TD
     WF[WorldForge provider registry]
     WF --> Mock[mock\nreference runtime]
     WF --> LeWM[leworldmodel\nJEPA score provider]
-    WF --> Cosmos[cosmos\nvideo generation adapter]
+    WF --> CosmosPolicy[cosmos-policy\nembodied policy adapter]
     WF --> Groot[gr00t\nembodied policy adapter]
-    WF --> Runway[runway\nvideo generation/transfer adapter]
     WF --> JEPA[jepa\nscore adapter]
     WF --> Genie[genie\nscaffold]
 
     LeWM --> Score[score_actions -> ActionScoreResult]
-    Cosmos --> Generate[generate -> VideoClip]
+    CosmosPolicy --> CosmosPolicyAction[select_actions -> ActionPolicyResult]
     Groot --> Policy[select_actions -> ActionPolicyResult]
-    Runway --> Transfer[generate/transfer -> VideoClip]
     Mock --> Predict[predict -> PredictionPayload]
 ```
 

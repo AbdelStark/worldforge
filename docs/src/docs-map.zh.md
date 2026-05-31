@@ -10,7 +10,7 @@
 | 提供方作者 | [提供方编写指南](./provider-authoring-guide.md) | [提供方](./providers/README.md)、[提供方配置索引](./provider-configuration-index.md)、[提供方失败模式画廊](./provider-failure-gallery.md)、[能力夹具语料库](./fixtures.md)、[公开 API 稳定性](./api-stability.md) | 提供方能力、配置文件、夹具、文档和测试保持一致 |
 | 运维人员 | [运维](./operations.md) | [提供方配置索引](./provider-configuration-index.md)、[用户与运维操作手册](./playbooks.md)、[安全](./security.md)、[工件完整性](./artifact-integrity.md) | 诊断、运行清单、安全包和恢复命令均可用 |
 | 评估者或研究用户 | [评估](./evaluation.md) | [基准测试](./benchmarking.md)、[声明与凭证映射](./claim-evidence-map.md)、[工件模式](./artifact-schemas.md)、[实时冒烟凭证注册表](./live-smoke-evidence.md) | 声明指向已保留的报告和清晰的声明边界 |
-| 演示或案例展示用户 | [示例与 CLI 命令](./examples.md) | [演示案例展示工作流](./demo-showcases.md)、[使用场景手册](./use-case-cookbook.md)、[机器人重放案例展示](./robotics-showcase.md)、[TheWorldHarness](./theworldharness.md)、[Rerun 集成](./rerun.md) | 可安全检出的演示或预先准备好的宿主展示命令生成工件 |
+| 演示或案例展示用户 | [示例与 CLI 命令](./examples.md) | [演示案例展示工作流](./demo-showcases.md)、[使用场景手册](./use-case-cookbook.md)、[机器人重放案例展示](./robotics-showcase.md)、[Rerun 集成](./rerun.md) | 可安全检出的演示或预先准备好的宿主展示命令生成工件 |
 | 发布维护者 | [工程质量](./quality.md) | [工件完整性](./artifact-integrity.md)、[工件模式](./artifact-schemas.md)、[运维](./operations.md)、[更新日志](./changelog.md) | 本地门禁、包检查、审计、质量仪表板、凭证 JSON、模式归属以及发布说明对齐一致 |
 | 贡献者 | [贡献指南](./contributing.md) | [贡献者任务启动包](./task-starters.md)、[文档导图](./docs-map.md)、[工程质量](./quality.md) | 议题范围、涉及文件、验证命令、凭证工件、文档更新和评审清单均明确 |
 

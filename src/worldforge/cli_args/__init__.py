@@ -16,8 +16,6 @@ from worldforge.cli_args.top_level import (
 from worldforge.cli_args.workflows import (
     _add_benchmark_command,
     _add_eval_command,
-    _add_harness_command,
-    _add_media_commands,
     _add_negotiate_command,
     _add_predict_command,
     _add_scenario_commands,
@@ -45,11 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_doctor_command(subparsers)
     _add_scenario_commands(subparsers)
     _add_negotiate_command(subparsers)
-    _add_media_commands(subparsers)
     _add_predict_command(subparsers)
     _add_eval_command(subparsers)
     _add_benchmark_command(subparsers)
-    _add_harness_command(subparsers)
     return parser
 
 

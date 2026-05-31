@@ -261,9 +261,6 @@ class ProviderBenchmarkHarness:
         self._forge = forge or WorldForge()
         self._operation_handlers: dict[str, Callable[[str, BenchmarkInputs], None]] = {
             "predict": self._op_predict,
-            "reason": self._op_reason,
-            "generate": self._op_generate,
-            "transfer": self._op_transfer,
             "embed": self._op_embed,
             "score": self._op_score,
             "policy": self._op_policy,
@@ -303,27 +300,6 @@ class ProviderBenchmarkHarness:
             inputs.prediction_action,
             steps=inputs.prediction_steps,
             provider=provider,
-        )
-
-    def _op_reason(self, provider: str, inputs: BenchmarkInputs) -> None:
-        world, _ = self._seed_world(provider)
-        self._forge.reason(provider, inputs.reason_query, world=world)
-
-    def _op_generate(self, provider: str, inputs: BenchmarkInputs) -> None:
-        self._forge.generate(
-            inputs.generation_prompt,
-            provider,
-            duration_seconds=inputs.generation_duration_seconds,
-        )
-
-    def _op_transfer(self, provider: str, inputs: BenchmarkInputs) -> None:
-        self._forge.transfer(
-            inputs.transfer_clip,
-            provider,
-            width=inputs.transfer_width,
-            height=inputs.transfer_height,
-            fps=inputs.transfer_fps,
-            prompt=inputs.transfer_prompt,
         )
 
     def _op_embed(self, provider: str, inputs: BenchmarkInputs) -> None:

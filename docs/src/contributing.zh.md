@@ -79,15 +79,14 @@ assert stable_json_dumps(snapshot) == expected_json
 - `src/worldforge/models.py`：公开兼容门面与模型重导出。
 - `src/worldforge/_model_utils.py`：共享 JSON 原生验证辅助工具和框架错误。
 - `src/worldforge/scene_models.py`：几何、动作、场景对象、结构化目标与历史契约。
-- `src/worldforge/capability_results.py`：媒体、推理、嵌入、动作评分与具身策略结果契约。
+- `src/worldforge/capability_results.py`：嵌入、动作评分与具身策略结果契约。
 - `src/worldforge/provider_models.py`：提供方面向契约的兼容门面。
 - `src/worldforge/provider_profiles.py`、`provider_request_policy.py`、`provider_events.py`、`provider_diagnostics.py` 和 `provider_redaction.py`：聚焦的提供方契约，分别覆盖能力/配置元数据、重试/超时、事件、生命周期诊断和脱敏。
 - `src/worldforge/framework.py`：运行时外观、提供方注册、持久化和诊断。
 - `src/worldforge/framework_capabilities.py`：内部能力协议注册表和分发。
 - `src/worldforge/_world.py`：可变世界状态、历史记录和规划。
 - `src/worldforge/_world_prompt_seeders.py`：基于提示词的本地种子场景辅助工具。
-- `src/worldforge/harness/tui_styles.py` 和 `tui_*_styles.py`：TheWorldHarness 使用的无
-  Textual 依赖 CSS 常量，按屏幕族分组并通过兼容门面导出。
+- `src/worldforge/harness/tui_styles.py`：机器人案例展示报告使用的无 Textual 依赖 CSS 常量。
 - `src/worldforge/providers/`：提供方接口、目录、适配器和脚手架。
 - `src/worldforge/testing/`：可复用的提供方契约辅助工具、夹具加载器、运行时标记和确定性工件测试控件。
 - `tests/fixtures/fixture-snapshots.json`：已追踪 JSON 夹具的清单；在有意修改夹具后，使用 `uv run python scripts/manage_fixture_snapshots.py --write` 更新该清单。
@@ -130,8 +129,8 @@ report = assert_provider_contract(
 | --- | --- | --- |
 | 路线图流 | `stream: provider-evidence` | 提供方选型、运行时契约、提供方晋升、运行时清单、上游验证 |
 | 路线图流 | `stream: evidence-integrity` | 评估、基准测试、预算、已保留的运行证据、发布证据、来源追溯、公开声明 |
-| 路线图流 | `stream: ops-authoring` | 运维工作流、TheWorldHarness、适配器编写循环、参考宿主、持久化、操作手册 |
-| 能力 | `predict`、`generate`、`reason`、`embed`、`transfer`、`score`、`policy` | Issue 变更或验证该公开能力接口 |
+| 路线图流 | `stream: ops-authoring` | 运维工作流、机器人案例展示证据、适配器编写循环、参考宿主、持久化、操作手册 |
+| 能力 | `predict`、`embed`、`score`、`policy` | Issue 变更或验证该公开能力接口 |
 | 严重程度 | `severity: blocking`、`severity: quality`、`type: hardening` | 发布阻塞项、质量回归、验证/脱敏/恢复加固 |
 | 发布范围 | `release`、`release: provider-hardening-rc` | 发布流程或命名发布候选范围 |
 

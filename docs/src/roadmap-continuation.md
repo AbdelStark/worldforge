@@ -56,11 +56,10 @@ Exit signal:
 | [WF-A1 #130](https://github.com/AbdelStark/worldforge/issues/130) | Establish the provider cohort selection record | AFK | none | `provider`, `research`, `roadmap` |
 | [WF-A2 #133](https://github.com/AbdelStark/worldforge/issues/133) | Promote JEPA-WMS prepared-host score evidence | AFK | WF-A1 | `provider`, `score`, `research` |
 | [WF-A3 #137](https://github.com/AbdelStark/worldforge/issues/137) | Stabilize the public JEPA score adapter | AFK | WF-A2 | `provider`, `score`, `research` |
-| [WF-A4 #138](https://github.com/AbdelStark/worldforge/issues/138) | Define the spatial/3D scene provider boundary | HITL | WF-A1 | `provider`, `generate`, `design` |
-| [WF-A5 #143](https://github.com/AbdelStark/worldforge/issues/143) | Implement scene artifact fixtures and validation | AFK | WF-A4 | `provider`, `generate`, `artifacts` |
-| [WF-A6 #139](https://github.com/AbdelStark/worldforge/issues/139) | Resolve the Genie runtime contract decision | HITL | WF-A1 | `provider`, `generate`, `research` |
-| [WF-A7 #134](https://github.com/AbdelStark/worldforge/issues/134) | Harden remote media artifact retention for Cosmos and Runway | AFK | none | `provider`, `generate`, `transfer` |
-| [WF-A8 #144](https://github.com/AbdelStark/worldforge/issues/144) | Build the provider live-smoke evidence registry | AFK | WF-A2, WF-A7 | `provider`, `operations`, `artifacts` |
+| [WF-A4 #138](https://github.com/AbdelStark/worldforge/issues/138) | Retire the spatial/3D scene provider boundary from the current scope | HITL | WF-A1 | `provider`, `design` |
+| [WF-A5 #143](https://github.com/AbdelStark/worldforge/issues/143) | Close scene artifact fixture work as out of scope | AFK | WF-A4 | `provider`, `artifacts` |
+| [WF-A6 #139](https://github.com/AbdelStark/worldforge/issues/139) | Resolve the Genie runtime contract decision | HITL | WF-A1 | `provider`, `research` |
+| [WF-A8 #144](https://github.com/AbdelStark/worldforge/issues/144) | Build the provider live-smoke evidence registry | AFK | WF-A2 | `provider`, `operations`, `artifacts` |
 
 ### WF-A1: Establish The Provider Cohort Selection Record
 
@@ -72,8 +71,8 @@ of callable capability, maintenance cost, fixture strategy, and smoke feasibilit
 Scope:
 
 - Create a provider cohort selection record under the docs tree.
-- Score JEPA-WMS/public JEPA, Genie, spatial/3D scene generation, additional remote video APIs,
-  simulator bridges, and new embodied policy stacks against the existing rubric.
+- Score JEPA-WMS/public JEPA, Genie, spatial/3D scene boundaries, simulator bridges, and new
+  embodied policy stacks against the existing rubric.
 - Select at most three active candidates for the next implementation cohort.
 - Record explicit deferrals for candidates that do not meet the bar.
 
@@ -115,7 +114,7 @@ Scope:
 Out of scope:
 
 - No base dependency on torch or JEPA-WMS packages.
-- No public `predict`, `embed`, `generate`, or `reason` capability.
+- No public `predict` or `embed` capability.
 - No auto-registration change unless the evidence supports it and docs/catalog are updated.
 
 Acceptance criteria:
@@ -176,31 +175,30 @@ uv run mkdocs build --strict
 
 ### WF-A4: Define The Spatial/3D Scene Provider Boundary
 
-Design record: [Spatial Scene Artifact Boundary](./spatial-scene-artifact-boundary.md).
+Design note: spatial/3D scene artifacts are outside the current planning-focused provider surface.
 
-Problem: scene and 3D-world generation are distinct from video generation, prediction, and
-planning. Adding a provider before defining the artifact contract would blur the capability model.
+Problem: scene and 3D-world artifacts are distinct from prediction and planning. Adding a provider
+before defining the artifact contract would blur the capability model.
 
 Scope:
 
 - Write a design record that chooses the first spatial/3D scene runtime or API candidate.
 - Define the minimal JSON-native scene artifact boundary: units, coordinate frames, asset
   references, object identifiers, transforms, media references, provenance, and safe metadata.
-- Decide whether the first capability is `generate` or a new future surface that should remain out
-  of scope for now.
+- Decide whether this remains outside the current provider surface.
 - Define redaction rules for asset URLs, host-local paths, and provider metadata.
 
 Out of scope:
 
 - No provider implementation.
 - No viewer, renderer, simulator, or 3D asset dependency in the base package.
-- No claim that generated scenes are physically valid.
+- No claim that scene artifacts are physically valid.
 
 Acceptance criteria:
 
 - [ ] The design record names accepted and rejected runtime/API candidates.
 - [ ] The scene artifact boundary is JSON-native and testable without optional dependencies.
-- [ ] The record states whether the work maps to `generate` or remains deferred.
+- [ ] The record states whether the work remains deferred.
 - [ ] Host-owned responsibilities for asset storage, rendering, simulation, and licensing are
       explicit.
 - [ ] Follow-up implementation issues can be created without reopening capability semantics.
@@ -241,7 +239,7 @@ Acceptance criteria:
 Validation:
 
 ```bash
-uv run pytest tests/test_scene_artifacts.py tests/test_provider_contracts.py
+uv run pytest tests/test_provider_contracts.py tests/test_docs_site.py
 uv run mkdocs build --strict
 ```
 
@@ -255,7 +253,7 @@ Scope:
 - Review current public Genie automation/runtime options.
 - Choose one explicit contract or record a defer decision.
 - If deferred, harden docs to state the revisit trigger and prevent surrogate expectations.
-- If selected, write the implementation issue for fixture-backed `generate` behavior.
+- If selected, write the implementation issue for fixture-backed runtime behavior.
 
 Out of scope:
 
@@ -275,41 +273,6 @@ Validation:
 
 ```bash
 uv run pytest tests/test_remote_scaffold_providers.py tests/test_provider_catalog_docs.py
-uv run mkdocs build --strict
-```
-
-### WF-A7: Harden Remote Media Artifact Retention For Cosmos And Runway
-
-Problem: remote media adapters are useful only if downloaded artifacts, expired URLs, content
-types, and retention guidance are consistent across docs, events, and run manifests.
-
-Scope:
-
-- Audit Cosmos and Runway artifact download, retention, content-type, and URL-expiration paths.
-- Ensure signed URL query strings never reach events, manifests, logs, reports, or issue bundles.
-- Add fixture coverage for expired artifacts, unsupported media, failed task states, and download
-  retry exhaustion.
-- Document first recovery steps for each provider.
-
-Out of scope:
-
-- No hosted artifact store.
-- No automatic media upload service.
-- No broad media provider expansion.
-
-Acceptance criteria:
-
-- [ ] Both providers document artifact lifetime assumptions and first triage command.
-- [ ] Parser and provider-error tests cover expired URL, unsupported artifact, failed polling, and
-      malformed response cases.
-- [ ] Run manifests preserve artifact digests or safe local paths, not signed remote URLs.
-- [ ] Benchmark inputs for `generate` and `transfer` stay separate and reproducible.
-
-Validation:
-
-```bash
-uv run pytest tests/test_cosmos_provider.py tests/test_runway_provider.py tests/test_remote_video_providers.py tests/test_observability.py
-uv run python scripts/generate_provider_docs.py --check
 uv run mkdocs build --strict
 ```
 
@@ -412,8 +375,8 @@ uv run mkdocs build --strict
 
 ### WF-B2: Build A Capability Fixture Corpus
 
-Problem: provider and evaluation work needs a shared fixture corpus for score, policy, generate,
-transfer, predict, reason, and embed paths instead of ad hoc payloads per test.
+Problem: provider and evaluation work needs a shared fixture corpus for score, policy, predict, and
+embed paths instead of ad hoc payloads per test.
 
 Scope:
 
@@ -451,8 +414,8 @@ separate fast checkout regression checks from prepared-host provider evidence.
 
 Scope:
 
-- Define benchmark presets for checkout-safe mock runs, provider parser overhead, remote media
-  dry-run/fixture runs, optional score/policy prepared-host runs, and release evidence.
+- Define benchmark presets for checkout-safe mock runs, provider parser overhead, optional
+  score/policy prepared-host runs, and release evidence.
 - Keep preset inputs deterministic and small.
 - Document commands, expected success signals, and when a preset is allowed to fail.
 - Ensure failed budgets exit non-zero and preserve enough report data for triage.
@@ -586,8 +549,7 @@ input, expected contract, observed result, and triage steps.
 Scope:
 
 - Add failure-case gallery generation for deterministic evaluation suites.
-- Include compact examples for physics, planning, reasoning, generation, transfer, score, and
-  policy where applicable.
+- Include compact examples for physics, planning, score, and policy where applicable.
 - Keep examples sanitized and small.
 - Document how to use galleries when filing issues or reviewing provider changes.
 
@@ -636,7 +598,7 @@ Acceptance criteria:
 - [x] Compatible runs compare with provenance, metric deltas, event counts, and budget status.
 - [x] Incompatible runs fail with capability, operation, fixture, budget, or suite-version details.
 - [x] Markdown output includes claim-boundary language.
-- [x] Harness and CLI comparison paths use the same underlying report model.
+- [x] CLI comparison paths use the same underlying report model.
 
 Validation:
 
@@ -696,7 +658,7 @@ Acceptance criteria:
 - [x] Workbench can run against `mock` and at least one scaffold/candidate in a clean checkout.
 - [x] Output names missing evidence by promotion status.
 - [x] Markdown output includes validation commands and safe artifact references.
-- [x] TUI and CLI workbench views use the same non-Textual flow logic.
+- [x] CLI workbench views use the same non-Textual flow logic.
 
 Validation:
 
@@ -793,7 +755,7 @@ Out of scope:
 
 Acceptance criteria:
 
-- [x] Harness can filter and open preserved runs without optional model runtimes.
+- [x] CLI can filter and open preserved runs without optional model runtimes.
 - [x] Rerun commands are generated from sanitized manifests and omit secret values.
 - [x] Failed runs show recovery command and issue-bundle export path.
 - [x] Tests cover flow logic without importing Textual outside `worldforge.harness.tui`.

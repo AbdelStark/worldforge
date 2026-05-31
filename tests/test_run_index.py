@@ -164,11 +164,11 @@ def test_build_run_index_partitions_valid_and_invalid(tmp_path: Path) -> None:
 
 def test_filter_by_provider_substring_matches(tmp_path: Path) -> None:
     _seed_run(tmp_path, run_id="20260101T000000Z-00000001", provider="mock")
-    _seed_run(tmp_path, run_id="20260102T000000Z-00000002", provider="cosmos")
+    _seed_run(tmp_path, run_id="20260102T000000Z-00000002", provider="cosmos-policy")
 
     index = build_run_index(tmp_path, filters=RunHistoryFilter.from_strings(provider="cos"))
 
-    assert [entry.provider for entry in index.entries] == ["cosmos"]
+    assert [entry.provider for entry in index.entries] == ["cosmos-policy"]
     assert index.filter_applied == {
         "provider": "cos",
         "capability": None,
@@ -200,8 +200,8 @@ def test_filter_by_capability_excludes_other_capabilities(tmp_path: Path) -> Non
         tmp_path,
         run_id="20260102T000000Z-00000002",
         kind="benchmark",
-        operation="generate",
-        input_summary={"capabilities": ["generate"]},
+        operation="score",
+        input_summary={"capabilities": ["score"]},
     )
 
     index = build_run_index(tmp_path, filters=RunHistoryFilter.from_strings(capability="predict"))
@@ -289,7 +289,7 @@ def test_to_markdown_includes_envelope_and_table(tmp_path: Path) -> None:
 
 def test_to_csv_emits_header_and_one_row_per_entry(tmp_path: Path) -> None:
     _seed_run(tmp_path, run_id="20260101T000000Z-00000001", provider="mock")
-    _seed_run(tmp_path, run_id="20260102T000000Z-00000002", provider="cosmos")
+    _seed_run(tmp_path, run_id="20260102T000000Z-00000002", provider="cosmos-policy")
 
     csv_text = build_run_index(tmp_path).to_csv()
     rows = list(csv.reader(io.StringIO(csv_text)))

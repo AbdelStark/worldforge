@@ -1,4 +1,4 @@
-"""Checkout-safe GR00T replay flow for TheWorldHarness."""
+"""Checkout-safe GR00T replay flow."""
 
 from __future__ import annotations
 

@@ -13,9 +13,9 @@ Issue: [#144](https://github.com/AbdelStark/worldforge/issues/144)。
 | 字段 | 契约 |
 | --- | --- |
 | `provider` | 提供方配置文件或候选名称。 |
-| `capability` | 一项 WorldForge 能力，例如 `generate`、`score` 或 `policy`。 |
+| `capability` | 一项 WorldForge 能力，例如 `predict`、`score` 或 `policy`。 |
 | `command` | 在预备宿主机上运行的冒烟测试命令。不得内联密钥。 |
-| `runtime_manifest` | 运行时清单 ID，例如 `runway:schema-1`；若不存在则为 `null`。 |
+| `runtime_manifest` | 运行时清单 ID，例如 `leworldmodel:schema-1`；若不存在则为 `null`。 |
 | `date` | 注册表决策日期，格式为 `YYYY-MM-DD`。 |
 | `version` | 该注册表行所用的 WorldForge 包版本。 |
 | `status` | `passed`、`failed`、`not_run`、`skipped_missing_runtime`、`skipped_missing_credentials` 或 `skipped_not_configured`。 |

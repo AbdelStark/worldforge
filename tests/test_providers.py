@@ -6,25 +6,21 @@ from worldforge import Action, BBox, Position, ProviderCapabilities, SceneObject
 from worldforge.providers import (
     BaseProvider,
     CosmosPolicyProvider,
-    CosmosProvider,
     GenieProvider,
     JepaProvider,
     LeWorldModelProvider,
     MockProvider,
     ProviderError,
-    RunwayProvider,
 )
 from worldforge.providers.base import ProviderProfileSpec
 
 
 def test_provider_submodule_exports_provider_classes() -> None:
     assert CosmosPolicyProvider is not None
-    assert CosmosProvider is not None
     assert GenieProvider is not None
     assert JepaProvider is not None
     assert LeWorldModelProvider is not None
     assert MockProvider is not None
-    assert RunwayProvider is not None
 
 
 def test_provider_capabilities_are_closed_by_default_and_unsupported_predict_is_typed(
@@ -62,7 +58,7 @@ def test_base_provider_requires_all_profile_environment_variables(monkeypatch) -
     assert provider.configured() is True
 
 
-def test_generation_transfer_reason_embedding_and_manual_registration(tmp_path) -> None:
+def test_prediction_embedding_and_manual_registration(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
     forge.register_provider(MockProvider(name="manual-mock"))
     assert "manual-mock" in forge.providers()
@@ -75,11 +71,8 @@ def test_generation_transfer_reason_embedding_and_manual_registration(tmp_path) 
     assert health.name == "mock"
     assert health.healthy is True
 
-    clip = forge.generate("A cube rolling across a table", "mock", duration_seconds=1.0)
-    assert clip.frame_count >= 1
-
-    transferred = forge.transfer(clip, "mock", width=320, height=180, fps=12.0)
-    assert transferred.resolution == (320, 180)
+    embedding = forge.embed("mock", text="cube state")
+    assert embedding.vector
 
     world = forge.create_world("manual-world", "manual-mock")
     world.add_object(
@@ -92,11 +85,6 @@ def test_generation_transfer_reason_embedding_and_manual_registration(tmp_path) 
 
     prediction = world.predict(Action.move_to(0.25, 0.8, 0.0), steps=2)
     assert prediction.provider == "manual-mock"
-
-    reasoning = forge.reason("mock", "how many objects are here?", world=world)
-    assert reasoning.answer
-    assert reasoning.confidence >= 0.0
-    assert len(reasoning.evidence) >= 1
 
     embedding = forge.embed("mock", text="a mug on a kitchen counter")
     assert embedding.provider == "mock"

@@ -11,10 +11,8 @@ WorldForge 提供方是能力适配器。提供方页面应说明该适配器实
 <!-- provider-catalog:start -->
 | 提供方 | 成熟度 | 能力面 | 注册方式 | 运行时所有权 |
 | --- | --- | --- | --- | --- |
-| `mock` | `stable` | `predict`, `generate`, `transfer`, `reason`, `embed` | 始终注册 | 仓库内确定性本地提供方 |
-| [`cosmos`](./cosmos.md) | `beta` | `generate` | `COSMOS_BASE_URL` | 宿主方提供可访问的 Cosmos 部署及可选的 `NVIDIA_API_KEY` |
+| `mock` | `stable` | `predict`, `embed` | 始终注册 | 仓库内确定性本地提供方 |
 | [`cosmos-policy`](./cosmos-policy.md) | `beta` | 无（`policy` 需要宿主方提供 `action_translator`） | `COSMOS_POLICY_BASE_URL` | WorldForge 验证 `/act` 请求/响应和规划组合；宿主方负责 Cosmos-Policy 可达性/CUDA/运行时、ALOHA 观测构建以及将原始 14 维行数据转换为可执行 `Action` 对象 |
-| [`runway`](./runway.md) | `beta` | `generate`, `transfer` | `RUNWAYML_API_SECRET` 或 `RUNWAY_API_SECRET` | 宿主方提供 Runway 凭据并持久化返回的工件 |
 | [`leworldmodel`](./leworldmodel.md) | `stable` | `score` | `LEWORLDMODEL_POLICY` 或 `LEWM_POLICY` | 宿主方安装官方 LeWM 加载路径（`stable_worldmodel.policy.AutoCostModel`）、torch 及兼容的检查点 |
 | [`gr00t`](./gr00t.md) | `beta` | `policy` | `GROOT_POLICY_HOST` | 宿主方运行或访问 Isaac GR00T 策略服务器 |
 | [`lerobot`](./lerobot.md) | `stable` | `policy` | `LEROBOT_POLICY_PATH` 或 `LEROBOT_POLICY` | 宿主方安装 LeRobot 及兼容的策略检查点 |
@@ -37,9 +35,6 @@ WorldForge 不将提供方能力视为徽章，而是将其作为可调用契约
 | 能力 | 提供方方法 | 结果契约 |
 | --- | --- | --- |
 | `predict` | `predict(world_state, action, steps)` | `PredictionPayload` |
-| `generate` | `generate(prompt, duration_seconds, options)` | `VideoClip` |
-| `transfer` | `transfer(clip, width, height, fps, prompt, options)` | `VideoClip` |
-| `reason` | `reason(query, world_state)` | `ReasoningResult` |
 | `embed` | `embed(text=...)` | `EmbeddingResult` |
 | `score` | `score_actions(info, action_candidates)` | `ActionScoreResult` |
 | `policy` | `select_actions(info)` | `ActionPolicyResult` |
@@ -49,7 +44,6 @@ WorldForge 不将提供方能力视为徽章，而是将其作为可调用契约
 - 除非适配器端到端实现了该方法，否则不得声明该能力。
 - 对于仅返回潜在代价的模型，不得暴露 `predict`。
 - 除非原始动作已被翻译为可执行的 WorldForge `Action` 对象，否则不得暴露 `policy`。
-- 除非返回的媒体经过 `VideoClip` 验证，否则不得暴露 `generate` 或 `transfer`。
 - 保持脚手架提供方的显式性：它们保留名称和契约，但不声明运行时支持。
 
 完整的提供方类通过 `ProviderCapabilities` 暴露这些契约。较为精简的本地集成也可以实现一个可运行时检查的能力协议，例如带有 `score_actions(...)` 的 `Cost` 对象或带有 `select_actions(...)` 的 `Policy` 对象。协议实现通过 `WorldForge.register_cost(...)`、`register_policy(...)` 或 `register(...)` 注册；WorldForge 会对其进行包装，使诊断、提供方事件、规划和基准测试看到与完整提供方相同的能力面。
@@ -96,9 +90,9 @@ uv run worldforge doctor --capability score
 提供方还会暴露 `config_summary()` 用于问题证据和宿主方诊断。它报告已文档化的字段是否存在、来源（`env:<NAME>`、`direct`、`default` 或 `unset`）、是否为必填项以及是否类似密钥。它不返回原始值、令牌、端点字符串、检查点路径或构造函数参数。
 
 ```python
-from worldforge.providers import RunwayProvider
+from worldforge.providers import LeWorldModelProvider
 
-summary = RunwayProvider().config_summary().to_dict()
+summary = LeWorldModelProvider().config_summary().to_dict()
 print(summary["fields"])
 ```
 
@@ -114,7 +108,7 @@ print(summary["fields"])
 - `required_env_vars` 和 `optional_env_vars`：配置面
 - `default_model`：默认模型、检查点或宿主方选择的模型槽位
 - `device_support`：支持的设备类型，如 `cpu`、`cuda` 或 `remote`
-- `host_owned_artifacts`：宿主方必须保留的检查点、策略服务器、生成的媒体或翻译器
+- `host_owned_artifacts`：宿主方必须保留的检查点、策略服务器或翻译器
 - `minimum_smoke_command`：证明运行时已正确连接的最小实时命令
 - `expected_success_signal`：冒烟测试实证的具体通过条件
 - `setup_hint`：提供方健康消息使用的简短修复提示
