@@ -24,7 +24,13 @@ from typing import Any
 
 from worldforge import Action, ActionScoreResult, BBox, Position, SceneObject, StructuredGoal
 from worldforge.framework import WorldForge
-from worldforge.models import JSONDict, ProviderCapabilities, ProviderHealth, WorldForgeError
+from worldforge.models import (
+    JSONDict,
+    ProviderCapabilities,
+    ProviderHealth,
+    WorldForgeError,
+    WorldStateError,
+)
 from worldforge.providers import BaseProvider, ProviderProfileSpec
 
 SO101_TRACE_SCHEMA_VERSION = "worldforge.robot_decision_trace.v0"
@@ -395,7 +401,7 @@ def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
     reloaded_world = forge.load_world(saved_world_id)
     final_cube = reloaded_world.get_object_by_id(cube.id)
     if final_cube is None:
-        raise RuntimeError("SO-101 demo cube was not present after execution.")
+        raise WorldStateError("SO-101 demo cube was not present after execution.")
 
     trace = _decision_trace(
         observation=observation,
