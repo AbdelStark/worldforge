@@ -177,7 +177,14 @@ uv run python examples/dimos-go2-replay-arena/run.py \
   --out .worldforge/dimos-go2-replay-arena
 ```
 
+```bash
+uv run python examples/dimos-go2-replay-arena/run.py \
+  --all-fixtures \
+  --out .worldforge/dimos-go2-replay-arena-batch
+```
+
 Expected success signal: the output directory contains `decision-trace.json` and `report.md`, and
 the trace includes a selected action, rejected counterfactuals, score margin, and baseline regret.
+Batch mode also writes `batch-report.json` and `batch-report.md`.
 The bundled fixtures include one replay where WorldForge rejects the hardcoded baseline and one
 clear-hallway replay where the baseline remains the best action.

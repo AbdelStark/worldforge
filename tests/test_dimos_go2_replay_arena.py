@@ -10,9 +10,11 @@ from worldforge.demos.dimos_go2_replay_arena import (
     Go2ReplayScoreProvider,
     _decision_trace,
     load_go2_replay_fixture,
+    render_go2_replay_batch_report,
     render_go2_replay_report,
     run_dimos_go2_replay_arena,
     run_dimos_go2_replay_arena_workflow,
+    run_dimos_go2_replay_batch,
 )
 from worldforge.models import WorldForgeError
 
@@ -107,6 +109,47 @@ def test_go2_replay_arena_workflow_summary_points_to_artifacts(tmp_path: Path) -
     assert summary["baseline_regret"] > 0.0
     assert Path(summary["decision_trace_path"]).is_file()
     assert Path(summary["report_path"]).is_file()
+
+
+def test_go2_replay_batch_summarizes_fixture_set(tmp_path: Path) -> None:
+    summary = run_dimos_go2_replay_batch(
+        [DEFAULT_FIXTURE_PATH, CLEAR_PATH_FIXTURE_PATH],
+        tmp_path,
+    )
+
+    rows_by_scenario = {row["scenario_id"]: row for row in summary["rows"]}
+    assert summary["artifact_kind"] == "worldforge.dimos_go2_replay_batch_report"
+    assert summary["fixture_count"] == 2
+    assert rows_by_scenario["go2-office-replay-frame-001"]["selected_action_id"] == (
+        "stop_relocalize"
+    )
+    assert rows_by_scenario["go2-office-replay-frame-001"]["baseline_regret"] > 0.0
+    assert rows_by_scenario["go2-clear-hallway-replay-frame-001"]["selected_action_id"] == (
+        "baseline_forward"
+    )
+    assert rows_by_scenario["go2-clear-hallway-replay-frame-001"]["baseline_regret"] == 0.0
+    assert Path(summary["batch_report_path"]).is_file()
+    assert Path(summary["batch_markdown_path"]).is_file()
+    assert Path(rows_by_scenario["go2-office-replay-frame-001"]["decision_trace_path"]).is_file()
+
+
+def test_go2_replay_batch_report_renders_comparison_table(tmp_path: Path) -> None:
+    summary = run_dimos_go2_replay_batch(
+        [DEFAULT_FIXTURE_PATH, CLEAR_PATH_FIXTURE_PATH],
+        tmp_path,
+    )
+
+    report = render_go2_replay_batch_report(summary)
+
+    assert "| Scenario | Selected | Baseline |" in report
+    assert "`go2-office-replay-frame-001`" in report
+    assert "`go2-clear-hallway-replay-frame-001`" in report
+    assert "Batch replay only" in report
+
+
+def test_go2_replay_batch_rejects_empty_fixture_list(tmp_path: Path) -> None:
+    with pytest.raises(WorldForgeError, match="requires at least one fixture"):
+        run_dimos_go2_replay_batch([], tmp_path)
 
 
 def test_go2_replay_arena_rejects_malformed_fixture(tmp_path: Path) -> None:

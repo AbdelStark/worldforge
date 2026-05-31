@@ -16,12 +16,22 @@ uv run python examples/dimos-go2-replay-arena/run.py \
   --out .worldforge/dimos-go2-replay-arena
 ```
 
+Run every bundled replay fixture and write a batch comparison table:
+
+```bash
+uv run python examples/dimos-go2-replay-arena/run.py \
+  --all-fixtures \
+  --out .worldforge/dimos-go2-replay-arena-batch
+```
+
 Expected success signal:
 
 - `.worldforge/dimos-go2-replay-arena/decision-trace.json` exists.
 - `.worldforge/dimos-go2-replay-arena/report.md` exists.
 - The trace includes `selected_action`, `score_margin`, `baseline_regret`, and scored
   counterfactual candidates.
+- Batch mode writes `batch-report.json`, `batch-report.md`, and one per-fixture trace/report
+  directory.
 
 First triage step: open `decision-trace.json` and verify that the candidate count matches the
 fixture and that every scored candidate has `distance_cost`, `obstacle_risk`, `uncertainty_cost`,

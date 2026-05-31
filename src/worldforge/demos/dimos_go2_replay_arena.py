@@ -99,6 +99,81 @@ def run_dimos_go2_replay_arena_workflow(
     }
 
 
+def run_dimos_go2_replay_batch(
+    fixture_paths: Sequence[Path],
+    output_dir: Path = Path(".worldforge/dimos-go2-replay-arena-batch"),
+) -> JSONDict:
+    if not fixture_paths:
+        raise WorldForgeError("Go2 replay batch requires at least one fixture path.")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    rows: list[JSONDict] = []
+    for fixture_path in fixture_paths:
+        fixture_output_dir = output_dir / fixture_path.stem
+        result = run_dimos_go2_replay_arena(fixture_path, fixture_output_dir)
+        rows.append(
+            {
+                "fixture": str(fixture_path),
+                "scenario_id": result.trace["scenario_id"],
+                "selected_action_id": result.trace["selected_action"]["id"],
+                "baseline_action_id": result.trace["baseline_action_id"],
+                "score_margin": result.trace["score_margin"],
+                "baseline_regret": result.trace["baseline_regret"],
+                "worldforge_value": result.trace["worldforge_value"],
+                "decision_trace_path": str(result.decision_trace_path),
+                "report_path": str(result.report_path),
+            }
+        )
+
+    summary: JSONDict = {
+        "schema_version": 1,
+        "artifact_kind": "worldforge.dimos_go2_replay_batch_report",
+        "fixture_count": len(rows),
+        "rows": rows,
+    }
+    batch_json_path = output_dir / "batch-report.json"
+    batch_markdown_path = output_dir / "batch-report.md"
+    summary["batch_report_path"] = str(batch_json_path)
+    summary["batch_markdown_path"] = str(batch_markdown_path)
+    write_json_artifact(batch_json_path, summary)
+    batch_markdown_path.write_text(render_go2_replay_batch_report(summary), encoding="utf-8")
+    return summary
+
+
+def render_go2_replay_batch_report(summary: JSONDict) -> str:
+    lines = [
+        "# DimOS Go2 Replay Batch",
+        "",
+        "| Scenario | Selected | Baseline | Margin | Baseline Regret | Signal |",
+        "| --- | --- | --- | ---: | ---: | --- |",
+    ]
+    lines.extend(
+        (
+            "| "
+            f"`{row['scenario_id']}` | "
+            f"`{row['selected_action_id']}` | "
+            f"`{row['baseline_action_id']}` | "
+            f"{row['score_margin']:.6f} | "
+            f"{row['baseline_regret']:.6f} | "
+            f"{row['worldforge_value']} |"
+        )
+        for row in summary["rows"]
+    )
+    lines.extend(
+        [
+            "",
+            "## Boundary",
+            "",
+            (
+                "Batch replay only; no DimOS import, browser simulator, hardware connection, "
+                "or learned world-model claim."
+            ),
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def run_dimos_go2_replay_arena(
     fixture_path: Path = DEFAULT_FIXTURE_PATH,
     output_dir: Path = Path(".worldforge/dimos-go2-replay-arena"),
@@ -573,7 +648,9 @@ __all__ = [
     "Go2ReplayArenaResult",
     "Go2ReplayScoreProvider",
     "load_go2_replay_fixture",
+    "render_go2_replay_batch_report",
     "render_go2_replay_report",
     "run_dimos_go2_replay_arena",
     "run_dimos_go2_replay_arena_workflow",
+    "run_dimos_go2_replay_batch",
 ]
