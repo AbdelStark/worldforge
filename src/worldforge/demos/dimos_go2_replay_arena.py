@@ -352,9 +352,16 @@ def _require_fields(
 
 
 def _non_empty_string(value: object, field_name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str):
         raise WorldForgeError(f"Go2 replay fixture {field_name} must be a non-empty string.")
-    return value.strip()
+    stripped = value.strip()
+    if not stripped:
+        raise WorldForgeError(f"Go2 replay fixture {field_name} must be a non-empty string.")
+    if stripped != value:
+        raise WorldForgeError(
+            f"Go2 replay fixture {field_name} must not include leading/trailing whitespace."
+        )
+    return value
 
 
 def _candidate_action_plans(fixture: JSONDict) -> list[list[Action]]:

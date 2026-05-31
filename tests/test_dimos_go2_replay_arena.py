@@ -284,6 +284,16 @@ def test_go2_replay_fixture_rejects_ambiguous_candidate_id(tmp_path: Path) -> No
         load_go2_replay_fixture(malformed)
 
 
+def test_go2_replay_fixture_rejects_candidate_id_outer_whitespace(tmp_path: Path) -> None:
+    payload = load_go2_replay_fixture(DEFAULT_FIXTURE_PATH)
+    payload["candidate_actions"][0]["id"] = " baseline_forward "
+    malformed = tmp_path / "whitespace-candidate.json"
+    malformed.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match="candidate_actions\\[0\\]\\.id must not include"):
+        load_go2_replay_fixture(malformed)
+
+
 def test_go2_replay_fixture_rejects_unknown_baseline(tmp_path: Path) -> None:
     payload = load_go2_replay_fixture(DEFAULT_FIXTURE_PATH)
     payload["baseline_action_id"] = "missing-baseline"
