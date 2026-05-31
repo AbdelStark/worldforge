@@ -60,6 +60,15 @@ def test_go2_replay_arena_report_explains_selected_action(tmp_path: Path) -> Non
     assert result.report_path.read_text(encoding="utf-8") == report
 
 
+def test_go2_replay_arena_report_handles_single_candidate(tmp_path: Path) -> None:
+    result = run_dimos_go2_replay_arena(DEFAULT_FIXTURE_PATH, tmp_path)
+    trace = {**result.trace, "scored_candidates": result.trace["scored_candidates"][:1]}
+
+    report = render_go2_replay_report(trace)
+
+    assert "No rejected counterfactuals available" in report
+
+
 def test_go2_replay_arena_workflow_summary_points_to_artifacts(tmp_path: Path) -> None:
     summary = run_dimos_go2_replay_arena_workflow(DEFAULT_FIXTURE_PATH, tmp_path)
 
@@ -75,4 +84,43 @@ def test_go2_replay_arena_rejects_malformed_fixture(tmp_path: Path) -> None:
     malformed.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
 
     with pytest.raises(WorldForgeError, match="missing 'scenario_id'"):
+        load_go2_replay_fixture(malformed)
+
+
+def test_go2_replay_arena_rejects_missing_nested_observation(tmp_path: Path) -> None:
+    malformed = tmp_path / "bad.json"
+    malformed.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "scenario_id": "bad",
+                "observation": {
+                    "frame_id": "bad-frame",
+                    "timestamp_s": 0.0,
+                    "localization_confidence": 1.0,
+                    "map": {},
+                },
+                "goal": {"description": "bad", "x": 0.0, "y": 0.0},
+                "candidate_actions": [
+                    {"id": "candidate", "type": "go2_base_command", "parameters": {}}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(WorldForgeError, match="observation is missing 'pose'"):
+        load_go2_replay_fixture(malformed)
+
+
+def test_go2_replay_fixture_raises_for_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(WorldForgeError, match="fixture not found"):
+        load_go2_replay_fixture(tmp_path / "missing.json")
+
+
+def test_go2_replay_fixture_raises_for_invalid_json(tmp_path: Path) -> None:
+    malformed = tmp_path / "bad.json"
+    malformed.write_text("{not valid json", encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match="invalid JSON"):
         load_go2_replay_fixture(malformed)

@@ -14,13 +14,19 @@ from worldforge.artifact_io import write_json_artifact
 from worldforge.models import JSONDict, WorldForgeError, require_finite_number
 from worldforge.providers.base import ProviderProfileSpec
 
-DEFAULT_FIXTURE_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "examples"
-    / "dimos-go2-replay-arena"
-    / "fixtures"
-    / "go2_office_replay_frame.json"
+_REPO_FIXTURE_RELATIVE_PATH = (
+    Path("examples") / "dimos-go2-replay-arena" / "fixtures" / "go2_office_replay_frame.json"
 )
+DEFAULT_FIXTURE_PATH = (
+    Path.cwd() / _REPO_FIXTURE_RELATIVE_PATH
+    if (Path.cwd() / _REPO_FIXTURE_RELATIVE_PATH).is_file()
+    else Path(__file__).resolve().parents[3] / _REPO_FIXTURE_RELATIVE_PATH
+)
+
+_PROGRESS_REWARD_WEIGHT = 0.25
+_OBSTACLE_CLEARANCE_PENALTY_SCALE = 4.0
+_SAFETY_ACTION_RELOCALIZATION_COST = 0.08
+_UNCERTAIN_MOTION_BASE_COST = 0.6
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +135,13 @@ def load_go2_replay_fixture(path: Path) -> JSONDict:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise WorldForgeError(f"Go2 replay fixture not found: {path}") from exc
+        message = f"Go2 replay fixture not found: {path}"
+        if path == DEFAULT_FIXTURE_PATH:
+            message += (
+                ". The bundled default is repo-local; pass --fixture with a checkout fixture "
+                "or replay export when running from an installed wheel."
+            )
+        raise WorldForgeError(message) from exc
     except json.JSONDecodeError as exc:
         raise WorldForgeError(f"Go2 replay fixture is invalid JSON: {path}") from exc
     _validate_fixture(payload)
@@ -163,13 +175,16 @@ def render_go2_replay_report(trace: JSONDict) -> str:
         "## Top Counterfactuals",
         "",
     ]
-    lines.extend(
-        (
-            f"- `{candidate['action_id']}` cost `{candidate['total_cost']:.6f}` "
-            f"endpoint `({candidate['endpoint']['x']:.2f}, {candidate['endpoint']['y']:.2f})`"
+    if rejected:
+        lines.extend(
+            (
+                f"- `{candidate['action_id']}` cost `{candidate['total_cost']:.6f}` "
+                f"endpoint `({candidate['endpoint']['x']:.2f}, {candidate['endpoint']['y']:.2f})`"
+            )
+            for candidate in rejected
         )
-        for candidate in rejected
-    )
+    else:
+        lines.append("- No rejected counterfactuals available.")
     lines.extend(
         [
             "",
@@ -193,8 +208,48 @@ def _validate_fixture(payload: object) -> None:
             raise WorldForgeError(f"Go2 replay fixture is missing '{field_name}'.")
     if payload.get("schema_version") != 1:
         raise WorldForgeError("Go2 replay fixture schema_version must be 1.")
+    observation = _require_mapping(payload["observation"], "observation")
+    _require_fields(
+        observation,
+        ("frame_id", "timestamp_s", "pose", "localization_confidence", "map"),
+        "observation",
+    )
+    pose = _require_mapping(observation["pose"], "observation.pose")
+    _require_fields(pose, ("x", "y", "yaw_rad"), "observation.pose")
+    _number(observation["timestamp_s"], name="observation.timestamp_s")
+    _number(observation["localization_confidence"], name="observation.localization_confidence")
+    _number(pose["x"], name="observation.pose.x")
+    _number(pose["y"], name="observation.pose.y")
+    _number(pose["yaw_rad"], name="observation.pose.yaw_rad")
+    _require_mapping(observation["map"], "observation.map")
+
+    goal = _require_mapping(payload["goal"], "goal")
+    _require_fields(goal, ("description", "x", "y"), "goal")
+    _number(goal["x"], name="goal.x")
+    _number(goal["y"], name="goal.y")
+
     if not isinstance(payload["candidate_actions"], list) or not payload["candidate_actions"]:
         raise WorldForgeError("Go2 replay fixture candidate_actions must be a non-empty list.")
+    for index, candidate in enumerate(payload["candidate_actions"]):
+        candidate_map = _require_mapping(candidate, f"candidate_actions[{index}]")
+        _require_fields(candidate_map, ("id", "type", "parameters"), f"candidate_actions[{index}]")
+        _require_mapping(candidate_map["parameters"], f"candidate_actions[{index}].parameters")
+
+
+def _require_mapping(value: object, field_name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise WorldForgeError(f"Go2 replay fixture '{field_name}' must be a JSON object.")
+    return value
+
+
+def _require_fields(
+    payload: Mapping[str, Any],
+    field_names: Sequence[str],
+    parent_name: str,
+) -> None:
+    for field_name in field_names:
+        if field_name not in payload:
+            raise WorldForgeError(f"Go2 replay fixture {parent_name} is missing '{field_name}'.")
 
 
 def _candidate_action_plans(fixture: JSONDict) -> list[list[Action]]:
@@ -222,7 +277,13 @@ def _candidate_payloads(action_candidates: object) -> list[list[JSONDict]]:
 
 
 def _decision_trace(fixture: JSONDict, plan: Any) -> JSONDict:
-    score_result = plan.metadata["score_result"]
+    try:
+        score_result = plan.metadata["score_result"]
+    except KeyError as exc:
+        raise WorldForgeError(
+            "Go2 replay arena expected 'score_result' in plan metadata; "
+            f"got keys: {sorted(plan.metadata)}"
+        ) from exc
     scored_candidates = sorted(
         score_result["metadata"]["scored_candidates"],
         key=lambda candidate: (candidate["total_cost"], candidate["action_id"]),
@@ -300,7 +361,7 @@ def _score_candidate(
         + map_cost
         + uncertainty_cost
         + relocalization_cost
-        - 0.25 * progress
+        - _PROGRESS_REWARD_WEIGHT * progress
     )
     components = {
         "distance_cost": distance_cost,
@@ -344,7 +405,7 @@ def _obstacle_risk(start: _Pose2D, end: _Pose2D, map_payload: JSONDict) -> float
         )
         clearance = _segment_distance((start.x, start.y), (end.x, end.y), center)
         required = _number(obstacle["radius_m"], name="obstacle.radius_m") + safety_margin
-        risk += max(0.0, required - clearance) * 4.0
+        risk += max(0.0, required - clearance) * _OBSTACLE_CLEARANCE_PENALTY_SCALE
     return risk
 
 
@@ -373,9 +434,9 @@ def _relocalization_cost(action: JSONDict, observation: JSONDict) -> float:
     if confidence >= 0.5:
         return 0.0
     if action["type"] == "go2_safety_action":
-        return 0.08
+        return _SAFETY_ACTION_RELOCALIZATION_COST
     speed = _number(action["parameters"].get("speed_mps", 0.0), name="action.speed_mps")
-    return (0.5 - confidence) * (0.6 + speed)
+    return (0.5 - confidence) * (_UNCERTAIN_MOTION_BASE_COST + speed)
 
 
 def _segment_distance(
