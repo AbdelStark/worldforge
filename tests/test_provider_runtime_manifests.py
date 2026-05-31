@@ -21,13 +21,11 @@ from worldforge.providers.runtime_manifest import (
 
 EXPECTED_MANIFEST_PROVIDERS = (
     "cosmos-policy",
-    "cosmos",
     "gr00t",
     "jepa-wms",
     "jepa",
     "lerobot",
     "leworldmodel",
-    "runway",
 )
 DIRECT_CONSTRUCTION_MANIFEST_PROVIDERS = {"jepa-wms"}
 

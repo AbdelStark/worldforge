@@ -26,14 +26,14 @@ Top-level framework object responsible for:
 
 - provider registration
 - world creation and persistence
-- generation, transfer, reasoning, embedding, action-scoring, and action-policy helpers
+- prediction, embedding, action-scoring, and action-policy helpers
 - provider profiles and environment diagnostics
 
 Common inspection helpers:
 
 <!-- worldforge-snippet: execute -->
 ```python
-from worldforge import WorldForge
+from worldforge import Action, WorldForge
 
 forge = WorldForge()
 
@@ -44,8 +44,8 @@ print(profiles[0].supported_tasks)
 print(doctor.issues)
 ```
 
-Provider capability filters are strict. Valid capability names are `predict`, `generate`,
-`reason`, `embed`, `plan`, `transfer`, `score`, and `policy`; unknown names raise
+Provider capability filters are strict. Valid capability names are `predict`, `embed`, `plan`,
+`score`, and `policy`; unknown names raise
 `WorldForgeError` instead of producing an empty result by typo.
 
 ## Capability protocols
@@ -75,13 +75,12 @@ result = forge.score_actions(cost="local-cost", info={}, action_candidates=[{}, 
 print(result.best_index)
 ```
 
-The same pattern is available through `register_policy`, `register_generator`,
-`register_predictor`, `register_reasoner`, `register_embedder`, and `register_transferer`.
+The same pattern is available through `register_policy`, `register_predictor`, and
+`register_embedder`.
 `forge.register(...)` dispatches a pure object by protocol membership, and
 `RunnableModel(...)` can group several capability implementations. Registered protocol
 implementations appear in `providers()`, `provider_profile(...)`, `doctor(...)`, planning, and the
-benchmark harness. Existing calls such as `forge.generate("prompt", "mock")` keep resolving
-through the legacy provider registry.
+benchmark harness.
 
 For a runnable policy-plus-score example that registers plain in-process objects, see
 [Capability Protocols Quickstart](../capability-protocols-quickstart.md).
@@ -94,7 +93,7 @@ surface the aggregate `ProviderLifecycleStatus` through `doctor()` and
 ## Persistence
 
 ```python
-from worldforge import WorldForge
+from worldforge import Action, WorldForge
 
 forge = WorldForge(state_dir=".worldforge/worlds")
 world = forge.create_world("lab", provider="mock")
@@ -144,8 +143,9 @@ forge = WorldForge(
     )
 )
 
-forge.generate("orbiting cube", "mock", duration_seconds=1.0)
-print(metrics.get("mock", "generate").to_dict())
+world = forge.create_world_from_prompt("cube", provider="mock")
+world.predict(Action(type="move_to", parameters={"target": {"x": 0.2, "y": 0.5, "z": 0.0}}))
+print(metrics.get("mock", "predict").to_dict())
 ```
 
 Provider events are log-safe by default. The `target` field keeps endpoint or artifact path context
@@ -183,28 +183,11 @@ session.close()
 Install with `worldforge-ai[rerun]`. Rerun is not a provider and does not advertise WorldForge
 capabilities.
 
-## Scene Artifact Validation
-
-Future spatial or 3D scene providers must validate their JSON artifact descriptor before returning
-or preserving evidence. The helper is dependency-free and does not fetch assets, render previews,
-or run simulators:
-
-<!-- worldforge-snippet: skip-illustrative -->
-```python
-from worldforge import validate_scene_artifact
-
-artifact = validate_scene_artifact(payload)
-```
-
-The validated artifact remains a JSON object. Invalid units, malformed transforms, non-finite
-numbers, tuple-shaped values, object instances, unsafe URLs, unmarked host-local paths,
-secret-like metadata keys, and oversized metadata raise `WorldForgeError`.
-
 ## Action Scoring
 
 Providers that expose the `score` capability can rank candidate action sequences without claiming
-prediction, generation, or reasoning support. LeWorldModel uses this path because its upstream
-runtime is a JEPA cost model.
+prediction or policy support. LeWorldModel uses this path because its upstream runtime is a JEPA
+cost model.
 
 <!-- worldforge-snippet: skip-host-owned -->
 ```python
@@ -379,7 +362,7 @@ from worldforge.evaluation import EvaluationSuite
 
 print(EvaluationSuite.builtin_names())
 
-suite = EvaluationSuite.from_builtin("reasoning")
+suite = EvaluationSuite.from_builtin("planning")
 report = suite.run_report(["mock"], forge=forge)
 print(report.results[0].passed)
 print(report.to_markdown())
@@ -435,12 +418,11 @@ harness = ProviderBenchmarkHarness(forge=forge)
 inputs = load_benchmark_inputs(
     {
         "embedding_text": "benchmark cube state",
-        "generation_prompt": "benchmark orbiting cube",
     }
 )
 report = harness.run(
     ["mock"],
-    operations=["predict", "generate", "embed"],
+    operations=["predict", "embed"],
     iterations=5,
     inputs=inputs,
 )
@@ -486,23 +468,22 @@ WorldForge uses three public exception families for runtime workflows:
 - `WorldStateError`: malformed persisted state or provider-supplied world state that cannot be
   safely restored or applied, including invalid scene-object maps and invalid history entries.
 - `ProviderError`: provider credentials, transport failures, unsupported provider operations,
-  malformed upstream responses, provider-specific input limits, expired artifacts, invalid
-  downloaded media, optional dependency failures, and malformed model score outputs.
+  malformed upstream responses, provider-specific input limits, optional dependency failures, and
+  malformed model score or policy outputs.
 
-Provider-facing workflows touched by remote adapters fail before returning partial results:
+Provider-facing workflows fail before returning partial results:
 
 ```python
-from worldforge import GenerationOptions, WorldForge
+from worldforge import Action, WorldForge
 from worldforge.providers import ProviderError
 
 forge = WorldForge()
+world = forge.create_world_from_prompt("a cube on a table")
 
 try:
-    clip = forge.generate(
-        "a rainy alley at night",
-        "runway",
-        duration_seconds=4.0,
-        options=GenerationOptions(ratio="1280:720"),
+    prediction = world.predict(
+        Action(type="move", target="cube", parameters={"dx": 0.1, "dy": 0.0, "dz": 0.0}),
+        provider="mock",
     )
 except ProviderError as exc:
     # Inspect emitted ProviderEvent records for transport status and attempts.
@@ -511,8 +492,8 @@ except ProviderError as exc:
 
 Important boundary checks:
 
-- `Position`, `Rotation`, `VideoClip`, request policies, provider events, embeddings, reasoning
-  confidence, and prediction payload metrics reject non-finite numbers.
+- `Position`, `Rotation`, request policies, provider events, embeddings, score results, policy
+  results, and prediction payload metrics reject non-finite numbers.
 - `Action.parameters`, `SceneObject.metadata`, provider-event metadata, score metadata, policy raw
   actions, policy metadata, and prediction payload state/metadata reject non-JSON-native values
   rather than accepting object instances that only fail at persistence time.
@@ -521,10 +502,6 @@ Important boundary checks:
 - `World.add_object(...)` rejects duplicate scene object IDs.
 - Imported or provider-supplied world state rejects scene-object keys that disagree with embedded
   object IDs.
-- Cosmos generation responses must include a non-empty base64 `b64_video` field and typed
-  optional metadata.
-- Runway task creation, polling, and artifact download responses are validated before constructing
-  a returned `VideoClip`.
 - LeWorldModel scoring requires `pixels`, `goal`, and `action` info fields, action candidates shaped
   as `(batch=1, samples, horizon, action_dim)`, optional `stable_worldmodel` and `torch` runtime
   dependencies, one returned score per candidate sample, and finite model scores.

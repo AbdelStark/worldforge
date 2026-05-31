@@ -105,7 +105,7 @@ Key directories:
 - `src/worldforge/_model_utils.py`: shared JSON-native validation helpers and framework errors.
 - `src/worldforge/scene_models.py`: geometry, action, scene object, structured-goal, and history
   contracts.
-- `src/worldforge/capability_results.py`: media, reasoning, embedding, action-score, and
+- `src/worldforge/capability_results.py`: embedding, action-score, and
   embodied-policy result contracts.
 - `src/worldforge/provider_models.py`: compatibility facade for provider-facing contracts.
 - `src/worldforge/provider_profiles.py`, `provider_request_policy.py`, `provider_events.py`,
@@ -115,8 +115,8 @@ Key directories:
 - `src/worldforge/framework_capabilities.py`: internal capability-protocol registry and dispatch.
 - `src/worldforge/_world.py`: mutable world state, history, and planning.
 - `src/worldforge/_world_prompt_seeders.py`: prompt-derived local seed-scene helpers.
-- `src/worldforge/harness/tui_styles.py` plus `tui_*_styles.py`: Textual-free CSS constants for
-  TheWorldHarness, grouped by screen family behind a compatibility facade.
+- `src/worldforge/harness/tui_styles.py`: Textual-free CSS constants for the robotics showcase
+  report.
 - `src/worldforge/providers/`: provider interfaces, catalog, adapters, and scaffolds.
 - `src/worldforge/testing/`: reusable provider contract helpers, fixture loaders, runtime markers,
   and deterministic artifact test controls.
@@ -165,8 +165,8 @@ Use labels to make an issue's roadmap stream and evidence contract clear before 
 | --- | --- | --- |
 | Roadmap stream | `stream: provider-evidence` | provider selection, runtime contracts, provider promotion, runtime manifests, upstream validation |
 | Roadmap stream | `stream: evidence-integrity` | evals, benchmarks, budgets, preserved run evidence, release evidence, provenance, public claims |
-| Roadmap stream | `stream: ops-authoring` | operator workflows, TheWorldHarness, adapter authoring loops, reference hosts, persistence, runbooks |
-| Capability | `predict`, `generate`, `reason`, `embed`, `transfer`, `score`, `policy` | the issue changes or validates that public capability surface |
+| Roadmap stream | `stream: ops-authoring` | operator workflows, robotics showcase evidence, adapter authoring loops, reference hosts, persistence, runbooks |
+| Capability | `predict`, `embed`, `score`, `policy` | the issue changes or validates that public capability surface |
 | Severity | `severity: blocking`, `severity: quality`, `type: hardening` | release blockers, quality regressions, validation/redaction/recovery hardening |
 | Release scope | `release`, `release: provider-hardening-rc` | release process or named release-candidate scope |
 

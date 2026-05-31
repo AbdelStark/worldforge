@@ -1,4 +1,4 @@
-"""Textual-free robotics showcase view helpers for TheWorldHarness."""
+"""Textual-free robotics showcase view helpers."""
 
 from __future__ import annotations
 

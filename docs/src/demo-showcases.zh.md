@@ -29,7 +29,7 @@ uv run python scripts/demo_showcases.py run first-run --format json --overwrite
 | `first-run` | #189 | `uv run python scripts/demo_showcases.py run first-run` | mock 世界创建、对象添加、预测记录、导出和预检写入 | `first-run/exported-world.json` 和 `first-run/preflight.json` | 运行 `uv run worldforge world preflight --state-dir <demo>/worlds` |
 | `diagnostics-issue-bundle` | #190 | `uv run python scripts/demo_showcases.py run diagnostics-issue-bundle` | 跳过的提供方诊断已保留并打包 | `diagnostics-issue-bundle/issue-bundle/issue.md` | 附加前检查 `evidence_manifest.json` |
 | `robotics-replay` | #191 | `uv run python scripts/demo_showcases.py run robotics-replay` | 确定性策略加打分回放摘要 | `robotics-replay/robotics-replay-manifest.json` | 在执行已准备宿主命令前运行 `uv run worldforge-demo-lerobot` |
-| `remote-media-dry-run` | #192 | `uv run python scripts/demo_showcases.py run remote-media-dry-run` | 净化的 Cosmos 成功和 Runway 过期工件夹具事件 | `remote-media-dry-run/remote-media-events.json` | 在任何实时冒烟测试前检查已脱敏的提供方事件目标 |
+| `provider-event-redaction-dry-run` | #192 | `uv run python scripts/demo_showcases.py run provider-event-redaction-dry-run` | 已脱敏的提供方事件夹具 | `provider-event-redaction-dry-run/provider-event-redaction-events.json` | 在任何实时冒烟测试前检查已脱敏的提供方事件目标 |
 | `adapter-author` | #193 | `uv run python scripts/demo_showcases.py run adapter-author` | 提供方脚手架已生成于演示输出下，晋升阻碍已报告 | `adapter-author/generated-provider/` | 替换占位夹具，然后运行生成的提供方测试 |
 | `batch-eval` | #194 | `uv run python scripts/demo_showcases.py run batch-eval` | 评估成功和受控基准测试预算失败已保留 | `batch-eval/batch-host/runs/<run-id>/run_manifest.json` | 更改预算前检查失败的基准测试清单 |
 | `service-host` | #195 | `uv run python scripts/demo_showcases.py run service-host` | stdlib 服务宿主就绪状态和一个 mock 请求摘要 | `service-host/runs/<run-id>/results/summary.json` | 运行 `uv run python examples/hosts/service/app.py --help` 并检查 `/readyz` |
@@ -50,7 +50,7 @@ uv run python scripts/demo_showcases.py run first-run --format json --overwrite
 这些工作流证明 WorldForge 集成层和工件契约，而非上游模型质量或物理执行能力。可选运行时仍由宿主方持有：
 
 - LeWorldModel、LeRobot、GR00T、torch、检查点、仿真器和机器人控制器不由此运行器安装。
-- Cosmos 和 Runway 路径使用夹具支持的事件，不进行付费 API 调用。
+- 提供方事件脱敏路径使用夹具支持的事件，不进行付费 API 调用。
 - Rerun 在可安全检出路径中以清单表示；`.rrd` 生成仍需要 `rerun` 扩展或已准备好宿主的机器人运行。
 - 由适配器开发工作流生成的提供方脚手架是刻意不完整的，在真实夹具、运行时清单、文档和测试通过之前不得注册或晋升。
 - 演示生成的外部提供方包位于所选工作区下，仅证明包形状和发现行为；它们不会被发布、全局安装或视为真实适配器证据。

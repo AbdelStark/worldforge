@@ -16,10 +16,8 @@ the [Provider Failure Mode Gallery](../provider-failure-gallery.md).
 <!-- provider-catalog:start -->
 | Provider | Maturity | Capability surface | Registration | Runtime ownership |
 | --- | --- | --- | --- | --- |
-| `mock` | `stable` | `predict`, `generate`, `transfer`, `reason`, `embed` | always registered | in-repo deterministic local provider |
-| [`cosmos`](./cosmos.md) | `beta` | `generate` | `COSMOS_BASE_URL` | host supplies a reachable Cosmos deployment and optional `NVIDIA_API_KEY` |
+| `mock` | `stable` | `predict`, `embed` | always registered | in-repo deterministic local provider |
 | [`cosmos-policy`](./cosmos-policy.md) | `beta` | none (`policy` requires host `action_translator`) | `COSMOS_POLICY_BASE_URL` | WorldForge validates `/act` request/response and planning composition; host owns Cosmos-Policy reachability/CUDA/runtime, ALOHA observation construction, and translation of raw 14D rows into executable `Action` objects |
-| [`runway`](./runway.md) | `beta` | `generate`, `transfer` | `RUNWAYML_API_SECRET` or `RUNWAY_API_SECRET` | host supplies Runway credentials and persists returned artifacts |
 | [`leworldmodel`](./leworldmodel.md) | `stable` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
 | [`gr00t`](./gr00t.md) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |
 | [`lerobot`](./lerobot.md) | `stable` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | host installs LeRobot and compatible policy checkpoints |
@@ -43,9 +41,6 @@ WorldForge does not treat provider capabilities as badges. They are callable con
 | Capability | Provider method | Result contract |
 | --- | --- | --- |
 | `predict` | `predict(world_state, action, steps)` | `PredictionPayload` |
-| `generate` | `generate(prompt, duration_seconds, options)` | `VideoClip` |
-| `transfer` | `transfer(clip, width, height, fps, prompt, options)` | `VideoClip` |
-| `reason` | `reason(query, world_state)` | `ReasoningResult` |
 | `embed` | `embed(text=...)` | `EmbeddingResult` |
 | `score` | `score_actions(info, action_candidates)` | `ActionScoreResult` |
 | `policy` | `select_actions(info)` | `ActionPolicyResult` |
@@ -56,7 +51,6 @@ Rules:
 - Do not expose `predict` for a model that only returns latent costs.
 - Do not expose `policy` unless raw actions are translated into executable WorldForge `Action`
   objects.
-- Do not expose `generate` or `transfer` unless the returned media is validated as a `VideoClip`.
 - Keep scaffold providers obvious: they reserve names and contracts without claiming runtime
   support.
 
@@ -114,9 +108,9 @@ whether documented fields are present, where they came from (`env:<NAME>`, `dire
 tokens, endpoint strings, checkpoint paths, or constructor arguments.
 
 ```python
-from worldforge.providers import RunwayProvider
+from worldforge.providers import LeWorldModelProvider
 
-summary = RunwayProvider().config_summary().to_dict()
+summary = LeWorldModelProvider().config_summary().to_dict()
 print(summary["fields"])
 ```
 
@@ -134,8 +128,7 @@ Schema version `1` includes:
 - `required_env_vars` and `optional_env_vars`: configuration surface
 - `default_model`: default model, checkpoint, or host-selected model slot
 - `device_support`: supported device classes such as `cpu`, `cuda`, or `remote`
-- `host_owned_artifacts`: checkpoints, policy servers, generated media, or translators the host
-  must retain
+- `host_owned_artifacts`: checkpoints, policy servers, or translators the host must retain
 - `minimum_smoke_command`: smallest live command that proves the runtime is wired
 - `expected_success_signal`: concrete pass condition for smoke evidence
 - `setup_hint`: short remediation hint used by provider health messages

@@ -361,7 +361,7 @@ Related docs:
 - [Robotics Showcase Technical Deep Dive](./robotics-showcase-deep-dive.md)
 - [LeRobot provider](./providers/lerobot.md)
 - [LeWorldModel provider](./providers/leworldmodel.md)
-- [TheWorldHarness](./theworldharness.md)
+- [CLI Reference](./cli.md)
 - [Optional runtime playbooks](./playbooks.md#8-run-optional-runtime-smokes)
 
 External references:

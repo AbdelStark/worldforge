@@ -16,9 +16,7 @@ from worldforge.models import (
     ProviderEvent,
     ProviderHealth,
     ProviderProfile,
-    ReasoningResult,
     SceneObject,
-    VideoClip,
 )
 from worldforge.providers import BaseProvider, PredictionPayload
 from worldforge.testing.provider_contract_validation import (
@@ -37,9 +35,6 @@ from worldforge.testing.provider_contract_validation import (
     validate_action_scores as _validate_action_scores,
 )
 from worldforge.testing.provider_contract_validation import (
-    validate_clip as _validate_clip,
-)
-from worldforge.testing.provider_contract_validation import (
     validate_embedding as _validate_embedding,
 )
 from worldforge.testing.provider_contract_validation import (
@@ -47,9 +42,6 @@ from worldforge.testing.provider_contract_validation import (
 )
 from worldforge.testing.provider_contract_validation import (
     validate_provider_events as _validate_provider_events,
-)
-from worldforge.testing.provider_contract_validation import (
-    validate_reasoning as _validate_reasoning,
 )
 
 
@@ -150,25 +142,6 @@ def assert_predict_conformance(
     return prediction
 
 
-def assert_reason_conformance(
-    provider: BaseProvider,
-    *,
-    query: str = "How many objects are in the scene?",
-    world_state: JSONDict | None = None,
-) -> ReasoningResult:
-    """Assert that a provider's reason capability returns a valid result."""
-
-    if not provider.profile().capabilities.reason:
-        raise AssertionError("Provider does not declare the reason capability.")
-    result = _invoke_contract(
-        "reason",
-        "ReasoningResult",
-        lambda: provider.reason(query, world_state=world_state or sample_contract_world_state()),
-    )
-    _validate_reasoning(provider.name, result)
-    return result
-
-
 def assert_embed_conformance(
     provider: BaseProvider,
     *,
@@ -180,53 +153,6 @@ def assert_embed_conformance(
         raise AssertionError("Provider does not declare the embed capability.")
     result = _invoke_contract("embed", "EmbeddingResult", lambda: provider.embed(text=text))
     _validate_embedding(provider.name, result)
-    return result
-
-
-def assert_generate_conformance(
-    provider: BaseProvider,
-    *,
-    prompt: str = "contract prompt",
-    duration_seconds: float = 1.0,
-) -> VideoClip:
-    """Assert that a provider's generate capability returns a valid clip."""
-
-    if not provider.profile().capabilities.generate:
-        raise AssertionError("Provider does not declare the generate capability.")
-    clip = _invoke_contract(
-        "generate",
-        "VideoClip",
-        lambda: provider.generate(prompt, duration_seconds=duration_seconds),
-    )
-    _validate_clip(clip)
-    return clip
-
-
-def assert_transfer_conformance(
-    provider: BaseProvider,
-    *,
-    clip: VideoClip | None = None,
-    width: int = 48,
-    height: int = 48,
-    fps: float = 12.0,
-) -> VideoClip:
-    """Assert that a provider's transfer capability returns a valid clip."""
-
-    if not provider.profile().capabilities.transfer:
-        raise AssertionError("Provider does not declare the transfer capability.")
-    transfer_input = clip or VideoClip(
-        frames=[b"contract-frame"],
-        fps=8.0,
-        resolution=(64, 64),
-        duration_seconds=0.125,
-        metadata={"provider": provider.name},
-    )
-    result = _invoke_contract(
-        "transfer",
-        "VideoClip",
-        lambda: provider.transfer(transfer_input, width=width, height=height, fps=fps),
-    )
-    _validate_clip(result)
     return result
 
 
@@ -304,10 +230,7 @@ def assert_provider_contract(
     can_invoke = report.configured
 
     _check_predict_contract(provider, report, inputs, can_invoke=can_invoke)
-    _check_reason_contract(provider, report, inputs, can_invoke=can_invoke)
     _check_embed_contract(provider, report, can_invoke=can_invoke)
-    generated_clip = _check_generate_contract(provider, report, can_invoke=can_invoke)
-    _check_transfer_contract(provider, report, generated_clip, can_invoke=can_invoke)
     _check_score_contract(provider, report, inputs, can_invoke=can_invoke)
     _check_policy_contract(provider, report, inputs, can_invoke=can_invoke)
 
@@ -355,26 +278,6 @@ def _check_predict_contract(
     )
 
 
-def _check_reason_contract(
-    provider: BaseProvider,
-    report: ProviderContractReport,
-    inputs: _ProviderContractInputs,
-    *,
-    can_invoke: bool,
-) -> None:
-    if not report.profile.capabilities.reason:
-        return
-    query = "How many objects are in the scene?"
-    if can_invoke:
-        assert_reason_conformance(provider, query=query, world_state=inputs.world_state)
-        report.exercised_operations.append("reason")
-        return
-    _expect_provider_error(
-        "reason",
-        lambda: provider.reason(query, world_state=inputs.world_state),
-    )
-
-
 def _check_embed_contract(
     provider: BaseProvider,
     report: ProviderContractReport,
@@ -388,55 +291,6 @@ def _check_embed_contract(
         report.exercised_operations.append("embed")
         return
     _expect_provider_error("embed", lambda: provider.embed(text="contract vector"))
-
-
-def _check_generate_contract(
-    provider: BaseProvider,
-    report: ProviderContractReport,
-    *,
-    can_invoke: bool,
-) -> VideoClip | None:
-    if not report.profile.capabilities.generate:
-        return None
-    if can_invoke:
-        generated_clip = assert_generate_conformance(provider)
-        report.exercised_operations.append("generate")
-        return generated_clip
-    _expect_provider_error(
-        "generate",
-        lambda: provider.generate("contract prompt", duration_seconds=1.0),
-    )
-    return None
-
-
-def _check_transfer_contract(
-    provider: BaseProvider,
-    report: ProviderContractReport,
-    generated_clip: VideoClip | None,
-    *,
-    can_invoke: bool,
-) -> None:
-    if not report.profile.capabilities.transfer:
-        return
-    if can_invoke:
-        assert_transfer_conformance(provider, clip=generated_clip)
-        report.exercised_operations.append("transfer")
-        return
-    transfer_input = generated_clip or _sample_transfer_clip(provider.name)
-    _expect_provider_error(
-        "transfer",
-        lambda: provider.transfer(transfer_input, width=48, height=48, fps=12.0),
-    )
-
-
-def _sample_transfer_clip(provider_name: str) -> VideoClip:
-    return VideoClip(
-        frames=[b"contract-frame"],
-        fps=8.0,
-        resolution=(64, 64),
-        duration_seconds=0.125,
-        metadata={"provider": provider_name},
-    )
 
 
 def _check_score_contract(

@@ -61,19 +61,19 @@ def test_quality_dashboard_aggregates_mixed_gate_statuses(tmp_path: Path) -> Non
                 ],
                 "live_provider_evidence": [
                     {
-                        "provider": "runway",
+                        "provider": "leworldmodel",
                         "status": "host-owned",
                         "manifests": [],
-                        "reason": "missing host-owned configuration: RUNWAYML_API_SECRET",
+                        "reason": "missing host-owned configuration: LEWORLDMODEL_POLICY",
                     },
                     {
-                        "provider": "cosmos",
+                        "provider": "cosmos-policy",
                         "status": "passed",
                         "manifests": [
                             {
-                                "path": ".worldforge/runs/cosmos/run_manifest.json",
+                                "path": ".worldforge/runs/cosmos-policy/run_manifest.json",
                                 "status": "passed",
-                                "capability": "generate",
+                                "capability": "policy",
                             }
                         ],
                         "reason": "",
@@ -150,8 +150,8 @@ def test_quality_dashboard_aggregates_mixed_gate_statuses(tmp_path: Path) -> Non
         "stale command: worldforge old-command"
     )
     assert gates["Coverage"]["status"] == "skipped"
-    assert gates["Optional live provider: runway"]["status"] == "skipped"
-    assert gates["Optional live provider: runway"]["host_owned"] is True
+    assert gates["Optional live provider: leworldmodel"]["status"] == "skipped"
+    assert gates["Optional live provider: leworldmodel"]["host_owned"] is True
     assert gates["Dependency audit artifact"]["status"] == "warning"
     assert gates["Core performance artifact"]["status"] == "failed"
     assert gates["Core performance artifact"]["raw_details"]["failed_results"][0]["name"] == (
@@ -263,7 +263,7 @@ def test_quality_dashboard_marks_missing_sources_not_run(tmp_path: Path) -> None
     assert gates["Package contract"]["status"] == "not-run"
     assert gates["Dependency audit artifact"]["status"] == "not-run"
     assert gates["Core performance artifact"]["status"] == "not-run"
-    assert gates["Optional live provider: runway"]["status"] == "skipped"
+    assert gates["Optional live provider: leworldmodel"]["status"] == "skipped"
     assert dashboard["summary"]["not-run"] >= 8
 
 

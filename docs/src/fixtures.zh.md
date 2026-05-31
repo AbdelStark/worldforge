@@ -1,6 +1,6 @@
 # 能力夹具语料库
 
-WorldForge 附带一个小型的、已打包的规范输入夹具语料库，涵盖每种提供方能力——`predict`、`reason`、`embed`、`generate`、`transfer`、`score` 和 `policy`。合规测试、评估套件及提供方作者可复用该语料库，而无需在每个测试文件中手动构造载荷。
+WorldForge 附带一个小型的、已打包的规范输入夹具语料库，涵盖每种提供方能力——`predict`、`embed`、`score` 和 `policy`。合规测试、评估套件及提供方作者可复用该语料库，而无需在每个测试文件中手动构造载荷。
 
 语料库位于 `src/worldforge/testing/fixtures/`，并通过 `worldforge.testing` 的公开测试 API 暴露（因此它是 wheel 包的一部分，无需在检出时进行路径发现）。
 
@@ -11,7 +11,7 @@ WorldForge 附带一个小型的、已打包的规范输入夹具语料库，涵
 - 恰好一个 `valid_baseline.json`，代表最小但切实可行的公开输入；
 - 至少两个 `invalid_<reason>.json` 夹具，分别命名不同的边界失败情况。
 
-这保证了七个有效基线和至少十四个无效边界夹具，使每个合规辅助工具无需重新推导载荷即可被执行。
+这保证了四个有效基线和至少八个无效边界夹具，使每个合规辅助工具无需重新推导载荷即可被执行。
 
 ## 信封格式
 
@@ -20,7 +20,7 @@ WorldForge 附带一个小型的、已打包的规范输入夹具语料库，涵
 | 字段 | 描述 |
 | --- | --- |
 | `id` | `<capability>.<name>`，与文件路径匹配（如 `predict.valid_baseline`）。 |
-| `capability` | `predict`、`reason`、`embed`、`generate`、`transfer`、`score`、`policy` 之一。 |
+| `capability` | `predict`、`embed`、`score`、`policy` 之一。 |
 | `data_class` | `synthetic`（手工编写）、`captured`（从真实提供方/运行记录）或 `host-supplied`（由集成方在运行时提供；文件附带示例）。 |
 | `expected` | `valid` 或 `invalid`。 |
 | `expected_error_pattern` | 针对 `WorldForgeError` 抛出的错误消息的正则提示。无效夹具必填，有效夹具须为 `null`。 |
@@ -103,8 +103,7 @@ WorldForge 还通过 `tests/fixtures/fixture-snapshots.json` 追踪受源代码�
 - `src/worldforge/testing/fixtures/` 下已打包的能力夹具；
 - `tests/fixtures/providers/` 下的提供方载荷夹具；
 - `examples/*benchmark*.json` 下的基准测试夹具；
-- `examples/scenarios/` 下的场景文件；
-- `tests/fixtures/scene_artifacts/` 下的场景工件夹具。
+- `examples/scenarios/` 下的场景文件。
 
 更改上述任何文件后，请检查清单：
 

@@ -27,9 +27,9 @@ uv run worldforge runs index --workspace-dir .worldforge --format markdown
 uv run worldforge runs index --workspace-dir .worldforge \
     --format csv --output review/runs.csv
 
-# 筛选过去一周内失败的 cosmos 运行。
+# 筛选过去一周内失败的 Cosmos-Policy 运行。
 uv run worldforge runs index --workspace-dir .worldforge \
-    --provider cosmos --status failed --created-from 2026-04-29
+    --provider cosmos-policy --status failed --created-from 2026-04-29
 ```
 
 所有过滤器均为可选，并以 AND 语义组合。提供方匹配采用子字符串加不区分大小写的方式；能力、状态和工件类型匹配则为精确匹配。
@@ -97,7 +97,7 @@ from worldforge.harness.run_index import build_run_index
 
 index = build_run_index(
     Path(".worldforge"),
-    filters=RunHistoryFilter.from_strings(provider="cosmos", status="failed"),
+    filters=RunHistoryFilter.from_strings(provider="cosmos-policy", status="failed"),
 )
 print(index.to_markdown())
 ```

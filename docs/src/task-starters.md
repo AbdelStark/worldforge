@@ -37,7 +37,7 @@ optional-runtime smokes, or provider documentation.
 
 ### Forbidden Shortcuts
 
-- Do not advertise `predict`, `generate`, `reason`, `embed`, `transfer`, `score`, or `policy`
+- Do not advertise `predict`, `embed`, `score`, or `policy`
   unless the capability is implemented end to end.
 - Do not add optional runtimes, robot stacks, checkpoints, datasets, or CUDA packages to the base
   dependency set.
@@ -149,8 +149,8 @@ uv run mkdocs build --strict
 
 ## Demo Or Showcase Workflow
 
-Use for checkout-safe demos, packaged demo entry points, showcase workflows, cookbook recipes,
-TheWorldHarness flows, or prepared-host robotics showcase documentation.
+Use for checkout-safe demos, packaged demo entry points, showcase workflows, cookbook recipes, or
+prepared-host robotics showcase documentation.
 
 ### Likely Files To Inspect
 
@@ -162,7 +162,6 @@ TheWorldHarness flows, or prepared-host robotics showcase documentation.
 - `examples/`
 - `docs/src/demo-showcases.md`
 - `docs/src/use-case-cookbook.md`
-- `docs/src/theworldharness.md`
 - `docs/src/robotics-showcase.md`
 
 ### Files Commonly Updated
@@ -319,8 +318,8 @@ reports, comparison logic, or evaluation failure galleries.
 ```bash
 uv run pytest tests/test_benchmark.py tests/test_evaluation_suites.py tests/test_evaluation_and_planning.py
 uv run pytest tests/test_benchmark_budget_calibration.py
-uv run worldforge benchmark --provider mock --operation generate --input-file examples/benchmark-inputs.json
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run worldforge benchmark --provider mock --operation predict --input-file examples/benchmark-inputs.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 uv run mkdocs build --strict
 ```
 

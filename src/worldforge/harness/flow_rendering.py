@@ -343,7 +343,7 @@ def _diagnostics_steps(summary: JSONDict) -> tuple[HarnessStep, ...]:
         ),
         HarnessStep(
             "Run benchmark matrix",
-            "Execute mock benchmark samples across predict, reason, generate, transfer, and embed.",
+            "Execute mock benchmark samples across predict and embed.",
             (
                 f"{summary['benchmark_operation_count']} operations, "
                 f"{summary['benchmark_iterations']} iterations each."

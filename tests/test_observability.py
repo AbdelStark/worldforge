@@ -52,7 +52,7 @@ def test_json_logger_sink_emits_structured_json(caplog) -> None:
 
 def test_provider_event_redacts_observable_secret_fields() -> None:
     event = ProviderEvent(
-        provider="runway",
+        provider="remote-provider",
         operation="artifact download",
         phase="failure",
         method="get",
@@ -97,7 +97,7 @@ def test_provider_event_redacts_observable_secret_fields() -> None:
 
 def test_provider_event_validates_and_normalizes_observable_fields() -> None:
     blank_target = ProviderEvent(
-        provider="runway",
+        provider="remote-provider",
         operation="artifact download",
         phase=" Success ",
         target="   ",
@@ -106,7 +106,7 @@ def test_provider_event_validates_and_normalizes_observable_fields() -> None:
     assert blank_target.target is None
 
     invalid_url = ProviderEvent(
-        provider="runway",
+        provider="remote-provider",
         operation="artifact download",
         phase="failure",
         target="http://[invalid?token=secret",
@@ -115,7 +115,7 @@ def test_provider_event_validates_and_normalizes_observable_fields() -> None:
 
     with pytest.raises(WorldForgeError, match="target"):
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="artifact download",
             phase="failure",
             target=object(),  # type: ignore[arg-type]
@@ -123,7 +123,7 @@ def test_provider_event_validates_and_normalizes_observable_fields() -> None:
 
     with pytest.raises(WorldForgeError, match="method"):
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="artifact download",
             phase="failure",
             method=object(),  # type: ignore[arg-type]
@@ -131,7 +131,7 @@ def test_provider_event_validates_and_normalizes_observable_fields() -> None:
 
     with pytest.raises(WorldForgeError, match="message"):
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="artifact download",
             phase="failure",
             message=object(),  # type: ignore[arg-type]
@@ -139,7 +139,7 @@ def test_provider_event_validates_and_normalizes_observable_fields() -> None:
 
     with pytest.raises(WorldForgeError, match="metadata"):
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="artifact download",
             phase="failure",
             metadata={"shape": (1, 2, 3)},
@@ -148,7 +148,7 @@ def test_provider_event_validates_and_normalizes_observable_fields() -> None:
 
 def test_provider_event_correlation_fields_are_optional_sanitized_and_json_native() -> None:
     event = ProviderEvent(
-        provider=" runway ",
+        provider=" remote-provider ",
         operation=" task create ",
         phase=" Success ",
         run_id=" run-123 ",
@@ -171,7 +171,7 @@ def test_provider_event_correlation_fields_are_optional_sanitized_and_json_nativ
         "method": None,
         "operation": "task create",
         "phase": "success",
-        "provider": "runway",
+        "provider": "remote-provider",
         "request_id": "req-456",
         "run_id": "run-123",
         "span_id": "span-def",
@@ -181,7 +181,7 @@ def test_provider_event_correlation_fields_are_optional_sanitized_and_json_nativ
     }
 
     redacted = ProviderEvent(
-        provider="runway",
+        provider="remote-provider",
         operation="artifact download",
         phase="success",
         request_id="token=secret-request",
@@ -195,7 +195,7 @@ def test_provider_event_correlation_fields_are_optional_sanitized_and_json_nativ
 
     with pytest.raises(WorldForgeError, match="request_id"):
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="artifact download",
             phase="success",
             request_id=object(),  # type: ignore[arg-type]
@@ -249,7 +249,7 @@ def test_provider_metrics_sink_aggregates_counts_and_latency_by_operation() -> N
 
     sink(
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="task poll",
             phase="retry",
             duration_ms=10.0,
@@ -257,7 +257,7 @@ def test_provider_metrics_sink_aggregates_counts_and_latency_by_operation() -> N
     )
     sink(
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="task poll",
             phase="success",
             duration_ms=20.0,
@@ -265,7 +265,7 @@ def test_provider_metrics_sink_aggregates_counts_and_latency_by_operation() -> N
     )
     sink(
         ProviderEvent(
-            provider="runway",
+            provider="remote-provider",
             operation="task poll",
             phase="failure",
             duration_ms=30.0,
@@ -279,7 +279,7 @@ def test_provider_metrics_sink_aggregates_counts_and_latency_by_operation() -> N
         )
     )
 
-    task_poll = sink.get("runway", "task poll")
+    task_poll = sink.get("remote-provider", "task poll")
     assert task_poll.request_count == 3
     assert task_poll.error_count == 1
     assert task_poll.retry_count == 1
@@ -300,9 +300,9 @@ def test_provider_metrics_sink_aggregates_counts_and_latency_by_operation() -> N
 
     assert [(metric.provider, metric.operation) for metric in sink.snapshot()] == [
         ("mock", "predict"),
-        ("runway", "task poll"),
+        ("remote-provider", "task poll"),
     ]
-    assert sink.to_dict()["runway"]["task poll"]["latency"]["sample_count"] == 3
+    assert sink.to_dict()["remote-provider"]["task poll"]["latency"]["sample_count"] == 3
 
 
 def test_worldforge_composed_event_handlers_support_builtin_and_manual_providers(tmp_path) -> None:
@@ -318,12 +318,12 @@ def test_worldforge_composed_event_handlers_support_builtin_and_manual_providers
     world.predict(Action.move_to(0.2, 0.5, 0.0), steps=2)
     manual_provider = MockProvider(name="manual")
     forge.register_provider(manual_provider)
-    forge.reason("manual", "where is the cube?", world=world)
+    forge.embed("manual", text="cube state")
 
     assert manual_provider.event_handler is not None
     assert [(event.provider, event.operation, event.phase) for event in recorder.snapshot()] == [
         ("mock", "predict", "success"),
-        ("manual", "reason", "success"),
+        ("manual", "embed", "success"),
     ]
     assert metrics.get("mock", "predict").request_count == 1
-    assert metrics.get("manual", "reason").request_count == 1
+    assert metrics.get("manual", "embed").request_count == 1

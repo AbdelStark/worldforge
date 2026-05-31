@@ -78,9 +78,6 @@ print(swap_plan.to_json())
 
 planning_report = world.evaluate("planning")
 print(planning_report.to_markdown())
-
-reasoning_report = world.evaluate("reasoning")
-print(reasoning_report.to_json())
 ```
 
 `StructuredGoal` also supports `object_near(...)` for relative placement and `spawn_object(...)`
@@ -108,13 +105,11 @@ predictions. Object position updates translate the stored bounding box with the 
 For the complete command map, see the [CLI Reference](./cli.md). For runnable demos and optional
 runtime smoke commands, see [Examples And CLI Commands](./examples.md).
 
-Optional visual E2E harness:
+Optional robotics showcase report:
 
 ```bash
-uv run --extra harness worldforge-harness
-uv run --extra harness worldforge-harness --flow lerobot
-uv run --extra harness worldforge-harness --flow diagnostics
-uv run worldforge harness --list
+scripts/robotics-showcase
+scripts/robotics-showcase --no-tui
 ```
 
 Packaged checkout-safe demos:

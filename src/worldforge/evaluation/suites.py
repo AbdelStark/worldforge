@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 from worldforge.evaluation.builtin_suites import (
-    GenerationEvaluationSuite,
     PhysicsEvaluationSuite,
     PlanningEvaluationSuite,
-    ReasoningEvaluationSuite,
-    TransferEvaluationSuite,
 )
 from worldforge.evaluation.failure_gallery import (
     EVALUATION_FAILURE_GALLERY_SCHEMA_VERSION,
@@ -30,11 +27,8 @@ EvalScenario = EvaluationScenario
 EvalResult = EvaluationResult
 EvalReport = EvaluationReport
 EvalSuite = EvaluationSuite
-GenerationEval = GenerationEvaluationSuite
 PhysicsEval = PhysicsEvaluationSuite
 PlanningEval = PlanningEvaluationSuite
-ReasoningEval = ReasoningEvaluationSuite
-TransferEval = TransferEvaluationSuite
 
 __all__ = [
     "EVALUATION_CLAIM_BOUNDARY",
@@ -52,15 +46,9 @@ __all__ = [
     "EvaluationScenario",
     "EvaluationScenarioOutcome",
     "EvaluationSuite",
-    "GenerationEval",
-    "GenerationEvaluationSuite",
     "PhysicsEval",
     "PhysicsEvaluationSuite",
     "PlanningEval",
     "PlanningEvaluationSuite",
     "ProviderSummary",
-    "ReasoningEval",
-    "ReasoningEvaluationSuite",
-    "TransferEval",
-    "TransferEvaluationSuite",
 ]

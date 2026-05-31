@@ -27,27 +27,20 @@ uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo
 有关工件矩阵，请参阅[演示案例展示工作流](./demo-showcases.md)；
 有关面向任务的食谱，请参阅[用例食谱](./use-case-cookbook.md)。
 
-## 可视化框架
+## 机器人案例展示 TUI
 
 | 示例 | 接口 | 命令 |
 | --- | --- | --- |
-| `theworldharness` | 端到端流程、提供方诊断、基准测试比较 | `uv run --extra harness worldforge-harness` |
+| `robotics-showcase` | 真实 PushT policy+score 运行和 Textual 报告 | `scripts/robotics-showcase` |
 
-`TheWorldHarness` 是一个可选的 Textual TUI，用于将打包的端到端演示作为
-可见的提供方工作流运行。
+机器人案例展示报告是可选的 Textual 界面；同一运行也可以不打开 TUI。
 
 ```bash
-uv run --extra harness worldforge-harness
-uv run --extra harness worldforge-harness --flow lerobot
-uv run --extra harness worldforge-harness --flow cosmos-policy
-uv run --extra harness worldforge-harness --flow gr00t-replay
-uv run --extra harness worldforge-harness --flow robotics-compare
-uv run --extra harness worldforge-harness --flow diagnostics
-uv run --extra harness worldforge-harness --flow workbench
-uv run worldforge harness --list
+scripts/robotics-showcase
+scripts/robotics-showcase --no-tui
 ```
 
-该框架将 Textual 排除在基础依赖集之外。若需要可视化界面，请使用 `harness` 附加项
+该报告将 Textual 排除在基础依赖集之外。若需要可视化界面，请使用 `harness` 附加项
 安装或运行。
 
 可用流程：
@@ -119,7 +112,7 @@ uv run --extra rerun rerun .worldforge/rerun/worldforge-rerun-showcase.rrd
 | `GET /readyz` | 框架存活、已配置提供方、提供方健康状态、流量决策及 `doctor()` 摘要。 |
 | `GET /providers` | 当前宿主进程的已注册提供方诊断信息。 |
 | `POST /workflows/mock-predict` | 安全的确定性 mock 预测冒烟测试。 |
-| `POST /workflows/generate` | 使用包含 `provider`、`prompt` 和 `duration_seconds` 的 JSON 请求体配置提供方生成工作流。 |
+| `POST /workflows/predict` | 使用包含 `provider`、`world_state` 和 `action` 的 JSON 请求体配置提供方预测工作流。 |
 
 `/readyz` 返回 `ready`、`provider_unconfigured` 或 `provider_unhealthy`。
 只有 `ready` 意味着宿主应接受提供方支持的工作流流量；其他状态告知宿主负载均衡器
@@ -146,7 +139,7 @@ uv run python examples/hosts/batch-eval/app.py \
 
 uv run python examples/hosts/batch-eval/app.py \
   --workspace .worldforge/batch-eval \
-  benchmark --provider mock --operation generate --iterations 1 \
+  benchmark --provider mock --operation predict --iterations 1 \
   --input-file examples/benchmark-inputs.json \
   --budget-file examples/benchmark-budget.json
 ```
@@ -194,7 +187,7 @@ WorldForge 拥有提供方契约、类型化验证、本地运行清单、报告
 | --- | --- | --- | --- |
 | checkout-safe | `mock` 提供方、确定性示例、无凭据 | 命令退出 `0`、`/readyz` 返回 `ready`，或写入运行清单 | 无物理保真度、可用性或持久性声明 |
 | prepared-host | 可选提供方/运行时已由宿主安装 | 提供方健康状态正常，冒烟测试写入证据 | 依赖安装、检查点、缓存目录及运行时补丁 |
-| credentialed | Cosmos、Runway 或其他在仓库外加载了密钥的远程提供方 | `provider info` 显示脱敏配置且健康检查通过 | 密钥存储、凭据轮换、上游 SLA 及网络出口 |
+| credentialed | 在仓库外加载了密钥的远程提供方 | `provider info` 显示脱敏配置且健康检查通过 | 密钥存储、凭据轮换、上游 SLA 及网络出口 |
 | GPU-bound | LeWorldModel、LeRobot、GR00T 或其他设备绑定运行时 | 宿主预检命名了设备，冒烟测试记录了清单 | CUDA/Metal 驱动、设备调度、模型资产及内存压力 |
 | robotics-lab | 围绕任务专属策略/动作转换的操作员审查 | 试运行审查记录批准，默认不调用控制器 | 工作空间安全、联锁、控制器钩子、操作员批准及安全认证 |
 
@@ -213,7 +206,7 @@ WorldForge 拥有提供方契约、类型化验证、本地运行清单、报告
 export WORLDFORGE_SERVICE_PROVIDER=mock
 export WORLDFORGE_SERVICE_STATE_DIR=.worldforge/service-worlds
 export WORLDFORGE_SERVICE_PORT=8080
-# Credentialed path only: export COSMOS_BASE_URL=... or RUNWAYML_API_SECRET=...
+# Prepared-host path only: export LEWORLDMODEL_POLICY=... or LEROBOT_POLICY_PATH=...
 ```
 
 进程命令：
@@ -284,7 +277,7 @@ export WORLDFORGE_BATCH_STATE_DIR=.worldforge/batch-eval/worlds
 
 ```bash
 uv run worldforge doctor --registered-only
-uv run worldforge doctor --capability generate
+uv run worldforge doctor --capability predict
 uv run worldforge provider health mock
 ```
 
@@ -294,7 +287,7 @@ uv run worldforge provider health mock
 uv run python examples/hosts/batch-eval/app.py \
   --workspace "${WORLDFORGE_BATCH_WORKSPACE:-.worldforge/batch-eval}" \
   --state-dir "${WORLDFORGE_BATCH_STATE_DIR:-.worldforge/batch-eval/worlds}" \
-  benchmark --provider mock --operation generate --iterations 1 \
+  benchmark --provider mock --operation predict --iterations 1 \
   --input-file examples/benchmark-inputs.json \
   --budget-file examples/benchmark-budget.json
 ```

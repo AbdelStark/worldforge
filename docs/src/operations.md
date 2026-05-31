@@ -89,20 +89,11 @@ Configuration comes from constructor arguments and environment variables documen
 is the canonical cross-provider table for required inputs, optional inputs, host-owned packages,
 prepared-host assets, default request timeouts, first diagnostic commands, and smoke commands.
 
-- `COSMOS_BASE_URL` enables the Cosmos adapter.
-- `NVIDIA_API_KEY` is optional bearer auth for Cosmos.
 - `COSMOS_POLICY_BASE_URL` enables the optional Cosmos-Policy embodied-policy adapter.
 - `COSMOS_POLICY_API_TOKEN`, `COSMOS_POLICY_TIMEOUT_SECONDS`, `COSMOS_POLICY_EMBODIMENT_TAG`,
   `COSMOS_POLICY_MODEL`, `COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS`,
   `COSMOS_POLICY_ALLOW_LOCAL_BASE_URL`, and `COSMOS_POLICY_ALLOWED_HOSTS` are optional
   Cosmos-Policy `/act` settings.
-- `RUNWAYML_API_SECRET` enables the Runway adapter.
-- `RUNWAY_API_SECRET` remains supported as the legacy Runway alias.
-- `RUNWAYML_BASE_URL` overrides the default Runway API endpoint.
-- `RUNWAYML_ALLOW_LOCAL_ARTIFACT_URLS` is a test-only opt-in for trusted local Runway-compatible
-  artifact URLs. Leave it unset in normal remote-provider deployments.
-- `RUNWAYML_RESOLVE_ARTIFACT_DNS` overrides artifact URL DNS validation for custom transports.
-  Leave it unset for auto mode, or set it for custom network transports that still use system DNS.
 - `LEWORLDMODEL_POLICY` or `LEWM_POLICY` enables the optional LeWorldModel adapter.
 - `LEWORLDMODEL_CACHE_DIR` overrides the LeWorldModel checkpoint root.
 - `LEWORLDMODEL_REVISION` pins the Hugging Face LeWM commit used when the showcase auto-builds
@@ -305,7 +296,7 @@ operator evidence bundles, not a database.
 uv run worldforge eval --suite planning --provider mock --run-workspace .worldforge
 uv run worldforge benchmark --provider mock --operation predict --run-workspace .worldforge
 uv run worldforge runs list
-uv run worldforge harness --runs --provider mock --status failed --artifact-type json
+uv run worldforge runs index --provider mock --status failed --artifact-type json
 uv run worldforge runs bundle <run-id>
 uv run worldforge runs cleanup --keep 20
 ```
@@ -321,11 +312,11 @@ manifest clearly lists excluded/local-only files with a reason. First triage ste
 open `evidence_manifest.json`; if anything is excluded or local-only, remove or replace the unsafe
 artifact before attaching the bundle.
 
-For repeated local operations, use `worldforge harness --runs` or the TheWorldHarness Runs screen
-before opening individual artifacts. It reads preserved manifests without optional model runtimes,
-filters by provider, capability, status, created date, and safe artifact type, and prints sanitized
-rerun, comparison, and issue-bundle commands. Failed, skipped, and cancelled rows surface the
-`worldforge runs bundle <run-id>` recovery command first.
+For repeated local operations, use `worldforge runs list` before opening individual artifacts. It
+reads preserved manifests without optional model runtimes, filters by provider, capability, status,
+created date, and safe artifact type, and prints sanitized rerun, comparison, and issue-bundle
+commands. Failed, skipped, and cancelled rows surface the `worldforge runs bundle <run-id>`
+recovery command first.
 
 Retention is host-owned. `worldforge runs cleanup --keep <n>` keeps the newest run IDs and removes
 older directories; use `--dry-run` before deleting evidence attached to an incident or release gate.
@@ -455,12 +446,12 @@ Example JSON log record:
   "method": "POST",
   "operation": "task create",
   "phase": "success",
-  "provider": "runway",
+  "provider": "cosmos-policy",
   "request_id": "host-request-id",
   "run_id": "20260430T120000Z-batch-eval",
   "span_id": "span-456",
   "status_code": 200,
-  "target": "https://api.runwayml.com/v1/tasks",
+  "target": "https://policy.example.test/act",
   "trace_id": "trace-123"
 }
 ```
@@ -554,12 +545,6 @@ readiness, and safety certification.
   `budget_exceeded` events from `ProviderMetricsSink`, stop routing new work to a degraded
   provider, and continue serving cached/read-only paths without WorldForge owning alert channels
   or upstream SLAs.
-- Cosmos and Runway validate typed upstream response payloads before creating returned media
-  objects. Parser fixtures cover malformed upstream payloads, auth failures, failed-task payloads,
-  timeout event metadata, and unsupported artifact-reference responses so release evidence can cite
-  the exact failure shape.
-- Runway artifact downloads fail explicitly on expired/unavailable URLs, empty downloads, and
-  explicit unsupported content types.
 - LeWorldModel scoring fails explicitly when optional dependencies are unavailable, the checkpoint
   cannot load, required `pixels` / `goal` / `action` fields are missing, action candidates do not
   have shape `(batch=1, samples, horizon, action_dim)`, returned score count does not match
@@ -578,8 +563,6 @@ readiness, and safety certification.
   auto-registration runs again.
 - For transient remote failures, inspect emitted `ProviderEvent` records for `operation`,
   `phase`, `status_code`, `attempt`, and sanitized `target`.
-- For expired Runway artifact URLs, regenerate or persist downloaded outputs immediately after
-  task completion.
 - For LeWorldModel failures, run `worldforge provider health leworldmodel`, verify
   `stable-worldmodel`, `torch`, `opencv-python`, and `imageio` are installed in the host
   environment, then confirm the configured policy exists under `$STABLEWM_HOME` or
@@ -852,11 +835,8 @@ Also update `CHANGELOG.md`, the README, and provider documentation for any publi
 
 ## Provider Hardening Criteria
 
-- Cosmos and Runway response parsers cover success and malformed upstream payloads with fixture
-  tests.
-- Remote provider non-happy-path tests cover transport retries, malformed JSON, missing task IDs,
-  failed tasks, partial outputs, expired artifacts, bad artifact content types, and provider
-  limits.
+- Remote provider non-happy-path tests cover transport retries, malformed JSON, bad action payloads,
+  missing optional runtimes, redaction, and provider limits.
 - Persistence remains documented as host-owned unless a dedicated persistence adapter is designed.
 - API documentation lists the public exception families and provider workflow failure modes.
 - Remaining work is tracked with measurable exit criteria before provider capabilities are

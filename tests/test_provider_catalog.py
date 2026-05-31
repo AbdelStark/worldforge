@@ -16,9 +16,7 @@ def test_provider_catalog_names_are_unique_and_explicit() -> None:
     assert len(names) == len(set(names))
     assert names == [
         "mock",
-        "cosmos",
         "cosmos-policy",
-        "runway",
         "leworldmodel",
         "gr00t",
         "lerobot",
@@ -54,9 +52,7 @@ def test_provider_catalog_statuses_match_promotion_gate() -> None:
     }
     assert {name: profile.implementation_status for name, profile in profiles.items()} == {
         "mock": "stable",
-        "cosmos": "beta",
         "cosmos-policy": "beta",
-        "runway": "beta",
         "leworldmodel": "stable",
         "gr00t": "beta",
         "lerobot": "stable",
@@ -77,13 +73,6 @@ LEGACY_ENV_ALIAS_CASES = (
         "cube/lewm",
         ("score",),
         id="leworldmodel-LEWM_POLICY",
-    ),
-    pytest.param(
-        "runway",
-        ("RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"),
-        "runway-legacy-secret",
-        ("generate", "transfer"),
-        id="runway-RUNWAY_API_SECRET",
     ),
     pytest.param(
         "lerobot",

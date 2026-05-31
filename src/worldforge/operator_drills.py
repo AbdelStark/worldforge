@@ -15,8 +15,8 @@ from worldforge.evidence_bundle import generate_issue_bundle
 from worldforge.harness.workspace import RunWorkspace, create_run_workspace, write_run_manifest
 from worldforge.models import JSONDict, ProviderEvent, WorldForgeError, WorldStateError, dump_json
 from worldforge.providers import ProviderError
+from worldforge.providers.leworldmodel import LeWorldModelProvider
 from worldforge.providers.runtime_manifest import load_runtime_manifest
-from worldforge.providers.runway import RunwayTaskCreationResponse
 
 DRILL_WORKSPACE_DEFAULT = Path(".worldforge/drills")
 DRILL_IDS = (
@@ -77,16 +77,16 @@ class _DrillRun:
 _SPECS: dict[str, OperatorDrillSpec] = {
     "missing-credentials": OperatorDrillSpec(
         id="missing-credentials",
-        title="Missing provider credentials",
-        failure_mode="missing_credentials",
-        expected_failure="runtime manifest reports required provider credentials absent",
+        title="Missing provider runtime configuration",
+        failure_mode="missing_runtime_configuration",
+        expected_failure="runtime manifest reports required score runtime configuration absent",
         recovery_command=(
-            "load the required provider env var, then run "
-            "`uv run worldforge provider health runway`"
+            "set LEWORLDMODEL_POLICY or LEWM_POLICY, then run "
+            "`uv run worldforge provider health leworldmodel`"
         ),
         description=(
-            "Uses the Runway runtime manifest with an empty environment so operators can rehearse "
-            "a credential-missing path without touching local shell secrets."
+            "Uses the LeWorldModel runtime manifest with an empty environment so operators can "
+            "rehearse a score-runtime configuration gap without touching local shell state."
         ),
     ),
     "missing-optional-dependency": OperatorDrillSpec(
@@ -104,15 +104,15 @@ _SPECS: dict[str, OperatorDrillSpec] = {
     ),
     "malformed-provider-output": OperatorDrillSpec(
         id="malformed-provider-output",
-        title="Malformed provider output",
+        title="Malformed score provider payload",
         failure_mode="malformed_provider_output",
-        expected_failure="Runway task creation parser rejects a missing task id",
+        expected_failure="LeWorldModel score input parser rejects a malformed payload",
         recovery_command=(
-            "capture the sanitized payload fixture, then fix the parser or upstream contract"
+            "capture the sanitized payload fixture, then fix the score adapter contract"
         ),
         description=(
-            "Feeds a fixture-shaped malformed response through the real Runway parser so parser "
-            "failure triage is repeatable without a live provider call."
+            "Feeds a malformed score request through the real LeWorldModel boundary so parser "
+            "failure triage is repeatable without a live optional runtime."
         ),
     ),
     "budget-violation": OperatorDrillSpec(
@@ -152,7 +152,7 @@ _SPECS: dict[str, OperatorDrillSpec] = {
         ),
         description=(
             "Records a sanitized expired artifact descriptor so operators can rehearse refresh and "
-            "evidence-export handling without downloading remote media."
+            "evidence-export handling without downloading remote artifacts."
         ),
     ),
     "unsafe-event-metadata": OperatorDrillSpec(
@@ -412,14 +412,16 @@ def _render_drill_markdown(payload: JSONDict) -> str:
 
 
 def _missing_credentials(workspace: RunWorkspace) -> _DrillOutcome:
-    manifest = load_runtime_manifest("runway")
+    manifest = load_runtime_manifest("leworldmodel")
     summary = manifest.config_summary(environ={}).to_dict()
     if summary["configured"]:
         raise WorldForgeError("missing credentials drill expected configured=false.")
     workspace.write_json("results/config-summary.json", summary)
     return _DrillOutcome(
-        failure_signal="Provider config summary configured=false for RUNWAYML_API_SECRET",
-        details={"provider": "runway", "config_summary": summary},
+        failure_signal=(
+            "Provider config summary configured=false for LEWORLDMODEL_POLICY or LEWM_POLICY"
+        ),
+        details={"provider": "leworldmodel", "config_summary": summary},
         artifacts={"config_summary": "results/config-summary.json"},
     )
 
@@ -444,18 +446,21 @@ def _missing_optional_dependency(workspace: RunWorkspace) -> _DrillOutcome:
 
 
 def _malformed_provider_output(workspace: RunWorkspace) -> _DrillOutcome:
-    fixture = {"status": "SUCCEEDED", "output": []}
-    workspace.write_json("inputs/malformed-runway-task.json", fixture)
+    fixture = {"info": {}, "action_candidates": []}
+    workspace.write_json("inputs/malformed-score-request.json", fixture)
     try:
-        RunwayTaskCreationResponse.from_payload(
-            fixture,
-            provider_name="runway-drill",
-            operation_name="task create",
+        LeWorldModelProvider(
+            policy="operator-drill",
+            model_loader=lambda _policy, _cache_dir: object(),
+            tensor_module=object(),
+        ).score_actions(
+            info=fixture["info"],
+            action_candidates=fixture["action_candidates"],
         )
     except ProviderError as exc:
         details = {
-            "provider": "runway-drill",
-            "parser": "RunwayTaskCreationResponse",
+            "provider": "leworldmodel",
+            "parser": "LeWorldModelProvider.score_actions",
             "error": str(exc),
         }
         workspace.write_json("results/parser-error.json", details)
@@ -463,7 +468,7 @@ def _malformed_provider_output(workspace: RunWorkspace) -> _DrillOutcome:
             failure_signal=str(exc),
             details=details,
             artifacts={
-                "fixture": "inputs/malformed-runway-task.json",
+                "fixture": "inputs/malformed-score-request.json",
                 "parser_error": "results/parser-error.json",
             },
         )
@@ -565,8 +570,8 @@ def _expired_artifact(workspace: RunWorkspace) -> _DrillOutcome:
 def _unsafe_event_metadata(workspace: RunWorkspace) -> _DrillOutcome:
     try:
         ProviderEvent(
-            provider="runway",
-            operation="artifact download",
+            provider="leworldmodel",
+            operation="score",
             phase="failure",
             metadata={"shape": (1, 2, 3)},
         )
@@ -576,11 +581,11 @@ def _unsafe_event_metadata(workspace: RunWorkspace) -> _DrillOutcome:
         raise WorldForgeError("unsafe event metadata drill expected WorldForgeError.")
 
     redacted_event = ProviderEvent(
-        provider="runway",
-        operation="artifact download",
+        provider="leworldmodel",
+        operation="score",
         phase="failure",
-        target="https://downloads.example.invalid/generated.mp4?token=drill-secret",
-        message="download failed with Authorization=drill-secret",
+        target="https://scores.example.invalid/score?token=drill-secret",
+        message="score failed with Authorization=drill-secret",
         metadata={
             "api_token": "drill-secret",
             "safe_note": "metadata redaction drill",

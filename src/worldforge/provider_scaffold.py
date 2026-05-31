@@ -56,7 +56,7 @@ def parse_args(argv: list[str]) -> ScaffoldOptions:
         action="append",
         choices=CAPABILITIES,
         required=True,
-        help="Capability stub to generate. Repeat for multiple planned capabilities.",
+        help="Capability stub to write. Repeat for multiple planned capabilities.",
     )
     parser.add_argument(
         "--implementation-status",

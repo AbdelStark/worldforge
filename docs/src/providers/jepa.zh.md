@@ -4,7 +4,7 @@
 
 分类类别：JEPA 潜在预测世界模型
 
-`jepa` 是公开的、仅限打分的 JEPA 适配器。首个运行时接口故意保持精简：它使用上游 JEPA-WM 模型对候选动作张量进行打分，并返回 `ActionScoreResult`。它不暴露 `predict`、`embed`、`generate`、`transfer` 或 `reason`。
+`jepa` 是公开的、仅限打分的 JEPA 适配器。首个运行时接口故意保持精简：它使用上游 JEPA-WM 模型对候选动作张量进行打分，并返回 `ActionScoreResult`。它不暴露 `predict`、`embed` 或 `policy`。
 
 ## 提供方选型 RFC
 

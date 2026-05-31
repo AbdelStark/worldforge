@@ -2,7 +2,7 @@
 
 Capability protocols are the small-registration path for host applications that already own a
 local function, model wrapper, or service client. Use this path when a single in-process object can
-score, select, predict, generate, reason, embed, or transfer without needing a full provider
+score, select, predict, or embed without needing a full provider
 package.
 
 Use a `BaseProvider` subclass when the adapter needs catalog registration, custom health checks,
@@ -65,4 +65,3 @@ The resulting plan is deterministic JSON. Its metadata shows the composed path:
 Keep protocol implementations narrow. Validate caller input at the boundary, return the exact
 WorldForge result type for the capability, and keep optional runtimes, credentials, checkpoints,
 and telemetry export host-owned.
-

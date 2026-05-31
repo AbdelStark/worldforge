@@ -1,4 +1,4 @@
-"""Textual-free provider connector readiness summaries for TheWorldHarness."""
+"""Textual-free provider connector readiness summaries."""
 
 from __future__ import annotations
 

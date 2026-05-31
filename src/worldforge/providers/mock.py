@@ -10,14 +10,11 @@ from worldforge.models import (
     Action,
     BBox,
     EmbeddingResult,
-    GenerationOptions,
     JSONDict,
     Position,
     ProviderCapabilities,
     ProviderEvent,
-    ReasoningResult,
     SceneObject,
-    VideoClip,
     deterministic_floats,
 )
 
@@ -26,8 +23,6 @@ from .base import (
     PredictionPayload,
     ProviderError,
     ProviderProfileSpec,
-    validate_generation_request,
-    validate_transfer_request,
 )
 
 
@@ -48,10 +43,7 @@ class MockProvider(BaseProvider):
             name=name,
             capabilities=ProviderCapabilities(
                 predict=True,
-                generate=True,
-                reason=True,
                 embed=True,
-                transfer=True,
             ),
             profile=ProviderProfileSpec(
                 is_local=True,
@@ -60,8 +52,8 @@ class MockProvider(BaseProvider):
                 ),
                 implementation_status="stable",
                 deterministic=True,
-                supported_modalities=("world_state", "text", "video"),
-                artifact_types=("prediction", "video", "reasoning", "embedding", "transfer"),
+                supported_modalities=("world_state", "text"),
+                artifact_types=("prediction", "embedding"),
                 notes=("Reference implementation for adapter contract tests.",),
                 default_model="mock-deterministic-v1",
                 supported_models=("mock-deterministic-v1",),
@@ -149,96 +141,6 @@ class MockProvider(BaseProvider):
             metadata={"steps": steps, "frame_count": frame_count},
         )
         return payload
-
-    def generate(
-        self,
-        prompt: str,
-        duration_seconds: float,
-        *,
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        prompt, duration_seconds, options = validate_generation_request(
-            prompt,
-            duration_seconds,
-            options=options,
-        )
-        started = perf_counter()
-        frame_count = max(1, round(duration_seconds * 8))
-        clip = VideoClip(
-            frames=[_frame_bytes(prompt, index) for index in range(frame_count)],
-            fps=8.0,
-            resolution=(640, 360),
-            duration_seconds=duration_seconds,
-            metadata={
-                "provider": self.name,
-                "prompt": prompt,
-                "mode": "deterministic-mock-generate",
-                "options": options.to_dict() if options else {},
-                "content_type": "application/octet-stream",
-            },
-        )
-        self._emit_success_event(
-            operation="generate",
-            duration_ms=max(0.1, (perf_counter() - started) * 1000),
-            metadata={"duration_seconds": duration_seconds, "frame_count": frame_count},
-        )
-        return clip
-
-    def transfer(
-        self,
-        clip: VideoClip,
-        *,
-        width: int,
-        height: int,
-        fps: float,
-        prompt: str = "",
-        options: GenerationOptions | None = None,
-    ) -> VideoClip:
-        clip, width, height, fps, prompt, options = validate_transfer_request(
-            clip,
-            width=width,
-            height=height,
-            fps=fps,
-            prompt=prompt,
-            options=options,
-        )
-        started = perf_counter()
-        transferred = VideoClip(
-            frames=list(clip.frames),
-            fps=fps,
-            resolution=(width, height),
-            duration_seconds=clip.duration_seconds,
-            metadata={
-                **clip.metadata,
-                "provider": self.name,
-                "transfer": True,
-                "prompt": prompt,
-                "reference_count": len(options.reference_images) if options else 0,
-                "options": options.to_dict() if options else {},
-            },
-        )
-        self._emit_success_event(
-            operation="transfer",
-            duration_ms=max(0.1, (perf_counter() - started) * 1000),
-            metadata={"frame_count": len(clip.frames), "width": width, "height": height},
-        )
-        return transferred
-
-    def reason(self, query: str, *, world_state: JSONDict | None = None) -> ReasoningResult:
-        started = perf_counter()
-        objects = world_state.get("scene", {}).get("objects", {}) if world_state else {}
-        result = ReasoningResult(
-            provider=self.name,
-            answer=f"{len(objects)} object(s) tracked. Query: {query}",
-            confidence=0.81,
-            evidence=[f"Observed object ids: {', '.join(objects) or 'none'}"],
-        )
-        self._emit_success_event(
-            operation="reason",
-            duration_ms=max(0.1, (perf_counter() - started) * 1000),
-            metadata={"object_count": len(objects)},
-        )
-        return result
 
     def embed(self, *, text: str) -> EmbeddingResult:
         started = perf_counter()

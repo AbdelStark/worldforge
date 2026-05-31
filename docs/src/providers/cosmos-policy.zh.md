@@ -16,7 +16,7 @@ ALOHA images + proprio + task text
   -> ActionPolicyResult
 ```
 
-本提供方与 `cosmos` 相互独立。`cosmos` 是用于 Cosmos NIM `/v1/infer` 的媒体生成器适配器；`cosmos-policy` 是用于机器人动作选择的策略适配器。
+本提供方是当前目录中唯一的 Cosmos 系列提供方。它是用于机器人动作选择的策略适配器，不是媒体或生成式模型适配器。
 
 ## 运行时所有权
 

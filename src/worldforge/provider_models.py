@@ -2,7 +2,7 @@
 
 The concrete provider contracts live in focused leaf modules:
 
-- :mod:`worldforge.provider_profiles` owns capability, generation, and profile metadata.
+- :mod:`worldforge.provider_profiles` owns capability and profile metadata.
 - :mod:`worldforge.provider_request_policy` owns timeout and retry policy models.
 - :mod:`worldforge.provider_events` owns structured provider-event validation.
 - :mod:`worldforge.provider_diagnostics` owns health, lifecycle, and doctor reports.
@@ -43,7 +43,6 @@ from worldforge.provider_events import (  # noqa: F401
 )
 from worldforge.provider_profiles import (  # noqa: F401
     CAPABILITY_NAMES,
-    GenerationOptions,
     ProviderCapabilities,
     ProviderInfo,
     ProviderProfile,

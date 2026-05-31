@@ -24,8 +24,6 @@ def test_examples_cli_outputs_human_and_json_indexes(monkeypatch, capsys) -> Non
 
 def test_doctor_and_provider_info_cli(tmp_path, monkeypatch, capsys) -> None:
     for env_var in (
-        "COSMOS_BASE_URL",
-        "NVIDIA_API_KEY",
         "COSMOS_POLICY_BASE_URL",
         "COSMOS_POLICY_API_TOKEN",
         "COSMOS_POLICY_TIMEOUT_SECONDS",
@@ -33,8 +31,6 @@ def test_doctor_and_provider_info_cli(tmp_path, monkeypatch, capsys) -> None:
         "COSMOS_POLICY_MODEL",
         "COSMOS_POLICY_RETURN_ALL_QUERY_RESULTS",
         "COSMOS_POLICY_ALLOW_LOCAL_BASE_URL",
-        "RUNWAYML_API_SECRET",
-        "RUNWAY_API_SECRET",
         "LEWORLDMODEL_POLICY",
         "LEWM_POLICY",
         "LEWORLDMODEL_CACHE_DIR",
@@ -52,17 +48,17 @@ def test_doctor_and_provider_info_cli(tmp_path, monkeypatch, capsys) -> None:
     assert main() == 0
     doctor_payload = json.loads(capsys.readouterr().out)
     provider_names = {provider["name"] for provider in doctor_payload["providers"]}
-    assert {"mock", "cosmos"} <= provider_names
+    assert {"mock", "leworldmodel"} <= provider_names
     assert doctor_payload["registered_provider_count"] >= 1
     mock_doctor = next(
         provider for provider in doctor_payload["providers"] if provider["name"] == "mock"
     )
     assert mock_doctor["lifecycle"]["status"] == "no-op"
-    cosmos_doctor = next(
-        provider for provider in doctor_payload["providers"] if provider["name"] == "cosmos"
+    leworldmodel_doctor = next(
+        provider for provider in doctor_payload["providers"] if provider["name"] == "leworldmodel"
     )
-    assert cosmos_doctor["lifecycle"]["status"] == "skipped"
-    assert "COSMOS_BASE_URL" in cosmos_doctor["lifecycle"]["skip_reason"]
+    assert leworldmodel_doctor["lifecycle"]["status"] == "skipped"
+    assert "LEWORLDMODEL_POLICY" in leworldmodel_doctor["lifecycle"]["skip_reason"]
 
     monkeypatch.setattr(
         sys,
@@ -88,18 +84,21 @@ def test_provider_docs_cli_outputs_markdown_and_json(monkeypatch, capsys) -> Non
     monkeypatch.setattr(
         sys,
         "argv",
-        ["worldforge", "provider", "docs", "runway", "--format", "json"],
+        ["worldforge", "provider", "docs", "leworldmodel", "--format", "json"],
     )
     assert main() == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload == [
         {
-            "name": "runway",
-            "docs_path": "docs/src/providers/runway.md",
-            "implementation_status": "beta",
-            "capabilities": "generate, transfer",
-            "registration": "RUNWAYML_API_SECRET or RUNWAY_API_SECRET",
-            "runtime_ownership": "host supplies Runway credentials and persists returned artifacts",
+            "name": "leworldmodel",
+            "docs_path": "docs/src/providers/leworldmodel.md",
+            "implementation_status": "stable",
+            "capabilities": "score",
+            "registration": "LEWORLDMODEL_POLICY or LEWM_POLICY",
+            "runtime_ownership": (
+                "host installs the official LeWM loading path "
+                "(`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints"
+            ),
         }
     ]
 
@@ -247,39 +246,9 @@ def test_world_cli_manages_local_json_persistence(tmp_path, monkeypatch, capsys)
     assert "- name: lab-start" in fork_output
 
 
-def test_generate_cli_writes_output_file(tmp_path, monkeypatch, capsys) -> None:
-    output_path = tmp_path / "mock-output.bin"
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "worldforge",
-            "generate",
-            "A cube rolling across a table",
-            "--provider",
-            "mock",
-            "--duration",
-            "1",
-            "--output",
-            str(output_path),
-            "--state-dir",
-            str(tmp_path),
-        ],
-    )
-    assert main() == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert output_path.exists()
-    assert payload["output_path"] == str(output_path.resolve())
-
-
-def test_cli_supports_provider_listing_predict_transfer_and_eval(
+def test_cli_supports_provider_listing_predict_eval_and_benchmark(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    input_path = tmp_path / "input.mp4"
-    input_path.write_bytes(b"mock-input-video")
-    transfer_output_path = tmp_path / "transfer-output.bin"
-
     monkeypatch.setattr(
         sys,
         "argv",
@@ -337,34 +306,6 @@ def test_cli_supports_provider_listing_predict_transfer_and_eval(
         "argv",
         [
             "worldforge",
-            "transfer",
-            str(input_path),
-            "--provider",
-            "mock",
-            "--width",
-            "320",
-            "--height",
-            "240",
-            "--fps",
-            "12",
-            "--duration",
-            "1",
-            "--output",
-            str(transfer_output_path),
-            "--state-dir",
-            str(tmp_path),
-        ],
-    )
-    assert main() == 0
-    transfer_payload = json.loads(capsys.readouterr().out)
-    assert transfer_output_path.exists()
-    assert transfer_payload["output_path"] == str(transfer_output_path.resolve())
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "worldforge",
             "eval",
             "--suite",
             "physics",
@@ -404,31 +345,11 @@ def test_cli_supports_provider_listing_predict_transfer_and_eval(
         "argv",
         [
             "worldforge",
-            "eval",
-            "--suite",
-            "reasoning",
-            "--provider",
-            "mock",
-            "--format",
-            "csv",
-            "--state-dir",
-            str(tmp_path),
-        ],
-    )
-    assert main() == 0
-    eval_csv = capsys.readouterr().out
-    assert eval_csv.startswith("suite_id,suite,provider,scenario,score,passed,metrics_json")
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "worldforge",
             "benchmark",
             "--provider",
             "mock",
             "--operation",
-            "generate",
+            "predict",
             "--iterations",
             "2",
             "--format",
@@ -440,7 +361,7 @@ def test_cli_supports_provider_listing_predict_transfer_and_eval(
     assert main() == 0
     benchmark_payload = json.loads(capsys.readouterr().out)
     assert benchmark_payload["results"][0]["provider"] == "mock"
-    assert benchmark_payload["results"][0]["operation"] == "generate"
+    assert benchmark_payload["results"][0]["operation"] == "predict"
     assert benchmark_payload["run_metadata"]["providers"] == ["mock"]
     assert benchmark_payload["run_metadata"]["iterations"] == 2
 
@@ -453,7 +374,7 @@ def test_benchmark_cli_applies_budget_file(tmp_path, monkeypatch, capsys) -> Non
                 "budgets": [
                     {
                         "provider": "mock",
-                        "operation": "generate",
+                        "operation": "predict",
                         "min_success_rate": 1.0,
                         "max_error_count": 0,
                         "max_retry_count": 0,
@@ -472,7 +393,7 @@ def test_benchmark_cli_applies_budget_file(tmp_path, monkeypatch, capsys) -> Non
             "--provider",
             "mock",
             "--operation",
-            "generate",
+            "predict",
             "--iterations",
             "1",
             "--format",
@@ -487,7 +408,7 @@ def test_benchmark_cli_applies_budget_file(tmp_path, monkeypatch, capsys) -> Non
     assert main() == 0
     passing_payload = json.loads(capsys.readouterr().out)
     assert passing_payload["gate"]["passed"] is True
-    assert passing_payload["benchmark"]["results"][0]["operation"] == "generate"
+    assert passing_payload["benchmark"]["results"][0]["operation"] == "predict"
     assert passing_payload["benchmark"]["run_metadata"]["budget_file"]["path"] == str(
         passing_budget.resolve()
     )
@@ -500,7 +421,7 @@ def test_benchmark_cli_applies_budget_file(tmp_path, monkeypatch, capsys) -> Non
                 "budgets": [
                     {
                         "provider": "mock",
-                        "operation": "generate",
+                        "operation": "predict",
                         "max_average_latency_ms": 0.0,
                     }
                 ]
@@ -517,7 +438,7 @@ def test_benchmark_cli_applies_budget_file(tmp_path, monkeypatch, capsys) -> Non
             "--provider",
             "mock",
             "--operation",
-            "generate",
+            "predict",
             "--iterations",
             "1",
             "--format",
@@ -543,8 +464,6 @@ def test_benchmark_cli_accepts_input_file(tmp_path, monkeypatch, capsys) -> None
             {
                 "metadata": {"fixture": "unit"},
                 "inputs": {
-                    "generation_prompt": "fixture benchmark generation",
-                    "generation_duration_seconds": 1.0,
                     "embedding_text": "fixture benchmark embedding",
                 },
             }
@@ -560,7 +479,7 @@ def test_benchmark_cli_accepts_input_file(tmp_path, monkeypatch, capsys) -> None
             "--provider",
             "mock",
             "--operation",
-            "generate",
+            "embed",
             "--iterations",
             "1",
             "--format",
@@ -575,9 +494,9 @@ def test_benchmark_cli_accepts_input_file(tmp_path, monkeypatch, capsys) -> None
     assert main() == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["results"][0]["provider"] == "mock"
-    assert payload["results"][0]["operation"] == "generate"
+    assert payload["results"][0]["operation"] == "embed"
     assert payload["results"][0]["success_count"] == 1
     assert payload["run_metadata"]["input_file"]["path"] == str(input_file.resolve())
     assert len(payload["run_metadata"]["input_file"]["sha256"]) == 64
     assert payload["run_metadata"]["input_file"]["metadata"] == {"fixture": "unit"}
-    assert payload["run_metadata"]["inputs"]["generation_prompt"] == "fixture benchmark generation"
+    assert payload["run_metadata"]["inputs"]["embedding_text"] == "fixture benchmark embedding"

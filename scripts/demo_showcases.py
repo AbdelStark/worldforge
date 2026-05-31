@@ -319,32 +319,34 @@ def _issue_bundle(workflow_dir: Path) -> JSONDict:
     workspace = create_run_workspace(
         workflow_dir,
         kind="provider_diagnostic",
-        command="uv run worldforge provider health runway",
-        provider="runway",
+        command="uv run worldforge provider health leworldmodel",
+        provider="leworldmodel",
         operation="health",
         input_summary={"credentialed": False, "checkout_safe": True},
     )
     workspace.write_json(
         "reports/provider-health.json",
         {
-            "provider": "runway",
+            "provider": "leworldmodel",
             "status": "skipped",
-            "reason": "required provider credential is not configured in checkout-safe demo",
+            "reason": "host-owned LeWorldModel runtime is not configured in checkout-safe demo",
             "safe_to_attach": True,
         },
     )
-    workspace.write_text("logs/provider-events.jsonl", '{"provider":"runway","phase":"skipped"}')
+    workspace.write_text(
+        "logs/provider-events.jsonl", '{"provider":"leworldmodel","phase":"skipped"}'
+    )
     write_run_manifest(
         workspace,
         kind="provider_diagnostic",
-        command="uv run worldforge provider health runway",
-        provider="runway",
+        command="uv run worldforge provider health leworldmodel",
+        provider="leworldmodel",
         operation="health",
         status="skipped",
         input_summary={"credentialed": False, "checkout_safe": True},
         result_summary={
-            "expected_signal": "provider credentials missing",
-            "skip_reason": "required provider credential is not configured",
+            "expected_signal": "score runtime missing",
+            "skip_reason": "host-owned LeWorldModel runtime is not configured",
             "safe_to_attach": True,
         },
         artifact_paths={
@@ -360,7 +362,7 @@ def _issue_bundle(workflow_dir: Path) -> JSONDict:
     )
     return {
         "status": "passed",
-        "provider": "runway",
+        "provider": "leworldmodel",
         "safe_to_attach": bool(bundle.manifest["safe_to_attach"]),
         "summary": (
             "Created a skipped provider diagnostic run and exported an issue-ready evidence bundle."
@@ -417,51 +419,48 @@ def _robotics_replay(workflow_dir: Path) -> JSONDict:
     }
 
 
-def _remote_media_dry_run(workflow_dir: Path) -> JSONDict:
+def _provider_event_redaction_dry_run(workflow_dir: Path) -> JSONDict:
     events = [
         ProviderEvent(
-            provider="cosmos",
-            operation="generate",
+            provider="leworldmodel",
+            operation="score",
             phase="success",
             method="POST",
-            target="https://api.example.invalid/cosmos/tasks?signature=fake-secret",
+            target="https://score.example.invalid/leworldmodel?token=fake-secret",
             status_code=200,
-            message="fixture success with signed URL https://assets.example/video.mp4?token=fake",
+            message="fixture score success for token=fake-secret",
             metadata={
-                "signed_url": "https://assets.example/video.mp4?token=fake",
-                "retention_days": 7,
+                "score_shape": [3],
+                "checkpoint": "/Users/operator/checkpoints/token=fake-secret",
             },
         ).to_dict(),
         ProviderEvent(
-            provider="runway",
-            operation="transfer",
+            provider="cosmos-policy",
+            operation="policy",
             phase="failed",
             method="GET",
-            target="https://api.example.invalid/runway/tasks?api_key=fake",
+            target="https://policy.example.invalid/act?api_key=fake-secret",
             status_code=410,
-            message="fixture artifact URL expired",
-            metadata={"artifact_url": "https://assets.example/out.mp4?X-Amz-Signature=fake"},
+            message="fixture policy endpoint rejected token=fake-secret",
+            metadata={"action_shape": [50, 14], "api_key": "fake-secret"},
         ).to_dict(),
     ]
-    events_path = workflow_dir / "remote-media-events.json"
+    events_path = workflow_dir / "provider-event-redaction-events.json"
     _write_json(events_path, events)
     return {
         "status": "passed",
-        "provider": "cosmos+runway",
+        "provider": "leworldmodel+cosmos-policy",
         "safe_to_attach": True,
-        "summary": (
-            "Exercised fixture-backed Cosmos success and Runway expired-artifact dry-run "
-            "events with redaction."
-        ),
+        "summary": ("Exercised fixture-backed score and policy provider events with redaction."),
         "provider_events": events,
         "redaction_verified": "fake-secret" not in json.dumps(events)
-        and "token=fake" not in json.dumps(events),
+        and "api_key=fake-secret" not in json.dumps(events),
         "artifact_paths": {"provider_events": str(events_path)},
         "first_triage_step": (
-            "Use prepared-host smoke commands only after checking sanitized dry-run artifacts."
+            "Use prepared-host smoke commands only after checking sanitized event artifacts."
         ),
         "claim_boundary": (
-            "Fixture-backed parser and artifact-retention story only; no paid API call."
+            "Fixture-backed provider-event redaction story only; no live provider call."
         ),
     }
 
@@ -576,7 +575,7 @@ def _service_host(workflow_dir: Path) -> JSONDict:
     app = _load_module(ROOT / "examples/hosts/service/app.py", "worldforge_service_host_demo")
     forge = WorldForge(state_dir=workflow_dir / "worlds", auto_register_remote=False)
     readiness = app.readiness_snapshot(forge, "mock")
-    request = app.mock_prediction_payload(forge, request_id="demo-request")
+    request = app.prediction_payload(forge, {}, provider="mock", request_id="demo-request")
     server = app.create_server(
         host="127.0.0.1",
         port=0,
@@ -840,10 +839,10 @@ WORKFLOWS = (
     ),
     DemoWorkflow("robotics-replay", "Guided robotics showcase replay", 191, _robotics_replay),
     DemoWorkflow(
-        "remote-media-dry-run",
-        "Remote media dry-run showcase",
+        "provider-event-redaction-dry-run",
+        "Provider event redaction dry-run",
         192,
-        _remote_media_dry_run,
+        _provider_event_redaction_dry_run,
     ),
     DemoWorkflow("adapter-author", "Adapter author journey", 193, _adapter_author),
     DemoWorkflow("batch-eval", "Batch evaluation host walkthrough", 194, _batch_eval),

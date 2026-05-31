@@ -11,7 +11,7 @@
 | 追踪器 | 范围 | 完成信号 |
 | --- | --- | --- |
 | [#47](https://github.com/AbdelStark/worldforge/issues/47) | 提供方平台基础设施 | 已实现晋升门禁、运行时清单、合规性帮助工具、实时冒烟工件及可选运行时配置文件。 |
-| [#48](https://github.com/AbdelStark/worldforge/issues/48) | 真实提供方实现 | LeWorldModel、LeRobot、GR00T、Cosmos、Runway、JEPA、JEPA-WMS 和 Genie 的延迟决策均已与可执行能力声明对照记录。 |
+| [#48](https://github.com/AbdelStark/worldforge/issues/48) | 真实提供方实现 | LeWorldModel、LeRobot、GR00T、Cosmos-Policy、JEPA、JEPA-WMS 和 Genie 的延迟决策均已与可执行能力声明对照记录。 |
 | [#49](https://github.com/AbdelStark/worldforge/issues/49) | 生产级运行框架 | 运行工作区、连接器就绪状态、实时检查、报告对比及提供方工作台流程均保留了安全工件。 |
 | [#50](https://github.com/AbdelStark/worldforge/issues/50) | 参考宿主应用 | 批量评估、服务及机器人操作员宿主示例展示了由宿主方持有的集成边界。 |
 | [#51](https://github.com/AbdelStark/worldforge/issues/51) | 可观测性、监控与日志 | 提供方事件模式、日志、指标、OpenTelemetry、就绪状态及故障手册均已提供，且不改变基础依赖边界。 |
@@ -28,7 +28,7 @@
 - 保持可选运行时由宿主方持有。WorldForge 可提供适配器、启动器、合规性测试和参考宿主应用；宿主方自行管理凭证、设备、检查点、数据集、持久化存储、仪表盘、机器人控制器及安全策略。
 - 将提供方事件视为安全敏感记录。每个新的可观测字段在进入日志、指标、链路、报告或导出前，必须通过脱敏测试。
 - 将确定性检出测试与实时运行时冒烟测试分开。实时冒烟测试应明确标注，在缺少凭证或运行时包时能干净地跳过，并保留足够的工件以便调试失败。
-- 每个 Issue 应明确说明其变更的能力面：`predict`、`generate`、`transfer`、`reason`、`embed`、`score` 或 `policy`。
+- 每个 Issue 应明确说明其变更的能力面：`predict`、`embed`、`score` 或 `policy`。
 
 ## 目标终态
 
@@ -39,7 +39,7 @@
 | 提供方可信度 | 每项已声明的提供方能力均有真实可调用实现、合规性覆盖、生成的文档以及预备宿主冒烟路径。 |
 | 提供方选型 | 新的提供方工作从书面选型记录开始，该记录需对用户价值、上游成熟度、运行时成本、验证可行性和维护负担进行评分。 |
 | 运行时边界 | 重型模型包、GPU、检查点、机器人技术栈、托管仪表盘和持久化存储均作为可选项由宿主方自行管理。 |
-| 运行框架 | TheWorldHarness 成为提供方就绪状态、运行执行、工件检查、评估/基准测试对比及提供方开发的本地运维工作区。 |
+| 机器人案例展示 | Textual 界面仅用于预制宿主机器人 policy+score 案例；运维工作流保持 CLI 优先。 |
 | 宿主应用 | 参考宿主展示了如何在批处理任务、服务及机器人操作员工作流中集成 WorldForge，而不重新定义基础包边界。 |
 | 运维 | 提供方调用产生脱敏事件、可选链路/指标/日志文件、运行清单、就绪状态及故障手册。 |
 | 发布证据 | 发布包含可复现的本地门禁，以及明确的可选提供方证据或跳过原因。 |
@@ -55,10 +55,10 @@
 | 领域 | 当前状态 | 约束 |
 | --- | --- | --- |
 | 基础包 | `httpx` 运行时依赖，仅支持 Python 3.13，使用 hatchling/uv 打包 | 保持提供方和宿主的附加依赖为可选项。 |
-| 提供方目录 | `mock`、`cosmos`、`runway`、`leworldmodel`、`gr00t`、`lerobot`、实验性的仅打分 `jepa`，以及 `genie` 脚手架 | 不得将脚手架提供方声明为真实集成。 |
+| 提供方目录 | `mock`、`cosmos-policy`、`leworldmodel`、`gr00t`、`lerobot`、实验性的仅打分 `jepa`，以及 `genie` 脚手架 | 不得将脚手架提供方声明为真实集成。 |
 | 候选提供方 | `jepa-wms` 直接构造打分候选，未导出也未自动注册 | 仅在真实上游限制和运行时行为经过验证后才进行晋升。 |
 | 规划 | `World.plan(...)` 组合 `predict`、`score`、`policy` 及 `policy+score` 流程 | 除非提供方直接实现了规划，否则不将 `plan` 视为提供方徽章。 |
-| 运行框架 | 带有世界、提供方、评估、基准测试、运行检查器及机器人报告界面的可选 Textual 应用 | Textual 保持隔离在 `worldforge.harness.tui` 中。 |
+| 运行框架 | 面向机器人 showcase 报告的可选 Textual 应用 | Textual 保持隔离在 `worldforge.harness.tui` 中。 |
 | 可观测性 | `ProviderEvent`、`JsonLoggerSink`、`InMemoryRecorderSink`、`ProviderMetricsSink`、处理器扇出 | 宿主方自行管理完整的遥测导出和告警，除非添加了可选集成。 |
 | 持久化 | 经验证的单写者本地 JSON 状态及报告工件 | 在独立的适配器设计落地之前，持久化多写者存储仍属于宿主方的关切。 |
 
@@ -109,7 +109,7 @@
 | M0：Issue 就绪契约 | 将本路线图转化为带有依赖关系和负责人的带标签 GitHub Issue | Issue 包含验收标准和验证命令。 |
 | M1：提供方基础设施 | 共享提供方晋升门禁、运行时清单、合规性测试及实时冒烟规范 | 新提供方无需为每个适配器单独发明流程即可添加。 |
 | M2：真实提供方晋升 | 晋升现有最高价值的适配器，仅在真实运行时契约存在时替换脚手架占位 | 提供方文档/目录与可执行行为及实时冒烟工件一致。 |
-| M3：生产级运行框架 | 将 TheWorldHarness 打造为提供方、世界、运行、工件和诊断的规范本地运维工作区 | 运维人员可以本地配置、运行、检查、对比、导出和恢复流程。 |
+| M3：运维证据 | 将运行检查、对比、导出和恢复保持为 CLI 优先工作流 | 运维人员可以在本地检查、对比、导出和恢复流程。 |
 | M4：参考宿主应用 | 提供可选宿主应用，展示如何在服务、批处理任务和机器人实验室中集成 WorldForge | 宿主方获得可运行的模板，无需改变基础包。 |
 | M5：可观测性与运维 | 添加可选遥测导出器、服务探针、运行清单、脱敏门禁及故障手册 | 生产宿主可集成标准监控，同时不泄露密钥。 |
 | M6：发布加固 | 使实时提供方发布可复现、可审计且范围明确 | 发布门禁包含文档、包契约、覆盖率、提供方契约检查及可选冒烟证据。 |
@@ -123,7 +123,7 @@
 | 0 | 无 | WF-PROV-001, WF-PROVIDER-SELECT-001 | 锁定提供方标准，避免添加低价值适配器工作。 |
 | 1 | WF-PROV-001 | WF-PROV-002, WF-PROV-003 | 运行时清单和合规性检查是真实提供方的可复用基础设施。 |
 | 2 | WF-PROV-002, WF-PROV-003 | WF-PROV-004, WF-PROV-005 | 实时冒烟和标记需要清单及契约帮助工具。 |
-| 3 | 第 2 波 | WF-LWM-001, WF-LEROBOT-001, WF-COSMOS-001, WF-RUNWAY-001 | 在扩展目录之前，先晋升现有的高价值真实路径。 |
+| 3 | 第 2 波 | WF-LWM-001, WF-LEROBOT-001, WF-COSMOS-001 | 在扩展目录之前，先晋升现有的高价值真实路径。 |
 | 4 | WF-LEROBOT-001 | WF-LEROBOT-002, WF-GROOT-001 | 机器人策略工作在进入正式宿主工作流之前需要转换器契约。 |
 | 5 | WF-PROV-004 | WF-HARNESS-001, WF-OBS-001 | 运行和事件需要共享的工件/关联模型。 |
 | 6 | WF-HARNESS-001, WF-OBS-001 | WF-HARNESS-002 至 WF-HARNESS-005, WF-OBS-002 至 WF-OBS-005 | UI、导出、链路、日志和就绪状态应共享运行 ID 和事件语义。 |
@@ -211,7 +211,7 @@ Docs:
 | --- | --- | --- |
 | LeWorldModel score | 现有真实打分路径，具有机器人案例展示价值 | WF-LWM-001 |
 | LeRobot policy | 现有真实策略路径，具有 policy+score 规划价值 | WF-LEROBOT-001 |
-| Runway/Cosmos 媒体 | 现有远程适配器，存在生产级解析器/工件问题 | WF-RUNWAY-001, WF-COSMOS-001 |
+| Cosmos-Policy 策略 | 预制宿主策略适配器，存在解析器、转换器和 `/act` 运行时问题 | WF-COSMOS-001 |
 | GR00T PolicyClient | 有价值的机器人策略路径，但预备宿主复杂度较高 | WF-GROOT-001 |
 | JEPA-WMS | 研究价值打分候选，但应保持直接构造直至上游限制明确 | WF-JEPAWMS-001 |
 
@@ -297,13 +297,13 @@ Docs:
 
 ```json
 {
-  "provider": "runway",
-  "operation": "generate",
+  "provider": "cosmos-policy",
+  "operation": "policy",
   "phase": "success",
   "attempt": 1,
   "max_attempts": 1,
   "duration_ms": 1200.0,
-  "run_id": "20260430T120000Z-runway-generate",
+  "run_id": "20260430T120000Z-cosmos-policy",
   "request_id": "host-request-id",
   "target": "https://api.example.test/v1/tasks",
   "metadata": {
@@ -323,7 +323,7 @@ Docs:
 
 - [提供方编写指南](./provider-authoring-guide.md)中，提供方晋升规则已覆盖 `scaffold`、`experimental`、`beta` 和 `stable`，包括配置文件元数据、生成的目录更新、验证命令及当前提供方分类表。
 - 运行时清单已打包至 `src/worldforge/providers/runtime_manifests/`，经测试验证，从提供方文档链接，并在不安装可选运行时的情况下用于健康/配置摘要。
-- 能力合规性帮助工具已覆盖 `predict`、`generate`、`transfer`、`reason`、`embed`、`score` 和 `policy`，以及用于安全夹具和注入运行时覆盖的提供方事件脱敏检查。
+- 能力合规性帮助工具已覆盖 `predict`、`embed`、`score` 和 `policy`，以及用于安全夹具和注入运行时覆盖的提供方事件脱敏检查。
 - 可选实时冒烟命令可写入脱敏的 `run_manifest.json` 证据，包含命令、包版本、提供方配置文件、能力、运行时清单、输入摘要、事件数量、结果摘要及工件路径摘要。
 - 运行时 pytest 配置文件使默认检出验证保持确定性，同时预备宿主可以选择加入 `live`、`network`、`credentialed`、`gpu`、`robotics` 及特定提供方的测试运行。
 
@@ -374,7 +374,7 @@ uv run pytest tests/test_provider_catalog_docs.py
 验收标准：
 
 - [x] 清单模式已记录并经测试验证。
-- [x] `leworldmodel`、`lerobot`、`gr00t`、`cosmos` 和 `runway` 均有清单。
+- [x] `leworldmodel`、`lerobot`、`gr00t` 和 `cosmos-policy` 均有清单。
 - [x] 缺少可选依赖时，使用清单数据生成可操作的健康提示信息。
 - [x] 文档从提供方页面链接到相关清单。
 
@@ -395,7 +395,7 @@ uv run mkdocs build --strict
 
 范围：
 
-- 将 `src/worldforge/testing/` 扩展为 `score`、`policy`、`generate`、`transfer`、`predict`、`reason` 和 `embed` 的能力专属检查。
+- 将 `src/worldforge/testing/` 扩展为 `score`、`policy`、`predict` 和 `embed` 的能力专属检查。
 - 验证有限数值输出、JSON 原生元数据、脱敏事件、故障类型、健康行为及文档/配置文件一致性。
 - 保持帮助工具的明确性；它们应抛出有意义的 `AssertionError` 消息。
 
@@ -481,7 +481,7 @@ uv run mkdocs build --strict
 - `leworldmodel` 是基于 `stable_worldmodel.policy.AutoCostModel` 的稳定打分提供方，具备 CPU 回退、打分方向元数据、运行时清单、真实检查点冒烟命令，以及在运行清单中保留形状摘要的 PushT 桥接注册表。
 - `lerobot` 是稳定的策略提供方，具备明确的加载器验证、有界原始动作预览、转换器契约证据，以及由宿主方持有的检查点、运行时和控制器边界。
 - `gr00t` 是 beta 阶段的远程 PolicyClient 提供方，具备脱敏目标元数据、超时/认证处理、服务不可达健康信号，且文档将 CUDA、TensorRT、Isaac-GR00T 和策略服务器运维保持为宿主方职责。
-- `cosmos` 和 `runway` 通过解析器夹具、重试/超时事件元数据、可选实时冒烟清单、基准测试输入及将签名 URL 查询字符串排除在可观测记录之外的工件保留指导，保持远程媒体生成/迁移的生产形态。
+- `cosmos-policy` 通过解析器夹具、重试/超时事件元数据、可选实时冒烟清单和动作转换指导，保持具身策略回放的生产形态，并将秘密或宿主本地材料排除在可观测记录之外。
 - `jepa` 现在仅通过 `facebookresearch/jepa-wms` torch-hub 契约声明选定的实验性 `score` 接口，而 `jepa-wms` 保持为直接构造候选，提供预备宿主冒烟证据，而非自动注册。
 - `genie` 保持为默认关闭的脚手架，直到存在可信的上游自动化 API 或运行时契约才有记录的延迟决策。
 - [提供方文档](./providers/README.md)、[提供方选型记录](./provider-selection-rfc.md)、[机器人案例展示文档](./robotics-showcase.md)、运行时清单、夹具及合规性测试现已就哪些提供方能力可执行、哪些运行时职责由宿主方承担达成一致。
@@ -651,19 +651,19 @@ uv run mkdocs build --strict
 GROOT_POLICY_HOST=<host> uv run python scripts/smoke_gr00t_policy.py --policy-info-json policy.json
 ```
 
-### WF-COSMOS-001：Cosmos Generate 提供方生产加固
+### WF-COSMOS-001：Cosmos-Policy 提供方生产加固
 
-类型：提供方晋升  
-标签：`provider`、`generate`、`operations`  
+类型：提供方晋升
+标签：`provider`、`operations`
 依赖：WF-PROV-003, WF-PROV-004
 
-问题：`cosmos` 是真实的 HTTP 适配器。生产加固应锁定 API 版本处理、解析器夹具、重试策略、工件元数据，以及围绕可达部署的文档。
+问题：`cosmos-policy` 是预制宿主 HTTP 策略适配器。生产加固应锁定 `/act` 请求/响应验证、转换器边界、重试策略、运行证据以及围绕可达部署的文档。
 
 范围：
 
-- 对照当前支持的 Cosmos 部署形态，审计请求/响应解析器覆盖情况。
-- 保留成功、格式错误载荷、认证失败、超时、轮询、失败任务及不支持工件的夹具覆盖。
-- 为实时生成冒烟运行写入运行清单。
+- 对照当前支持的 Cosmos-Policy `/act` 形态，审计请求/响应解析器覆盖情况。
+- 保留成功、格式错误载荷、认证失败、超时、错误动作形状及缺失转换器的夹具覆盖。
+- 为实时策略冒烟运行写入运行清单。
 - 将端点所有权保持在宿主方。
 
 验收标准：
@@ -676,45 +676,15 @@ GROOT_POLICY_HOST=<host> uv run python scripts/smoke_gr00t_policy.py --policy-in
 验证：
 
 ```bash
-uv run pytest tests/test_cosmos_provider.py tests/test_remote_video_providers.py
-uv run python scripts/generate_provider_docs.py --check
-uv run mkdocs build --strict
-```
-
-### WF-RUNWAY-001：Runway Generate/Transfer 生产加固
-
-类型：提供方晋升  
-标签：`provider`、`generate`、`transfer`、`operations`  
-依赖：WF-PROV-003, WF-PROV-004
-
-问题：`runway` 通过远程 API 支持 generate 和 transfer。生产加固需要工件保留策略、过期 URL 处理，以及与操作员文档匹配的解析器覆盖。
-
-范围：
-
-- 验证创建、轮询、下载、内容类型及过期工件错误路径。
-- 写入不存储签名 URL 的实时冒烟清单，但保留工件元数据。
-- 记录宿主方在任务完成后立即持久化已下载媒体的责任。
-- 在优先使用 `RUNWAYML_API_SECRET` 的同时，保持对遗留 `RUNWAY_API_SECRET` 别名的测试。
-
-验收标准：
-
-- [ ] 签名 URL 查询字符串绝不出现在事件、日志、清单或报告中。
-- [ ] 文档涵盖工件过期及首要恢复步骤。
-- [ ] transfer 和 generate 有独立的基准测试输入和能力测试。
-- [ ] 提供方配置文件在已知情况下注明模型/版本限制。
-
-验证：
-
-```bash
-uv run pytest tests/test_runway_provider.py tests/test_remote_video_providers.py tests/test_observability.py
+uv run pytest tests/test_cosmos_policy_provider.py tests/test_cosmos_policy_smoke_script.py
 uv run python scripts/generate_provider_docs.py --check
 uv run mkdocs build --strict
 ```
 
 ### WF-JEPAWMS-001：JEPA-WMS 候选晋升
 
-类型：提供方晋升  
-标签：`provider`、`score`、`research`  
+类型：提供方晋升
+标签：`provider`、`score`、`research`
 依赖：WF-PROV-001, WF-PROV-002, WF-PROV-003
 
 问题：`jepa-wms` 是直接构造打分候选。在真实上游运行时限制、模型加载及打分语义经过验证之前，应保持未注册状态。
@@ -772,8 +742,8 @@ uv run mkdocs build --strict
 
 ### WF-GENIE-001：仅在运行时契约存在后替换 Genie 脚手架
 
-类型：提供方实现  
-标签：`provider`、`generate`、`research`  
+类型：提供方实现
+标签：`provider`、`research`
 依赖：WF-PROV-001
 
 问题：`genie` 目前是默认关闭的占位。真实实现应等到存在具有稳定可调用行为和可接受宿主方依赖边界的具体上游运行时/API 后再进行。
@@ -781,7 +751,7 @@ uv run mkdocs build --strict
 范围：
 
 - 在实现前创建提供方选型 RFC。
-- 决定第一个接口是 `generate`、`predict` 还是新的类型化场景/世界接口。
+- 决定第一个接口是 `predict` 还是保持在当前提供方表面之外。
 - 如果不存在可信的上游契约，保留脚手架占位。
 - 不将确定性本地替代行为呈现为真实的 Genie 集成。
 
@@ -808,7 +778,7 @@ uv run mkdocs build --strict
 
 范围：
 
-- 评估候选类别：具身策略适配器、潜在打分/预测模型、远程媒体生成/迁移 API、仿真器桥接及空间/3D 世界模型运行时。
+- 评估候选类别：具身策略适配器、潜在打分/预测模型、仿真器桥接及与规划相关的物理世界模型运行时。
 - 对每个候选，记录能力接口、包/API 成熟度、宿主依赖权重、冒烟可行性、许可证、夹具策略及预期用户。
 - 为下一批实现最多选择三个提供方。
 
@@ -843,7 +813,7 @@ uv run mkdocs build --strict
 
 运行框架反目标：
 
-- 不将 TheWorldHarness 变成托管仪表盘。
+- 不将机器人案例展示 TUI 变成托管仪表盘。
 - 不在隐式安装重型可选运行时的背后隐藏提供方设置。
 - 不从默认运行框架流程执行机器人控制器动作。
 - 不渲染包含原始密钥的提供方元数据。
@@ -853,11 +823,11 @@ uv run mkdocs build --strict
 完成信号：
 
 - 共享运行工作区使用 `.worldforge/runs/<run-id>/`，包含脱敏清单、提供方事件、结果摘要、报告导出、日志、可排序的文件安全运行 ID、保留命令及 Issue 安全工件路径。
-- 提供方连接器就绪状态通过 TheWorldHarness 和 `worldforge harness --connectors` 暴露，区分已配置、缺少凭证、缺少可选依赖、不健康及脚手架状态，不打印密钥值。
+- 提供方就绪状态通过 CLI 诊断暴露，区分已配置、缺少凭证、缺少可选依赖、不健康及脚手架状态，不打印密钥值。
 - 实时运行检查保留 `results/inspector.json`、脱敏的 `logs/provider-events.jsonl`、失败运行清单、验证错误以及成功和失败流程的最终工件链接。
 - 保留的评估和基准测试运行可使用 `worldforge runs compare` 进行对比，并可导出为 Markdown、JSON 或 CSV，附带来源引用。
 - `worldforge provider workbench <provider>` 为适配器作者提供安全检出循环，用于能力合规性帮助工具、夹具验证、健康检查、文档/目录漂移及脱敏安全事件检查。
-- [TheWorldHarness 文档](./theworldharness.md) 描述了匹配的非 TUI 命令和工件布局，使生产级运行框架行为无需导入 Textual 即可测试。
+- CLI 文档描述匹配命令和工件布局，使运维行为无需导入 Textual 即可测试。
 
 ### WF-HARNESS-001：运行框架运行工作区
 
@@ -906,7 +876,7 @@ uv run mkdocs build --strict
 
 验收标准：
 
-- [x] `mock`、`cosmos`、`runway`、`leworldmodel`、`gr00t`、`lerobot`、实验性 `jepa` 及脚手架 `genie` 以不同状态渲染。
+- [x] `mock`、`cosmos-policy`、`leworldmodel`、`gr00t`、`lerobot`、实验性 `jepa` 及脚手架 `genie` 以不同状态渲染。
 - [x] 凭证缺失和可选依赖缺失在视觉上有所区别。
 - [x] Textual 保持隔离在 `worldforge.harness.tui` 中。
 - [x] 非 TUI 元数据命令以 JSON 形式暴露相同的提供方就绪状态数据。
@@ -1190,7 +1160,7 @@ ProviderEvent
 验证：
 
 ```bash
-uv run pytest tests/test_observability.py tests/test_remote_video_providers.py
+uv run pytest tests/test_observability.py tests/test_cosmos_policy_provider.py
 uv run mkdocs build --strict
 ```
 
@@ -1353,7 +1323,7 @@ uv run mkdocs build --strict
 验证：
 
 ```bash
-uv run pytest tests/test_provider_request_policy.py tests/test_remote_video_providers.py
+uv run pytest tests/test_provider_request_policy.py tests/test_cosmos_policy_provider.py
 uv run mkdocs build --strict
 ```
 
@@ -1520,8 +1490,7 @@ uv run mkdocs build --strict
 
 - WF-LWM-001：LeWorldModel 稳定打分提供方
 - WF-LEROBOT-001：LeRobot 稳定策略提供方
-- WF-COSMOS-001：Cosmos Generate 提供方生产加固
-- WF-RUNWAY-001：Runway Generate/Transfer 生产加固
+- WF-COSMOS-001：Cosmos-Policy 提供方生产加固
 
 退出标准：
 
@@ -1545,9 +1514,9 @@ uv run mkdocs build --strict
 - 策略原始动作、打分候选动作、转换后的 `Action` 值、选定计划及回放工件可通过一个运行清单追溯。
 - 除非由宿主应用提供，否则真实机器人执行保持禁用。
 
-### 第 5 波：运行框架作为运维工作区
+### 第 5 波：运维证据工作区
 
-目标：使 TheWorldHarness 对提供方开发和本地运维有用。
+目标：使 CLI 优先的运行证据对提供方开发和本地运维有用。
 
 实现：
 

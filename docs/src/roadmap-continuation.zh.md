@@ -40,11 +40,10 @@ GitHub Issue 批次创建日期：2026-05-01。
 | [WF-A1 #130](https://github.com/AbdelStark/worldforge/issues/130) | 建立提供方队列选择记录 | AFK | none | `provider`, `research`, `roadmap` |
 | [WF-A2 #133](https://github.com/AbdelStark/worldforge/issues/133) | 晋级 JEPA-WMS 已准备宿主打分证据 | AFK | WF-A1 | `provider`, `score`, `research` |
 | [WF-A3 #137](https://github.com/AbdelStark/worldforge/issues/137) | 稳定公开 JEPA 打分适配器 | AFK | WF-A2 | `provider`, `score`, `research` |
-| [WF-A4 #138](https://github.com/AbdelStark/worldforge/issues/138) | 定义空间/3D 场景提供方边界 | HITL | WF-A1 | `provider`, `generate`, `design` |
-| [WF-A5 #143](https://github.com/AbdelStark/worldforge/issues/143) | 实现场景工件夹具与验证 | AFK | WF-A4 | `provider`, `generate`, `artifacts` |
-| [WF-A6 #139](https://github.com/AbdelStark/worldforge/issues/139) | 解决 Genie 运行时契约决策 | HITL | WF-A1 | `provider`, `generate`, `research` |
-| [WF-A7 #134](https://github.com/AbdelStark/worldforge/issues/134) | 强化 Cosmos 和 Runway 的远程媒体工件保留 | AFK | none | `provider`, `generate`, `transfer` |
-| [WF-A8 #144](https://github.com/AbdelStark/worldforge/issues/144) | 构建提供方实时冒烟证据注册表 | AFK | WF-A2, WF-A7 | `provider`, `operations`, `artifacts` |
+| [WF-A4 #138](https://github.com/AbdelStark/worldforge/issues/138) | 将空间/3D 场景提供方边界移出当前范围 | HITL | WF-A1 | `provider`, `design` |
+| [WF-A5 #143](https://github.com/AbdelStark/worldforge/issues/143) | 将场景工件夹具工作作为范围外关闭 | AFK | WF-A4 | `provider`, `artifacts` |
+| [WF-A6 #139](https://github.com/AbdelStark/worldforge/issues/139) | 解决 Genie 运行时契约决策 | HITL | WF-A1 | `provider`, `research` |
+| [WF-A8 #144](https://github.com/AbdelStark/worldforge/issues/144) | 构建提供方实时冒烟证据注册表 | AFK | WF-A2 | `provider`, `operations`, `artifacts` |
 
 ### WF-A1：建立提供方队列选择记录
 
@@ -55,7 +54,7 @@ GitHub Issue 批次创建日期：2026-05-01。
 范围：
 
 - 在文档树下创建一份提供方队列选择记录。
-- 依据现有评分标准，对 JEPA-WMS/公开 JEPA、Genie、空间/3D 场景生成、其他远程视频 API、模拟器桥接及新具身策略栈进行评分。
+- 依据现有评分标准，对 JEPA-WMS/公开 JEPA、Genie、空间/3D 场景边界、模拟器桥接及新具身策略栈进行评分。
 - 为下一实现队列最多选择三个活跃候选。
 - 为未达标的候选记录明确的推迟原因。
 
@@ -93,7 +92,7 @@ uv run mkdocs build --strict
 不在范围内：
 
 - 不在基础依赖中引入 torch 或 JEPA-WMS 包。
-- 不公开 `predict`、`embed`、`generate` 或 `reason` 能力。
+- 不公开 `predict` 或 `embed` 能力。
 - 除非证据支持且文档/目录已更新，否则不更改自动注册逻辑。
 
 验收标准：
@@ -147,7 +146,7 @@ uv run mkdocs build --strict
 
 ### WF-A4：定义空间/3D 场景提供方边界
 
-设计记录：[空间场景工件边界](./spatial-scene-artifact-boundary.md)。
+设计说明：空间/3D 场景工件不属于当前以规划为中心的提供方能力面。
 
 问题：场景与 3D 世界生成不同于视频生成、预测和规划。在定义工件契约之前添加提供方将模糊能力模型。
 
@@ -155,20 +154,20 @@ uv run mkdocs build --strict
 
 - 撰写设计记录，选择第一个空间/3D 场景运行时或 API 候选。
 - 定义最小化 JSON 原生场景工件边界：单位、坐标系、资产引用、对象标识符、变换、媒体引用、出处及安全元数据。
-- 决定第一个能力是 `generate` 还是应暂时不在范围内的新未来表面。
+- 决定该工作是否继续保持在当前提供方表面之外。
 - 定义资产 URL、宿主本地路径和提供方元数据的脱敏规则。
 
 不在范围内：
 
 - 不进行任何提供方实现。
 - 不在基础包中引入查看器、渲染器、模拟器或 3D 资产依赖。
-- 不声明生成的场景具有物理有效性。
+- 不声明场景工件具有物理有效性。
 
 验收标准：
 
 - [ ] 设计记录说明已接受和已拒绝的运行时/API 候选。
 - [ ] 场景工件边界为 JSON 原生，且无需可选依赖即可测试。
-- [ ] 记录说明该工作映射至 `generate` 还是保持推迟状态。
+- [ ] 记录说明该工作是否保持推迟状态。
 - [ ] 由宿主方持有的资产存储、渲染、模拟和许可职责有明确说明。
 - [ ] 后续实现 Issue 可在不重新讨论能力语义的情况下创建。
 
@@ -205,7 +204,7 @@ uv run mkdocs build --strict
 验证：
 
 ```bash
-uv run pytest tests/test_scene_artifacts.py tests/test_provider_contracts.py
+uv run pytest tests/test_provider_contracts.py tests/test_docs_site.py
 uv run mkdocs build --strict
 ```
 
@@ -218,7 +217,7 @@ uv run mkdocs build --strict
 - 审查当前公开的 Genie 自动化/运行时选项。
 - 选择一个明确契约或记录推迟决策。
 - 若推迟，强化文档以说明重新审视触发条件并防止代理预期。
-- 若选定，为夹具支撑的 `generate` 行为编写实现 Issue。
+- 若选定，为夹具支撑的运行时行为编写实现 Issue。
 
 不在范围内：
 
@@ -237,38 +236,6 @@ uv run mkdocs build --strict
 
 ```bash
 uv run pytest tests/test_remote_scaffold_providers.py tests/test_provider_catalog_docs.py
-uv run mkdocs build --strict
-```
-
-### WF-A7：强化 Cosmos 和 Runway 的远程媒体工件保留
-
-问题：远程媒体适配器只有在下载的工件、过期 URL、内容类型和保留指南在文档、事件和运行清单中保持一致时才有价值。
-
-范围：
-
-- 审计 Cosmos 和 Runway 的工件下载、保留、内容类型及 URL 过期路径。
-- 确保签名 URL 查询字符串不出现在事件、清单、日志、报告或 Issue 包中。
-- 为过期工件、不支持的媒体、失败任务状态及下载重试耗尽添加夹具覆盖。
-- 为每个提供方记录首要恢复步骤。
-
-不在范围内：
-
-- 不提供托管工件存储。
-- 不提供自动媒体上传服务。
-- 不进行广泛的媒体提供方扩展。
-
-验收标准：
-
-- [ ] 两个提供方均记录工件生命周期假设和首要排查命令。
-- [ ] 解析器和提供方错误测试覆盖：过期 URL、不支持的工件、轮询失败及响应异常。
-- [ ] 运行清单保存工件摘要或安全本地路径，而非签名的远程 URL。
-- [ ] `generate` 和 `transfer` 的基准测试输入保持独立且可复现。
-
-验证：
-
-```bash
-uv run pytest tests/test_cosmos_provider.py tests/test_runway_provider.py tests/test_remote_video_providers.py tests/test_observability.py
-uv run python scripts/generate_provider_docs.py --check
 uv run mkdocs build --strict
 ```
 
@@ -362,7 +329,7 @@ uv run mkdocs build --strict
 
 ### WF-B2：构建能力夹具语料库
 
-问题：提供方和评估工作需要一个共享的夹具语料库，用于 score、policy、generate、transfer、predict、reason 和 embed 路径，而非每个测试使用临时载荷。
+问题：提供方和评估工作需要一个共享的夹具语料库，用于 score、policy、predict 和 embed 路径，而非每个测试使用临时载荷。
 
 范围：
 
@@ -398,7 +365,7 @@ uv run mkdocs build --strict
 
 范围：
 
-- 为以下场景定义基准测试预设：checkout 安全模拟运行、提供方解析器开销、远程媒体干运行/夹具运行、可选打分/策略已准备宿主运行及发布证据。
+- 为以下场景定义基准测试预设：checkout 安全模拟运行、提供方解析器开销、可选打分/策略已准备宿主运行及发布证据。
 - 保持预设输入确定性且体积小。
 - 记录命令、预期成功信号及允许预设失败的条件。
 - 确保失败预算以非零退出，并保留足够的报告数据供排查。
@@ -524,7 +491,7 @@ uv run mkdocs build --strict
 范围：
 
 - 为确定性评估套件添加失败案例展示库生成功能。
-- 在适用情况下，为物理、规划、推理、生成、迁移、打分和策略提供紧凑示例。
+- 在适用情况下，为物理、规划、打分和策略提供紧凑示例。
 - 保持示例经过脱敏处理且体积小。
 - 记录在提交 Issue 或审查提供方变更时如何使用展示库。
 
@@ -570,7 +537,7 @@ uv run mkdocs build --strict
 - [x] 兼容运行以出处、指标增量、事件数量和预算状态进行比较。
 - [x] 不兼容运行以能力、操作、夹具、预算或套件版本详情失败。
 - [x] Markdown 输出包含声明边界语言。
-- [x] TheWorldHarness 和 CLI 比较路径使用相同的底层报告模型。
+- [x] CLI 比较路径使用相同的底层报告模型。
 
 验证：
 
@@ -589,7 +556,7 @@ uv run mkdocs build --strict
 
 - 适配器作者可以生成包含运行时清单、文档存根、夹具、测试和工作台检查的脚手架。
 - 运营商可以从失败运行中导出经脱敏处理的 Issue 包。
-- TheWorldHarness 和 CLI 公开相同的操作工作流和恢复命令。
+- CLI 公开相同的操作工作流和恢复命令。
 - 贡献者分类、标签和发布标签与路线图流程匹配。
 
 | Issue | 切片 | 类型 | 依赖于 | 主要标签 |
@@ -699,7 +666,7 @@ uv run mkdocs build --strict
 
 ### WF-C4：强化组件工作流以支持重复本地操作
 
-问题：TheWorldHarness 应给人以操作工作区的感觉，而非演示集合。重复工作流需要历史记录、过滤、重新运行命令和清晰的失败恢复。
+问题：CLI 运行证据应支持重复工作流所需的历史记录、过滤、重新运行命令和清晰的失败恢复。
 
 范围：
 
@@ -716,7 +683,7 @@ uv run mkdocs build --strict
 
 验收标准：
 
-- [x] TheWorldHarness 可在不使用可选模型运行时的情况下过滤和打开保留的运行。
+- [x] CLI 可在不使用可选模型运行时的情况下过滤和打开保留的运行。
 - [x] 重新运行命令从经脱敏清单生成，且不包含密钥值。
 - [x] 失败运行显示恢复命令和 Issue 包导出路径。
 - [x] 测试覆盖流程逻辑，且不在 `worldforge.harness.tui` 外部导入 Textual。

@@ -267,11 +267,8 @@ def _resolve_lerobot_config(
 def _lerobot_capabilities() -> ProviderCapabilities:
     return ProviderCapabilities(
         predict=False,
-        generate=False,
-        reason=False,
         embed=False,
         plan=False,
-        transfer=False,
         score=False,
         policy=True,
     )

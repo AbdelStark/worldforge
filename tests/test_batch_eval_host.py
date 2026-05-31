@@ -47,7 +47,7 @@ def test_batch_eval_host_runs_mock_benchmark_with_inputs_and_budget(tmp_path) ->
     app = _load_batch_app()
     result = app.run_benchmark_job(
         providers=["mock"],
-        operations=["generate"],
+        operations=["predict"],
         iterations=1,
         concurrency=1,
         workspace_dir=tmp_path / "workspace",

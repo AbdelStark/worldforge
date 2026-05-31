@@ -107,7 +107,7 @@ provider architecture more than generic video-generation providers do.
 | Explicit simulation | What happens under known physics and geometry? | Equations, meshes, contacts, engines | State rollouts, sensor renders | Adapter target, not core runtime |
 | Model-based RL latent dynamics | Can an agent learn inside imagined futures? | Compact latent state | Rollouts, values, policies | Fits `predict`, `score`, and evaluation |
 | JEPA latent predictive world models | Which action makes the latent future match a goal or low cost? | Learned embeddings | Scores, costs, latent rollouts | Architectural center |
-| Generative video simulators | Can a model synthesize plausible future pixels or interactive frames? | Pixels, latents, video tokens | Video clips, interactive frames | Fits `generate`, `transfer`, maybe future `predict` |
+| Generative video simulators | Can a model synthesize plausible future pixels or interactive frames? | Pixels, latents, video tokens | Video clips, interactive frames | Outside the current provider surface |
 | Spatial / 3D world models | What persistent 3D world can be reconstructed or generated? | Geometry, depth, radiance, assets | 3D scenes, meshes, camera paths | Future provider family |
 | Physical AI infrastructure | How are data, tokenizers, fine-tunes, and evaluation produced at scale? | Runtime/tooling stack | Models, synthetic data, APIs | Provider adapters |
 | Embodied policy / VLA action models | What action chunk should a robot execute from this observation and instruction? | Vision-language-action policy state | Robot action chunks | First-class actor provider family |
@@ -194,9 +194,8 @@ latent planner:
   observation + goal + action candidates -> costs or future latent states
 ```
 
-WorldForge can use video models for synthetic observations, transfer, and evaluation. It should
-not treat generated plausible video as proof that a provider exposes controllable planning
-semantics.
+WorldForge can use video models as host-owned context for experiments, but it should not treat
+plausible video as proof that a provider exposes controllable planning semantics.
 
 ### Spatial Intelligence and 3D World Models
 
@@ -219,11 +218,8 @@ NVIDIA Cosmos is best understood as physical-AI infrastructure: world foundation
 guardrails, video processing, synthetic data generation, fine-tuning, and deployment routes. It can
 feed world-model workflows, but it is not a single narrow model contract.
 
-WorldForge should integrate upstream pieces through explicit provider capabilities:
-
-- `generate` for video synthesis
-- `transfer` for video-to-video transformation
-- future data-curation or tokenizer adapters if they become library scope
+WorldForge should integrate upstream pieces only when they map to the current planning, prediction,
+score, policy, or embedding surfaces.
 - future evaluation adapters if upstream APIs expose stable contracts
 
 ### Embodied Policy / VLA Action Models
@@ -280,20 +276,10 @@ leworldmodel
   score provider
   first-class architectural reference
 
-cosmos
-  remote physical-AI video foundation model adapter
-  generation provider
-  useful for synthetic video and physical-AI artifacts
-
 gr00t
   host-owned embodied policy client adapter
   policy provider
   useful as an actor that proposes robot action chunks
-
-runway
-  remote video generation and transfer adapter
-  generation/transfer provider
-  useful for artifact workflows
 
 jepa
   scaffold
@@ -311,16 +297,14 @@ flowchart TD
     WF[WorldForge provider registry]
     WF --> Mock[mock\nreference runtime]
     WF --> LeWM[leworldmodel\nJEPA score provider]
-    WF --> Cosmos[cosmos\nvideo generation adapter]
+    WF --> CosmosPolicy[cosmos-policy\nembodied policy adapter]
     WF --> Groot[gr00t\nembodied policy adapter]
-    WF --> Runway[runway\nvideo generation/transfer adapter]
     WF --> JEPA[jepa\nscore adapter]
     WF --> Genie[genie\nscaffold]
 
     LeWM --> Score[score_actions -> ActionScoreResult]
-    Cosmos --> Generate[generate -> VideoClip]
+    CosmosPolicy --> CosmosPolicyAction[select_actions -> ActionPolicyResult]
     Groot --> Policy[select_actions -> ActionPolicyResult]
-    Runway --> Transfer[generate/transfer -> VideoClip]
     Mock --> Predict[predict -> PredictionPayload]
 ```
 

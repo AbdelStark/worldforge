@@ -54,27 +54,6 @@ _CONTRACT_NOTES: dict[tuple[str, str], str] = {
     ("planning", "object-spawn"): (
         "The planner should execute a simple spawn goal and increase the object count."
     ),
-    ("generation", "text-conditioned-video"): (
-        "The provider should return a non-empty prompt-conditioned clip with expected duration, "
-        "resolution, and media metadata."
-    ),
-    ("generation", "image-conditioned-video"): (
-        "The provider should return a non-empty image-conditioned clip and preserve conditioning "
-        "metadata."
-    ),
-    ("transfer", "prompt-guided-transfer"): (
-        "The provider should return a non-empty transfer clip with requested resolution, FPS, "
-        "prompt metadata, and transfer-mode metadata."
-    ),
-    ("transfer", "reference-guided-transfer"): (
-        "The provider should return a transfer clip that records reference-guidance metadata."
-    ),
-    ("reasoning", "scene-count"): (
-        "The provider should answer with the tracked object count and include supporting evidence."
-    ),
-    ("reasoning", "scene-identity"): (
-        "The provider should identify every tracked object id in its answer or evidence."
-    ),
 }
 
 

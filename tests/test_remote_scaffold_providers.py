@@ -27,7 +27,7 @@ def test_genie_provider_remains_fail_closed_without_runtime_contract(monkeypatch
     assert report.exercised_operations == []
 
 
-def test_configured_genie_scaffold_does_not_enable_generate(monkeypatch) -> None:
+def test_configured_genie_scaffold_does_not_enable_capabilities(monkeypatch) -> None:
     monkeypatch.setenv("GENIE_API_KEY", "genie-test-secret")
     monkeypatch.delenv("WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES", raising=False)
 
@@ -44,14 +44,14 @@ def test_configured_genie_scaffold_does_not_enable_generate(monkeypatch) -> None
     assert report.exercised_operations == []
 
     with pytest.raises(ProviderError, match="scaffold"):
-        provider.generate("make an interactive world", duration_seconds=2.0)
+        provider.embed(text="make an interactive world")
 
 
 def test_genie_scaffold_surrogate_requires_explicit_test_opt_in(monkeypatch) -> None:
     monkeypatch.setenv("GENIE_API_KEY", "genie-test-secret")
     monkeypatch.setenv("WORLDFORGE_ENABLE_SCAFFOLD_SURROGATES", "1")
 
-    clip = GenieProvider().generate("local plumbing test only", duration_seconds=1.0)
+    embedding = GenieProvider().embed(text="local plumbing test only")
 
-    assert clip.metadata["mode"] == "stub-remote-adapter"
-    assert clip.metadata["credential_env"] == "GENIE_API_KEY"
+    assert embedding.provider == "genie"
+    assert embedding.model == "mock-embedding-v1"

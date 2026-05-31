@@ -78,8 +78,8 @@ def test_cross_provider_benchmark_comparison_exports_context_and_budget_status(
             {"fixture_digest": "sha256:" + "c" * 64},
             "fixture digest mismatch",
         ),
-        ("capability", {"capability": "generate"}, "capability mismatch"),
-        ("operation", {"operation": "generate"}, "operation mismatch"),
+        ("capability", {"capability": "score"}, "capability mismatch"),
+        ("operation", {"operation": "score"}, "operation mismatch"),
         (
             "budget",
             {"budget_digest": "sha256:" + "d" * 64},

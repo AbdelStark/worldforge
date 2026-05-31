@@ -64,7 +64,7 @@ If it fails:
 | `first-run` fails | run `uv run worldforge world preflight --state-dir .worldforge/demo-showcases/first-run/worlds` | contributor |
 | diagnostics bundle is not safe to attach | open `issue-bundle/evidence_manifest.json` and inspect excluded files | reporter |
 | robotics replay fails | run `uv run worldforge-demo-lerobot` and inspect provider event phases | contributor |
-| remote media dry-run leaks a query string | inspect `remote-media-events.json` and the provider-event redaction corpus | contributor |
+| provider-event redaction dry run leaks a query string | inspect `provider-event-redaction-events.json` and the provider-event redaction corpus | contributor |
 | batch benchmark status changes | inspect copied budget and benchmark report before editing thresholds | performance maintainer |
 
 The runner does not install LeRobot, LeWorldModel, GR00T, torch, Rerun, checkpoints, simulators, or
@@ -78,11 +78,8 @@ provider name.
 | Need | Capability | First command |
 | --- | --- | --- |
 | roll a world state forward from an action | `predict` | `uv run worldforge doctor --capability predict` |
-| generate media from text/options | `generate` | `uv run worldforge doctor --capability generate` |
-| transform a clip into another clip | `transfer` | `uv run worldforge doctor --capability transfer` |
 | rank action candidates | `score` | `uv run worldforge doctor --capability score` |
 | select embodied action chunks | `policy` | `uv run worldforge doctor --capability policy` |
-| answer typed questions | `reason` | `uv run worldforge doctor --capability reason` |
 | embed text | `embed` | `uv run worldforge doctor --capability embed` |
 
 Then inspect the provider profile:
@@ -133,8 +130,8 @@ Before setting any capability flag to `True`, prove the full contract:
 
 - caller inputs are validated before network or model calls where possible.
 - upstream outputs are parsed through explicit helpers and malformed fixtures fail.
-- supported methods return `PredictionPayload`, `VideoClip`, `ActionScoreResult`,
-  `ActionPolicyResult`, `ReasoningResult`, or `EmbeddingResult` as appropriate.
+- supported methods return `PredictionPayload`, `ActionScoreResult`, `ActionPolicyResult`, or
+  `EmbeddingResult` as appropriate.
 - unsupported methods inherit the `BaseProvider` `ProviderError` behavior.
 - `health()` is cheap and reports missing credentials or optional dependencies clearly.
 - docs state configuration, runtime ownership, input shape, output schema, limits, failure modes,
@@ -142,9 +139,8 @@ Before setting any capability flag to `True`, prove the full contract:
 
 If the integration is one narrow local surface, prefer a capability protocol implementation instead
 of a mostly-empty `BaseProvider` subclass. Register it with `register_cost`, `register_policy`,
-`register_generator`, `register_predictor`, `register_reasoner`, `register_embedder`, or
-`register_transferer`; it will still appear in `providers()`, `provider_profile(...)`,
-`doctor(...)`, planning, and benchmark routing.
+`register_predictor`, or `register_embedder`; it will still appear in `providers()`,
+`provider_profile(...)`, `doctor(...)`, planning, and benchmark routing.
 
 Validation:
 
@@ -234,7 +230,7 @@ another host process owner.
 
 ```bash
 uv run python examples/hosts/service/app.py --provider mock --port 8080
-uv run python examples/hosts/batch-eval/app.py benchmark --provider mock --operation generate --iterations 1
+uv run python examples/hosts/batch-eval/app.py benchmark --provider mock --operation predict --iterations 1
 uv run python examples/hosts/robotics-operator/app.py review --sample-translator --approve-dry-run \
   --check workspace_clear --check emergency_stop_available --check operator_present --check controller_isolated
 ```
@@ -265,9 +261,9 @@ uv run worldforge drills run all --workspace-dir .worldforge/drills
 
 | Drill | Expected failure | Recovery command |
 | --- | --- | --- |
-| `missing-credentials` | required provider credentials are absent in a value-free config summary | load the required env var, then run `uv run worldforge provider health runway` |
+| `missing-credentials` | required provider credentials are absent in a value-free config summary | load the required env var, then run `uv run worldforge provider health leworldmodel` |
 | `missing-optional-dependency` | optional runtime import is missing | install the provider optional runtime on a prepared host, then rerun its smoke command |
-| `malformed-provider-output` | the Runway task parser rejects a fixture without a task id | attach the sanitized fixture and fix the parser or upstream contract |
+| `malformed-provider-output` | a provider parser rejects a malformed fixture | attach the sanitized fixture and fix the parser or upstream contract |
 | `budget-violation` | a mock benchmark violates an intentionally impossible latency budget | inspect the run bundle, then rerun `uv run worldforge benchmark --provider mock --operation predict --iterations 1` |
 | `corrupted-world-state` | a malformed local world JSON file raises `WorldStateError` | export diagnostics, quarantine the bad file, then recreate or import a valid world |
 | `expired-artifact` | an artifact descriptor has an expiry timestamp in the past | rerun the provider workflow to refresh the artifact, then export a new issue bundle |
@@ -361,41 +357,24 @@ Recovery guidance:
 - do not add a lock file, SQLite store, or service adapter to WorldForge without the
   [persistence adapter ADR](./adr/0001-persistence-adapter-boundary.md).
 
-### 5a. Manage Worlds From TheWorldHarness
-
-The Worlds screen in TheWorldHarness is the keyboard-first mirror of the `worldforge world`
-CLI. Launch the harness and press `g w` (or pick "Jump: Worlds" from `Ctrl+P`):
-
-```bash
-uv run --extra harness worldforge-harness
-```
-
-Bindings mirror the CLI commands exactly: `n` maps to `worldforge world create`, `Enter`
-opens the editor (`world show` + `add-object` + `update-object`), `d` calls
-`WorldForge.delete_world(...)`, `f` maps to `world fork`, and `/` narrows the table by id or
-name substring. Every write or unlink goes through `WorldForge` on a
-`@work(thread=True, group="persistence")` worker; no JSON is hand-written. Validation errors
-raised by the framework (`WorldStateError` / `WorldForgeError`) appear as toasts — the
-in-memory edit buffer stays intact so the user can fix and retry.
-
 ### 5b. Capture Run-Scoped Provider Logs
 
-Use this when a CLI job, batch host, service request, or TheWorldHarness run needs provider events
+Use this when a CLI job, batch host, service request, or robotics showcase run needs provider events
 that can be attached to an issue, release bundle, or incident note.
 
 For one failed preserved run, export the issue-ready bundle before posting:
 
 ```bash
-uv run worldforge harness --runs --status failed --artifact-type json
+uv run worldforge runs list --status failed --artifact-type json
 uv run worldforge runs bundle <run-id> \
   --workspace-dir .worldforge \
   --output .worldforge/issue-bundles/<run-id>
 ```
 
-Success signal: `worldforge harness --runs` lists the failed run with a sanitized rerun command and
-the same `worldforge runs bundle <run-id>` recovery command shown in the Runs screen. The bundle
-command writes `evidence_manifest.json`, `summary.md`, and `issue.md`, then prints a short issue
-template with the command, expected signal, observed failure, artifact list, `safe_to_attach`
+Success signal: `worldforge runs index --status failed --artifact-type json` lists the failed run
+with a sanitized rerun command and the same `worldforge runs bundle <run-id>` recovery command. The
+bundle command writes `evidence_manifest.json`, `summary.md`, and `issue.md`, then prints a short
+issue template with the command, expected signal, observed failure, artifact list, `safe_to_attach`
 status, and first triage step. If `safe_to_attach` is `false`, inspect the manifest's excluded and
 `local_only` entries before attaching anything.
 
@@ -405,7 +384,7 @@ from pathlib import Path
 from worldforge import WorldForge
 from worldforge.observability import JsonLoggerSink, RunJsonLogSink, compose_event_handlers
 
-run_id = "20260430T120000Z-runway-generate"
+run_id = "20260430T120000Z-provider-event"
 log_path = Path(".worldforge") / "runs" / run_id / "provider-events.jsonl"
 
 forge = WorldForge(
@@ -463,14 +442,14 @@ shape. Do not treat either as a physical-fidelity claim.
 
 ```bash
 uv run worldforge eval --suite planning --provider mock --format markdown
-uv run worldforge eval --suite generation --provider mock --format json
+uv run worldforge eval --suite physics --provider mock --format json
 uv run worldforge eval --suite planning --provider mock \
   --dataset-manifest examples/dataset-manifests/mock-evaluation-fixtures.json \
   --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format markdown
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
-uv run worldforge benchmark --provider mock --operation generate --budget-file examples/benchmark-budget.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 ```
 
 Success signal:
@@ -479,15 +458,13 @@ Success signal:
 - evaluation dataset manifests are cited by compact provenance references; license, privacy,
   safety, checksums, and host-owned acquisition steps are recorded without copying datasets.
 - benchmark reports identify provider, operation, pass/fail status, latency, retry counts, and
-  exported artifact format for direct provider surfaces such as `score`, `policy`, `generate`,
-  `transfer`, and `embed`.
+  exported artifact format for direct provider surfaces such as `predict`, `score`, `policy`, and
+  `embed`.
 - benchmark budget files fail non-zero when success rate, error count, retry count, latency, or
   throughput thresholds regress.
-- `--input-file` fixtures reproduce benchmark inputs for prediction, generation, transfer,
-  embedding, score, and policy runs. The checked-in fixture is checkout-safe for `mock`
-  `predict`, `generate`, `transfer`, and `embed`; its score and policy fields are provider-specific
-  inputs for providers that advertise those capabilities. Transfer clip paths resolve relative to
-  the fixture file.
+- `--input-file` fixtures reproduce benchmark inputs for prediction, embedding, score, and policy
+  runs. The checked-in fixture is checkout-safe for `mock` `predict` and `embed`; its score and
+  policy fields are provider-specific inputs for providers that advertise those capabilities.
 - benchmark input files and result JSON are saved by the host when they are used for release or
   paper claims.
 
@@ -510,10 +487,9 @@ threshold, observed baseline, and rationale. First triage step on an unexpected 
 rerun the preserved benchmark command on the same machine class and compare report digests before
 loosening any release gate.
 
-### 6a. Preserve Harness Reports
+### 6a. Preserve Evaluation And Benchmark Reports
 
-TheWorldHarness Eval and Benchmark screens preserve completed reports automatically under the
-active state directory:
+The eval and benchmark CLIs preserve completed reports under the active run workspace:
 
 ```text
 .worldforge/reports/eval-<suite>-<timestamp>-<run-id>.json
@@ -521,10 +497,8 @@ active state directory:
 ```
 
 The JSON is written through the same renderer used by the `worldforge eval` and `worldforge
-benchmark` commands. Markdown and CSV previews in the TUI are regenerated from the same report
-object, so a screenshot and the saved JSON point at the same numbers. Use the path printed in the
-success toast whenever a benchmark or evaluation result is cited in a PR, release note, paper, or
-slide.
+benchmark` commands. Use the preserved report path whenever a benchmark or evaluation result is
+cited in a PR, release note, paper, or slide.
 
 First triage step for a surprising number: open the saved JSON, confirm the provider and
 operation/suite, then rerun the matching CLI command with the same provider and operation.
@@ -555,16 +529,16 @@ latency bars, provider events, world snapshots, and the plan payload. Use `--no-
 where only the TUI/JSON artifact is needed. In the robotics TUI, press `o` to open the persisted
 Rerun recording directly.
 
-## 7. Handle Remote Media Artifacts
+## 7. Handle Provider Artifacts
 
-Use this for Cosmos, Runway, or any future media adapter.
+Use this for provider outputs and event evidence that may be attached to an issue or release note.
 
 Preflight:
 
 ```bash
-uv run worldforge doctor --capability generate
-uv run worldforge provider info runway
-uv run worldforge provider health runway
+uv run worldforge doctor --capability score
+uv run worldforge provider info leworldmodel
+uv run worldforge provider health leworldmodel
 ```
 
 Operational rules:
@@ -575,19 +549,17 @@ Operational rules:
   workflow budget for the operation, including retries, backoff, and poll intervals.
 - budget failures raise `ProviderBudgetExceededError` and emit `phase=="budget_exceeded"` so
   alerts can distinguish an exhausted host budget from an upstream HTTP failure.
-- returned artifacts are validated before `VideoClip` is returned.
-- provider-returned artifact URLs are treated as untrusted input: HTTP(S) only, no embedded
-  credentials, no local/private/link-local destinations by default, and streamed with a maximum
-  byte cap.
-- signed URLs and temporary artifact URLs are not durable storage. Download or persist them in
-  host-owned storage immediately after completion.
+- provider-returned artifact references are treated as untrusted input: no embedded credentials,
+  no local/private/link-local destinations by default, and no raw signed URLs in attachable
+  evidence.
 - provider errors should include operation and provider context without leaking credentials,
   bearer tokens, or signed URLs.
 - provider event `target` values are sanitized for logs: use them to identify the endpoint or
   artifact path, not to recover a full signed URL.
 
-If artifact download fails, inspect provider events for `operation`, `phase`, `status_code`,
-`attempt`, and sanitized `target`, then rerun with a fresh task when the URL has expired.
+If artifact export fails, inspect provider events for `operation`, `phase`, `status_code`,
+`attempt`, and sanitized `target`, then rerun the local workflow after fixing the provider input or
+host configuration.
 
 ## 8. Run Optional Runtime Smokes
 
@@ -601,29 +573,17 @@ uv run pytest
 uv run pytest -m "not live"
 uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
-uv run --extra harness worldforge-harness --flow diagnostics
 ```
 
 Runtime pytest profiles are opt-in. Mark live provider tests with the smallest truthful set of
 markers, for example `@pytest.mark.live`, `@pytest.mark.network`,
 `@pytest.mark.credentialed`, `@pytest.mark.gpu`, `@pytest.mark.robotics`, and
-`@pytest.mark.provider_profile("runway")`. Default `uv run pytest` skips marked tests before they
+`@pytest.mark.provider_profile("leworldmodel")`. Default `uv run pytest` skips marked tests before they
 can reach live endpoints, GPUs, robot stacks, credentials, or downloaded checkpoints.
 
 Prepared-host provider profiles:
 
 ```bash
-# Cosmos: requires COSMOS_BASE_URL and a reachable deployment.
-COSMOS_BASE_URL=http://localhost:8000 \
-  uv run pytest -m "live and network and provider_profile" \
-    --run-live --run-network --provider-profile cosmos
-
-COSMOS_BASE_URL=http://localhost:8000 \
-  uv run worldforge-smoke-cosmos \
-    --output .worldforge/runs/cosmos-live/artifacts/cosmos.mp4 \
-    --summary-json .worldforge/runs/cosmos-live/results/summary.json \
-    --run-manifest .worldforge/runs/cosmos-live/run_manifest.json
-
 # Cosmos-Policy: requires COSMOS_POLICY_BASE_URL and a reachable ALOHA /act server.
 COSMOS_POLICY_BASE_URL=http://127.0.0.1:8777 \
 COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
@@ -669,11 +629,6 @@ COSMOS_POLICY_ALLOW_LOCAL_BASE_URL=1 \
 #    such as 50 x 14.
 # 6. Preserve only sanitized evidence. Do not commit raw images, tokens, checkpoints, Docker
 #    layers, or GPU logs with secrets. Hibernate or terminate the GPU host when finished.
-
-# Runway: requires RUNWAYML_API_SECRET or RUNWAY_API_SECRET.
-RUNWAYML_API_SECRET=... \
-  uv run pytest -m "live and network and credentialed and provider_profile" \
-    --run-live --run-network --run-credentialed --provider-profile runway
 
 # LeWorldModel: requires LEWORLDMODEL_POLICY or LEWM_POLICY and host-owned runtime deps.
 LEWORLDMODEL_POLICY=pusht/lewm \
@@ -1046,7 +1001,7 @@ attaching evidence.
 | provider unhealthy | `uv run worldforge provider health <name>` | health details, optional dependency versions | host runtime setup or provider health code |
 | unsupported capability | `uv run worldforge doctor --capability <capability>` | provider profile and workflow call | choose correct provider or implement capability |
 | persistence load failed | reproduce `load_world` with saved JSON | failing JSON, world ID, state dir | restore from backup or fix importer validation |
-| remote media failed | provider events and provider-specific docs | status code, attempt, sanitized target | parser, retry policy, artifact handling, or host credentials |
+| provider artifact export failed | provider events and provider-specific docs | status code, attempt, sanitized target | parser, retry policy, artifact handling, or host credentials |
 | optional runtime smoke failed | smoke command and `--help` output | host OS, dependency path, checkpoint path | host runtime setup; do not add heavy deps to base package |
 | coverage failed | `uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90` | missing lines and changed files | add behavior tests, especially error paths |
 

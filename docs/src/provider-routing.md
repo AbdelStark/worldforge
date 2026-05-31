@@ -10,9 +10,9 @@ masked.
 ## When fallback is appropriate
 
 - **Optional providers**: a host has the mock provider registered for offline
-  development and a remote adapter (Cosmos, Runway) configured when its
-  credentials are present. Routing prefers the remote and falls back to mock
-  when the credentialed adapter is missing on a checkout.
+  development and a prepared-host provider configured when its runtime is
+  present. Routing prefers the runtime-backed provider and falls back to mock
+  when that adapter is missing on a checkout.
 - **Transient remote failures**: a remote provider returns a retryable status
   code its own retry policy could not absorb. Routing logs the failure and
   tries the next provider so a one-off network blip does not break a batch
@@ -64,50 +64,50 @@ the chain continues.
 
 <!-- worldforge-snippet: execute -->
 ```python
-from worldforge import ProviderRoutingPolicy, WorldForge, route_capability
+from worldforge import Action, ProviderRoutingPolicy, WorldForge, route_capability
 
 forge = WorldForge()
-# Forge auto-registers `mock` everywhere and `runway` when RUNWAYML_API_SECRET
-# is present in the host environment.
+# Forge auto-registers `mock` everywhere. Prepared-host providers register only
+# when their required environment is present.
 
 policy = ProviderRoutingPolicy(
-    capability="generate",
-    preferred="runway",
+    capability="predict",
+    preferred="local-predictor",
     fallbacks=("mock",),
-    operation="orbit-clip-fallback",
+    operation="prediction-fallback",
 )
 
 result = route_capability(
     policy,
     forge,
-    invoke=lambda name: forge.generate(
-        "orbiting cube on a wood table",
-        name,
-        duration_seconds=2.0,
+    invoke=lambda name: forge.predict(
+        world_state={"objects": {}},
+        action=Action("noop", {"target": "world"}),
+        provider=name,
     ),
 )
 
 if not result.succeeded:
     raise RuntimeError(
-        "no provider in chain satisfied generate(): "
+        "no provider in chain satisfied predict(): "
         + ", ".join(
             f"{a.provider}={a.status}" for a in result.attempts
         )
     )
 
 print(f"chosen={result.chosen} via_chain={[a.provider for a in result.attempts]}")
-clip = result.value
+prediction = result.value
 ```
 
-When ``runway`` is not configured on the host, the attempt history records
-`skipped-not-registered` for it and the chain proceeds to ``mock`` —
+When the preferred provider is not configured on the host, the attempt history records
+`skipped-not-registered` for it and the chain proceeds to ``mock`` -
 without invoking any remote call or charging the credentialed account.
 
 ## Events and provenance
 
 `route_capability` does **not** emit its own `ProviderEvent` objects. The
 events produced by the observable capability wrapper inside
-`forge.generate(...)`, `forge.predict(...)`, etc. are preserved unchanged and
+`forge.predict(...)`, `forge.embed(...)`, score, or policy calls are preserved unchanged and
 flow through whatever ``event_handler`` was attached to the forge. The
 ``RoutingResult.attempts`` tuple is the chain-level companion to those
 per-call events.

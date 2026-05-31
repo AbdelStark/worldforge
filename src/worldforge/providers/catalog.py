@@ -18,11 +18,8 @@ ProviderEventHandler = Callable[[ProviderEvent], None] | None
 ProviderFactory = Callable[[ProviderEventHandler], BaseProvider]
 DOC_CAPABILITY_ORDER = (
     "predict",
-    "generate",
-    "transfer",
     "score",
     "policy",
-    "reason",
     "embed",
     "plan",
 )
@@ -57,22 +54,10 @@ def _mock(event_handler: ProviderEventHandler = None) -> BaseProvider:
     return MockProvider(event_handler=event_handler)
 
 
-def _cosmos(event_handler: ProviderEventHandler = None) -> BaseProvider:
-    from .cosmos import CosmosProvider
-
-    return CosmosProvider(event_handler=event_handler)
-
-
 def _cosmos_policy(event_handler: ProviderEventHandler = None) -> BaseProvider:
     from .cosmos_policy import CosmosPolicyProvider
 
     return CosmosPolicyProvider(event_handler=event_handler)
-
-
-def _runway(event_handler: ProviderEventHandler = None) -> BaseProvider:
-    from .runway import RunwayProvider
-
-    return RunwayProvider(event_handler=event_handler)
 
 
 def _leworldmodel(event_handler: ProviderEventHandler = None) -> BaseProvider:
@@ -113,14 +98,6 @@ PROVIDER_CATALOG: tuple[ProviderCatalogEntry, ...] = (
         runtime_ownership="in-repo deterministic local provider",
     ),
     ProviderCatalogEntry(
-        "cosmos",
-        _cosmos,
-        docs_page="cosmos.md",
-        runtime_ownership=(
-            "host supplies a reachable Cosmos deployment and optional `NVIDIA_API_KEY`"
-        ),
-    ),
-    ProviderCatalogEntry(
         "cosmos-policy",
         _cosmos_policy,
         docs_page="cosmos-policy.md",
@@ -129,12 +106,6 @@ PROVIDER_CATALOG: tuple[ProviderCatalogEntry, ...] = (
             "Cosmos-Policy reachability/CUDA/runtime, ALOHA observation construction, and "
             "translation of raw 14D rows into executable `Action` objects"
         ),
-    ),
-    ProviderCatalogEntry(
-        "runway",
-        _runway,
-        docs_page="runway.md",
-        runtime_ownership="host supplies Runway credentials and persists returned artifacts",
     ),
     ProviderCatalogEntry(
         "leworldmodel",

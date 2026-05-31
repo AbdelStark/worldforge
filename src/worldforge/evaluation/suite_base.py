@@ -38,8 +38,8 @@ if TYPE_CHECKING:
 class EvaluationSuite:
     """Group of :class:`EvaluationScenario` instances run against a single provider.
 
-    Use :meth:`from_builtin` to construct one of the bundled suites (``generation``,
-    ``physics``, ``planning``, ``reasoning``, ``transfer``); construct directly to assemble
+    Use :meth:`from_builtin` to construct one of the bundled suites (``physics``,
+    ``planning``); construct directly to assemble
     custom scenario sequences. Suites are deterministic adapter-contract checks: a passing
     score asserts the provider returns well-formed payloads, not that it has physical or
     media fidelity.
@@ -162,19 +162,13 @@ class EvaluationSuite:
     @classmethod
     def _builtin_registry(cls) -> dict[str, Callable[[], EvaluationSuite]]:
         from worldforge.evaluation.builtin_suites import (
-            GenerationEvaluationSuite,
             PhysicsEvaluationSuite,
             PlanningEvaluationSuite,
-            ReasoningEvaluationSuite,
-            TransferEvaluationSuite,
         )
 
         return {
-            "generation": GenerationEvaluationSuite,
             "physics": PhysicsEvaluationSuite,
             "planning": PlanningEvaluationSuite,
-            "reasoning": ReasoningEvaluationSuite,
-            "transfer": TransferEvaluationSuite,
         }
 
     @classmethod

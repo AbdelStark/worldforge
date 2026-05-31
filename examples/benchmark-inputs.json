@@ -1,11 +1,9 @@
 {
   "metadata": {
     "purpose": "documented deterministic benchmark inputs",
-    "runtime": "mock provider for predict/generate/transfer/embed; score and policy fields require a provider that advertises those capabilities",
+    "runtime": "mock provider for predict/embed; score and policy fields require a provider that advertises those capabilities",
     "checkout_safe_operations": [
       "predict",
-      "generate",
-      "transfer",
       "embed"
     ]
   },
@@ -22,28 +20,6 @@
       }
     },
     "prediction_steps": 2,
-    "reason_query": "How many objects are tracked?",
-    "generation_prompt": "benchmark orbiting cube",
-    "generation_duration_seconds": 1.0,
-    "transfer_prompt": "benchmark transfer rerender",
-    "transfer_width": 320,
-    "transfer_height": 180,
-    "transfer_fps": 12.0,
-    "transfer_clip": {
-      "frames_base64": [
-        "d29ybGRmb3JnZS1iZW5jaG1hcmstZnJhbWU="
-      ],
-      "fps": 8.0,
-      "resolution": [
-        160,
-        90
-      ],
-      "duration_seconds": 1.0,
-      "metadata": {
-        "content_type": "application/octet-stream",
-        "mode": "documented-benchmark-seed"
-      }
-    },
     "embedding_text": "benchmark cube state",
     "score_info": {
       "pixels": [

@@ -15,11 +15,10 @@ from worldforge.providers.catalog import DOC_CAPABILITY_ORDER, PROVIDER_CATALOG
 from worldforge.providers.runtime_manifest import load_runtime_manifest
 from worldforge.testing import (
     assert_embed_conformance,
-    assert_generate_conformance,
+    assert_policy_conformance,
     assert_predict_conformance,
     assert_provider_events_conform,
-    assert_reason_conformance,
-    assert_transfer_conformance,
+    assert_score_conformance,
 )
 
 AUTHORING_DOC = "docs/src/provider-authoring-guide.md"
@@ -31,9 +30,6 @@ LIVE_SMOKE_EVIDENCE_DOC = "docs/src/live-smoke-evidence.json"
 
 _CONFORMANCE_HELPERS: dict[str, str] = {
     "predict": "assert_predict_conformance",
-    "generate": "assert_generate_conformance",
-    "transfer": "assert_transfer_conformance",
-    "reason": "assert_reason_conformance",
     "embed": "assert_embed_conformance",
     "score": "assert_score_conformance",
     "policy": "assert_policy_conformance",
@@ -323,13 +319,12 @@ def _can_run_conformance(provider: BaseProvider, *, live: bool) -> bool:
 
 
 def _exercise_conformance_steps(provider: BaseProvider) -> list[str]:
-    generated_clip: object | None = None
     exercised: list[str] = []
     capabilities = provider.profile().capabilities
     for step in _CONFORMANCE_STEPS:
         if not capabilities.supports(step.capability):
             continue
-        generated_clip = step.run(provider, generated_clip)
+        step.run(provider, None)
         exercised.append(step.capability)
     return exercised
 
@@ -339,31 +334,26 @@ def _run_predict_conformance(provider: BaseProvider, clip: object | None) -> obj
     return clip
 
 
-def _run_reason_conformance(provider: BaseProvider, clip: object | None) -> object | None:
-    assert_reason_conformance(provider)
-    return clip
-
-
 def _run_embed_conformance(provider: BaseProvider, clip: object | None) -> object | None:
     assert_embed_conformance(provider)
     return clip
 
 
-def _run_generate_conformance(provider: BaseProvider, _clip: object | None) -> object | None:
-    return assert_generate_conformance(provider)
+def _run_score_conformance(provider: BaseProvider, clip: object | None) -> object | None:
+    assert_score_conformance(provider, info={"fixture": "workbench"}, action_candidates=[])
+    return clip
 
 
-def _run_transfer_conformance(provider: BaseProvider, clip: object | None) -> object | None:
-    assert_transfer_conformance(provider, clip=clip)
+def _run_policy_conformance(provider: BaseProvider, clip: object | None) -> object | None:
+    assert_policy_conformance(provider, info={"fixture": "workbench"})
     return clip
 
 
 _CONFORMANCE_STEPS: tuple[_ConformanceStep, ...] = (
     _ConformanceStep("predict", _run_predict_conformance),
-    _ConformanceStep("reason", _run_reason_conformance),
     _ConformanceStep("embed", _run_embed_conformance),
-    _ConformanceStep("generate", _run_generate_conformance),
-    _ConformanceStep("transfer", _run_transfer_conformance),
+    _ConformanceStep("score", _run_score_conformance),
+    _ConformanceStep("policy", _run_policy_conformance),
 )
 
 

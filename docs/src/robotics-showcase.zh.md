@@ -290,7 +290,7 @@ WorldForge 在遇到不匹配的动作空间时会报错，而不是填充、投
 - [机器人案例展示技术深入解析](./robotics-showcase-deep-dive.md)
 - [LeRobot 提供方](./providers/lerobot.md)
 - [LeWorldModel 提供方](./providers/leworldmodel.md)
-- [TheWorldHarness](./theworldharness.md)
+- [CLI 参考](./cli.md)
 - [可选运行时操作手册](./playbooks.md#8-run-optional-runtime-smokes)
 
 外部参考：
