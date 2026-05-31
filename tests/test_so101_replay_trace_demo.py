@@ -17,8 +17,10 @@ from worldforge.models import WorldForgeError
 def _load_demo() -> ModuleType:
     script_path = Path(__file__).resolve().parents[1] / "examples" / "so101_replay_trace_demo.py"
     spec = importlib.util.spec_from_file_location("so101_replay_trace_demo", script_path)
-    assert spec is not None
-    assert spec.loader is not None
+    if spec is None:
+        raise AssertionError("so101 replay trace demo module spec could not be created.")
+    if spec.loader is None:
+        raise AssertionError("so101 replay trace demo module spec has no loader.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
