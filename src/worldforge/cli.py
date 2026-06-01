@@ -86,6 +86,17 @@ EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "task": "Robot decision traces",
+        "name": "so101-replay-trace",
+        "surface": "score provider, decision trace, counterfactuals, mock replay",
+        "requires": "base WorldForge package; deterministic SO-101-shaped replay fixture",
+        "command": "uv run worldforge-demo-so101-replay-trace",
+        "description": (
+            "Score SO-101 pick-and-place candidate actions, select the best replay action, "
+            "and emit a reusable robot decision trace without LeRobot, torch, DimOS, or hardware."
+        ),
+    },
+    {
         "task": "Batch evaluation host",
         "name": "batch-eval-host",
         "surface": "evaluation, benchmarking, run workspaces, budget gates",
