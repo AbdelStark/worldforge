@@ -18,6 +18,8 @@ from worldforge._planning import (
     ScoredPlanSelection,
     action_plans_to_score_payload,
     clamped_probability,
+    mpc_plan_metadata,
+    mpc_plan_success_probability,
     policy_plan_metadata,
     policy_score_plan_metadata,
     predictive_plan_metadata,
@@ -30,6 +32,7 @@ from worldforge._planning import (
 )
 from worldforge._results import Plan
 from worldforge._world_goal_resolution import resolve_plan_goal
+from worldforge.control import LatentMPCController, PlannerConfig, ScoreCandidateEncoder
 from worldforge.models import (
     Action,
     ActionPolicyResult,
@@ -39,6 +42,7 @@ from worldforge.models import (
     SceneObject,
     StructuredGoal,
     WorldForgeError,
+    require_non_empty_text,
     require_positive_int,
 )
 from worldforge.providers import PredictionPayload
@@ -102,6 +106,9 @@ def plan_world(
     score_provider: str | None = None,
     score_info: JSONDict | None = None,
     score_action_candidates: object | None = None,
+    planner_config: PlannerConfig | None = None,
+    candidate_encoder: ScoreCandidateEncoder | None = None,
+    goal_info: JSONDict | None = None,
     execution_provider: str | None = None,
 ) -> Plan:
     request = build_plan_request(
@@ -116,6 +123,9 @@ def plan_world(
         score_provider=score_provider,
         score_info=score_info,
         score_action_candidates=score_action_candidates,
+        planner_config=planner_config,
+        candidate_encoder=candidate_encoder,
+        goal_info=goal_info,
         execution_provider=execution_provider,
     )
     resolved_goal = resolve_plan_goal(
@@ -146,12 +156,22 @@ def build_plan_request(
     score_provider: str | None = None,
     score_info: JSONDict | None = None,
     score_action_candidates: object | None = None,
+    planner_config: PlannerConfig | None = None,
+    candidate_encoder: ScoreCandidateEncoder | None = None,
+    goal_info: JSONDict | None = None,
     execution_provider: str | None = None,
 ) -> PlanRequest:
     resolved_max_steps = require_positive_int(max_steps, name="max_steps")
+    uses_mpc = uses_mpc_planning(
+        planner=planner,
+        planner_config=planner_config,
+        candidate_encoder=candidate_encoder,
+        goal_info=goal_info,
+    )
     selection = plan_provider_selection(
         default_provider=default_provider,
         provider=provider,
+        uses_mpc_planning=uses_mpc,
         policy_provider=policy_provider,
         policy_info=policy_info,
         score_provider=score_provider,
@@ -159,9 +179,21 @@ def build_plan_request(
         candidate_actions=candidate_actions,
         score_action_candidates=score_action_candidates,
     )
+    validate_mpc_plan_request(
+        uses_mpc_planning=uses_mpc,
+        max_steps=resolved_max_steps,
+        planner_config=planner_config,
+        score_provider=score_provider,
+        policy_provider=policy_provider,
+        policy_info=policy_info,
+        candidate_actions=candidate_actions,
+        score_action_candidates=score_action_candidates,
+        goal_info=goal_info,
+    )
     validate_plan_provider_selection(
         forge,
         selection,
+        uses_mpc_planning=uses_mpc,
         policy_info=policy_info,
         candidate_actions=candidate_actions,
         score_info=score_info,
@@ -179,6 +211,10 @@ def build_plan_request(
         score_info=score_info,
         score_action_candidates=score_action_candidates,
         execution_provider=execution_provider,
+        uses_mpc_planning=uses_mpc,
+        planner_config=planner_config,
+        candidate_encoder=candidate_encoder,
+        goal_info=goal_info,
     )
 
 
@@ -186,6 +222,7 @@ def plan_provider_selection(
     *,
     default_provider: str,
     provider: str | None,
+    uses_mpc_planning: bool = False,
     policy_provider: str | None,
     policy_info: JSONDict | None,
     score_provider: str | None,
@@ -197,12 +234,13 @@ def plan_provider_selection(
     return PlanProviderSelection(
         provider=selected_provider,
         policy_provider=policy_provider or selected_provider,
-        score_provider=score_provider or selected_provider,
+        score_provider=score_provider if score_provider is not None else selected_provider,
         uses_policy_planning=uses_policy_planning(
             policy_info=policy_info,
             policy_provider=policy_provider,
         ),
-        uses_score_planning=uses_score_planning(
+        uses_score_planning=uses_mpc_planning
+        or uses_score_planning(
             candidate_actions=candidate_actions,
             score_provider=score_provider,
             score_info=score_info,
@@ -215,6 +253,7 @@ def validate_plan_provider_selection(
     forge: WorldPlanningForge,
     selection: PlanProviderSelection,
     *,
+    uses_mpc_planning: bool,
     policy_info: JSONDict | None,
     candidate_actions: Sequence[Action | Sequence[Action]] | None,
     score_info: JSONDict | None,
@@ -230,6 +269,7 @@ def validate_plan_provider_selection(
         forge,
         uses_score_planning=selection.uses_score_planning,
         uses_policy_planning=selection.uses_policy_planning,
+        uses_mpc_planning=uses_mpc_planning,
         selected_score_provider=selection.score_provider,
         candidate_actions=candidate_actions,
         score_info=score_info,
@@ -260,6 +300,7 @@ def validate_score_plan_request(
     *,
     uses_score_planning: bool,
     uses_policy_planning: bool,
+    uses_mpc_planning: bool,
     selected_score_provider: str,
     candidate_actions: Sequence[Action | Sequence[Action]] | None,
     score_info: JSONDict | None,
@@ -274,6 +315,7 @@ def validate_score_plan_request(
     )
     require_score_plan_inputs(
         uses_policy_planning=uses_policy_planning,
+        uses_mpc_planning=uses_mpc_planning,
         candidate_actions=candidate_actions,
         score_info=score_info,
     )
@@ -308,10 +350,11 @@ def require_policy_plan_inputs(
 def require_score_plan_inputs(
     *,
     uses_policy_planning: bool,
+    uses_mpc_planning: bool = False,
     candidate_actions: Sequence[Action | Sequence[Action]] | None,
     score_info: JSONDict | None,
 ) -> None:
-    if not uses_policy_planning and candidate_actions is None:
+    if not uses_policy_planning and not uses_mpc_planning and candidate_actions is None:
         raise WorldForgeError(
             "Score-based planning requires candidate_actions unless policy planning "
             "provides candidates."
@@ -341,6 +384,55 @@ def uses_score_planning(
     )
 
 
+def uses_mpc_planning(
+    *,
+    planner: str,
+    planner_config: PlannerConfig | None,
+    candidate_encoder: ScoreCandidateEncoder | None,
+    goal_info: JSONDict | None,
+) -> bool:
+    if planner == "latent-mpc":
+        return True
+    if any(item is not None for item in (planner_config, candidate_encoder, goal_info)):
+        raise WorldForgeError("Latent MPC options require planner='latent-mpc'.")
+    return False
+
+
+def validate_mpc_plan_request(
+    *,
+    uses_mpc_planning: bool,
+    max_steps: int,
+    planner_config: PlannerConfig | None,
+    score_provider: str | None,
+    policy_provider: str | None,
+    policy_info: JSONDict | None,
+    candidate_actions: Sequence[Action | Sequence[Action]] | None,
+    score_action_candidates: object | None,
+    goal_info: JSONDict | None,
+) -> None:
+    if not uses_mpc_planning:
+        return
+    if planner_config is None:
+        raise WorldForgeError("Latent MPC planning requires planner_config.")
+    if score_provider is None:
+        raise WorldForgeError("Latent MPC planning requires an explicit score_provider.")
+    require_non_empty_text(
+        score_provider,
+        name="Latent MPC score_provider",
+        message="Latent MPC planning requires a non-empty explicit score_provider.",
+    )
+    if planner_config.execute_k > max_steps:
+        raise WorldForgeError("Latent MPC planner_config.execute_k must be <= max_steps.")
+    if goal_info is None:
+        raise WorldForgeError("Latent MPC planning requires goal_info.")
+    if policy_provider is not None or policy_info is not None:
+        raise WorldForgeError("Latent MPC policy warm-start is not implemented yet.")
+    if candidate_actions is not None:
+        raise WorldForgeError("Latent MPC samples candidate_actions from planner_config.")
+    if score_action_candidates is not None:
+        raise WorldForgeError("Latent MPC builds score_action_candidates from sampled actions.")
+
+
 def plan_for_request(
     *,
     forge: WorldPlanningForge,
@@ -348,6 +440,8 @@ def plan_for_request(
     request: PlanRequest,
     resolved_goal: ResolvedPlanGoal,
 ) -> Plan:
+    if request.uses_mpc_planning:
+        return plan_with_mpc(forge=forge, request=request, resolved_goal=resolved_goal)
     if request.uses_policy_planning:
         return plan_with_policy(forge=forge, request=request, resolved_goal=resolved_goal)
     if request.uses_score_planning:
@@ -357,6 +451,45 @@ def plan_for_request(
         snapshot=snapshot,
         request=request,
         resolved_goal=resolved_goal,
+    )
+
+
+def plan_with_mpc(
+    *,
+    forge: WorldPlanningForge,
+    request: PlanRequest,
+    resolved_goal: ResolvedPlanGoal,
+) -> Plan:
+    if request.score_info is None:
+        raise WorldForgeError("Latent MPC planning requires score_info.")
+    if request.goal_info is None:
+        raise WorldForgeError("Latent MPC planning requires goal_info.")
+    if request.planner_config is None:
+        raise WorldForgeError("Latent MPC planning requires planner_config.")
+    controller = LatentMPCController(
+        forge=forge,
+        score_provider=request.score_provider,
+        config=request.planner_config,
+        encoder=request.candidate_encoder,
+    )
+    step_result = controller.plan_step(
+        observation_info=request.score_info,
+        goal_info=request.goal_info,
+    )
+    success_probability, success_probability_source = mpc_plan_success_probability(step_result)
+    metadata = mpc_plan_metadata(
+        request,
+        step_result,
+        success_probability_source=success_probability_source,
+    )
+    return plan_from_actions(
+        request,
+        resolved_goal,
+        provider=request.score_provider,
+        actions=step_result.actions[: request.max_steps],
+        predicted_states=[],
+        success_probability=clamped_probability(success_probability),
+        metadata=metadata,
     )
 
 
