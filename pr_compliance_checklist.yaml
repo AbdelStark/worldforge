@@ -35,6 +35,18 @@ pr_compliances:
     success_criteria: "Optional integrations are behind extras, smoke commands, or host-owned setup, and import paths fail gracefully when optional dependencies are absent."
     failure_criteria: "The PR adds optional runtime dependencies to the base package or imports optional packages from core modules, CLI root paths, or non-optional provider surfaces."
 
+  - title: "Robotics decision evidence"
+    compliance_label: true
+    objective: "Robotics demos and adapters must demonstrate why WorldForge belongs in the decision loop."
+    success_criteria: "The PR shows WorldForge choosing, scoring, explaining, comparing, or exposing counterfactual Go2/SO-101 decisions with reusable traces and measurable outcome fields."
+    failure_criteria: "The PR only logs or repackages decisions already made by DimOS, LeRobot, a simulator, or a hardcoded script without candidate scores, selected-action rationale, outcomes, or counterfactuals."
+
+  - title: "Host-owned robotics runtime boundary"
+    compliance_label: true
+    objective: "WorldForge must not become the live robot runtime, account-binding flow, or hardware control stack."
+    success_criteria: "Go2, SO-101, DimOS, LeRobot, and simulator integrations consume bounded replay/sim artifacts or optional host-owned runtime hooks, avoid live motion commands by default, keep device secrets out of traces, and document hardware requirements separately."
+    failure_criteria: "The PR sends live robot commands from checkout-safe examples, vendors DimOS/LeRobot runtime code, requires robot dependencies in the base install, leaks host/device identifiers, or assumes account binding/hardware availability in CI."
+
   - title: "Regression tests and operator documentation"
     compliance_label: true
     objective: "Behavior changes must be testable and operationally clear."
