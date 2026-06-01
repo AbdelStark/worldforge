@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "scenario_id": "go2-clear-hallway-replay-frame-001",
+  "source": {
+    "runtime": "dimos",
+    "mode": "replay-fixture",
+    "branch_reference": "pim/dev",
+    "hardware_required": false
+  },
+  "observation": {
+    "frame_id": "replay-clear-001",
+    "timestamp_s": 73.5,
+    "pose": {
+      "x": 0.0,
+      "y": 0.0,
+      "yaw_rad": 0.0
+    },
+    "localization_confidence": 0.92,
+    "map": {
+      "safety_margin_m": 0.2,
+      "obstacles": [
+        {
+          "id": "side-cart",
+          "x": 0.75,
+          "y": -0.55,
+          "radius_m": 0.2
+        },
+        {
+          "id": "left-sign-stand",
+          "x": 0.7,
+          "y": 0.55,
+          "radius_m": 0.18
+        }
+      ],
+      "cost_zones": [
+        {
+          "id": "service-cart-shadow",
+          "x": 0.85,
+          "y": -0.35,
+          "radius_m": 0.45,
+          "cost": 0.4
+        }
+      ],
+      "uncertainty_zones": []
+    }
+  },
+  "goal": {
+    "description": "continue straight through the clear hallway toward the inspection marker",
+    "x": 1.0,
+    "y": 0.0,
+    "tolerance_m": 0.2
+  },
+  "baseline_action_id": "baseline_forward",
+  "candidate_actions": [
+    {
+      "id": "baseline_forward",
+      "type": "go2_base_command",
+      "parameters": {
+        "dx_m": 0.95,
+        "dyaw_rad": 0.0,
+        "duration_s": 1.2,
+        "speed_mps": 0.65
+      }
+    },
+    {
+      "id": "arc_left_unneeded",
+      "type": "go2_base_command",
+      "parameters": {
+        "dx_m": 0.8,
+        "dyaw_rad": 0.6,
+        "duration_s": 1.3,
+        "speed_mps": 0.55
+      }
+    },
+    {
+      "id": "arc_right_cart_shadow",
+      "type": "go2_base_command",
+      "parameters": {
+        "dx_m": 0.85,
+        "dyaw_rad": -0.5,
+        "duration_s": 1.3,
+        "speed_mps": 0.55
+      }
+    },
+    {
+      "id": "slow_probe_forward",
+      "type": "go2_base_command",
+      "parameters": {
+        "dx_m": 0.45,
+        "dyaw_rad": 0.0,
+        "duration_s": 1.2,
+        "speed_mps": 0.35
+      }
+    },
+    {
+      "id": "stop_relocalize",
+      "type": "go2_safety_action",
+      "parameters": {
+        "duration_s": 1.0,
+        "reason": "operator_pause"
+      }
+    }
+  ]
+}
