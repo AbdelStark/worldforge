@@ -174,3 +174,28 @@ are intended to verify the framework path in a clean checkout.
 
 Optional live smoke scripts are separate because they require host-owned model runtimes,
 credentials, checkpoints, robot observations, or action translators.
+
+## DimOS Go2 Replay Arena
+
+The DimOS Go2 replay arena is a checkout-safe robotics decision-evidence example. It does not
+import DimOS, start a simulator, or connect to hardware. It consumes a small replay-shaped JSON
+fixture, scores candidate Go2 actions with transparent costs, and writes a decision trace plus a
+compact report.
+
+```bash
+uv run python examples/dimos-go2-replay-arena/run.py \
+  --fixture examples/dimos-go2-replay-arena/fixtures/go2_office_replay_frame.json \
+  --out .worldforge/dimos-go2-replay-arena
+```
+
+```bash
+uv run python examples/dimos-go2-replay-arena/run.py \
+  --all-fixtures \
+  --out .worldforge/dimos-go2-replay-arena-batch
+```
+
+Expected success signal: the output directory contains `decision-trace.json` and `report.md`, and
+the trace includes a selected action, rejected counterfactuals, score margin, and baseline regret.
+Batch mode also writes `batch-report.json` and `batch-report.md`.
+The bundled fixtures include one replay where WorldForge rejects the hardcoded baseline and one
+clear-hallway replay where the baseline remains the best action.

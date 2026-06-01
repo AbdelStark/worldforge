@@ -18,6 +18,13 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # CodeRabbit base_branches entries are regex patterns; path filters below use path globs.
+    base_branches:
+      - "^feat/.*$"
+      - "^fix/.*$"
+      - "^docs/.*$"
+      - "^chore/.*$"
+      - "^integration/.*$"
     auto_incremental_review: true
     auto_pause_after_reviewed_commits: 5
     ignore_title_keywords:
@@ -50,6 +57,20 @@ reviews:
         - Flag unsafe deserialization, dynamic imports, Hydra/object instantiation from untrusted configs, and unpinned remote revisions.
         - Ensure safety messaging covers every code-execution surface before weights are loaded.
         - Keep torch, robotics, CUDA, and checkpoint dependencies host-owned and outside base install requirements.
+    - path: "src/worldforge/demos/**"
+      instructions: |
+        Review demos as checkout-safe decision-evidence surfaces, not live robotics control loops.
+        - WorldForge must add value by choosing, scoring, explaining, comparing, or exposing counterfactual robot decisions.
+        - Reject demos that only repackage DimOS, LeRobot, or simulator outputs without measurable decision evidence.
+        - Keep live hardware commands, transport setup, credentials, robot keys, and account binding outside WorldForge demos.
+        - Validate replay and simulator artifacts as untrusted inputs: bounded reads, regular files, finite numbers, JSON-native metadata, and redacted host paths.
+        - Require deterministic fixtures, no optional robotics imports on base paths, and clear operator docs with the command, success signal, and first triage step.
+    - path: "examples/**"
+      instructions: |
+        Examples must stay reproducible from a clean checkout.
+        - Prefer fixture-backed replay or simulator artifacts over live service, GPU, robot, or account dependencies.
+        - Keep wrappers thin and ensure public behavior is also covered by packaged demo tests when the example exposes a command.
+        - Documentation should state what artifact is consumed, what trace/report is emitted, and what evidence WorldForge adds beyond a script.
     - path: "src/worldforge/models.py"
       instructions: |
         Treat model changes as public API and persistence contract changes.

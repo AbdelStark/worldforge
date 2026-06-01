@@ -87,6 +87,23 @@ Planning output must be auditable.
 - Replays and demos should say clearly when they are mock replay, simulation, injected policy,
   checkpoint inference, or real robot control.
 
+## Robotics Decision Evidence
+
+WorldForge robotics work should treat DimOS, LeRobot, Go2, SO-101, simulators, and hardware drivers
+as host-owned runtime or artifact sources. WorldForge should not vendor those stacks, become the
+account-binding or transport layer, or send live motion commands from checkout-safe examples.
+
+- Use replay, simulator, or fixture artifacts as untrusted inputs: bounded reads, regular files,
+  finite numeric validation, JSON-native metadata, deterministic tie-breaking, and redacted host
+  paths.
+- WorldForge earns its place only when it chooses, scores, explains, compares, or exposes
+  counterfactual candidate decisions with reusable traces and measured or simulated outcomes.
+- If a robotics change only logs a DimOS, LeRobot, simulator, or hardcoded decision without
+  candidate scores, selected-action rationale, outcomes, or counterfactuals, treat it as out of
+  scope for WorldForge.
+- Keep DimOS-specific context curated in this repository's review guidance rather than importing an
+  arbitrary external repository into LLM review prompts.
+
 ## Tests And Documentation
 
 Every bug fix and documented failure mode needs a focused regression test.

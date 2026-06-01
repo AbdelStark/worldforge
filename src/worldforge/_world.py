@@ -52,6 +52,7 @@ from worldforge.models import (
 from worldforge.providers import BaseProvider
 
 if TYPE_CHECKING:
+    from worldforge.control import PlannerConfig, ScoreCandidateEncoder
     from worldforge.evaluation import EvaluationReport
     from worldforge.framework import WorldForge
 
@@ -526,6 +527,9 @@ class World:
         score_provider: str | None = None,
         score_info: JSONDict | None = None,
         score_action_candidates: object | None = None,
+        planner_config: PlannerConfig | None = None,
+        candidate_encoder: ScoreCandidateEncoder | None = None,
+        goal_info: JSONDict | None = None,
         execution_provider: str | None = None,
         **_: Any,
     ) -> Plan:
@@ -554,6 +558,9 @@ class World:
             score_provider=score_provider,
             score_info=score_info,
             score_action_candidates=score_action_candidates,
+            planner_config=planner_config,
+            candidate_encoder=candidate_encoder,
+            goal_info=goal_info,
             execution_provider=execution_provider,
         )
 

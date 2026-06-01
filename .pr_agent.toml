@@ -21,10 +21,13 @@ High-signal issue areas:
 - Secret handling: credentials, bearer tokens, API keys, signed URLs, and secret-like metadata must not reach provider events, logs, exceptions, transcripts, persisted worlds, or returned result metadata.
 - Capability truthfulness: providers must advertise only capabilities implemented end to end. Do not let score, policy, predict, generate, reason, embed, transfer, and plan become interchangeable labels.
 - Public contracts: JSON-native validation, finite numeric values, typed errors, stable serialization, and regression tests for every bug fix or documented failure mode.
+- Robotics decision evidence: Go2, SO-101, DimOS, LeRobot, replay, simulator, and MPC examples must show WorldForge choosing, scoring, explaining, comparing, or exposing counterfactual decisions.
+- Robotics runtime separation: examples must not require live hardware, robot account binding, transport secrets, torch, DimOS, or LeRobot in the base install path unless the runtime is explicitly optional and host-owned.
 """
 compliance_user_guidelines = """
 Use AGENTS.md, best_practices.md, and pr_compliance_checklist.yaml as repository-specific review standards.
 Treat checklist failures as real findings when the PR changes provider I/O, optional-runtime loading, persistence, planning, event logging, CI, packaging, or public documentation.
+Treat robotics checklist failures as blocking when a PR only wraps DimOS, LeRobot, or simulator outputs without measurable WorldForge decision evidence.
 Do not block on cosmetic preferences unless they hide a correctness, security, or maintenance risk.
 """
 

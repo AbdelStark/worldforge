@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from worldforge.action_candidates import normalize_action_candidates
+from worldforge.control import MPCStepResult, PlannerConfig, ScoreCandidateEncoder
 from worldforge.models import (
     Action,
     ActionPolicyResult,
@@ -61,6 +62,10 @@ class PlanRequest:
     score_info: JSONDict | None
     score_action_candidates: object | None
     execution_provider: str | None
+    uses_mpc_planning: bool = False
+    planner_config: PlannerConfig | None = None
+    candidate_encoder: ScoreCandidateEncoder | None = None
+    goal_info: JSONDict | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -312,11 +317,13 @@ POLICY_TRACE_STEP_BUILDERS = {
     "policy": active_policy_trace_step,
     "policy+score": active_policy_trace_step,
     "score": skipped_policy_trace_step,
+    "latent-mpc": skipped_policy_trace_step,
 }
 SCORE_TRACE_STEP_BUILDERS = {
     "score": active_score_trace_step,
     "policy+score": active_score_trace_step,
     "policy": skipped_score_trace_step,
+    "latent-mpc": active_score_trace_step,
 }
 
 
@@ -437,6 +444,37 @@ def score_plan_metadata(
     }
 
 
+def mpc_plan_metadata(
+    request: PlanRequest,
+    step_result: MPCStepResult,
+    *,
+    success_probability_source: str,
+) -> JSONDict:
+    return {
+        "planning_mode": "latent-mpc",
+        "control_mode": "mpc",
+        "optimizer": "cem",
+        "score_provider": request.score_provider,
+        "best_score": step_result.best_score,
+        "lower_is_better": step_result.lower_is_better,
+        "candidate_count": step_result.candidate_count,
+        "iteration_best_scores": list(step_result.iteration_best_scores),
+        "iteration_costs": (
+            list(step_result.iteration_best_scores) if step_result.lower_is_better else []
+        ),
+        "mpc_result": dict(step_result.metadata),
+        "success_probability_source": success_probability_source,
+        "workflow_trace": plan_workflow_trace(
+            mode="latent-mpc",
+            planner=request.planner,
+            provider=request.score_provider,
+            action_count=len(step_result.actions),
+            candidate_count=step_result.candidate_count,
+            score_provider=request.score_provider,
+        ),
+    }
+
+
 def score_only_candidate_action_plans(request: PlanRequest) -> list[list[Action]]:
     if request.candidate_actions is None or request.score_info is None:
         raise WorldForgeError(
@@ -444,6 +482,16 @@ def score_only_candidate_action_plans(request: PlanRequest) -> list[list[Action]
             "candidate_actions, and score_info."
         )
     return normalize_action_candidates(request.candidate_actions)
+
+
+def mpc_plan_success_probability(step_result: MPCStepResult) -> tuple[float, str]:
+    best_score = step_result.best_score
+    if step_result.lower_is_better:
+        best_cost = max(0.0, best_score)
+        return 1.0 / (1.0 + best_cost), "inverse_best_cost_heuristic"
+    if 0.0 <= best_score <= 1.0:
+        return best_score, "bounded_best_utility_heuristic"
+    return 0.5, "unbounded_best_utility_no_probability"
 
 
 def predictive_plan_success_probability(scores: Sequence[float]) -> float:

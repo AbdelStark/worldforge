@@ -72,6 +72,7 @@ plugins:
             System Model: 系统模型
             World Model Taxonomy: 世界模型分类法
             Architecture: 架构
+            Control And Planning: 控制与规划
             Decisions: 决策记录
             Persistence Adapter Boundary: 持久化适配器边界
             Providers: 提供方
@@ -138,6 +139,7 @@ nav:
   - System Model:
       - World Model Taxonomy: world-model-taxonomy.md
       - Architecture: architecture.md
+      - Control And Planning: control-planning.md
   - Decisions:
       - Persistence Adapter Boundary: adr/0001-persistence-adapter-boundary.md
   - Providers:
