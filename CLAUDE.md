@@ -226,7 +226,7 @@ Load skills on demand:
 - `.codex/skills/testing-validation/SKILL.md`: test selection, coverage, package, docs, CI gates.
 - `.codex/skills/evaluation-benchmarking/SKILL.md`: evaluation suites, benchmarks, report claims.
 - `.codex/skills/optional-runtime-smokes/SKILL.md`: LeWorldModel, GR00T, LeRobot live or injected runtime checks.
-- `.codex/skills/persistence-state/SKILL.md`: world IDs, local JSON state, history import/export.
+- `.codex/skills/persistence-state/SKILL.md`: local run-workspace state and JSON artifacts under `.worldforge/` (the symbolic world store is removed).
 - `.codex/skills/tui-development/SKILL.md`: robotics showcase Textual report and optional TUI isolation.
 - `.codex/skills/public-docs-release/SKILL.md`: README/docs/changelog/release-surface synchronization and publish-gate checks.
 </skills>
