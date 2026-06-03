@@ -7,6 +7,14 @@ releases may still include breaking changes when the public API needs to tighten
 
 ## Unreleased
 
+### Fixed
+
+- The wheel now builds from the sdist again. A redundant
+  `[tool.hatch.build.targets.wheel.force-include]` for `providers/runtime_manifests` duplicated
+  `runtime_manifests/__init__.py` (already included by `packages`), which made `hatchling`'s
+  wheel-from-sdist build fail. `only-packages = true` already ships the JSON manifests, so the
+  force-include was removed; `scripts/test_package.sh` passes again.
+
 ### Changed
 
 - **Strategic pivot.** WorldForge is now positioned as a harness framework for building
