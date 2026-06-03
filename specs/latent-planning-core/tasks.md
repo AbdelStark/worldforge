@@ -42,24 +42,18 @@ increment is green because `forge.predict`/`forge.score_actions` work without a 
       wire the workbench score conformance. Update capability/negotiation/benchmark/workbench tests.
 - Makes the latent loop and score-only workflows checkout-safe on the default provider.
 
-### Inc B — re-center `evaluation/` on the capability loop (next)
+### Inc B — re-center `evaluation/` on the capability loop (DONE)
 
-- [ ] Delete `evaluation/suite_fixtures.py` (seeds SceneObjects into a World).
-- [ ] `evaluation/results.py`: remove the `world: World` field from `EvaluationContext` (keep
-      `forge`). Breaking for custom evaluators that read `context.world`.
-- [ ] `evaluation/suite_base.py`: drop `_build_world`/`_ensure_world` and the `world` parameter from
-      `evaluate_scenario`/`run`/`run_with_world`/`run_report`/`run_report_artifacts`; the default
-      scenario calls `forge.predict(...)` directly.
-- [ ] `physics_suite.py` → predict-determinism scenarios via `forge.predict` (keep suite_id
-      `physics`; rename scenarios if needed).
-- [ ] `planning_suite.py` → score/latent-MPC scenarios via `forge.score_actions` +
-      `LatentMPCController` (keep suite_id `planning`; requires `score`, satisfied by mock).
-- [ ] `builtin_suites.py` (drop `_seed_object` export), `failure_gallery.py` (update
-      `_CONTRACT_NOTES` scenario keys), `evaluation/__init__.py`.
-- [ ] `examples/custom_evaluation_suite.py`: drop `context.world` usage.
-- [ ] Tests: `test_evaluation_suites`, `test_evaluation_and_planning`,
-      `test_evaluation_failure_gallery`, `test_batch_eval_host`; docs `evaluation.md`/zh +
-      doc-site/claim-evidence contracts.
+- [x] Deleted `evaluation/suite_fixtures.py`.
+- [x] `EvaluationContext.world` removed (breaking for custom evaluators) — keep `forge`.
+- [x] `suite_base.py` drops `_build_world`/`_ensure_world`/`world` thread; default scenario calls
+      `forge.predict(seed_dict, ...)`. `run_report`/`run_report_artifacts` keep an ignored `world`
+      kwarg so the still-present `World.evaluate()` keeps working until Inc F.
+- [x] `physics_suite.py` → `forge.predict` determinism/response (suite_id `physics`, names kept).
+- [x] `planning_suite.py` → `LatentMPCController` over `forge.score_actions` (suite_id `planning`,
+      requires `score`, satisfied by mock; names kept).
+- [x] `examples/custom_evaluation_suite.py` probes `context.forge.predict`. Tests + `evaluation.md`
+      updated. Gates green, coverage 90.88%.
 
 ### Inc C — re-center `benchmark.py` (drop `_seed_world`)
 

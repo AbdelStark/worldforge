@@ -12,13 +12,31 @@ from worldforge.evaluation import (
     EvaluationScenarioOutcome,
     EvaluationSuite,
 )
-from worldforge.models import JSONDict
+from worldforge.models import Action, JSONDict
 
 
 def evaluate_empty_world(context: EvaluationContext) -> EvaluationScenarioOutcome:
-    """Score whether the checkout-created world is readable and deterministic."""
+    """Score whether the forge predict surface yields a readable, empty scene.
 
-    object_count = context.world.object_count
+    Custom evaluators read the forge capability surface, not a symbolic ``World``: this probes an
+    empty seed state through ``forge.predict`` and confirms the returned scene has no objects.
+    """
+
+    empty_state: JSONDict = {
+        "schema_version": 1,
+        "id": "custom-empty-world-state",
+        "name": "Custom empty world state",
+        "provider": "evaluation",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
+    prediction = context.forge.predict(
+        empty_state,
+        Action(kind="noop"),
+        steps=1,
+        provider=context.provider,
+    )
+    object_count = len(prediction.state.get("scene", {}).get("objects", {}))
     return context.outcome(
         score=1.0,
         passed=object_count == 0,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from worldforge import DATASET_MANIFEST_SCHEMA_VERSION, WorldForge, WorldForgeError
+from worldforge import DATASET_MANIFEST_SCHEMA_VERSION, Action, WorldForge, WorldForgeError
 from worldforge.dataset_manifests import load_dataset_manifest, parse_dataset_manifest
 from worldforge.evaluation import (
     EvaluationContext,
@@ -38,6 +38,33 @@ def _load_custom_eval_example():
 
 def test_builtin_evaluation_suite_names_are_stable() -> None:
     assert EvaluationSuite.builtin_names() == ["physics", "planning"]
+
+
+def test_default_scenario_evaluates_through_forge_predict_without_world(tmp_path) -> None:
+    # A base EvaluationSuite scenario without a custom evaluator must run the default
+    # forge.predict path over a plain seed world-state dict (no symbolic World).
+    suite = EvaluationSuite.custom(
+        suite_id="default-predict",
+        name="Default Predict Suite",
+        suite_version="default-predict:1",
+        claim_boundary="Deterministic default-predict contract example.",
+        scenarios=[
+            EvaluationScenario(
+                name="default-predict-step",
+                description="Runs the default forge.predict evaluation path.",
+                required_capabilities=("predict",),
+            )
+        ],
+    )
+
+    report = suite.run_report(["mock"], forge=WorldForge(state_dir=tmp_path))
+
+    result = report.results[0]
+    assert result.scenario == "default-predict-step"
+    assert result.passed is True
+    assert set(result.metrics) == {"physics_score", "confidence"}
+    assert report.provenance is not None
+    assert report.provenance.capabilities == ("predict",)
 
 
 def test_builtin_evaluation_reports_export_failure_gallery_artifacts(tmp_path) -> None:
@@ -145,11 +172,26 @@ def test_dataset_manifest_validates_remote_reference_boundaries() -> None:
 
 def test_custom_evaluation_suite_runs_with_provenance_and_artifacts(tmp_path) -> None:
     def evaluate_object_count(context: EvaluationContext) -> EvaluationScenarioOutcome:
+        empty_state = {
+            "schema_version": 1,
+            "id": "custom-object-count-state",
+            "name": "Custom object count state",
+            "provider": "evaluation",
+            "step": 0,
+            "scene": {"objects": {}},
+        }
+        prediction = context.forge.predict(
+            empty_state,
+            Action(kind="noop"),
+            steps=1,
+            provider=context.provider,
+        )
+        object_count = len(prediction.state.get("scene", {}).get("objects", {}))
         return context.outcome(
             score=1.0,
             passed=True,
             metrics={
-                "object_count": context.world.object_count,
+                "object_count": object_count,
                 "scenario_index": context.index,
             },
         )

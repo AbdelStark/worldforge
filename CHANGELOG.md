@@ -15,6 +15,16 @@ releases may still include breaking changes when the public API needs to tighten
   planning and scoring action candidates with an action-conditioned predictive world model, in
   latent space. README, CLAUDE.md, AGENTS.md, and core docs are reframed around that loop, and the
   new `specs/latent-planning-core/` triad records the narrowed scope and the staged removal plan.
+- **Evaluation suites no longer use the symbolic `World` runtime.** The built-in `physics` and
+  `planning` suites now drive the provider capability surface directly: `physics` calls
+  `forge.predict` over a plain world-state dict (prediction-determinism and action-response checks),
+  and `planning` solves each scenario with `LatentMPCController` over `forge.score_actions` as a cost
+  oracle. The `planning` suite now requires the `score` capability instead of `predict` (satisfied by
+  the default `mock` provider); all suite ids and scenario names are unchanged. **Breaking:**
+  `EvaluationContext.world` is removed — custom evaluators must read the forge capability surface
+  (for example `context.forge.predict(...)`) instead of a `World`. The internal `world` parameter is
+  dropped from the suite runner methods; `run_report`/`run_report_artifacts` still accept an ignored
+  `world` keyword for backwards compatibility with `World.evaluate`.
 
 ### Removed
 

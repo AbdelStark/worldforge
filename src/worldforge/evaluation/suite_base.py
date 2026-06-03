@@ -22,7 +22,7 @@ from worldforge.evaluation.results import (
 from worldforge.evaluation.results import (
     required_text as _required_text,
 )
-from worldforge.models import Action, JSONDict, WorldForgeError
+from worldforge.models import Action, BBox, JSONDict, Position, SceneObject, WorldForgeError
 from worldforge.provenance import (
     EVALUATION_SUITE_CONTRACT_VERSION,
     ProvenanceEnvelope,
@@ -32,7 +32,7 @@ from worldforge.provenance import (
 from worldforge.workflow_trace import WorkflowArtifactRef, WorkflowTrace, WorkflowTraceStep
 
 if TYPE_CHECKING:
-    from worldforge.framework import World, WorldForge
+    from worldforge.framework import WorldForge
 
 
 class EvaluationSuite:
@@ -217,28 +217,53 @@ class EvaluationSuite:
                 f"missing required capabilities: {joined}."
             )
 
-    def _build_world(self, provider: str, *, forge: WorldForge) -> World:
-        return forge.create_world(f"{self.suite_id}-evaluation-world", provider)
+    def _seed_objects(self) -> tuple[SceneObject, ...]:
+        """Objects seeded into the plain ``world_state`` dict each scenario predicts over.
 
-    def _ensure_world(
-        self,
-        provider: str,
-        *,
-        forge: WorldForge,
-        world: World | None = None,
-    ) -> World:
-        from worldforge.framework import World
+        The base suite seeds nothing, so custom suites operate on an empty scene. Built-in
+        suites override this to seed deterministic ``SceneObject`` instances without ever
+        constructing a symbolic :class:`~worldforge.framework.World`.
+        """
 
-        if world is not None:
-            return World.from_state(forge, world.to_dict())
-        return self._build_world(provider, forge=forge)
+        return ()
+
+    def _seed_world_state(self) -> JSONDict:
+        """Return a plain JSON world-state dict consumed by ``forge.predict``/``score_actions``.
+
+        This replaces the symbolic ``World`` runtime: scenarios mutate and read this dict via the
+        provider capability surface, never via a persisted ``World`` object.
+        """
+
+        return {
+            "schema_version": 1,
+            "id": f"{self.suite_id}-evaluation-state",
+            "name": f"{self.name} evaluation state",
+            "provider": "evaluation",
+            "step": 0,
+            "scene": {
+                "objects": {obj.id: obj.to_dict() for obj in self._seed_objects()},
+            },
+        }
+
+    @staticmethod
+    def _seed_object(name: str, position: Position) -> SceneObject:
+        """Build a deterministic graspable ``SceneObject`` for a seed world-state dict."""
+
+        return SceneObject(
+            name,
+            position,
+            BBox(
+                Position(position.x - 0.05, position.y - 0.05, position.z - 0.05),
+                Position(position.x + 0.05, position.y + 0.05, position.z + 0.05),
+            ),
+            is_graspable=True,
+        )
 
     def evaluate_scenario(
         self,
         scenario: EvaluationScenario,
         provider: str,
         *,
-        world: World,
         forge: WorldForge,
         index: int,
     ) -> EvaluationResult:
@@ -246,11 +271,11 @@ class EvaluationSuite:
             return self._evaluate_custom_scenario(
                 scenario,
                 provider,
-                world=world,
                 forge=forge,
                 index=index,
             )
-        prediction = world.predict(
+        prediction = forge.predict(
+            self._seed_world_state(),
             Action.move_to(0.1 * (index + 1), 0.5, 0.0),
             steps=1,
             provider=provider,
@@ -274,7 +299,6 @@ class EvaluationSuite:
         scenario: EvaluationScenario,
         provider: str,
         *,
-        world: World,
         forge: WorldForge,
         index: int,
     ) -> EvaluationResult:
@@ -285,7 +309,6 @@ class EvaluationSuite:
             suite=self.name,
             scenario=scenario,
             provider=provider,
-            world=world,
             forge=forge,
             index=index,
         )
@@ -337,23 +360,19 @@ class EvaluationSuite:
             metrics=outcome.metrics,
         )
 
-    def run_with_world(
+    def _run_one_provider(
         self,
         provider: str,
         *,
-        world: World,
         forge: WorldForge,
     ) -> list[EvaluationResult]:
         self._require_provider_capabilities(provider, forge=forge)
-        base_world = self._ensure_world(provider, forge=forge, world=world)
         results: list[EvaluationResult] = []
         for index, scenario in enumerate(self.scenarios):
-            sandbox = self._ensure_world(provider, forge=forge, world=base_world)
             results.append(
                 self.evaluate_scenario(
                     scenario,
                     provider,
-                    world=sandbox,
                     forge=forge,
                     index=index,
                 )
@@ -364,20 +383,22 @@ class EvaluationSuite:
         from worldforge.framework import WorldForge
 
         active_forge = forge or WorldForge()
-        self._require_provider_capabilities(provider, forge=active_forge)
-        world = self._ensure_world(provider, forge=active_forge)
-        return self.run_with_world(provider, world=world, forge=active_forge)
+        return self._run_one_provider(provider, forge=active_forge)
 
     def run_report(
         self,
         providers: str | Sequence[str],
         *,
-        world: World | None = None,
+        world: object | None = None,
         forge: WorldForge | None = None,
         dataset_manifests: Sequence[object] | None = None,
     ) -> EvaluationReport:
         from worldforge.framework import WorldForge
 
+        # ``world`` is accepted for backwards compatibility with callers such as
+        # ``World.evaluate`` but is no longer used: suites run entirely through the forge
+        # capability surface (``forge.predict``/``forge.score_actions``) over plain state dicts.
+        del world
         active_forge = forge or WorldForge()
         provider_names = [providers] if isinstance(providers, str) else list(providers)
         if not provider_names:
@@ -388,11 +409,7 @@ class EvaluationSuite:
             self._require_provider_capabilities(provider, forge=active_forge)
 
         def _run_one(provider: str) -> list[EvaluationResult]:
-            return self.run_with_world(
-                provider,
-                world=self._ensure_world(provider, forge=active_forge, world=world),
-                forge=active_forge,
-            )
+            return self._run_one_provider(provider, forge=active_forge)
 
         results: list[EvaluationResult] = []
         if len(provider_names) == 1:
@@ -508,8 +525,9 @@ class EvaluationSuite:
         self,
         *,
         providers: str | Sequence[str],
-        world: World | None = None,
+        world: object | None = None,
         forge: WorldForge | None = None,
     ) -> dict[str, str]:
+        # ``world`` is accepted for backwards compatibility only; it is ignored.
         report = self.run_report(providers=providers, world=world, forge=forge)
         return report.artifacts()

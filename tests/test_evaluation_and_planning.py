@@ -712,12 +712,11 @@ def test_structured_goal_parser_rejects_invalid_relational_inputs() -> None:
 def test_evaluation_reports_and_eval_helpers(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
     forge.register_provider(MockProvider(name="manual-mock"))
-    world, _, _ = _seed_world(forge)
 
     assert list_eval_suites() == ["physics", "planning"]
 
     suite = EvaluationSuite.from_builtin("physics")
-    report = suite.run_report(["mock", "manual-mock"], world=world, forge=forge)
+    report = suite.run_report(["mock", "manual-mock"], forge=forge)
     assert report.suite_id == "physics"
     assert "Physics" in report.suite
     assert {summary.provider for summary in report.provider_summaries} == {"manual-mock", "mock"}
@@ -730,7 +729,6 @@ def test_evaluation_reports_and_eval_helpers(tmp_path) -> None:
 
     artifacts = suite.run_report_artifacts(
         providers=["mock", "manual-mock"],
-        world=world,
         forge=forge,
     )
     assert set(artifacts) == {
