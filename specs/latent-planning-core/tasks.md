@@ -55,10 +55,11 @@ increment is green because `forge.predict`/`forge.score_actions` work without a 
 - [x] `examples/custom_evaluation_suite.py` probes `context.forge.predict`. Tests + `evaluation.md`
       updated. Gates green, coverage 90.88%.
 
-### Inc C — re-center `benchmark.py` (drop `_seed_world`)
+### Inc C — re-center `benchmark.py` (DONE)
 
-- [ ] `benchmark_inputs.py` then `benchmark.py`: replace `_seed_world`/SceneObject with direct
-      `forge.predict`/`forge.embed`/`forge.score_actions`/`forge.select_actions` calls.
+- [x] Replaced `_seed_world`/`world.predict` with `_benchmark_world_state()` (plain dict) +
+      `forge.predict(...)`. The embed/score/policy ops already called `forge` directly. Gates green,
+      coverage 90.88%.
 
 ### Inc D — rewrite the 6 world-based demos onto `LatentMPCController`/forge calls
 
