@@ -61,7 +61,7 @@ If it fails:
 
 | Symptom | First check | Likely owner |
 | --- | --- | --- |
-| `first-run` fails | run `uv run worldforge world preflight --state-dir .worldforge/demo-showcases/first-run/worlds` | contributor |
+| `first-run` fails | run `uv run worldforge doctor --registered-only` and inspect `first-run/worlds` JSON with `uv run worldforge world show <world-id>` | contributor |
 | diagnostics bundle is not safe to attach | open `issue-bundle/evidence_manifest.json` and inspect excluded files | reporter |
 | robotics replay fails | run `uv run worldforge-demo-lerobot` and inspect provider event phases | contributor |
 | provider-event redaction dry run leaks a query string | inspect `provider-event-redaction-events.json` and the provider-event redaction corpus | contributor |
@@ -195,7 +195,7 @@ and first artifact.
 | Error family | Common symptom | Likely owner | First command | Expected artifact or signal | First triage step |
 | --- | --- | --- | --- | --- | --- |
 | `WorldForgeError` | invalid public input, unknown capability, unsupported output format, non-finite number, unsafe artifact reference | caller or contributor | `uv run worldforge doctor --registered-only` | JSON diagnostics with framework and provider configuration state | fix the caller input or add a regression test for the rejected public boundary |
-| `WorldStateError` | corrupted local world JSON, traversal-shaped world id, invalid history entry, incoherent object bounding box | host operator for local state; contributor if the CLI wrote it | `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge --format json` | `worldforge-state-preflight.json` with `status`, `safe_to_attach`, `error_count`, and recovery commands | export diagnostics, then quarantine invalid files only after reviewing the report |
+| `WorldStateError` | corrupted local world JSON, traversal-shaped world id, invalid history entry, incoherent object bounding box | host operator for local state; contributor if the CLI wrote it | `uv run worldforge world show <world-id> --state-dir .worldforge/worlds --format json` | a sanitized `WorldStateError` naming the invalid field plus its first triage step | export the world JSON, then quarantine invalid files only after reviewing the error |
 | `ProviderError` | missing credentials, missing optional dependency, malformed upstream response, unsupported provider capability, expired artifact URL | host runtime owner first; adapter maintainer if parser or docs are wrong | `uv run worldforge provider info <provider>` | redacted config summary, provider profile, capability flags, lifecycle status, health, and typed provider details | attach a sanitized run manifest or issue bundle; never paste raw credentials or signed URLs |
 | `AssertionError` from `worldforge.testing` | provider conformance helper reports a contract failure | adapter contributor | `uv run pytest tests/test_provider_contracts.py -q` | explicit helper failure naming the missing capability behavior | fix the adapter or its fixtures; do not replace helper checks with bare `assert` |
 | non-zero benchmark budget exit | benchmark gate failed against a JSON budget | release or performance maintainer | `uv run worldforge benchmark --preset mock-smoke --run-workspace .worldforge --format json` | preserved run workspace with `run_manifest.json`, report JSON, and budget status | inspect the budget row and preserved inputs before changing thresholds |
@@ -294,9 +294,6 @@ uv run worldforge world list
 uv run worldforge world objects <world-id>
 uv run worldforge world show <world-id>
 uv run worldforge world history <world-id>
-uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name lab-copy
 uv run worldforge world fork <world-id> --history-index 0 --name lab-start
@@ -332,23 +329,17 @@ Success signal:
   prediction without replacing the local JSON file.
 - imported state rejects malformed scene objects, invalid history, negative steps, and traversal
   shaped IDs.
-- `world preflight` reports corrupted world JSON, traversal-shaped requested IDs, invalid history
-  entries, incoherent object bounding boxes, stale run workspaces, unsafe artifact paths, and
-  retention pressure without mutating local files.
-- `world migration-preview` reports schema versions, required changes, invalid fields, unsafe IDs,
-  bounding-box corrections, and `can_apply_safely` for persisted worlds or exported JSON without
-  mutating local files.
+- `world show` / `world history` load and validate a persisted world, raising `WorldStateError`
+  with a sanitized triage message when the JSON is corrupted, traversal-shaped, or has invalid
+  history entries.
 
 Recovery guidance:
 
-- run `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-  --format json > worldforge-state-preflight.json` before moving or deleting any local state.
-- run `uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-  --format json > worldforge-migration-preview.json` before applying a schema rewrite to local
-  JSON; use `--source-path` for exported world JSON.
+- run `uv run worldforge world show <world-id> --state-dir .worldforge/worlds --format json` to
+  surface a `WorldStateError` and its triage step before moving or deleting any local state.
 - if local JSON is corrupted, restore from the host application's backup of exported world JSON.
-- if the report names stale run workspaces or unsafe artifact paths, export a run bundle when a
-  manifest is valid; otherwise quarantine the run directory after preserving the preflight report.
+- if `worldforge runs` reports stale run workspaces or unsafe artifact paths, export a run bundle
+  when a manifest is valid; otherwise quarantine the run directory after preserving its manifest.
 - if retention pressure is the only issue, run `uv run worldforge runs cleanup --workspace-dir
   .worldforge --keep 20 --dry-run` and remove evidence only after incident or release references
   no longer need it.

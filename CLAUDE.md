@@ -1,13 +1,14 @@
 <identity>
-WorldForge is a Python integration layer and CLI for physical-AI world-model provider adapters, world state, planning, evaluation, benchmarking, diagnostics, and host-owned optional runtimes.
+WorldForge is a harness framework for building world-model-based workflows for physical AI. It is the application builder's counterpart to model-training stacks like Stable World Model: it helps roboticists and physical-AI builders compose, evaluate, and benchmark workflows built on top of world models — not train them. The entire library is organized around one backbone loop: planning and scoring action candidates with an action-conditioned predictive world model, in latent space (a `policy` proposes actions, a `predict` provider rolls them out, a `score` provider ranks them as a cost oracle, and `LatentMPCController` owns the CEM/receding-horizon optimizer). It exposes provider capability adapters, latent planning/control, evaluation, benchmarking, diagnostics, local state, host-owned optional runtimes, and a CLI on top of that loop.
 </identity>
 
 <priority_rules>
-1. Keep provider capabilities truthful: advertise only callable, tested, typed WorldForge surfaces.
-2. Make the library fault tolerant and developer-friendly while preserving the optional-runtime boundary: never add torch, LeWorldModel, LeRobot, GR00T, CUDA, checkpoints, datasets, or robot controllers to base dependencies or the repo.
-3. Fail loudly at boundaries: invalid public inputs raise `WorldForgeError`; malformed persisted/provider state raises `WorldStateError`; provider/runtime failures raise `ProviderError`.
-4. Preserve local-first scope: no hosted service, production database, credential store, robot safety layer, telemetry backend, or durable multi-writer persistence unless explicitly designed and approved.
-5. Public contribution artifacts must be human, maintainer-style, and tool-neutral. Do not mention agent/tool branding in branch names, commits, PR titles, PR bodies, changelog, docs, or README copy.
+1. Keep the scope narrow to the backbone loop: planning and scoring with an action-conditioned predictive world model in latent space, plus evaluation/benchmarking to select configurations. Do not reintroduce world generation, symbolic-scenario simulation, or media-generation features.
+2. Keep provider capabilities truthful: advertise only callable, tested, typed WorldForge surfaces.
+3. Make the library fault tolerant and developer-friendly while preserving the optional-runtime boundary: never add torch, LeWorldModel, LeRobot, GR00T, CUDA, checkpoints, datasets, or robot controllers to base dependencies or the repo.
+4. Fail loudly at boundaries: invalid public inputs raise `WorldForgeError`; malformed persisted/provider state raises `WorldStateError`; provider/runtime failures raise `ProviderError`.
+5. Preserve local-first scope: no hosted service, production database, credential store, robot safety layer, telemetry backend, or durable multi-writer persistence unless explicitly designed and approved.
+6. Public contribution artifacts must be human, maintainer-style, and tool-neutral. Do not mention agent/tool branding in branch names, commits, PR titles, PR bodies, changelog, docs, or README copy.
 </priority_rules>
 
 <stack>

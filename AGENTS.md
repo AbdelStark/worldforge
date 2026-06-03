@@ -2,13 +2,22 @@
 
 ## Project Identity
 
-WorldForge is a Python integration layer for testable physical-AI world-model workflows: provider
-adapters, world state, planning, evaluation, benchmarking, diagnostics, and host-owned optional
-runtimes. It is a library and CLI, not a hosted service, on-chain contract, or end-user
-application.
+WorldForge is a harness framework for building world-model-based workflows for physical AI. It is
+the application builder's counterpart to model-training stacks like Stable World Model: it helps
+roboticists and physical-AI builders *compose, evaluate, and benchmark* workflows built on top of
+world models, not *train* them. It is a library and CLI, not a hosted service, on-chain contract, or
+end-user application.
 
-Intended users are Python developers building provider adapters, local world-model experiments,
-evaluation harnesses, and testable prototypes.
+The whole framework is organized around one backbone loop: **planning and scoring action candidates
+with an action-conditioned predictive world model, in latent space.** A `policy` provider proposes
+candidate actions, a `predict` provider rolls them out as forward dynamics, a `score` provider ranks
+them as a cost oracle, and `LatentMPCController` owns the CEM/receding-horizon optimizer that ties
+them together. Evaluation and benchmarking sit on top so a builder can measure and select the best
+provider/configuration. World generation, symbolic-scenario simulation, and media generation are out
+of scope.
+
+Intended users are Python developers and roboticists composing provider-backed planning loops,
+evaluation harnesses, and benchmarks to choose configurations for physical-AI tasks.
 
 ## Architecture Map
 

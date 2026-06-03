@@ -7,8 +7,32 @@ releases may still include breaking changes when the public API needs to tighten
 
 ## Unreleased
 
+### Changed
+
+- **Strategic pivot.** WorldForge is now positioned as a harness framework for building
+  world-model-based workflows for physical AI — the application builder's counterpart to
+  model-training stacks like Stable World Model. The project is narrowed to one backbone loop:
+  planning and scoring action candidates with an action-conditioned predictive world model, in
+  latent space. README, CLAUDE.md, AGENTS.md, and core docs are reframed around that loop, and the
+  new `specs/latent-planning-core/` triad records the narrowed scope and the staged removal plan.
+
+### Removed
+
+- Removed the world-authoring surface that sits outside the backbone loop: the JSON scenario DSL
+  and scenario matrices/galleries (`worldforge.scenarios` plus the `worldforge scenario` command),
+  world diff/patch (`worldforge.world_diff` plus `worldforge world diff`), world migration previews
+  (`worldforge.world_migration_preview` plus `worldforge world migration-preview`), and local-state
+  preflight (`worldforge.persistence_preflight` plus `worldforge world preflight`) — along with
+  their public exports, documentation pages, and CLI subcommands. Local JSON world state and the
+  rest of the `world` CLI are unchanged; the symbolic `World` runtime removal is staged next in
+  `specs/latent-planning-core/`.
+
 ### Added
 
+- Added `examples/latent_mpc_planning.py`, a runnable, checkout-safe latent MPC planning loop that
+  drives `LatentMPCController` over an in-example score (cost) oracle: it samples action candidates,
+  scores them as costs, keeps elites, refits, and executes the lowest-cost action under a receding
+  horizon — no credentials, GPU, or robot required.
 - Added `worldforge-demo-so101-replay-trace`, a checkout-safe SO-101 manipulation replay demo
   that scores deterministic 6D joint-action candidates, selects the lowest-cost pick-and-place
   action, mock-executes the selected object placement, and emits a reusable robot decision trace

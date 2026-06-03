@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from worldforge.cli_args.common import (
-    DEFAULT_STATE_DIR,
-    DEFAULT_WORKSPACE_DIR,
     Subparsers,
     _add_format_argument,
     _add_state_dir_argument,
@@ -27,9 +23,6 @@ def _add_world_commands(subparsers: Subparsers) -> None:
     _add_world_delete_command(world_subparsers)
     _add_world_predict_command(world_subparsers)
     _add_world_io_commands(world_subparsers)
-    _add_world_diff_command(world_subparsers)
-    _add_world_migration_preview_command(world_subparsers)
-    _add_world_preflight_command(world_subparsers)
 
 
 def _add_world_read_commands(subparsers: Subparsers) -> None:
@@ -236,100 +229,4 @@ def _add_world_fork_command(subparsers: Subparsers) -> None:
         world_fork,
         choices=("json", "markdown"),
         help_text="Output format for the forked world summary.",
-    )
-
-
-def _add_world_diff_command(subparsers: Subparsers) -> None:
-    world_diff = subparsers.add_parser(
-        "diff",
-        help="Diff two persisted or exported world JSON snapshots.",
-    )
-    world_diff.add_argument(
-        "source",
-        help="Source world id (relative to --state-dir) or path to a world JSON file.",
-    )
-    world_diff.add_argument(
-        "target",
-        help="Target world id (relative to --state-dir) or path to a world JSON file.",
-    )
-    _add_state_dir_argument(
-        world_diff,
-        help_text="World state directory used when source/target are world ids.",
-    )
-    world_diff.add_argument(
-        "--source-path",
-        action="store_true",
-        help="Treat source as an explicit JSON file path rather than a world id.",
-    )
-    world_diff.add_argument(
-        "--target-path",
-        action="store_true",
-        help="Treat target as an explicit JSON file path rather than a world id.",
-    )
-    _add_format_argument(
-        world_diff, choices=("json", "markdown"), help_text="Output format for the world diff."
-    )
-
-
-def _add_world_migration_preview_command(subparsers: Subparsers) -> None:
-    world_migration_preview = subparsers.add_parser(
-        "migration-preview",
-        help="Preview world JSON migration requirements without rewriting state.",
-    )
-    world_migration_preview.add_argument(
-        "source",
-        help="World id relative to --state-dir, or a JSON file when --source-path is set.",
-    )
-    _add_state_dir_argument(
-        world_migration_preview,
-        type_=Path,
-        default=Path(DEFAULT_STATE_DIR),
-        help_text="World state directory used when source is a world id.",
-    )
-    world_migration_preview.add_argument(
-        "--source-path",
-        action="store_true",
-        help="Treat source as an explicit persisted or exported JSON file path.",
-    )
-    _add_format_argument(
-        world_migration_preview,
-        choices=("json", "markdown"),
-        help_text="Output format for the migration preview report.",
-    )
-
-
-def _add_world_preflight_command(subparsers: Subparsers) -> None:
-    world_preflight = subparsers.add_parser(
-        "preflight",
-        help="Check local world JSON state and run workspaces without mutating them.",
-    )
-    _add_state_dir_argument(
-        world_preflight,
-        type_=Path,
-        default=Path(DEFAULT_STATE_DIR),
-        help_text="World state directory.",
-    )
-    world_preflight.add_argument(
-        "--workspace-dir",
-        type=Path,
-        default=DEFAULT_WORKSPACE_DIR,
-        help="WorldForge workspace directory containing runs/.",
-    )
-    world_preflight.add_argument(
-        "--world-id",
-        dest="world_ids",
-        action="append",
-        default=None,
-        help="World identifier to validate without loading. Can be repeated.",
-    )
-    world_preflight.add_argument(
-        "--retention-keep",
-        type=int,
-        default=20,
-        help="Number of newest valid run workspaces to keep before warning.",
-    )
-    _add_format_argument(
-        world_preflight,
-        choices=("json", "markdown"),
-        help_text="Output format for the preflight report.",
     )

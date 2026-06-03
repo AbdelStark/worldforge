@@ -1,24 +1,28 @@
 # Introduction
 
-WorldForge is a Python integration layer for testable physical-AI world-model workflows. It gives
-providers, score models, embodied policies, and media generators explicit capability contracts,
-then adds world state, planning, evaluation, benchmarking, diagnostics, and CLI tools for local
-experiments and adapter development.
+WorldForge is a harness framework for building world-model-based workflows for physical AI. It is
+the application builder's counterpart to model-training stacks like Stable World Model: it helps
+roboticists and physical-AI builders compose, evaluate, and benchmark workflows built on top of
+world models, rather than train them.
 
-The project is built around a strict provider boundary:
+The whole framework is organized around one backbone loop: **planning and scoring action candidates
+with an action-conditioned predictive world model, in latent space.**
 
-- predictive models roll state forward through `predict`
-- score models rank candidate action sequences through `score`
-- embodied policies propose action chunks through `policy`
-- auxiliary models expose `embed` only when that operation is implemented directly
+- a `policy` provider proposes candidate action chunks from an observation
+- a `predict` provider rolls candidates forward as action-conditioned dynamics
+- a `score` provider ranks candidates as a cost oracle
+- `LatentMPCController` owns the caller-side CEM/receding-horizon optimizer that ties them together
+- evaluation and benchmarking compare configurations so a builder can select the best one
 
-This keeps provider semantics honest. A JEPA cost model is not treated as a video generator. A VLA
-robot policy is not treated as a predictive dynamics model.
+The provider boundary is strict and fail-closed, which keeps semantics honest: a JEPA cost model is
+not treated as a video generator, and a VLA robot policy is not treated as a predictive dynamics
+model. The world model is a dynamics/cost oracle, not a controller — the controller stays a pure
+optimizer.
 
-WorldForge is for Python developers building provider adapters, local physical-AI experiments,
-world-model planning loops, evaluation harnesses, and testable prototypes. It is not a hosted
-control plane and it does not own checkpoints, robot runtimes, production telemetry, or durable
-multi-writer persistence.
+WorldForge is for Python developers and roboticists composing provider-backed planning loops,
+evaluation harnesses, and benchmarks. It is not a hosted control plane, a world generator, or a
+training framework, and it does not own checkpoints, robot runtimes, production telemetry, or
+durable multi-writer persistence.
 
 ## Documentation Map
 

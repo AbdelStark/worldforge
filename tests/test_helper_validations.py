@@ -235,24 +235,9 @@ def test_cli_public_error_formatter_redacts_secrets_urls_and_host_paths(tmp_path
     ("args", "error_message", "expected_triage"),
     [
         (
-            Namespace(command="world", world_command="preflight"),
-            "state directory is invalid",
-            "worldforge world preflight --workspace-dir .worldforge",
-        ),
-        (
-            Namespace(command="world", world_command="migration-preview"),
-            "migration blocked",
-            "worldforge world migration-preview <world-id>",
-        ),
-        (
             Namespace(command="world", world_command="show"),
             "world not found",
             "worldforge world list --state-dir <state-dir>",
-        ),
-        (
-            Namespace(command="scenario", scenario_command="run"),
-            "scenario failed",
-            "worldforge scenario validate <scenario.json>",
         ),
         (
             Namespace(command="benchmark"),
@@ -286,11 +271,6 @@ def test_cli_public_error_formatter_selects_command_specific_triage(
     ("args", "route_key"),
     [
         (Namespace(command="provider", provider_command="docs"), ("provider", "docs")),
-        (
-            Namespace(command="world", world_command="migration-preview"),
-            ("world", "migration-preview"),
-        ),
-        (Namespace(command="scenario", scenario_command="run"), ("scenario", None)),
         (Namespace(command="runs", runs_command="list"), ("runs", None)),
     ],
 )

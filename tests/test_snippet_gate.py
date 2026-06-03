@@ -25,7 +25,6 @@ def test_docs_snippet_gate_passes_selected_public_docs() -> None:
     assert payload["summary"]["skipped"] >= 1
     assert not payload["failures"]
     assert "docs/src/api/python.md" in payload["checked_docs"]
-    assert "docs/src/scenarios.md" in payload["checked_docs"]
 
 
 def test_docs_snippet_gate_reports_python_failure_with_heading(tmp_path: Path) -> None:

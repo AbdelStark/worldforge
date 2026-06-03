@@ -60,7 +60,6 @@ from worldforge.harness.workspace import (  # noqa: E402
 )
 from worldforge.models import JSONDict, ProviderEvent, dump_json  # noqa: E402
 from worldforge.operator_drills import run_operator_drill  # noqa: E402
-from worldforge.persistence_preflight import preflight_local_state  # noqa: E402
 
 DEFAULT_WORKSPACE = Path(".worldforge/demo-showcases")
 
@@ -285,15 +284,12 @@ def _first_run(workflow_dir: Path) -> JSONDict:
     forge.save_world(world)
     exported = workflow_dir / "exported-world.json"
     _write_json(exported, world.to_dict())
-    preflight = preflight_local_state(state_dir=state_dir, workspace_dir=workflow_dir)
-    _write_json(workflow_dir / "preflight.json", preflight)
     return {
         "status": "passed",
         "provider": "mock",
         "safe_to_attach": True,
         "summary": (
-            "Created a mock world, mutated an object, predicted one step, exported JSON, "
-            "and ran preflight."
+            "Created a mock world, mutated an object, predicted one step, and exported JSON."
         ),
         "world_id": world.id,
         "object_count": world.object_count,
@@ -305,10 +301,8 @@ def _first_run(workflow_dir: Path) -> JSONDict:
             "latency_ms": prediction.latency_ms,
             "world_step": prediction.world_state["step"],
         },
-        "preflight_status": preflight["status"],
         "artifact_paths": {
             "exported_world": str(exported),
-            "preflight": str(workflow_dir / "preflight.json"),
         },
         "first_triage_step": "Run `uv run worldforge world preflight --state-dir <demo>/worlds`.",
         "claim_boundary": "Mock-provider workflow only; no physical-fidelity claim.",
@@ -646,14 +640,9 @@ def _failure_lab(workflow_dir: Path) -> JSONDict:
         run_operator_drill(drill_id, workspace_dir=lab_workspace, bundle=True)
         for drill_id in drill_ids
     ]
-    preflight = preflight_local_state(
-        state_dir=lab_workspace / "worlds",
-        workspace_dir=lab_workspace,
-    )
     report = {
         "schema_version": 1,
         "drills": drills,
-        "preflight": preflight,
         "expected_failures": [drill["failure_signal"] for drill in drills],
         "recovery_commands": [drill["recovery_command"] for drill in drills],
         "safe_to_attach": True,

@@ -23,7 +23,6 @@ from worldforge.cli_provider import (
     _cmd_providers,
 )
 from worldforge.cli_runs import _cmd_runs
-from worldforge.cli_scenario import _cmd_scenario
 from worldforge.cli_support import (
     _command_string,
     _config_profile_provenance,
@@ -31,7 +30,7 @@ from worldforge.cli_support import (
     _profile_command_args,
     _provider_args,
 )
-from worldforge.cli_world import _cmd_world, _cmd_world_preflight_or_migration
+from worldforge.cli_world import _cmd_world
 from worldforge.config_profiles import ConfigProfile, load_config_profile
 from worldforge.evaluation import EvaluationSuite
 from worldforge.models import _redact_observable_text
@@ -463,13 +462,7 @@ _SpecialCommandHandler = Callable[[argparse.ArgumentParser, argparse.Namespace],
 _SpecialCommandKey = tuple[str | None, str | None]
 _CLI_LOCAL_ERRORS = (WorldForgeError, ValueError)
 _CLI_PROVIDER_ERRORS = (ProviderError, WorldForgeError, ValueError)
-_WORLD_TRIAGE_STEPS = {
-    "preflight": "run `uv run worldforge world preflight --workspace-dir .worldforge`.",
-    "migration-preview": (
-        "run `uv run worldforge world migration-preview <world-id> --state-dir "
-        ".worldforge/worlds --format json`."
-    ),
-}
+_WORLD_TRIAGE_STEPS: dict[str, str] = {}
 _WORLD_DEFAULT_TRIAGE_STEP = (
     "run `uv run worldforge world list --state-dir <state-dir>` and retry with a listed world id."
 )
@@ -477,7 +470,6 @@ _PROVIDER_TRIAGE_STEP = (
     "run `uv run worldforge doctor` and `uv run worldforge provider health <provider>`."
 )
 _COMMAND_TRIAGE_STEPS_BEFORE_PROVIDER = {
-    "scenario": "run `uv run worldforge scenario validate <scenario.json>` before `scenario run`.",
     "benchmark": (
         "validate benchmark input/budget JSON, then run `uv run worldforge benchmark --help`."
     ),
@@ -538,12 +530,6 @@ def _checked_special_handler(
     return run
 
 
-_WORLD_PREFLIGHT_OR_MIGRATION_SPECIAL = _checked_special_handler(
-    _cmd_world_preflight_or_migration,
-    _CLI_LOCAL_ERRORS,
-)
-
-
 _SPECIAL_SUBCOMMAND_FIELDS = {
     "provider": "provider_command",
     "world": "world_command",
@@ -557,9 +543,6 @@ _SPECIAL_COMMAND_HANDLERS: dict[_SpecialCommandKey, _SpecialCommandHandler] = {
     ),
     ("runs", None): _checked_special_handler(_cmd_runs, _CLI_LOCAL_ERRORS),
     ("drills", None): _checked_special_handler(_cmd_drills, _CLI_LOCAL_ERRORS),
-    ("scenario", None): _checked_special_handler(_cmd_scenario, _CLI_PROVIDER_ERRORS),
-    ("world", "preflight"): _WORLD_PREFLIGHT_OR_MIGRATION_SPECIAL,
-    ("world", "migration-preview"): _WORLD_PREFLIGHT_OR_MIGRATION_SPECIAL,
 }
 
 
@@ -636,7 +619,6 @@ def _cli_command_path(args: argparse.Namespace) -> str:
     for field_name in (
         "provider_command",
         "world_command",
-        "scenario_command",
         "runs_command",
         "drill_command",
     ):

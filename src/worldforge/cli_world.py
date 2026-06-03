@@ -404,75 +404,6 @@ def _cmd_world_fork(args: argparse.Namespace, forge: WorldForge) -> int:
     return 0
 
 
-def _cmd_world_preflight(args: argparse.Namespace) -> int:
-    from worldforge.persistence_preflight import (
-        preflight_local_state,
-        render_state_preflight_markdown,
-    )
-
-    report = preflight_local_state(
-        state_dir=args.state_dir,
-        workspace_dir=args.workspace_dir,
-        world_ids=tuple(args.world_ids or ()),
-        retention_keep=args.retention_keep,
-    )
-    if args.format == "markdown":
-        print(render_state_preflight_markdown(report))
-    else:
-        _print_json(report)
-    return 1 if report["status"] == "failed" else 0
-
-
-def _cmd_world_migration_preview(args: argparse.Namespace) -> int:
-    from worldforge.world_migration_preview import (
-        preview_world_migration_from_path,
-        preview_world_migration_from_world_id,
-        render_world_migration_preview_markdown,
-    )
-
-    if args.source_path:
-        report = preview_world_migration_from_path(Path(args.source))
-    else:
-        report = preview_world_migration_from_world_id(args.source, state_dir=args.state_dir)
-    if args.format == "markdown":
-        print(render_world_migration_preview_markdown(report), end="")
-    else:
-        _print_json(report)
-    return 0 if report["can_apply_safely"] else 1
-
-
-def _cmd_world_preflight_or_migration(args: argparse.Namespace) -> int:
-    if args.world_command == "preflight":
-        return _cmd_world_preflight(args)
-    return _cmd_world_migration_preview(args)
-
-
-def _cmd_world_diff(args: argparse.Namespace, forge: WorldForge) -> int:
-    from worldforge.world_diff import diff_worlds, diff_worlds_from_paths
-
-    if args.source_path or args.target_path:
-        if not (args.source_path and args.target_path):
-            raise WorldForgeError(
-                "world diff requires --source-path and --target-path together "
-                "when comparing exported JSON files."
-            )
-        diff = diff_worlds_from_paths(args.source, args.target)
-    else:
-        source_world = forge.load_world(args.source)
-        target_world = forge.load_world(args.target)
-        diff = diff_worlds(
-            source_world.to_dict(),
-            target_world.to_dict(),
-            source_label=args.source,
-            target_label=args.target,
-        )
-    if args.format == "markdown":
-        print(diff.to_markdown(), end="")
-    else:
-        print(diff.to_json(), end="")
-    return 0
-
-
 def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
     world_dispatch: dict[str, Callable[[argparse.Namespace, WorldForge], int]] = {
         "list": _cmd_world_list,
@@ -488,7 +419,6 @@ def _cmd_world(args: argparse.Namespace, forge: WorldForge) -> int | None:
         "export": _cmd_world_export,
         "import": _cmd_world_import,
         "fork": _cmd_world_fork,
-        "diff": _cmd_world_diff,
     }
     handler = world_dispatch.get(args.world_command)
     if handler is None:

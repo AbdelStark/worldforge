@@ -1,14 +1,17 @@
 # Control And Planning
 
-WorldForge separates three roles in physical-AI planning:
+This is WorldForge's backbone loop: **plan and score action candidates with an action-conditioned
+predictive world model, in latent space.** It separates three roles:
 
 - **Policy** providers propose actions from observations and instructions.
-- **Score** providers rank candidate actions or action horizons against an observation and goal.
-- **Controllers** decide how to sample, score, refine, and return executable WorldForge `Action`
-  chunks.
+- **Score** providers rank candidate actions or action horizons against an observation and goal,
+  acting as a cost oracle.
+- **Controllers** own the optimizer: they decide how to sample, score, refine, and return
+  executable WorldForge `Action` chunks. The world model stays a pure oracle; the controller stays
+  a pure optimizer.
 
-`LatentMPCController` is the first built-in controller. It implements a checkout-safe
-Cross-Entropy Method (CEM) loop over the existing `score_actions(...)` capability:
+`LatentMPCController` is the built-in controller. It implements a checkout-safe Cross-Entropy Method
+(CEM) loop over the `score_actions(...)` capability:
 
 ```text
 sample action horizons
@@ -23,10 +26,37 @@ step an environment, or train a world model. Tensor conversion, image preprocess
 inference, simulation, hardware execution, and safety interlocks remain host-owned or
 provider-owned.
 
-## World.plan Entry Point
+## Standalone Controller (primary entry point)
 
-Use `World.plan(planner="latent-mpc", ...)` when the host wants one MPC solve over a score
-provider:
+Drive `LatentMPCController` directly against anything that exposes the `score_actions(...)` surface
+— a registered `WorldForge` provider or your own cost oracle. This is the recommended way to run the
+backbone loop, and it needs no local world state.
+
+```python
+from worldforge import LatentMPCController, PlannerConfig, WorldForge
+
+controller = LatentMPCController(
+    forge=WorldForge(),
+    score_provider="my-score-provider",
+    config=PlannerConfig(horizon=1, num_samples=64, num_iterations=5),
+)
+step = controller.plan_step(
+    observation_info={"observation_id": "frame-001"},
+    goal_info={"target": [0.6, 0.5, 0.2]},
+)
+print(step.actions[0], step.best_score, step.metadata["control_mode"])
+```
+
+`examples/latent_mpc_planning.py` is a runnable, checkout-safe version that brings its own score
+oracle, so the whole loop runs with no credentials, GPU, or robot. The host owns receding-horizon
+closure: execute up to `execute_k` actions, collect a new observation, then call `plan_step(...)`
+again.
+
+## World.plan Entry Point (local-state convenience)
+
+`World.plan(planner="latent-mpc", ...)` runs the same solve from within the local-state `World`
+runtime. It is a convenience for hosts already using local JSON state; the standalone controller
+above is the primary entry point.
 
 ```python
 from worldforge import PlannerConfig

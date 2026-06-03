@@ -105,46 +105,6 @@ options:
   --format {json,markdown}
                         Output format for history entries.
 """,
-    ("world", "preflight", "--help"): """\
-usage: worldforge world preflight [-h] [--state-dir STATE_DIR]
-                                  [--workspace-dir WORKSPACE_DIR]
-                                  [--world-id WORLD_IDS]
-                                  [--retention-keep RETENTION_KEEP]
-                                  [--format {json,markdown}]
-
-options:
-  -h, --help            show this help message and exit
-  --state-dir STATE_DIR
-                        World state directory.
-  --workspace-dir WORKSPACE_DIR
-                        WorldForge workspace directory containing runs/.
-  --world-id WORLD_IDS  World identifier to validate without loading. Can be
-                        repeated.
-  --retention-keep RETENTION_KEEP
-                        Number of newest valid run workspaces to keep before
-                        warning.
-  --format {json,markdown}
-                        Output format for the preflight report.
-""",
-    ("world", "migration-preview", "--help"): """\
-usage: worldforge world migration-preview [-h] [--state-dir STATE_DIR]
-                                          [--source-path]
-                                          [--format {json,markdown}]
-                                          source
-
-positional arguments:
-  source                World id relative to --state-dir, or a JSON file when
-                        --source-path is set.
-
-options:
-  -h, --help            show this help message and exit
-  --state-dir STATE_DIR
-                        World state directory used when source is a world id.
-  --source-path         Treat source as an explicit persisted or exported JSON
-                        file path.
-  --format {json,markdown}
-                        Output format for the migration preview report.
-""",
     ("predict", "--help"): """\
 usage: worldforge predict [-h] [--provider PROVIDER] --x X --y Y --z Z
                           [--steps STEPS] [--state-dir STATE_DIR]
@@ -262,9 +222,6 @@ WORLD_HELP_COMMANDS: tuple[tuple[str, str], ...] = (
     ("export", "Export a persisted world as JSON."),
     ("import", "Import and save exported world JSON."),
     ("fork", "Fork a world from a history entry."),
-    ("diff", "Diff two persisted or exported world JSON snapshots."),
-    ("migration-preview", "Preview world JSON migration requirements without"),
-    ("preflight", "Check local world JSON state and run workspaces without"),
 )
 
 
@@ -290,7 +247,6 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "provider",
         "world",
         "doctor",
-        "scenario",
         "negotiate",
         "predict",
         "eval",
@@ -303,7 +259,6 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "worldforge examples",
         "worldforge world create lab --provider mock",
         "worldforge world history <world-id>",
-        "worldforge world preflight",
         "worldforge provider list",
         "worldforge provider docs",
         "worldforge provider info mock",

@@ -1057,126 +1057,6 @@ def test_regression_comparison_docs_cover_issue_248_contract() -> None:
         assert test_signal in tests
 
 
-def test_scenario_matrix_docs_cover_issue_249_contract() -> None:
-    scenarios = (ROOT / "docs/src/scenarios.md").read_text(encoding="utf-8")
-    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    implementation = (ROOT / "src/worldforge/scenarios.py").read_text(encoding="utf-8")
-    scenario_matrix = (ROOT / "src/worldforge/scenario_matrix.py").read_text(encoding="utf-8")
-    scenario_models = (ROOT / "src/worldforge/scenario_models.py").read_text(encoding="utf-8")
-    cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
-    cli_scenario = (ROOT / "src/worldforge/cli_scenario.py").read_text(encoding="utf-8")
-    cli_scenario_args = (ROOT / "src/worldforge/cli_args/workflows.py").read_text(encoding="utf-8")
-    cli_scenario_surface = cli + cli_scenario + cli_scenario_args
-    exports = (ROOT / "src/worldforge/__init__.py").read_text(encoding="utf-8")
-    snippet_gate = (ROOT / "scripts/check_docs_snippets.py").read_text(encoding="utf-8")
-    tests = (ROOT / "tests/test_scenarios.py").read_text(encoding="utf-8")
-
-    for signal in (
-        "Scenario Parameter Matrices",
-        "`matrix.parameters`",
-        "whole-value placeholders",
-        "`worldforge scenario validate <path>` expands and validates every case",
-        "`failed_cases` fields",
-        "No arbitrary Python execution",
-    ):
-        assert signal in scenarios
-    assert "scenario parameter matrices" in changelog
-    for checkbox in (
-        "- [x] Matrix scenarios validate before execution and reject unbounded or "
-        "non-JSON-native values.",
-        "- [x] CLI runs every case in a temp or configured workspace.",
-        "- [x] Aggregate output reports pass/fail counts and failed case details.",
-        "- [x] Tests cover valid matrix, invalid substitution, failed expectation, and docs "
-        "examples.",
-    ):
-        assert checkbox in roadmap
-
-    for implementation_signal in (
-        "parse_scenario_matrix",
-        "run_scenario_matrix",
-    ):
-        assert implementation_signal in implementation
-    for matrix_signal in (
-        "scenario_matrix_from_payload",
-        "_matrix_substitution_allowed",
-        "_MATRIX_PLACEHOLDER_PATTERN",
-    ):
-        assert matrix_signal in scenario_matrix
-    for model_signal in (
-        "SCENARIO_MATRIX_MAX_CASES",
-        "class ScenarioMatrix",
-        "class ScenarioMatrixResult",
-    ):
-        assert model_signal in scenario_models
-    for export_signal in (
-        "SCENARIO_MATRIX_MAX_CASES",
-        "ScenarioMatrix",
-        "ScenarioMatrixResult",
-        "parse_scenario_matrix",
-        "run_scenario_matrix",
-    ):
-        assert export_signal in exports
-    assert "load_scenario_matrix" in cli_scenario_surface
-    assert "run_scenario_matrix" in cli_scenario_surface
-    assert "parse_scenario_matrix(payload)" in snippet_gate
-    for test_signal in (
-        "test_parse_scenario_matrix_expands_valid_parameter_matrix",
-        "test_parse_scenario_matrix_rejects_invalid_substitution_location",
-        "test_parse_scenario_matrix_rejects_unbounded_cases",
-        "test_run_scenario_matrix_reports_failed_expectation",
-        "test_scenario_matrix_cli_runs_all_cases",
-    ):
-        assert test_signal in tests
-
-
-def test_scenario_gallery_docs_cover_issue_243_contract() -> None:
-    scenarios = (ROOT / "docs/src/scenarios.md").read_text(encoding="utf-8")
-    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    tests = (ROOT / "tests/test_scenarios.py").read_text(encoding="utf-8")
-    manifest = (ROOT / "tests/fixtures/fixture-snapshots.json").read_text(encoding="utf-8")
-    scenario_paths = sorted((ROOT / "examples/scenarios").glob("*.json"))
-
-    assert len(scenario_paths) >= 5
-    for filename in (
-        "cube-on-table.json",
-        "spawn-and-move.json",
-        "expected-failure-object-count.json",
-        "invalid-action-missing-target.json",
-        "evaluation-readiness.json",
-        "report-export-basic.json",
-    ):
-        path = ROOT / "examples/scenarios" / filename
-        payload = path.read_text(encoding="utf-8")
-        assert '"gallery_intent"' in payload
-        assert filename in scenarios
-        assert f"examples/scenarios/{filename}" in manifest
-
-    for signal in (
-        "Scenario Gallery",
-        "metadata.expected_failure",
-        "metadata.expected_cli_error",
-        "scenario validate` passes, `scenario run` fails",
-        "--output .worldforge/scenario-gallery/report-export.md",
-        "Provider fixtures live under `tests/fixtures/providers/`",
-    ):
-        assert signal in scenarios
-
-    for checkbox in (
-        "- [x] Gallery scenarios validate and run through the CLI.",
-        "- [x] Failure scenarios are intentionally marked and tested.",
-        "- [x] Docs show expected artifacts and first triage steps.",
-        "- [x] Scenario examples stay JSON-native and deterministic.",
-    ):
-        assert checkbox in roadmap
-
-    assert "scenario gallery" in changelog
-    assert "checkout-safe local-world gallery" in agents
-    assert "test_scenario_gallery_cli_runs_expected_success_and_failure_modes" in tests
-
-
 def test_dataset_manifest_docs_cover_issue_250_contract() -> None:
     evaluation = (ROOT / "docs/src/evaluation.md").read_text(encoding="utf-8")
     artifact_schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
@@ -1515,68 +1395,6 @@ def test_report_renderer_extension_docs_cover_issue_254_contract() -> None:
     assert "issue_bundle_artifact" in evidence_tests
 
 
-def test_world_migration_preview_docs_cover_issue_255_contract() -> None:
-    cli_docs = (ROOT / "docs/src/cli.md").read_text(encoding="utf-8")
-    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
-    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
-    schemas = (ROOT / "docs/src/artifact-schemas.md").read_text(encoding="utf-8")
-    roadmap = (ROOT / "docs/src/roadmap-expansion-2.md").read_text(encoding="utf-8")
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    implementation = (ROOT / "src/worldforge/world_migration_preview.py").read_text(
-        encoding="utf-8"
-    )
-    cli = (ROOT / "src/worldforge/cli.py").read_text(encoding="utf-8")
-    cli_world = (ROOT / "src/worldforge/cli_world.py").read_text(encoding="utf-8")
-    cli_world_args = (ROOT / "src/worldforge/cli_args/world.py").read_text(encoding="utf-8")
-    cli_world_surface = cli + cli_world + cli_world_args
-    lifecycle_tests = (ROOT / "tests/test_world_lifecycle.py").read_text(encoding="utf-8")
-    cli_tests = (ROOT / "tests/test_cli_world_commands.py").read_text(encoding="utf-8")
-
-    for signal in (
-        "worldforge world migration-preview <world-id>",
-        "worldforge world migration-preview world.json --source-path",
-        "schema version",
-        "required changes",
-        "invalid fields",
-        "unsafe IDs",
-        "bounding-box corrections",
-        "can_apply_safely",
-        "does not rewrite state",
-    ):
-        assert signal in cli_docs or signal in operations or signal in playbooks
-    assert "World migration previews" in schemas
-    assert "WORLD_MIGRATION_PREVIEW_SCHEMA_VERSION" in schemas
-    assert "read-only world migration previews" in changelog
-    assert "World migration previews are read-only issue-facing reports" in agents
-    for checkbox in (
-        "- [x] Preview is read-only by default and works on a temp copy in tests.",
-        "- [x] Invalid state reports exact failure reasons instead of coercing silently.",
-        "- [x] Output can be attached to issues safely.",
-        "- [x] Docs explain import/export and local persistence migration boundaries.",
-    ):
-        assert checkbox in roadmap
-    for implementation_signal in (
-        "WORLD_MIGRATION_PREVIEW_SCHEMA_VERSION",
-        "preview_world_migration_from_world_id",
-        "preview_world_migration_from_path",
-        "render_world_migration_preview_markdown",
-        "bounding_box_corrections",
-        "can_apply_safely",
-    ):
-        assert implementation_signal in implementation
-    assert '"migration-preview"' in cli_world_surface
-    assert "_cmd_world_migration_preview" in cli_world_surface
-    for test_signal in (
-        "test_world_migration_preview_accepts_current_persisted_and_exported_state",
-        "test_world_migration_preview_reports_legacy_schema_and_position_changes",
-        "test_world_migration_preview_reports_invalid_fields_and_unsafe_ids",
-        "test_world_migration_preview_reports_bbox_correction_without_rewriting",
-    ):
-        assert test_signal in lifecycle_tests
-    assert "test_world_cli_migration_preview_is_read_only_and_attachable" in cli_tests
-
-
 def test_workflow_trace_docs_cover_issue_256_contract() -> None:
     operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
     python_api = (ROOT / "docs/src/api/python.md").read_text(encoding="utf-8")
@@ -1689,35 +1507,6 @@ def test_scaffold_provider_docs_cover_issue_142_contract() -> None:
     assert "fuller fail-closed contract pack" in changelog
     assert "- [x] Scaffold output includes tests for unsupported capability calls" in continuation
     assert "- [x] Generated manifest stubs are clearly marked incomplete" in continuation
-
-
-def test_local_state_preflight_docs_cover_issue_153_contract() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    cli = (ROOT / "docs/src/cli.md").read_text(encoding="utf-8")
-    operations = (ROOT / "docs/src/operations.md").read_text(encoding="utf-8")
-    playbooks = (ROOT / "docs/src/playbooks.md").read_text(encoding="utf-8")
-    continuation = (ROOT / "docs/src/roadmap-continuation.md").read_text(encoding="utf-8")
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-
-    for signal in (
-        "worldforge world preflight",
-        "corrupted world JSON",
-        "traversal-shaped",
-        "invalid history entries",
-        "object bounding-box coherence",
-        "stale run workspaces",
-        "unsafe artifact paths",
-        "retention pressure",
-        "safe to attach",
-        "--dry-run",
-        ".worldforge/quarantine/",
-    ):
-        assert signal in cli or signal in operations or signal in playbooks or signal in changelog
-
-    assert "read-only local state diagnostics" in readme
-    assert "- [x] Preflight identifies corrupted worlds" in continuation
-    assert "- [x] Recovery commands are explicit" in continuation
-    assert "- [x] Diagnostics are safe to attach" in continuation
 
 
 def test_contributor_triage_docs_cover_issue_131_contract() -> None:
@@ -2386,16 +2175,6 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
             "src/worldforge/capability_negotiation.py",
         ),
         (
-            "Scenario files and scenario results",
-            "SCENARIO_SCHEMA_VERSION",
-            "src/worldforge/scenarios.py",
-        ),
-        (
-            "World diff and patch artifacts",
-            "WORLD_DIFF_SCHEMA_VERSION",
-            "src/worldforge/world_diff.py",
-        ),
-        (
             "Static HTML report metadata",
             "HTML_REPORT_SCHEMA_VERSION",
             "src/worldforge/html_report.py",
@@ -2490,7 +2269,6 @@ def test_troubleshooting_matrix_docs_cover_issue_182_contract() -> None:
 
     for command in (
         "uv run worldforge doctor --registered-only",
-        "uv run worldforge world preflight --state-dir .worldforge/worlds",
         "uv run worldforge provider info <provider>",
         "uv run pytest tests/test_provider_contracts.py -q",
         "uv run worldforge benchmark --preset mock-smoke",

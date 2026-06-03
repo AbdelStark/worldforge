@@ -57,23 +57,13 @@ uv run worldforge world list
 uv run worldforge world show <world-id>
 uv run worldforge world objects <world-id>
 uv run worldforge world history <world-id>
-uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-uv run worldforge world migration-preview world.json --source-path
 uv run worldforge world export <world-id> --output world.json
 uv run worldforge world import world.json --new-id --name imported-lab
 uv run worldforge world fork <world-id> --name forked-lab
 uv run worldforge world delete <world-id>
-uv run worldforge world diff <source-id> <target-id>
-uv run worldforge scenario validate examples/scenarios/cube-on-table.json
-uv run worldforge scenario run examples/scenarios/spawn-and-move.json --state-dir .worldforge/worlds
 ```
 
 世界 ID 是本地 JSON 文件的文件名（不含扩展名）。包含路径分隔符或路径遍历形式的输入会在访问文件系统之前被拒绝。
-
-`world preflight` 为只读操作，用于检查世界状态目录、所请求的 `--world-id` 值、损坏的世界 JSON、无效的历史条目、对象包围盒一致性、已保存的运行清单、过期的运行目录、不安全的工件路径以及运行保留压力。JSON 输出默认可安全附加；当发现错误级别的状态时，命令以非零状态码退出。
-
-`world migration-preview` 同样为只读操作。它接受持久化的世界 ID 或指向持久化/导出世界 JSON 的 `--source-path`，然后报告世界模式版本、所需的规范化变更、无效字段、不安全的 ID、包围盒修正、`can_apply_safely` 标志以及首个排查步骤。该命令不会重写状态；实际迁移仍需作为显式的后续步骤执行。
 
 ## 场景变更与预测
 
