@@ -68,90 +68,13 @@ options:
   --state-dir STATE_DIR
                         World state directory.
 """,
-    ("world", "create", "--help"): """\
-usage: worldforge world create [-h] [--provider PROVIDER] [--prompt PROMPT]
-                               [--description DESCRIPTION]
-                               [--state-dir STATE_DIR]
-                               [--format {json,markdown}]
-                               name
-
-positional arguments:
-  name                  World name.
-
-options:
-  -h, --help            show this help message and exit
-  --provider PROVIDER   Provider name.
-  --prompt PROMPT       Optional prompt used to seed the world with
-                        deterministic checkout-safe objects.
-  --description DESCRIPTION
-                        Optional world description.
-  --state-dir STATE_DIR
-                        World state directory.
-  --format {json,markdown}
-                        Output format for the saved world summary.
-""",
-    ("world", "history", "--help"): """\
-usage: worldforge world history [-h] [--state-dir STATE_DIR]
-                                [--format {json,markdown}]
-                                world_id
-
-positional arguments:
-  world_id              World identifier.
-
-options:
-  -h, --help            show this help message and exit
-  --state-dir STATE_DIR
-                        World state directory.
-  --format {json,markdown}
-                        Output format for history entries.
-""",
-    ("world", "preflight", "--help"): """\
-usage: worldforge world preflight [-h] [--state-dir STATE_DIR]
-                                  [--workspace-dir WORKSPACE_DIR]
-                                  [--world-id WORLD_IDS]
-                                  [--retention-keep RETENTION_KEEP]
-                                  [--format {json,markdown}]
-
-options:
-  -h, --help            show this help message and exit
-  --state-dir STATE_DIR
-                        World state directory.
-  --workspace-dir WORKSPACE_DIR
-                        WorldForge workspace directory containing runs/.
-  --world-id WORLD_IDS  World identifier to validate without loading. Can be
-                        repeated.
-  --retention-keep RETENTION_KEEP
-                        Number of newest valid run workspaces to keep before
-                        warning.
-  --format {json,markdown}
-                        Output format for the preflight report.
-""",
-    ("world", "migration-preview", "--help"): """\
-usage: worldforge world migration-preview [-h] [--state-dir STATE_DIR]
-                                          [--source-path]
-                                          [--format {json,markdown}]
-                                          source
-
-positional arguments:
-  source                World id relative to --state-dir, or a JSON file when
-                        --source-path is set.
-
-options:
-  -h, --help            show this help message and exit
-  --state-dir STATE_DIR
-                        World state directory used when source is a world id.
-  --source-path         Treat source as an explicit persisted or exported JSON
-                        file path.
-  --format {json,markdown}
-                        Output format for the migration preview report.
-""",
     ("predict", "--help"): """\
 usage: worldforge predict [-h] [--provider PROVIDER] --x X --y Y --z Z
                           [--steps STEPS] [--state-dir STATE_DIR]
                           world_name
 
 positional arguments:
-  world_name            World name to create or load.
+  world_name            Scenario label for the seeded world state.
 
 options:
   -h, --help            show this help message and exit
@@ -248,25 +171,6 @@ options:
 """,
 }
 
-WORLD_HELP_COMMANDS: tuple[tuple[str, str], ...] = (
-    ("list", "List persisted worlds."),
-    ("create", "Create and save a world."),
-    ("show", "Show a persisted world."),
-    ("history", "Show persisted world history."),
-    ("objects", "List objects in a world."),
-    ("add-object", "Add an object to a persisted world."),
-    ("update-object", "Patch an object in a persisted world."),
-    ("remove-object", "Remove an object from a persisted world."),
-    ("delete", "Delete a persisted world."),
-    ("predict", "Predict and save the next state for a persisted world."),
-    ("export", "Export a persisted world as JSON."),
-    ("import", "Import and save exported world JSON."),
-    ("fork", "Fork a world from a history entry."),
-    ("diff", "Diff two persisted or exported world JSON snapshots."),
-    ("migration-preview", "Preview world JSON migration requirements without"),
-    ("preflight", "Check local world JSON state and run workspaces without"),
-)
-
 
 def _help_output(argv: tuple[str, ...], monkeypatch, capsys) -> str:
     monkeypatch.setenv("COLUMNS", "80")
@@ -288,9 +192,7 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "examples",
         "providers",
         "provider",
-        "world",
         "doctor",
-        "scenario",
         "negotiate",
         "predict",
         "eval",
@@ -299,11 +201,9 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "drills",
     ):
         assert command in output
+    assert "worldforge world" not in output
     for common_command in (
         "worldforge examples",
-        "worldforge world create lab --provider mock",
-        "worldforge world history <world-id>",
-        "worldforge world preflight",
         "worldforge provider list",
         "worldforge provider docs",
         "worldforge provider info mock",
@@ -314,15 +214,6 @@ def test_top_level_help_lists_command_surface(monkeypatch, capsys) -> None:
         "worldforge drills list",
     ):
         assert common_command in output
-
-
-def test_world_help_lists_persistence_command_surface(monkeypatch, capsys) -> None:
-    output = _help_output(("world", "--help"), monkeypatch, capsys)
-
-    assert output.startswith("usage: worldforge world [-h] command ...")
-    for command, help_text in WORLD_HELP_COMMANDS:
-        assert command in output
-        assert help_text in output
 
 
 @pytest.mark.parametrize("argv", HELP_SNAPSHOTS)

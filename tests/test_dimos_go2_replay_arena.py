@@ -21,18 +21,6 @@ from worldforge.models import WorldForgeError
 CLEAR_PATH_FIXTURE_PATH = DEFAULT_FIXTURE_PATH.with_name("go2_clear_hallway_replay_frame.json")
 
 
-class _FakePlan:
-    provider = Go2ReplayScoreProvider.name
-    success_probability = 0.5
-
-    def __init__(self, score_result: dict[str, object]) -> None:
-        self.metadata = {
-            "planning_mode": "score",
-            "score_result": score_result,
-            "workflow_trace": {},
-        }
-
-
 def test_go2_replay_fixture_loads_checkout_safe_schema() -> None:
     fixture = load_go2_replay_fixture(DEFAULT_FIXTURE_PATH)
 
@@ -61,8 +49,8 @@ def test_go2_replay_arena_selects_safer_counterfactual(tmp_path: Path) -> None:
     assert trace["baseline_regret"] > 0.0
     assert trace["score_margin"] > 0.0
     assert "counterfactual" in trace["worldforge_value"]
-    assert trace["plan_metadata"]["planning_mode"] == "score"
-    assert trace["plan_metadata"]["score_provider"] == Go2ReplayScoreProvider.name
+    assert trace["score_metadata"]["planning_mode"] == "score"
+    assert trace["score_metadata"]["score_provider"] == Go2ReplayScoreProvider.name
     assert trace["scored_candidates"][0]["action_id"] == "stop_relocalize"
 
 
@@ -197,7 +185,9 @@ def test_go2_replay_score_provider_rejects_malformed_action_payload() -> None:
 def test_go2_replay_trace_preserves_score_result_best_index_on_ties() -> None:
     fixture = load_go2_replay_fixture(DEFAULT_FIXTURE_PATH)
     score_result = {
+        "provider": Go2ReplayScoreProvider.name,
         "best_index": 0,
+        "lower_is_better": True,
         "metadata": {
             "scored_candidates": [
                 {
@@ -230,7 +220,7 @@ def test_go2_replay_trace_preserves_score_result_best_index_on_ties() -> None:
         },
     }
 
-    trace = _decision_trace(fixture, _FakePlan(score_result))
+    trace = _decision_trace(fixture, score_result)
 
     assert trace["selected_action"]["id"] == "z_selected"
     assert trace["scored_candidates"][0]["action_id"] == "z_selected"

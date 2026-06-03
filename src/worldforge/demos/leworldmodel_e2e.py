@@ -1,8 +1,14 @@
 """LeWorldModel provider score-planning demo.
 
 The demo injects a deterministic cost runtime into ``LeWorldModelProvider``. It
-validates the provider, score-planning, execution, persistence, and reload path
-without requiring upstream checkpoint inference.
+validates the provider as a ``score`` cost oracle, drives the WorldForge capability
+surface directly (``forge.score_actions`` to rank candidate action chunks, then
+``forge.predict`` to roll the lowest-cost chunk forward), and reports the selected
+action and per-candidate costs — all without upstream checkpoint inference.
+
+The loop is the WorldForge backbone: a world model is used as a pure cost oracle to
+rank candidate plans, and the lowest-cost plan is executed. There is no symbolic
+``World`` runtime: candidates and the seeded world state are plain values.
 """
 
 from __future__ import annotations
@@ -10,15 +16,21 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import tempfile
-from pathlib import Path
 from typing import Any
 
 from worldforge import Position, WorldForge
 from worldforge.models import JSONDict, ProviderEvent
 from worldforge.providers import LeWorldModelProvider
 
-from . import BLUE_CUBE_GOAL, blue_cube_goal, make_blue_cube, make_candidate_plans
+from . import (
+    BLUE_CUBE_GOAL,
+    blue_cube_goal,
+    execute_plan_over_state,
+    make_blue_cube,
+    make_candidate_plans,
+    object_position,
+    seed_world_state,
+)
 
 
 def _depth(value: object) -> int:
@@ -148,14 +160,9 @@ def _make_candidate_tensors() -> list[list[list[list[float]]]]:
     ]
 
 
-def run_demo(
-    *,
-    state_dir: Path | None = None,
-    emit: bool = True,
-) -> JSONDict:
+def run_demo(*, emit: bool = True) -> JSONDict:
     """Run the full demo and return a JSON-serializable summary."""
 
-    resolved_state_dir = state_dir or Path(tempfile.mkdtemp(prefix="worldforge-lewm-demo-"))
     events: list[ProviderEvent] = []
     runtime = DemoLeWorldModelRuntime()
     provider = LeWorldModelProvider(
@@ -164,11 +171,10 @@ def run_demo(
         tensor_module=DemoTensorModule(),
         event_handler=events.append,
     )
-    forge = WorldForge(state_dir=resolved_state_dir, auto_register_remote=False)
+    forge = WorldForge(auto_register_remote=False)
     forge.register_provider(provider)
 
-    world = forge.create_world("leworldmodel-score-planning-demo", provider="mock")
-    cube = make_blue_cube(world)
+    cube = make_blue_cube()
     goal = blue_cube_goal(cube)
     score_info = _make_score_info(BLUE_CUBE_GOAL)
     score_action_candidates = _make_candidate_tensors()
@@ -179,21 +185,15 @@ def run_demo(
         info=score_info,
         action_candidates=score_action_candidates,
     )
-    plan = world.plan(
-        goal_spec=goal,
-        provider="leworldmodel",
-        planner="leworldmodel-demo-mpc",
-        candidate_actions=candidate_plans,
-        score_info=score_info,
-        score_action_candidates=score_action_candidates,
-        execution_provider="mock",
+    selected_plan = candidate_plans[score_result.best_index]
+    final_state = execute_plan_over_state(
+        forge,
+        seed_world_state([cube]),
+        selected_plan,
+        provider="mock",
     )
-    execution = world.execute_plan(plan)
-    final_world = execution.final_world()
-    saved_world_id = forge.save_world(final_world)
-    reloaded_world = forge.load_world(saved_world_id)
-    final_cube = reloaded_world.get_object_by_id(cube.id)
-    if final_cube is None:
+    final_position = object_position(final_state, cube.id)
+    if final_position is None:
         raise RuntimeError("demo cube was not present after execution")
 
     summary: JSONDict = {
@@ -202,17 +202,15 @@ def run_demo(
         "uses_real_upstream_checkpoint": False,
         "uses_leworldmodel_provider": True,
         "uses_worldforge_score_planning": True,
-        "state_dir": str(resolved_state_dir),
+        "planning_mode": "score",
         "providers": forge.providers(),
         "leworldmodel_health": forge.provider_health("leworldmodel").to_dict(),
-        "goal": goal.to_dict(),
+        "goal": goal,
         "candidate_costs": score_result.scores,
         "selected_candidate_index": score_result.best_index,
-        "selected_actions": [action.to_dict() for action in plan.actions],
-        "plan": plan.to_dict(),
-        "final_cube_position": final_cube.position.to_dict(),
-        "saved_world_id": saved_world_id,
-        "saved_worlds": forge.list_worlds(),
+        "selected_actions": [action.to_dict() for action in selected_plan],
+        "score_result": score_result.to_dict(),
+        "final_cube_position": final_position,
         "event_phases": [event.phase for event in events],
         "provider_events": [event.to_dict() for event in events],
         "runtime_eval_called": runtime.eval_called,
@@ -229,8 +227,7 @@ def _print_summary(summary: JSONDict) -> None:
     print("Provider: LeWorldModelProvider")
     print("Runtime: injected deterministic cost model")
     print("Checkpoint inference: not used")
-    print("Planning: score_actions -> World.plan(score) -> execute_plan")
-    print(f"State directory: {summary['state_dir']}")
+    print("Planning: forge.score_actions(score oracle) -> forge.predict(lowest-cost plan)")
     print(f"Registered providers: {', '.join(summary['providers'])}")
     print(f"LeWorldModel health: {summary['leworldmodel_health']['details']}")
     print()
@@ -246,7 +243,6 @@ def _print_summary(summary: JSONDict) -> None:
     final = summary["final_cube_position"]
     print()
     print(f"Final cube position: ({final['x']:.2f}, {final['y']:.2f}, {final['z']:.2f})")
-    print(f"Saved world id: {summary['saved_world_id']}")
     print(f"Provider event phases: {', '.join(summary['event_phases'])}")
     print()
     print("JSON summary:")
@@ -259,12 +255,6 @@ def _parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--state-dir",
-        type=Path,
-        default=None,
-        help="Directory for persisted demo worlds. Defaults to a temporary directory.",
-    )
-    parser.add_argument(
         "--json-only",
         action="store_true",
         help="Print only the final JSON summary.",
@@ -274,7 +264,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
-    summary = run_demo(state_dir=args.state_dir, emit=not args.json_only)
+    summary = run_demo(emit=not args.json_only)
     if args.json_only:
         print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

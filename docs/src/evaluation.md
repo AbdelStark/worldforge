@@ -2,8 +2,8 @@
 
 WorldForge ships two built-in suites:
 
-- `physics`: deterministic object stability and action-response checks
-- `planning`: relocation, neighbor placement, swap, and spawn execution validation over the predict-driven planner
+- `physics`: deterministic prediction-determinism and action-response checks over `forge.predict`
+- `planning`: relocation, neighbor placement, swap, and spawn objectives solved by `LatentMPCController` over a `score` cost oracle
 
 ## Python
 
@@ -213,6 +213,7 @@ existing fields when re-rendering historical reports.
 
 Each suite declares the provider capabilities it needs. For example:
 
-- `physics` and `planning` require `predict`
+- `physics` requires `predict`
+- `planning` requires `score`
 
 WorldForge raises `WorldForgeError` when a caller asks a provider to run a suite it cannot satisfy.

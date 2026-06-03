@@ -99,7 +99,7 @@ def test_mock_provider_passes_contract_checks() -> None:
     report = assert_provider_contract(provider)
 
     assert report.configured is True
-    assert set(report.exercised_operations) == {"predict", "embed"}
+    assert set(report.exercised_operations) == {"predict", "embed", "score"}
     assert_predict_conformance(provider)
     assert_embed_conformance(provider)
 

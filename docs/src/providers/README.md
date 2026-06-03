@@ -16,7 +16,7 @@ the [Provider Failure Mode Gallery](../provider-failure-gallery.md).
 <!-- provider-catalog:start -->
 | Provider | Maturity | Capability surface | Registration | Runtime ownership |
 | --- | --- | --- | --- | --- |
-| `mock` | `stable` | `predict`, `embed` | always registered | in-repo deterministic local provider |
+| `mock` | `stable` | `predict`, `score`, `embed` | always registered | in-repo deterministic local provider |
 | [`cosmos-policy`](./cosmos-policy.md) | `beta` | none (`policy` requires host `action_translator`) | `COSMOS_POLICY_BASE_URL` | WorldForge validates `/act` request/response and planning composition; host owns Cosmos-Policy reachability/CUDA/runtime, ALOHA observation construction, and translation of raw 14D rows into executable `Action` objects |
 | [`leworldmodel`](./leworldmodel.md) | `stable` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
 | [`gr00t`](./gr00t.md) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |

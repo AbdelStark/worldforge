@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
-
 import pytest
 
 from worldforge import (
@@ -10,11 +7,19 @@ from worldforge import (
     ActionScoreResult,
     LatentMPCController,
     PlannerConfig,
-    WorldForge,
     WorldForgeError,
 )
 from worldforge.models import JSONDict
 from worldforge.providers.base import ProviderProfileSpec
+
+
+def _candidate_payloads(action_candidates: object) -> list[list[JSONDict]]:
+    assert isinstance(action_candidates, list)
+    return action_candidates
+
+
+def _first_x(candidate: list[JSONDict]) -> float:
+    return float(candidate[0]["parameters"]["x"])
 
 
 class _ConvexCost:
@@ -184,129 +189,3 @@ def test_planner_config_validates_cem_settings() -> None:
 
     with pytest.raises(WorldForgeError, match="action_parameter_bounds"):
         PlannerConfig(action_parameter_bounds={})
-
-
-def test_world_plan_latent_mpc_routes_through_score_provider(tmp_path: Path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-    forge.register_cost(_ConvexCost())
-    world = forge.create_world("latent-mpc-world", "mock")
-
-    plan = world.plan(
-        goal="choose a one-step velocity",
-        planner="latent-mpc",
-        score_provider="convex_cost",
-        score_info={"observation_id": "synthetic-frame"},
-        goal_info={"target_x": 0.5},
-        planner_config=PlannerConfig(
-            horizon=1,
-            num_samples=96,
-            num_iterations=5,
-            num_elites=12,
-            execute_k=1,
-            init_std=1.0,
-            seed=19,
-            action_kind="velocity",
-            action_parameter_bounds={"x": (-2.0, 2.0)},
-        ),
-    )
-
-    assert plan.provider == "convex_cost"
-    assert plan.planner == "latent-mpc"
-    assert plan.predicted_states == []
-    assert plan.actions[0].kind == "velocity"
-    assert plan.metadata["planning_mode"] == "latent-mpc"
-    assert plan.metadata["control_mode"] == "mpc"
-    assert plan.metadata["optimizer"] == "cem"
-    assert plan.metadata["score_provider"] == "convex_cost"
-    assert plan.metadata["candidate_count"] == 96 * 5
-    assert plan.metadata["iteration_costs"] == plan.metadata["iteration_best_scores"]
-    assert plan.metadata["workflow_trace"]["metadata"]["planning_mode"] == "latent-mpc"
-    assert [step["status"] for step in plan.metadata["workflow_trace"]["steps"]] == [
-        "success",
-        "skipped",
-        "success",
-    ]
-
-
-def test_world_plan_rejects_latent_mpc_options_without_latent_mpc_planner(tmp_path: Path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-    world = forge.create_world("latent-mpc-options-world", "mock")
-
-    with pytest.raises(WorldForgeError, match="planner='latent-mpc'"):
-        world.plan(
-            goal="reject misplaced config",
-            planner_config=PlannerConfig(),
-        )
-
-
-def test_world_plan_requires_explicit_score_provider_for_latent_mpc(tmp_path: Path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-    world = forge.create_world("latent-mpc-explicit-score-world", "mock")
-
-    with pytest.raises(WorldForgeError, match="explicit score_provider"):
-        world.plan(
-            goal="reject implicit world provider as score oracle",
-            planner="latent-mpc",
-            score_info={},
-            goal_info={"target_x": 0.0},
-            planner_config=PlannerConfig(),
-        )
-
-
-def test_world_plan_rejects_blank_score_provider_for_latent_mpc(tmp_path: Path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-    world = forge.create_world("latent-mpc-blank-score-world", "mock")
-
-    with pytest.raises(WorldForgeError, match="non-empty explicit score_provider"):
-        world.plan(
-            goal="reject blank score provider",
-            planner="latent-mpc",
-            score_provider=" ",
-            score_info={},
-            goal_info={"target_x": 0.0},
-            planner_config=PlannerConfig(),
-        )
-
-
-def test_world_plan_rejects_unsupported_latent_mpc_policy_warm_start(tmp_path: Path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-    forge.register_cost(_ConvexCost())
-    world = forge.create_world("latent-mpc-policy-world", "mock")
-
-    with pytest.raises(WorldForgeError, match="policy warm-start"):
-        world.plan(
-            goal="reject policy warm start until implemented",
-            planner="latent-mpc",
-            score_provider="convex_cost",
-            score_info={},
-            goal_info={"target_x": 0.0},
-            planner_config=PlannerConfig(),
-            policy_info={"mode": "unsupported"},
-        )
-
-
-def test_world_plan_rejects_latent_mpc_execute_k_above_max_steps(tmp_path: Path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-    forge.register_cost(_ConvexCost())
-    world = forge.create_world("latent-mpc-max-steps-world", "mock")
-
-    with pytest.raises(WorldForgeError, match="execute_k must be <= max_steps"):
-        world.plan(
-            goal="reject incoherent receding horizon",
-            planner="latent-mpc",
-            score_provider="convex_cost",
-            score_info={},
-            goal_info={"target_x": 0.0},
-            max_steps=1,
-            planner_config=PlannerConfig(horizon=3, execute_k=2),
-        )
-
-
-def _candidate_payloads(action_candidates: object) -> list[list[dict[str, Any]]]:
-    assert isinstance(action_candidates, list)
-    assert action_candidates
-    return action_candidates  # type: ignore[return-value]
-
-
-def _first_x(candidate: list[dict[str, Any]]) -> float:
-    return float(candidate[0]["parameters"]["x"])

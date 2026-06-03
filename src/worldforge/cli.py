@@ -23,7 +23,6 @@ from worldforge.cli_provider import (
     _cmd_providers,
 )
 from worldforge.cli_runs import _cmd_runs
-from worldforge.cli_scenario import _cmd_scenario
 from worldforge.cli_support import (
     _command_string,
     _config_profile_provenance,
@@ -31,7 +30,6 @@ from worldforge.cli_support import (
     _profile_command_args,
     _provider_args,
 )
-from worldforge.cli_world import _cmd_world, _cmd_world_preflight_or_migration
 from worldforge.config_profiles import ConfigProfile, load_config_profile
 from worldforge.evaluation import EvaluationSuite
 from worldforge.models import _redact_observable_text
@@ -268,14 +266,19 @@ def _cmd_negotiate(args: argparse.Namespace, forge: WorldForge) -> int:
 
 
 def _cmd_predict(args: argparse.Namespace, forge: WorldForge) -> int:
-    world = forge.create_world(args.world_name, args.provider)
-    prediction = world.predict(Action.move_to(args.x, args.y, args.z), steps=args.steps)
+    world_state = {"step": 0, "scene": {"objects": {}}}
+    payload = forge.predict(
+        world_state,
+        Action.move_to(args.x, args.y, args.z),
+        steps=args.steps,
+        provider=args.provider,
+    )
     _print_json(
         {
-            "provider": prediction.provider,
-            "physics_score": prediction.physics_score,
-            "confidence": prediction.confidence,
-            "world_state": prediction.world_state,
+            "provider": payload.metadata["provider"],
+            "physics_score": payload.physics_score,
+            "confidence": payload.confidence,
+            "world_state": payload.state,
         }
     )
     return 0
@@ -295,8 +298,6 @@ def _profile_command_key(args: argparse.Namespace) -> tuple[str, ...]:
     command = str(getattr(args, "command", ""))
     if command == "runs":
         return (command, str(getattr(args, "runs_command", "")))
-    if command == "world":
-        return (command, str(getattr(args, "world_command", "")))
     return (command,)
 
 
@@ -448,7 +449,6 @@ _ForgeHandler = Callable[[argparse.Namespace, WorldForge], "int | None"]
 _FORGE_COMMANDS: dict[str, _ForgeHandler] = {
     "providers": _cmd_providers,
     "provider": _cmd_provider,
-    "world": _cmd_world,
     "doctor": _cmd_doctor,
     "negotiate": _cmd_negotiate,
     "predict": _cmd_predict,
@@ -463,21 +463,10 @@ _SpecialCommandHandler = Callable[[argparse.ArgumentParser, argparse.Namespace],
 _SpecialCommandKey = tuple[str | None, str | None]
 _CLI_LOCAL_ERRORS = (WorldForgeError, ValueError)
 _CLI_PROVIDER_ERRORS = (ProviderError, WorldForgeError, ValueError)
-_WORLD_TRIAGE_STEPS = {
-    "preflight": "run `uv run worldforge world preflight --workspace-dir .worldforge`.",
-    "migration-preview": (
-        "run `uv run worldforge world migration-preview <world-id> --state-dir "
-        ".worldforge/worlds --format json`."
-    ),
-}
-_WORLD_DEFAULT_TRIAGE_STEP = (
-    "run `uv run worldforge world list --state-dir <state-dir>` and retry with a listed world id."
-)
 _PROVIDER_TRIAGE_STEP = (
     "run `uv run worldforge doctor` and `uv run worldforge provider health <provider>`."
 )
 _COMMAND_TRIAGE_STEPS_BEFORE_PROVIDER = {
-    "scenario": "run `uv run worldforge scenario validate <scenario.json>` before `scenario run`.",
     "benchmark": (
         "validate benchmark input/budget JSON, then run `uv run worldforge benchmark --help`."
     ),
@@ -538,15 +527,8 @@ def _checked_special_handler(
     return run
 
 
-_WORLD_PREFLIGHT_OR_MIGRATION_SPECIAL = _checked_special_handler(
-    _cmd_world_preflight_or_migration,
-    _CLI_LOCAL_ERRORS,
-)
-
-
 _SPECIAL_SUBCOMMAND_FIELDS = {
     "provider": "provider_command",
-    "world": "world_command",
 }
 _SPECIAL_COMMAND_HANDLERS: dict[_SpecialCommandKey, _SpecialCommandHandler] = {
     ("examples", None): _plain_special_handler(_cmd_examples),
@@ -557,9 +539,6 @@ _SPECIAL_COMMAND_HANDLERS: dict[_SpecialCommandKey, _SpecialCommandHandler] = {
     ),
     ("runs", None): _checked_special_handler(_cmd_runs, _CLI_LOCAL_ERRORS),
     ("drills", None): _checked_special_handler(_cmd_drills, _CLI_LOCAL_ERRORS),
-    ("scenario", None): _checked_special_handler(_cmd_scenario, _CLI_PROVIDER_ERRORS),
-    ("world", "preflight"): _WORLD_PREFLIGHT_OR_MIGRATION_SPECIAL,
-    ("world", "migration-preview"): _WORLD_PREFLIGHT_OR_MIGRATION_SPECIAL,
 }
 
 
@@ -635,8 +614,6 @@ def _cli_command_path(args: argparse.Namespace) -> str:
     parts = [str(getattr(args, "command", "") or "unknown")]
     for field_name in (
         "provider_command",
-        "world_command",
-        "scenario_command",
         "runs_command",
         "drill_command",
     ):
@@ -653,21 +630,12 @@ def _safe_cli_error_text(message: str) -> str:
 
 def _first_triage_step(args: argparse.Namespace, message: str) -> str:
     command = getattr(args, "command", None)
-    if command == "world":
-        return _world_triage_step(args)
     triage_step = _COMMAND_TRIAGE_STEPS_BEFORE_PROVIDER.get(command)
     if triage_step is not None:
         return triage_step
     if _needs_provider_triage(command, message):
         return _PROVIDER_TRIAGE_STEP
     return _COMMAND_TRIAGE_STEPS_AFTER_PROVIDER.get(command, _default_triage_step(command))
-
-
-def _world_triage_step(args: argparse.Namespace) -> str:
-    return _WORLD_TRIAGE_STEPS.get(
-        getattr(args, "world_command", None),
-        _WORLD_DEFAULT_TRIAGE_STEP,
-    )
 
 
 def _needs_provider_triage(command: object, message: str) -> bool:

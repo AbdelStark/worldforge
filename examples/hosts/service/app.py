@@ -15,6 +15,7 @@ from typing import Any, ClassVar
 from uuid import uuid4
 
 from worldforge import Action, BBox, Position, SceneObject, WorldForge, WorldForgeError
+from worldforge.demos import object_position, seed_world_state
 from worldforge.models import DoctorReport, ProviderHealth
 from worldforge.observability import JsonLoggerSink
 from worldforge.providers import ProviderError
@@ -175,14 +176,13 @@ def prediction_payload(
     """Run one deterministic, non-mutating prediction workflow for service smoke checks."""
 
     world_id = str(payload.get("world_id", "service-smoke"))
-    world = forge.create_world(world_id, provider=provider)
-    world.add_object(
-        SceneObject(
-            "cube",
-            Position(0.0, 0.5, 0.0),
-            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
-        )
+    cube = SceneObject(
+        "cube",
+        Position(0.0, 0.5, 0.0),
+        BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+        id="cube",
     )
+    world_state = seed_world_state([cube])
     target = payload.get("target")
     if isinstance(target, dict):
         x = target.get("x", 0.2)
@@ -190,16 +190,19 @@ def prediction_payload(
         z = target.get("z", 0.0)
     else:
         x, y, z = 0.2, 0.5, 0.0
-    prediction = world.predict(Action.move_to(x, y, z), steps=1, provider=provider)
+    prediction = forge.predict(world_state, Action.move_to(x, y, z), steps=1, provider=provider)
+    final_state = prediction.state
+    objects = final_state.get("scene", {}).get("objects", {})
     return {
         "request_id": request_id,
-        "provider": prediction.provider,
+        "provider": prediction.metadata["provider"],
         "confidence": prediction.confidence,
         "physics_score": prediction.physics_score,
         "world": {
-            "id": world.id,
-            "object_count": world.object_count,
-            "step": world.step,
+            "id": world_id,
+            "object_count": len(objects),
+            "step": final_state.get("step"),
+            "cube_position": object_position(final_state, cube.id),
         },
     }
 

@@ -7,8 +7,72 @@ releases may still include breaking changes when the public API needs to tighten
 
 ## Unreleased
 
+### Fixed
+
+- The wheel now builds from the sdist again. A redundant
+  `[tool.hatch.build.targets.wheel.force-include]` for `providers/runtime_manifests` duplicated
+  `runtime_manifests/__init__.py` (already included by `packages`), which made `hatchling`'s
+  wheel-from-sdist build fail. `only-packages = true` already ships the JSON manifests, so the
+  force-include was removed; `scripts/test_package.sh` passes again.
+
+### Changed
+
+- **Strategic pivot.** WorldForge is now positioned as a harness framework for building
+  world-model-based workflows for physical AI — the application builder's counterpart to
+  model-training stacks like Stable World Model. The project is narrowed to one backbone loop:
+  planning and scoring action candidates with an action-conditioned predictive world model, in
+  latent space. README, CLAUDE.md, AGENTS.md, and core docs are reframed around that loop, and the
+  new `specs/latent-planning-core/` triad records the narrowed scope and the staged removal plan.
+- **Evaluation suites no longer use the symbolic `World` runtime.** The built-in `physics` and
+  `planning` suites now drive the provider capability surface directly: `physics` calls
+  `forge.predict` over a plain world-state dict (prediction-determinism and action-response checks),
+  and `planning` solves each scenario with `LatentMPCController` over `forge.score_actions` as a cost
+  oracle. The `planning` suite now requires the `score` capability instead of `predict` (satisfied by
+  the default `mock` provider); all suite ids and scenario names are unchanged. **Breaking:**
+  `EvaluationContext.world` is removed — custom evaluators must read the forge capability surface
+  (for example `context.forge.predict(...)`) instead of a `World`. The internal `world` parameter is
+  dropped from the suite runner methods; `run_report`/`run_report_artifacts` still accept an ignored
+  `world` keyword for backwards compatibility with `World.evaluate`.
+- **Bundled demos no longer use the symbolic `World` runtime.** The packaged demos
+  (`worldforge-demo-leworldmodel`, `worldforge-demo-lerobot`, `worldforge-demo-so101-replay-trace`,
+  `worldforge-demo-rerun`, plus the policy+score candidate lab, DimOS Go2 replay arena, embodied
+  policy replay comparison, and shared demo helpers) now drive the provider capability surface
+  directly — `forge.predict` / `forge.score_actions` / `forge.select_actions` /
+  `LatentMPCController` — instead of `create_world` / `World.plan` / `World.execute_plan` /
+  `World.add_object`. The four console-script entry points and `main()` signatures are unchanged.
+  **Demo output shapes are now capability-centric:** they report the selected action, candidate
+  scores, `best_index`, provider, and metadata, and they no longer carry world-persistence fields
+  (`saved_world_id`, `saved_worlds`, `state_dir` persistence, exported-world JSON) or a `--state-dir`
+  flag. The shared `make_blue_cube()` helper returns a standalone `SceneObject` with a stable id.
+
+### Removed
+
+- Removed the symbolic `World` runtime, its local JSON persistence, the `worldforge world` CLI
+  command, and the related public surface (`World`, `Plan`, `Prediction`, `PlanExecution`,
+  `Comparison`, `StructuredGoal`, `HistoryEntry`, and `DoctorReport.world_count`). Planning now runs
+  over plain world-state dicts: `forge.predict` rolls a `world_state` dict forward and
+  `LatentMPCController` plans by scoring action candidates over the `score`/`predict` surface. The
+  `worldforge predict` CLI seeds a state dict, runs `predict`, and prints the result without
+  persisting anything. Durable world-state persistence is host-owned.
+- Removed the world-authoring surface that sits outside the backbone loop: the JSON scenario DSL
+  and scenario matrices/galleries (`worldforge.scenarios` plus the `worldforge scenario` command),
+  world diff/patch (`worldforge.world_diff` plus `worldforge world diff`), world migration previews
+  (`worldforge.world_migration_preview` plus `worldforge world migration-preview`), and local-state
+  preflight (`worldforge.persistence_preflight` plus `worldforge world preflight`) — along with
+  their public exports, documentation pages, and CLI subcommands.
+
 ### Added
 
+- The built-in `mock` provider now implements the `score` capability as a deterministic cost
+  oracle (costs, `lower_is_better`, goal-distance when `info["goal"]["target"]` is present). This
+  makes the latent MPC backbone loop and score-only workflows runnable checkout-safe on the default
+  provider, and adds `sample_contract_score_info` / `sample_contract_score_action_candidates` to the
+  `worldforge.testing` contract helpers. Score-only capability negotiation is now satisfiable by
+  `mock` without an optional runtime.
+- Added `examples/latent_mpc_planning.py`, a runnable, checkout-safe latent MPC planning loop that
+  drives `LatentMPCController` over an in-example score (cost) oracle: it samples action candidates,
+  scores them as costs, keeps elites, refits, and executes the lowest-cost action under a receding
+  horizon — no credentials, GPU, or robot required.
 - Added `worldforge-demo-so101-replay-trace`, a checkout-safe SO-101 manipulation replay demo
   that scores deterministic 6D joint-action candidates, selects the lowest-cost pick-and-place
   action, mock-executes the selected object placement, and emits a reusable robot decision trace

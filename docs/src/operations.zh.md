@@ -139,76 +139,28 @@ uv run worldforge eval --profile profiles/local-mock.toml --suite planning
 
 配置文件不得包含凭据、bearer 令牌、API 密钥、已签名 URL、`.env` 路径、绝对宿主本地路径或 `..` 路径遍历。请将密钥保存在环境变量或宿主方拥有的密钥存储中。已保留的评估和基准测试运行清单包含 `config_profile` 来源块，记录配置文件名称、安全的相对来源标签、SHA-256 摘要和已验证的非密钥默认值；配置文件本身不会被复制到运行证据中。
 
-## 持久化
+## 世界状态
 
-世界状态默认以本地 JSON 格式持久化在 `.worldforge/worlds` 下，或保存在传入 `WorldForge` 的 `state_dir` 路径下。
+WorldForge 不再提供符号化的 `World` 运行时或内置的 JSON 世界存储。规划基于纯粹的、可 JSON 序列化的世界状态字典：`predict` 提供方逐个动作地推进 `world_state` 字典，`LatentMPCController` 通过 `score` 提供方对该状态下的动作候选打分来进行规划。
 
-相同的本地存储也可通过 CLI 用于检出作业和运维人员交接：
+```python
+from worldforge import Action, WorldForge
 
-```bash
-uv run worldforge world create lab --provider mock
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
-uv run worldforge world list
-uv run worldforge world objects <world-id>
-uv run worldforge world history <world-id>
-uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-uv run worldforge world migration-preview world.json --source-path
-uv run worldforge world export <world-id> --output world.json
-uv run worldforge world import world.json --new-id --name lab-copy
-uv run worldforge world fork <world-id> --history-index 0 --name lab-start
-uv run worldforge world delete <world-id>
+forge = WorldForge()
+world_state = {"step": 0, "scene": {"objects": {}}}
+payload = forge.predict(world_state, Action.move_to(0.3, 0.8, 0.0), steps=2, provider="mock")
+next_state = payload.state
 ```
 
-该存储适用于本地开发、测试、示例和单写入工作流，不是并发数据库。需要多写入持久化的服务应将导出的世界有效负载存储在自己的数据库中，并使用自己的锁定、备份和保留策略。
-
-持久化在本地 JSON 导入/导出之外明确由宿主方负责。原因在于边界清晰性：宿主应用程序拥有部署拓扑、持久性、锁定语义、备份策略和保留要求。WorldForge 不应暗示本地 JSON 存储无法保证的生产持久性。
+持久化明确由宿主方负责。原因在于边界清晰性：宿主应用程序拥有部署拓扑、持久性、锁定语义、备份策略和保留要求。WorldForge 不应暗示生产级持久性保证。需要持久世界状态的服务应将这些纯字典序列化到自己的数据库中，并使用自己的锁定、备份和保留策略。
 
 ADR 0001，[持久化适配器边界](./adr/0001-persistence-adapter-boundary.md)，记录了未来 `WorldPersistenceAdapter` 边界以及任何持久化存储的验收标准。
 
-支持的持久化不变量：
+支持的不变量：
 
-- 世界 ID 在任何读写操作之前都会被验证为文件安全的本地存储标识符。包含路径分隔符、遍历形式的 ID、空字符串和非字符串 ID 均被拒绝。
-- CLI 对象变更和持久化预测会加载世界，应用类型化的 `SceneObject`、`SceneObjectPatch` 或 `Action` 值，追加类型化的历史条目，并通过 `save_world(...)` 写入。
-- 位置补丁会将对象的包围盒随姿态一起平移，确保本地场景编辑不会在持久化快照中留下陈旧的空间边界。
-- `world predict` 会保存提供方更新后的世界，除非提供了 `--dry-run`。
-- `delete_world(...)` 和 `world delete` 在解除本地 JSON 链接之前会验证世界 ID，当所请求的世界已不存在时明确报错。
-- 本地 JSON 导入会拒绝：格式错误的场景对象 ID、非对象状态有效负载、无效元数据、无效历史记录、负步骤数、来自未来步骤的历史条目、空历史摘要、格式错误的序列化动作以及无效的历史快照状态。
-- `save_world(...)` 在写入前验证序列化的世界，并通过同目录下的临时文件以原子方式替换目标文件。
-- `world preflight` 是只读的，不创建、重写、删除或静默强制转换状态。它报告缺失的状态目录、不安全的请求 ID、损坏的世界、无效历史记录、不一致的对象包围盒、陈旧的运行工作区、不安全的运行工件路径和保留压力。
-- `world migration-preview` 是只读的，接受持久化的世界 ID 或带 `--source-path` 的持久化/导出 JSON 路径。它报告模式版本、所需变更、无效字段、不安全 ID、包围盒修正和 `can_apply_safely`，不会重写源文件。
-- README 和运维文档声明多写入持久化由宿主方负责。
+- 公共输入在任何对外提供方调用之前都会被验证：无效动作、非正步骤数和格式错误的候选负载都会引发 `WorldForgeError`。
+- 格式错误的持久化或提供方世界状态负载会在边界处引发 `WorldStateError`，而不会被静默强制转换。
 - 任何未来内置的持久化后端必须作为独立适配器引入，并附带自己的锁定、迁移和恢复文档。
-
-本地状态预检是隔离用户数据之前的首要运维命令：
-
-```bash
-uv run worldforge world preflight \
-  --state-dir .worldforge/worlds \
-  --workspace-dir .worldforge \
-  --world-id <world-id> \
-  --retention-keep 20 \
-  --format json > worldforge-state-preflight.json
-```
-
-成功信号：`status` 为 `passed`，`safe_to_attach` 为 `true`，`error_count` 为 `0`。警告状态允许存在于本地状态缺失或保留压力的情况；失败状态意味着至少一个世界文件、请求 ID、运行清单或工件引用需要运维人员处理。
-
-报告中的恢复命令会在导出诊断后将无效文件移入 `.worldforge/quarantine/`，不运行 `rm` 或静默删除用户数据。对于保留压力，首要命令是 `uv run worldforge runs cleanup --workspace-dir .worldforge --keep 20 --dry-run`；仅在不再需要保留证据后才移除 `--dry-run`。
-
-迁移预览是应用模式重写之前的状态审查命令：
-
-```bash
-uv run worldforge world migration-preview <world-id> \
-  --state-dir .worldforge/worlds \
-  --format json > worldforge-migration-preview.json
-uv run worldforge world migration-preview world.json \
-  --source-path \
-  --format markdown > worldforge-migration-preview.md
-```
-
-成功信号：`safe_to_attach` 和 `read_only` 均为 `true`。`status: passed` 表示无需迁移。`status: migration-needed` 表示预览发现了模式默认值、旧版 `position` 到 `pose.position` 的变更，或可在显式重写之前审查的包围盒修正。`status: blocked` 表示无效字段或不安全 ID 必须在预览工具之外修复；WorldForge 不会静默修复格式错误的本地状态。
 
 ## 运行工作区
 

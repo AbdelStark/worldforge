@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from worldforge import Action, BBox, Position, ProviderCapabilities, SceneObject, WorldForge
+from worldforge.models import JSONDict
 from worldforge.providers import (
     BaseProvider,
     CosmosPolicyProvider,
@@ -13,6 +14,22 @@ from worldforge.providers import (
     ProviderError,
 )
 from worldforge.providers.base import ProviderProfileSpec
+
+
+def _world_state(
+    *,
+    name: str,
+    provider: str,
+    objects: tuple[SceneObject, ...] = (),
+) -> JSONDict:
+    return {
+        "schema_version": 1,
+        "id": f"world-{name}",
+        "name": name,
+        "provider": provider,
+        "step": 0,
+        "scene": {"objects": {obj.id: obj.to_dict() for obj in objects}},
+    }
 
 
 def test_provider_submodule_exports_provider_classes() -> None:
@@ -33,10 +50,10 @@ def test_provider_capabilities_are_closed_by_default_and_unsupported_predict_is_
 
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(provider)
-    world = forge.create_world("capability-world", "empty")
+    state = _world_state(name="capability-world", provider="empty")
 
     with pytest.raises(ProviderError, match="does not implement predict"):
-        world.predict(Action.move_to(0.1, 0.5, 0.0))
+        forge.predict(state, Action.move_to(0.1, 0.5, 0.0), provider="empty")
 
 
 def test_base_provider_requires_all_profile_environment_variables(monkeypatch) -> None:
@@ -74,17 +91,20 @@ def test_prediction_embedding_and_manual_registration(tmp_path) -> None:
     embedding = forge.embed("mock", text="cube state")
     assert embedding.vector
 
-    world = forge.create_world("manual-world", "manual-mock")
-    world.add_object(
-        SceneObject(
-            "red_mug",
-            Position(0.0, 0.8, 0.0),
-            BBox(Position(-0.05, 0.75, -0.05), Position(0.05, 0.85, 0.05)),
-        )
+    state = _world_state(
+        name="manual-world",
+        provider="manual-mock",
+        objects=(
+            SceneObject(
+                "red_mug",
+                Position(0.0, 0.8, 0.0),
+                BBox(Position(-0.05, 0.75, -0.05), Position(0.05, 0.85, 0.05)),
+            ),
+        ),
     )
 
-    prediction = world.predict(Action.move_to(0.25, 0.8, 0.0), steps=2)
-    assert prediction.provider == "manual-mock"
+    payload = forge.predict(state, Action.move_to(0.25, 0.8, 0.0), steps=2, provider="manual-mock")
+    assert payload.metadata["provider"] == "manual-mock"
 
     embedding = forge.embed("mock", text="a mug on a kitchen counter")
     assert embedding.provider == "mock"

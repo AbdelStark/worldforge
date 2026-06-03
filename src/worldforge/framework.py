@@ -1,10 +1,10 @@
 """Framework runtime objects for WorldForge.
 
-This module owns the in-process orchestration boundary: provider registration, local JSON
-persistence, diagnostics, and provider-wide operations. The mutable ``World`` runtime lives in
-``worldforge._world`` and is imported here for backward compatibility. The framework deliberately
-does not own deployment, multi-writer storage, optional model runtimes, robot controllers, or
-production telemetry export.
+This module owns the in-process orchestration boundary: provider registration, diagnostics, and
+provider-wide capability operations. Planning is performed with
+:class:`~worldforge.control.LatentMPCController` over the ``score``/``predict`` capability surface;
+there is no symbolic ``World`` runtime. The framework deliberately does not own deployment,
+multi-writer storage, optional model runtimes, robot controllers, or production telemetry export.
 """
 
 from __future__ import annotations
@@ -28,9 +28,6 @@ from worldforge._provider_merge import (
 from worldforge._provider_merge import (
     provider_lifecycle_components as _provider_lifecycle_components,
 )
-from worldforge._state import SCHEMA_VERSION as _WORLD_STATE_SCHEMA_VERSION
-from worldforge._world import World
-from worldforge._world_prompt_seeders import _prompt_world_name, _seed_prompt_world
 from worldforge.capabilities import (
     Cost,
     Embedder,
@@ -48,13 +45,6 @@ from worldforge.framework_capabilities import (
     provider_with_event_handler as _provider_with_event_handler,
 )
 from worldforge.framework_doctor import doctor_report as _doctor_report
-from worldforge.framework_world_store import delete_world as _delete_world
-from worldforge.framework_world_store import export_world as _export_world
-from worldforge.framework_world_store import fork_world as _fork_world
-from worldforge.framework_world_store import import_world as _import_world
-from worldforge.framework_world_store import list_worlds as _list_worlds
-from worldforge.framework_world_store import load_world as _load_world
-from worldforge.framework_world_store import save_world as _save_world
 from worldforge.models import (
     Action,
     ActionPolicyResult,
@@ -94,15 +84,16 @@ from worldforge.providers.observable import _ObservableCapability
 if TYPE_CHECKING:
     from worldforge.evaluation import EvaluationResult
 
-SCHEMA_VERSION = _WORLD_STATE_SCHEMA_VERSION
+SCHEMA_VERSION = 1
 
 
 class WorldForge:
-    """Top-level entry point for provider orchestration and local JSON persistence.
+    """Top-level entry point for provider orchestration and capability operations.
 
-    ``WorldForge`` owns provider registration, diagnostics, world construction, and the local
-    single-writer JSON store. Host applications remain responsible for credentials, optional model
-    dependencies, durable storage, telemetry export, and deployment policy.
+    ``WorldForge`` owns provider registration, diagnostics, and the predict/score/policy
+    capability surface used by :class:`~worldforge.control.LatentMPCController` for planning.
+    Host applications remain responsible for credentials, optional model dependencies, durable
+    storage, telemetry export, and deployment policy.
     """
 
     def __init__(
@@ -545,68 +536,6 @@ class WorldForge:
             capability=capability,
             registered_only=registered_only,
         )
-
-    def create_world(self, name: str, provider: str = "mock", *, description: str = "") -> World:
-        """Create an empty world bound to a registered default provider."""
-
-        selected_provider = _require_non_empty_text(provider, name="Provider name")
-        if selected_provider not in self._registered_provider_names():
-            raise ProviderError(f"Provider '{selected_provider}' is not registered.")
-        return World(name=name, provider=selected_provider, forge=self, description=description)
-
-    def create_world_from_prompt(
-        self,
-        prompt: str,
-        *,
-        provider: str = "mock",
-        name: str | None = None,
-    ) -> World:
-        prompt_text = _require_non_empty_text(prompt, name="Prompt")
-        world = self.create_world(
-            _prompt_world_name(name),
-            provider,
-            description=prompt_text,
-        )
-        _seed_prompt_world(world, prompt_text)
-        return world
-
-    def save_world(self, world: World) -> str:
-        """Validate and atomically write a world to the local JSON state directory."""
-
-        return _save_world(self, world)
-
-    def load_world(self, world_id: str) -> World:
-        """Load a world from local JSON after validating its storage identifier and payload."""
-
-        return _load_world(self, world_id)
-
-    def delete_world(self, world_id: str) -> str:
-        """Delete a persisted world file after validating its storage identifier."""
-
-        return _delete_world(self, world_id)
-
-    def list_worlds(self) -> list[str]:
-        return _list_worlds(self)
-
-    def export_world(self, world_id: str, *, format: str = "json") -> str:
-        return _export_world(self, world_id, format=format)
-
-    def import_world(
-        self,
-        payload: str,
-        *,
-        format: str = "json",
-        new_id: bool = False,
-        name: str | None = None,
-    ) -> World:
-        """Restore a world from exported JSON without saving it automatically."""
-
-        return _import_world(self, payload, format=format, new_id=new_id, name=name)
-
-    def fork_world(
-        self, world_id: str, *, history_index: int = 0, name: str | None = None
-    ) -> World:
-        return _fork_world(self, world_id, history_index=history_index, name=name)
 
     def predict(
         self,

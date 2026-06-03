@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from worldforge import (
@@ -33,7 +31,7 @@ def test_worldforge_doctor_facade_delegates_to_diagnostics_helper(
     import worldforge.framework as framework_module
 
     forge = WorldForge(state_dir=tmp_path)
-    expected = DoctorReport(state_dir=str(tmp_path), world_count=0, providers=[], issues=[])
+    expected = DoctorReport(state_dir=str(tmp_path), providers=[], issues=[])
     captured: dict[str, object] = {}
 
     def fake_doctor_report(
@@ -166,7 +164,9 @@ def test_doctor_capability_filter_includes_known_unregistered_providers(
     assert statuses["leworldmodel"].registered is False
     assert statuses["leworldmodel"].health.healthy is False
     assert "jepa" in statuses
-    assert "mock" not in statuses
+    assert "mock" in statuses
+    assert statuses["mock"].registered is True
+    assert statuses["mock"].health.healthy is True
     assert any("LEWORLDMODEL_POLICY" in issue for issue in report.issues)
 
 
@@ -269,7 +269,6 @@ def test_doctor_report_models_validate_and_redact_payloads(tmp_path) -> None:
     )
     report = DoctorReport(
         state_dir=f" {tmp_path} ",
-        world_count=1,
         providers=[status],
         issues=["api_key=abc123"],
     )
@@ -278,6 +277,7 @@ def test_doctor_report_models_validate_and_redact_payloads(tmp_path) -> None:
     assert report.provider_count == 1
     assert report.issues == ["api_key=[redacted]"]
     assert report.to_dict()["providers"][0]["registered"] is True
+    assert "world_count" not in report.to_dict()
 
     with pytest.raises(WorldForgeError, match="registered"):
         ProviderDoctorStatus(
@@ -286,18 +286,16 @@ def test_doctor_report_models_validate_and_redact_payloads(tmp_path) -> None:
             health=provider.health(),
             lifecycle=lifecycle,
         )
-    with pytest.raises(WorldForgeError, match="world_count"):
-        DoctorReport(state_dir=str(tmp_path), world_count=math.nan, providers=[])
+    with pytest.raises(WorldForgeError, match="state_dir"):
+        DoctorReport(state_dir="   ", providers=[])
     with pytest.raises(WorldForgeError, match="providers"):
         DoctorReport(
             state_dir=str(tmp_path),
-            world_count=0,
             providers=[object()],  # type: ignore[list-item]
         )
     with pytest.raises(WorldForgeError, match="issues"):
         DoctorReport(
             state_dir=str(tmp_path),
-            world_count=0,
             providers=[],
             issues=[object()],  # type: ignore[list-item]
         )

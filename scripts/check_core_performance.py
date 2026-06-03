@@ -18,7 +18,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from worldforge import WorldForge  # noqa: E402
+from worldforge import LatentMPCController, PlannerConfig, WorldForge  # noqa: E402
 from worldforge.artifact_io import write_json_artifact  # noqa: E402
 from worldforge.benchmark import load_benchmark_inputs  # noqa: E402
 from worldforge.evaluation import EvaluationSuite  # noqa: E402
@@ -27,7 +27,7 @@ from worldforge.harness.workspace import create_run_workspace, write_run_manifes
 from worldforge.models import dump_json  # noqa: E402
 
 DEFAULT_BUDGETS_MS = {
-    "world_persistence": 250.0,
+    "latent_planning": 250.0,
     "benchmark_fixture_loading": 100.0,
     "provider_catalog_diagnostics": 250.0,
     "evidence_bundle_creation": 500.0,
@@ -90,7 +90,7 @@ def run_core_performance_budgets(
 
 def _run(workspace: Path, *, budgets: dict[str, float], preserve: bool) -> dict[str, Any]:
     results = [
-        _measure("world_persistence", budgets, lambda: _world_persistence(workspace)),
+        _measure("latent_planning", budgets, lambda: _latent_planning(workspace)),
         _measure("benchmark_fixture_loading", budgets, _benchmark_fixture_loading),
         _measure("provider_catalog_diagnostics", budgets, lambda: _provider_catalog(workspace)),
         _measure("evidence_bundle_creation", budgets, lambda: _evidence_bundle(workspace)),
@@ -129,14 +129,37 @@ def _measure(
     )
 
 
-def _world_persistence(workspace: Path) -> str | None:
-    forge = WorldForge(state_dir=workspace / "worlds", auto_register_remote=False)
-    world = forge.create_world_from_prompt("A table with one cube", provider="mock", name="perf")
-    forge.save_world(world)
-    reloaded = forge.load_world(world.id)
-    if reloaded.id != world.id:
-        raise RuntimeError("world persistence reload mismatch")
-    return str((workspace / "worlds" / f"{world.id}.json").resolve())
+def _latent_planning(workspace: Path) -> str | None:
+    forge = WorldForge(state_dir=workspace / "planning", auto_register_remote=False)
+    controller = LatentMPCController(
+        forge=forge,
+        score_provider="mock",
+        config=PlannerConfig(
+            horizon=1,
+            num_samples=16,
+            num_iterations=2,
+            num_elites=4,
+            action_kind="latent_action",
+            action_parameter_bounds={"x": (-1.0, 1.0), "y": (-1.0, 1.0), "z": (-1.0, 1.0)},
+            seed=0,
+        ),
+    )
+    result = controller.plan_step(
+        observation_info={"point": [0.0, 0.5, 0.0]},
+        goal_info={"target": [0.55, 0.5, 0.0]},
+    )
+    if not result.actions:
+        raise RuntimeError("latent-MPC planning returned no actions")
+    path = workspace / "latent-planning.json"
+    write_json_artifact(
+        path,
+        {
+            "best_score": result.best_score,
+            "candidate_count": result.candidate_count,
+            "selected_actions": [action.to_dict() for action in result.actions],
+        },
+    )
+    return str(path.resolve())
 
 
 def _benchmark_fixture_loading() -> str | None:

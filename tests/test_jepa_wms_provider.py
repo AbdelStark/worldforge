@@ -357,29 +357,23 @@ def test_jepa_wms_torchhub_runtime_scores_and_plans_through_world(tmp_path) -> N
     )
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(provider)
-    world = forge.create_world_from_prompt("tabletop Push-T scene", provider="mock")
     candidate_plans = [
         [Action.move_to(0.1, 0.5, 0.0)],
         [Action.move_to(0.4, 0.5, 0.0)],
         [Action.move_to(0.7, 0.5, 0.0)],
     ]
 
-    plan = world.plan(
-        goal="choose the lowest JEPA-WMS latent cost",
-        provider="jepa-wms",
-        planner="jepa-wms-mpc",
-        candidate_actions=candidate_plans,
-        score_info=payload["info"],
-        score_action_candidates=payload["action_candidates"],
-        execution_provider="mock",
+    score_result = forge.score_actions(
+        "jepa-wms",
+        info=payload["info"],
+        action_candidates=payload["action_candidates"],
     )
+    selected_plan = candidate_plans[score_result.best_index]
 
-    assert plan.provider == "jepa-wms"
-    assert plan.actions == candidate_plans[1]
-    assert plan.metadata["planning_mode"] == "score"
-    assert plan.metadata["score_result"]["best_index"] == 1
-    assert plan.metadata["score_result"]["metadata"]["runtime"] == "fake-jepa-wms"
-    assert plan.metadata["execution_provider"] == "mock"
+    assert score_result.provider == "jepa-wms"
+    assert score_result.best_index == 1
+    assert selected_plan == candidate_plans[1]
+    assert score_result.metadata["runtime"] == "fake-jepa-wms"
     assert loader_calls == [
         {
             "hub_repo": "facebookresearch/jepa-wms",
@@ -392,9 +386,16 @@ def test_jepa_wms_torchhub_runtime_scores_and_plans_through_world(tmp_path) -> N
     assert model.calls[-1]["model_path"] == "jepa_wm_pusht"
     assert model.calls[-1]["info"] == payload["info"]
 
-    execution = world.execute_plan(plan)
-    assert execution.actions_applied == candidate_plans[1]
-    assert execution.final_world().provider == "mock"
+    state = {
+        "schema_version": 1,
+        "id": "tabletop-pusht",
+        "name": "tabletop Push-T scene",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
+    executed = forge.predict(state, selected_plan[0], provider="mock")
+    assert executed.metadata["provider"] == "mock"
 
 
 def test_jepa_wms_torchhub_runtime_falls_back_to_encode_unroll_distance() -> None:

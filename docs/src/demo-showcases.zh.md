@@ -26,7 +26,7 @@ uv run python scripts/demo_showcases.py run first-run --format json --overwrite
 
 | 工作流 | 问题 | 命令 | 预期输出 | 主要工件 | 首步排查 |
 | --- | ---: | --- | --- | --- | --- |
-| `first-run` | #189 | `uv run python scripts/demo_showcases.py run first-run` | mock 世界创建、对象添加、预测记录、导出和预检写入 | `first-run/exported-world.json` 和 `first-run/preflight.json` | 运行 `uv run worldforge world preflight --state-dir <demo>/worlds` |
+| `first-run` | #189 | `uv run python scripts/demo_showcases.py run first-run` | 将对象写入世界状态字典、记录三次 mock 预测步骤、导出最终的世界状态 JSON | `first-run/exported-world-state.json` | 运行 `uv run worldforge doctor --registered-only` 并检查导出的世界状态 JSON |
 | `diagnostics-issue-bundle` | #190 | `uv run python scripts/demo_showcases.py run diagnostics-issue-bundle` | 跳过的提供方诊断已保留并打包 | `diagnostics-issue-bundle/issue-bundle/issue.md` | 附加前检查 `evidence_manifest.json` |
 | `robotics-replay` | #191 | `uv run python scripts/demo_showcases.py run robotics-replay` | 确定性策略加打分回放摘要 | `robotics-replay/robotics-replay-manifest.json` | 在执行已准备宿主命令前运行 `uv run worldforge-demo-lerobot` |
 | `provider-event-redaction-dry-run` | #192 | `uv run python scripts/demo_showcases.py run provider-event-redaction-dry-run` | 已脱敏的提供方事件夹具 | `provider-event-redaction-dry-run/provider-event-redaction-events.json` | 在任何实时冒烟测试前检查已脱敏的提供方事件目标 |

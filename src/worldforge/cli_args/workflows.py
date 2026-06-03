@@ -17,55 +17,6 @@ from worldforge.cli_args.common import (
 from worldforge.evaluation import EvaluationSuite
 
 
-def _add_scenario_commands(subparsers: Subparsers) -> None:
-    scenario = subparsers.add_parser(
-        "scenario",
-        help="Validate or run a JSON-native checkout-safe scenario file.",
-    )
-    scenario_subparsers = scenario.add_subparsers(
-        dest="scenario_command",
-        required=True,
-        metavar="command",
-    )
-    _add_scenario_validate_command(scenario_subparsers)
-    _add_scenario_run_command(scenario_subparsers)
-
-
-def _add_scenario_validate_command(subparsers: Subparsers) -> None:
-    scenario_validate = subparsers.add_parser(
-        "validate",
-        help="Load and validate a scenario JSON file without running it.",
-    )
-    scenario_validate.add_argument("path", type=Path, help="Scenario JSON file path.")
-    _add_format_argument(
-        scenario_validate,
-        choices=("json", "markdown"),
-        help_text="Output format for the validation report.",
-    )
-
-
-def _add_scenario_run_command(subparsers: Subparsers) -> None:
-    scenario_run = subparsers.add_parser(
-        "run",
-        help="Validate and run a scenario file end-to-end with a checkout-safe provider.",
-    )
-    scenario_run.add_argument("path", type=Path, help="Scenario JSON file path.")
-    _add_state_dir_argument(
-        scenario_run,
-        help_text="World state directory (the scenario world is created here).",
-    )
-    _add_format_argument(
-        scenario_run,
-        choices=("json", "markdown"),
-        help_text="Output format for the scenario run result.",
-    )
-    scenario_run.add_argument(
-        "--output",
-        type=Path,
-        help="Optional path to write the rendered result instead of stdout.",
-    )
-
-
 def _add_negotiate_command(subparsers: Subparsers) -> None:
     negotiate = subparsers.add_parser(
         "negotiate",
@@ -94,7 +45,7 @@ def _add_negotiate_command(subparsers: Subparsers) -> None:
 
 def _add_predict_command(subparsers: Subparsers) -> None:
     predict = subparsers.add_parser("predict", help="Run a deterministic prediction.")
-    predict.add_argument("world_name", help="World name to create or load.")
+    predict.add_argument("world_name", help="Scenario label for the seeded world state.")
     predict.add_argument("--provider", default="mock", help="Provider name.")
     _add_xyz_arguments(predict, required=True, label="Target")
     predict.add_argument("--steps", type=int, default=1, help="Prediction horizon in steps.")

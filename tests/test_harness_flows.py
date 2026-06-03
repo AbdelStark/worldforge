@@ -120,14 +120,15 @@ def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
     assert len(run.steps) == 6
     assert len(run.metrics) == 6
     assert run.summary["selected_candidate_index"] == 1
-    assert run.summary["saved_worlds"] == [run.summary["saved_world_id"]]
-    assert run.summary["event_phases"] == ["success", "success"]
-    assert [event["phase"] for event in run.provider_events] == ["success", "success"]
+    assert run.summary["planning_mode"] == "score"
+    assert run.summary["score_result"]["provider"] == "leworldmodel"
+    assert run.summary["event_phases"] == ["success"]
+    assert [event["phase"] for event in run.provider_events] == ["success"]
     assert "final_position: (0.55, 0.50, 0.00)" in run.transcript
     assert run.workspace_path is not None
     event_log = run.workspace_path / "logs" / "provider-events.jsonl"
     events = [json.loads(line) for line in event_log.read_text(encoding="utf-8").splitlines()]
-    assert [event["phase"] for event in events] == ["success", "success"]
+    assert [event["phase"] for event in events] == ["success"]
     inspector = json.loads((run.workspace_path / "results" / "inspector.json").read_text())
     assert inspector["provider_events"] == events
 
@@ -175,8 +176,8 @@ def test_harness_runs_lerobot_flow(tmp_path) -> None:
     assert len(run.steps) == 6
     assert run.summary["policy_candidate_count"] == 3
     assert run.summary["selected_candidate_index"] == 1
-    assert run.summary["policy_select_calls"] == 2
-    assert "policy_select_calls: 2" in run.transcript
+    assert run.summary["policy_select_calls"] == 1
+    assert "policy_select_calls: 1" in run.transcript
 
 
 def test_harness_runs_cosmos_policy_flow(tmp_path) -> None:
@@ -1277,13 +1278,14 @@ def test_harness_runs_diagnostics_flow(tmp_path) -> None:
     assert len(run.steps) == 6
     assert len(run.metrics) == 6
     assert run.summary["registered_providers"] == ["mock"]
-    assert run.summary["benchmark_operation_count"] == 2
+    assert run.summary["benchmark_operation_count"] == 3
     assert run.summary["mock_supported_operations"] == [
         "predict",
         "embed",
+        "score",
     ]
-    assert run.summary["benchmark_event_count"] >= 4
-    assert "benchmark_operations: predict, embed" in run.transcript
+    assert run.summary["benchmark_event_count"] >= 6
+    assert "benchmark_operations: predict, embed, score" in run.transcript
 
 
 def test_harness_runs_workbench_flow(tmp_path) -> None:

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from worldforge import BBox, Position, ProviderCapabilities, SceneObject
+from worldforge import ProviderCapabilities
 from worldforge.config_profiles import (
     CONFIG_PROFILE_SCHEMA_VERSION,
     load_config_profile,
@@ -24,7 +24,6 @@ from worldforge.dataset_manifests import (
     load_dataset_manifest,
     parse_dataset_manifest,
 )
-from worldforge.framework import SCHEMA_VERSION
 from worldforge.models import ProviderHealth, WorldForgeError
 from worldforge.provider_contracts import (
     ProviderContractCheck,
@@ -45,12 +44,6 @@ from worldforge.report_renderers import (
     get_report_renderer,
     register_report_renderer,
     render_report_artifact,
-)
-from worldforge.world_migration_preview import (
-    preview_world_migration,
-    preview_world_migration_from_path,
-    preview_world_migration_from_world_id,
-    render_world_migration_preview_markdown,
 )
 
 
@@ -626,75 +619,3 @@ def test_report_renderer_edges_cover_registration_and_result_validation() -> Non
     register_report_renderer(bad_media, replace=True)
     with pytest.raises(WorldForgeError, match="media_type"):
         render_report_artifact("edge", "bad-media", {"kind": "artifact"})
-
-
-def test_world_migration_preview_edges_cover_blockers_and_markdown(tmp_path: Path) -> None:
-    non_object = preview_world_migration(["bad"])
-    assert non_object["status"] == "blocked"
-
-    export_bad_state = preview_world_migration({"schema_version": 1, "state": []})
-    assert export_bad_state["source"]["kind"] == "exported-json"
-
-    obj = SceneObject(
-        id="bad/object",
-        name="cube",
-        position=Position(3, 0, 0),
-        bbox=BBox(min=Position(0, 0, 0), max=Position(1, 1, 1)),
-    ).to_dict()
-    obj["position"] = obj.pop("pose")["position"]
-    world_state = {
-        "schema_version": 0,
-        "id": "world/unsafe",
-        "name": "Lab",
-        "step": 0,
-        "scene": {"objects": {"bad/object": obj}},
-        "history": [
-            {
-                "step": 0,
-                "summary": "init",
-                "state": {
-                    "schema_version": 0,
-                    "id": "nested/token",
-                    "name": "Nested",
-                    "step": 0,
-                    "scene": {"objects": {}},
-                    "history": [],
-                },
-            }
-        ],
-    }
-    report = preview_world_migration(
-        world_state,
-        source={"kind": "world-id", "label": "bad.json"},
-        expected_world_id="expected",
-    )
-    assert report["status"] == "blocked"
-    assert report["counts"]["required_change_count"] >= 1
-    assert report["counts"]["unsafe_id_count"] >= 1
-    assert report["counts"]["bounding_box_correction_count"] == 1
-    assert "<unsafe-id>" in json.dumps(report)
-    markdown = render_world_migration_preview_markdown(report)
-    assert "WorldForge World Migration Preview" in markdown
-    assert "Unsafe IDs" in markdown
-
-    unsafe_id = preview_world_migration_from_world_id("../bad", state_dir=tmp_path)
-    assert unsafe_id["status"] == "blocked"
-    missing_world = preview_world_migration_from_world_id("missing", state_dir=tmp_path)
-    assert missing_world["invalid_fields"]
-
-    invalid_json = tmp_path / "not-json.json"
-    invalid_json.write_text("{", encoding="utf-8")
-    from_path = preview_world_migration_from_path(invalid_json)
-    assert from_path["status"] == "blocked"
-    assert from_path["source"]["label"] == "<input>/not-json.json"
-
-    safe_state = {
-        "schema_version": SCHEMA_VERSION,
-        "id": "safe",
-        "name": "Safe",
-        "provider": "mock",
-        "step": 0,
-        "scene": {"objects": {}},
-        "history": [],
-    }
-    assert preview_world_migration(safe_state)["status"] == "passed"

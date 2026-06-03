@@ -112,28 +112,28 @@ def _leworldmodel_steps(summary: JSONDict) -> tuple[HarnessStep, ...]:
             "provider=leworldmodel capability=score",
         ),
         HarnessStep(
-            "Build planning world",
-            "Create a local world, add blue_cube, and encode an object_at goal.",
+            "Encode planning goal",
+            "Encode an object_at goal for blue_cube as the planning target.",
             _goal_result(summary),
-            "world=leworldmodel-score-planning-demo",
+            f"planning_mode={summary['planning_mode']}",
         ),
         HarnessStep(
             "Score candidate futures",
-            "Send pixel/action/goal tensors through score_actions.",
+            "Send pixel/action/goal tensors through forge.score_actions.",
             _cost_result(summary),
             f"selected_candidate={summary['selected_candidate_index']}",
         ),
         HarnessStep(
-            "Plan and execute",
-            "World.plan consumes the score result and mock executes the selected actions.",
+            "Select and execute",
+            "Pick the lowest-cost candidate plan and roll it forward with forge.predict.",
             _action_result(summary),
-            f"planner={summary['plan']['planner']}",
+            f"score_provider={summary['score_result']['provider']}",
         ),
         HarnessStep(
-            "Persist and reload",
-            "Save the final world to local JSON and reload it through WorldForge.",
+            "Report final pose",
+            "Read the executed object pose from the predicted world state.",
             _final_position_result(summary),
-            f"saved_world_id={summary['saved_world_id']}",
+            f"final_position={_position(summary)}",
         ),
         HarnessStep(
             "Inspect provider events",
@@ -156,14 +156,14 @@ def _lerobot_steps(summary: JSONDict) -> tuple[HarnessStep, ...]:
             "provider=lerobot capability=policy",
         ),
         HarnessStep(
-            "Build task world",
-            "Create a local world, add blue_cube, and define the placement goal.",
+            "Encode placement goal",
+            "Define the object_at placement goal for blue_cube.",
             _goal_result(summary),
-            "world=lerobot-policy-plus-score-demo",
+            f"planning_mode={summary['planning_mode']}",
         ),
         HarnessStep(
             "Select action chunks",
-            "Call select_actions and preserve raw policy candidates before translation.",
+            "Call forge.select_actions and preserve raw policy candidates before translation.",
             f"{summary['policy_candidate_count']} translated action chunks returned.",
             f"policy_select_calls={summary['policy_select_calls']}",
         ),
@@ -174,10 +174,10 @@ def _lerobot_steps(summary: JSONDict) -> tuple[HarnessStep, ...]:
             f"selected_candidate={summary['selected_candidate_index']}",
         ),
         HarnessStep(
-            "Execute and persist",
-            "Execute selected WorldForge actions, save the final world, and reload it from disk.",
+            "Select and execute",
+            "Roll the lowest-cost action chunk forward with forge.predict.",
             _final_position_result(summary),
-            f"saved_world_id={summary['saved_world_id']}",
+            f"score_provider={summary['score_provider']}",
         ),
         HarnessStep(
             "Inspect provider events",
@@ -583,13 +583,17 @@ def _planning_metrics(flow_label: str, summary: JSONDict) -> tuple[HarnessMetric
         HarnessMetric("Flow", flow_label, "WorldForge planning mode"),
         HarnessMetric("Candidates", str(len(summary["candidate_costs"])), "ranked action paths"),
         HarnessMetric("Selected", f"#{summary['selected_candidate_index']}", "lowest-cost path"),
-        HarnessMetric("Final position", _position(summary), "reloaded world state"),
+        HarnessMetric("Final position", _position(summary), "executed world state"),
         HarnessMetric(
             "Events",
             str(len(summary["event_phases"])),
             ", ".join(summary["event_phases"]),
         ),
-        HarnessMetric("State", Path(str(summary["state_dir"])).name, "local persistence root"),
+        HarnessMetric(
+            "Score provider",
+            str(summary["score_result"]["provider"]),
+            "ranking cost oracle",
+        ),
     )
 
 
@@ -743,7 +747,7 @@ def _planning_transcript(flow_id: str, summary: JSONDict) -> tuple[str, ...]:
         f"selected_candidate: {summary['selected_candidate_index']}",
         f"selected_actions: {len(summary['selected_actions'])}",
         f"final_position: {_position(summary)}",
-        f"saved_world_id: {summary['saved_world_id']}",
+        f"score_provider: {summary['score_result']['provider']}",
         f"events: {', '.join(summary['event_phases'])}",
     ]
     return tuple(lines)

@@ -12,12 +12,18 @@
 
 ### 🌐 &nbsp; **English** &nbsp; · &nbsp; [简体中文](./README.zh-CN.md)
 
-**Testable world-model workflows for physical-AI systems.**
+**A harness framework for building world-model-based workflows for physical AI systems.**
 
-WorldForge is a Python integration layer that gives world-model providers, score models, embodied
-policies, and media generators explicit capability contracts. It adds planning, evaluation,
-benchmarks, diagnostics, local state, and CLI tools while keeping checkpoints, credentials, robot
-controllers, and deployment host-owned.
+WorldForge is the application builder's counterpart to model-training stacks like Stable World
+Model: where those help researchers *train* world models, WorldForge helps roboticists and
+physical-AI builders *compose, evaluate, and benchmark* workflows built on top of them — so they can
+pick the best provider and configuration for their task.
+
+The whole framework is organized around one backbone loop: **plan and score actions with an
+action-conditioned predictive world model, in latent space.** A policy proposes candidate actions, a
+world model scores and rolls them out as a cost oracle, a latent MPC controller refines and executes
+under a receding horizon, and evaluation plus benchmarking tell you which configuration wins.
+Checkpoints, credentials, robot controllers, and deployment stay host-owned.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/AbdelStark/worldforge/ci.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/AbdelStark/worldforge/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/github/actions/workflow/status/AbdelStark/worldforge/pages.yml?branch=main&label=docs&style=for-the-badge)](https://abdelstark.github.io/worldforge/)
@@ -52,26 +58,31 @@ controllers, and deployment host-owned.
 
 ## What WorldForge Does
 
-WorldForge makes mixed physical-AI workflows explicit and inspectable.
+WorldForge is a harness for the action-conditioned planning-and-scoring loop. It makes each step
+explicit, swappable, and measurable.
 
-- **Policy providers propose action chunks** from robot observations or task instructions.
-- **Score and world-model providers rank candidate futures** instead of pretending every model has
-  the same interface.
-- **WorldForge validates, records, replays, and compares runs** through typed provider contracts.
-- **The robotics showcase TUI and Rerun make the loop visible** before a host connects real robot hardware.
+- **Policy providers propose candidate actions** from robot observations or task instructions.
+- **World-model providers score and roll out those candidates** in latent space as a cost oracle —
+  instead of pretending every model has the same interface.
+- **A latent MPC controller owns the optimizer** (CEM/MPPI-style refinement, elite selection,
+  receding horizon) and calls the score capability; providers stay pure oracles.
+- **Evaluation and benchmarking compare configurations** so a builder can pick the best
+  provider/horizon/cost setup for their task, with typed contracts, recorded runs, and replay.
 
 ## First Run
 
-Install the package, then run the checkout-safe local planning path:
+Install the package, then run the checkout-safe backbone loop on the deterministic `mock` provider:
 
 ```bash
 uv add worldforge-ai
-uv run worldforge world create lab --provider mock
+uv run worldforge doctor --registered-only
+uv run python examples/latent_mpc_planning.py
 uv run worldforge benchmark --provider mock --operation predict --operation embed
 ```
 
-The mock provider needs no credentials, checkpoints, GPU, or robot. Success is a saved local world
-and a benchmark report covering `predict` and `embed`.
+The mock provider needs no credentials, checkpoints, GPU, or robot. Success is a latent MPC plan that
+selects the lowest-cost action under a receding horizon, plus a benchmark report over the provider's
+callable operations.
 
 ## Robotics Showcase: LeRobot + LeWorldModel
 
@@ -173,29 +184,31 @@ More detail: [Rerun integration docs](https://abdelstark.github.io/worldforge/re
 
 ## Overview
 
-A predictive model, a score model, and a robot policy server have different inputs, runtimes, and
-failure modes. WorldForge does not flatten those differences. Each provider adapter declares which
-of five capabilities it supports (`predict`, `score`, `policy`, `embed`, `plan`). The contract is
-strict and fail-closed: calling an
-unsupported capability raises rather than quietly returning empty results.
+A predictive world model, a score model, and a robot policy server have different inputs, runtimes,
+and failure modes. WorldForge does not flatten those differences. Each provider adapter declares
+which of five capabilities it supports (`predict`, `score`, `policy`, `embed`, `plan`). The contract
+is strict and fail-closed: calling an unsupported capability raises rather than quietly returning
+empty results.
 
-Planning, evaluation, benchmarks, diagnostics, and persistence are built on top of that contract,
-not on any specific runtime.
-Benchmark budget files can turn success rate, error count, retry count, latency, and throughput
-thresholds into non-zero CLI gates for release checks or preserved benchmark claims.
-The [claim-to-evidence map](https://abdelstark.github.io/worldforge/claim-evidence-map/) links
-public capability and runtime claims to concrete tests, commands, artifacts, and non-claims.
+The backbone loop composes those capabilities: a `policy` proposes candidate actions, a `predict`
+provider rolls them out as forward dynamics, a `score` provider ranks them as a cost oracle, and the
+`LatentMPCController` owns the CEM/receding-horizon optimizer that ties them together in latent
+space. Evaluation and benchmarking sit on top so a builder can measure and select the best
+configuration. Budget files turn success rate, error count, retry count, latency, and throughput
+thresholds into non-zero CLI gates for release checks or preserved benchmark claims. The
+[claim-to-evidence map](https://abdelstark.github.io/worldforge/claim-evidence-map/) links public
+capability and runtime claims to concrete tests, commands, artifacts, and non-claims.
 
-WorldForge is not a hosted service, a model API abstraction, or a training framework. Optional
-runtimes, robot stacks, credentials, checkpoints, and durable storage remain the host
-application's responsibility.
+WorldForge is not a hosted service, a model API abstraction, a world generator, or a training
+framework. Optional runtimes, robot stacks, credentials, checkpoints, and durable storage remain the
+host application's responsibility.
 
 ## Highlights
 
 | | |
 | --- | --- |
 | **Capability contracts** | Five named capabilities. Adapters advertise only what they actually implement and return typed WorldForge results. Unknown names raise instead of behaving like empty filters. |
-| **Composable planning** | Combine predictive, score, and policy providers in a single planning loop. Rank candidates, roll out futures, execute actions, persist state. |
+| **Latent planning loop** | The `LatentMPCController` runs CEM/receding-horizon planning in latent space over any `score` provider. Combine predictive, score, and policy providers; rank candidates, roll out futures, execute the lowest-cost action, replan. |
 | **Deterministic by default** | Built-in `mock` provider, reusable contract assertions (`worldforge.testing`), and packaged demos that run from a clean checkout without credentials or GPUs. |
 | **Host-owned runtimes** | No torch, CUDA, robot controllers, or checkpoints in base dependencies. LeWorldModel, GR00T, LeRobot, and Cosmos-Policy integrate through their own surfaces. |
 | **Diagnostics** | `worldforge doctor`, provider events, workflow traces, benchmark and evaluation reports, run workspaces, and the robotics showcase TUI. |
@@ -277,29 +290,22 @@ Full references:
 <summary><strong>Python API sample</strong></summary>
 
 ```python
-from worldforge import Action, BBox, Position, SceneObject, StructuredGoal, WorldForge
+from worldforge import Action, LatentMPCController, PlannerConfig, WorldForge
 
 forge = WorldForge()
-world = forge.create_world("kitchen", provider="mock")
 
-world.add_object(
-    SceneObject(
-        "red_mug",
-        Position(0.0, 0.8, 0.0),
-        BBox(Position(-0.05, 0.75, -0.05), Position(0.05, 0.85, 0.05)),
-    )
-)
-
-prediction = world.predict(Action.move_to(0.3, 0.8, 0.0), steps=2)
+# Predict: the world model as action-conditioned forward dynamics.
+prediction = forge.predict({"objects": {}}, Action.move_to(0.3, 0.8, 0.0), provider="mock")
 print(prediction.provider, prediction.physics_score)
 
-plan = world.plan(
-    goal_spec=StructuredGoal.object_at(
-        object_name="red_mug",
-        position=Position(0.3, 0.8, 0.0),
-    )
+# Plan: a latent MPC controller owns the optimizer and calls `score` as a cost oracle.
+# The controller stays a pure optimizer; the world-model provider stays a pure cost oracle.
+# See examples/latent_mpc_planning.py for a runnable, checkout-safe score oracle.
+controller = LatentMPCController(
+    forge=forge,
+    score_provider="leworldmodel",  # any `score`-capable provider
+    config=PlannerConfig(horizon=1, num_samples=64, num_iterations=5),
 )
-print(plan.action_count, plan.success_probability)
 
 doctor = forge.doctor()
 print(doctor.healthy_provider_count, doctor.provider_count)
@@ -313,19 +319,10 @@ print(doctor.healthy_provider_count, doctor.provider_count)
 ```bash
 uv run worldforge examples                                              # runnable scripts index
 uv run worldforge doctor --registered-only                              # active provider health
-uv run worldforge world create lab --provider mock                      # save a local world
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0  # edit scene state
-uv run worldforge world predict <world-id> --object-id <object-id> --x 0.4 --y 0.5 --z 0
-uv run worldforge world list                                            # persisted worlds
-uv run worldforge world objects <world-id>                              # scene objects
-uv run worldforge world history <world-id>                              # object edits + predictions
-uv run worldforge world preflight                                       # read-only local state diagnostics
-uv run worldforge world migration-preview <world-id>                    # read-only schema review
-uv run worldforge world export <world-id> --output world.json           # portable state JSON
-uv run worldforge world delete <world-id>                               # remove local JSON state
 uv run worldforge provider list                                         # registered providers
 uv run worldforge provider info mock                                    # capability and lifecycle surface
 uv run worldforge provider contract mock --format json                  # attachable contract evidence
+uv run worldforge negotiate --list                                      # workflows providers can satisfy
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 uv run worldforge eval --suite planning --provider mock --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format json
@@ -333,8 +330,9 @@ uv run worldforge benchmark --provider mock --operation embed --input-file examp
 uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
 ```
 
-Scene mutations append persisted history entries with typed action payloads. Position patches keep
-the object's bounding box translated with the pose so saved snapshots stay coherent.
+`eval` and `benchmark` are the configuration-selection surface: run a workflow across providers and
+operations, then compare the typed evaluation and benchmark reports to pick a setup. Budget files
+turn success rate, latency, and throughput thresholds into non-zero CLI gates.
 
 Full CLI reference: [worldforge/cli](https://abdelstark.github.io/worldforge/cli/).
 
@@ -379,7 +377,7 @@ observe state
 <!-- provider-catalog-readme:start -->
 | Provider | Maturity | Capability surface | Registration | Runtime ownership |
 | --- | --- | --- | --- | --- |
-| `mock` | `stable` | `predict`, `embed` | always registered | in-repo deterministic local provider |
+| `mock` | `stable` | `predict`, `score`, `embed` | always registered | in-repo deterministic local provider |
 | [`cosmos-policy`](https://abdelstark.github.io/worldforge/providers/cosmos-policy/) | `beta` | none (`policy` requires host `action_translator`) | `COSMOS_POLICY_BASE_URL` | WorldForge validates `/act` request/response and planning composition; host owns Cosmos-Policy reachability/CUDA/runtime, ALOHA observation construction, and translation of raw 14D rows into executable `Action` objects |
 | [`leworldmodel`](https://abdelstark.github.io/worldforge/providers/leworldmodel/) | `stable` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
 | [`gr00t`](https://abdelstark.github.io/worldforge/providers/gr00t/) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |

@@ -32,7 +32,7 @@ The default workspace is `.worldforge/demo-showcases/`.
 
 | Workflow | Issue | Command | Expected output | Primary artifact | First triage step |
 | --- | ---: | --- | --- | --- | --- |
-| `first-run` | #189 | `uv run python scripts/demo_showcases.py run first-run` | mock world created, object added, prediction recorded, export and preflight written | `first-run/exported-world.json` and `first-run/preflight.json` | run `uv run worldforge world preflight --state-dir <demo>/worlds` |
+| `first-run` | #189 | `uv run python scripts/demo_showcases.py run first-run` | object seeded into a world-state dict, three mock prediction steps recorded, final world-state JSON exported | `first-run/exported-world-state.json` | run `uv run worldforge doctor --registered-only` and inspect the exported world-state JSON |
 | `diagnostics-issue-bundle` | #190 | `uv run python scripts/demo_showcases.py run diagnostics-issue-bundle` | skipped provider diagnostic preserved and bundled | `diagnostics-issue-bundle/issue-bundle/issue.md` | inspect `evidence_manifest.json` before attaching |
 | `robotics-replay` | #191 | `uv run python scripts/demo_showcases.py run robotics-replay` | deterministic policy-plus-score replay summary | `robotics-replay/robotics-replay-manifest.json` | run `uv run worldforge-demo-lerobot` before prepared-host commands |
 | `provider-event-redaction-dry-run` | #192 | `uv run python scripts/demo_showcases.py run provider-event-redaction-dry-run` | sanitized provider event fixtures | `provider-event-redaction-dry-run/provider-event-redaction-events.json` | inspect redacted provider event targets before any live smoke |

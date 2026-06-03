@@ -1,8 +1,7 @@
-"""Scene, action, and local world-history data contracts."""
+"""Scene, action, and geometry data contracts."""
 
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass, field
 
@@ -14,7 +13,6 @@ from worldforge._model_utils import (
     require_bool,
     require_finite_number,
     require_json_dict,
-    require_non_negative_int,
 )
 
 
@@ -345,59 +343,3 @@ class SceneObject:
             is_graspable=payload.get("is_graspable", False),
             metadata=dict(payload.get("metadata", {})),
         )
-
-
-@dataclass(slots=True)
-class HistoryEntry:
-    """A recorded world snapshot."""
-
-    step: int
-    state: JSONDict
-    summary: str
-    action_json: str | None = None
-
-    def __post_init__(self) -> None:
-        self.step = require_non_negative_int(self.step, name="HistoryEntry step")
-        if not isinstance(self.state, dict):
-            raise WorldForgeError("HistoryEntry state must be a JSON object.")
-        if not isinstance(self.summary, str) or not self.summary.strip():
-            raise WorldForgeError("HistoryEntry summary must be a non-empty string.")
-        if self.action_json is not None:
-            if not isinstance(self.action_json, str) or not self.action_json.strip():
-                raise WorldForgeError(
-                    "HistoryEntry action_json must be a non-empty string when provided."
-                )
-            try:
-                action_payload = json.loads(self.action_json)
-            except json.JSONDecodeError as exc:
-                raise WorldForgeError("HistoryEntry action_json must be valid JSON.") from exc
-            Action.from_dict(action_payload)
-        self.state = dict(self.state)
-        self.summary = self.summary.strip()
-
-    def to_dict(self) -> JSONDict:
-        return {
-            "step": self.step,
-            "state": self.state,
-            "summary": self.summary,
-            "action_json": self.action_json,
-        }
-
-    @classmethod
-    def from_dict(cls, payload: JSONDict) -> HistoryEntry:
-        if not isinstance(payload, dict):
-            raise WorldForgeError("HistoryEntry payload must be a JSON object.")
-        return cls(
-            step=payload["step"],
-            state=payload["state"],
-            summary=payload.get("summary", ""),
-            action_json=payload.get("action_json"),
-        )
-
-
-def __getattr__(name: str) -> object:
-    if name == "StructuredGoal":
-        from worldforge.structured_goals import StructuredGoal
-
-        return StructuredGoal
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

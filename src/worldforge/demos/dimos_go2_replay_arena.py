@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from worldforge import Action, ActionScoreResult, WorldForge
+from worldforge import (
+    Action,
+    ActionScoreResult,
+    WorldForge,
+    action_candidates_to_score_payload,
+)
 from worldforge.artifact_io import write_json_artifact
 from worldforge.models import JSONDict, WorldForgeError, require_finite_number
 from worldforge.providers.base import ProviderProfileSpec
@@ -181,18 +186,17 @@ def run_dimos_go2_replay_arena(
     fixture = load_go2_replay_fixture(fixture_path)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    forge = WorldForge(state_dir=output_dir / "worlds", auto_register_remote=False)
+    forge = WorldForge(auto_register_remote=False)
     forge.register_cost(Go2ReplayScoreProvider())
-    world = forge.create_world(fixture["scenario_id"], provider="mock")
     candidate_plans = _candidate_action_plans(fixture)
     score_info = {"observation": fixture["observation"], "goal": fixture["goal"]}
-    plan = world.plan(
-        goal=str(fixture["goal"]["description"]),
-        score_provider=Go2ReplayScoreProvider.name,
-        score_info=score_info,
-        candidate_actions=candidate_plans,
-    )
-    trace = _decision_trace(fixture, plan)
+    # Rank the replay candidates through the transparent score cost oracle.
+    score_result = forge.score_actions(
+        Go2ReplayScoreProvider.name,
+        info=score_info,
+        action_candidates=action_candidates_to_score_payload(candidate_plans),
+    ).to_dict()
+    trace = _decision_trace(fixture, score_result)
     report_markdown = render_go2_replay_report(trace)
 
     decision_trace_path = output_dir / "decision-trace.json"
@@ -421,14 +425,12 @@ def _require_score_mapping(value: object, field_name: str) -> JSONDict:
     return dict(value)
 
 
-def _decision_trace(fixture: JSONDict, plan: Any) -> JSONDict:
-    try:
-        score_result = plan.metadata["score_result"]
-    except KeyError as exc:
+def _decision_trace(fixture: JSONDict, score_result: JSONDict) -> JSONDict:
+    if not isinstance(score_result, Mapping) or "metadata" not in score_result:
         raise WorldForgeError(
-            "Go2 replay arena expected 'score_result' in plan metadata; "
-            f"got keys: {sorted(plan.metadata)}"
-        ) from exc
+            "Go2 replay arena expected an ActionScoreResult dict with 'metadata'; "
+            f"got keys: {sorted(score_result) if isinstance(score_result, Mapping) else type(score_result).__name__}"  # noqa: E501
+        )
     scored_candidates = _trace_scored_candidates(score_result)
     best = scored_candidates[0]
     second_best = scored_candidates[1] if len(scored_candidates) > 1 else best
@@ -462,11 +464,11 @@ def _decision_trace(fixture: JSONDict, plan: Any) -> JSONDict:
         "score_margin": score_margin,
         "worldforge_value": _worldforge_value(score_margin, baseline_regret),
         "scored_candidates": scored_candidates,
-        "plan_metadata": {
-            "planning_mode": plan.metadata["planning_mode"],
-            "score_provider": plan.provider,
-            "success_probability": plan.success_probability,
-            "workflow_trace": plan.metadata["workflow_trace"],
+        "score_metadata": {
+            "planning_mode": "score",
+            "score_provider": str(score_result.get("provider", Go2ReplayScoreProvider.name)),
+            "lower_is_better": bool(score_result.get("lower_is_better", True)),
+            "best_index": int(score_result["best_index"]),
         },
     }
 

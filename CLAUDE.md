@@ -1,13 +1,14 @@
 <identity>
-WorldForge is a Python integration layer and CLI for physical-AI world-model provider adapters, world state, planning, evaluation, benchmarking, diagnostics, and host-owned optional runtimes.
+WorldForge is a harness framework for building world-model-based workflows for physical AI. It is the application builder's counterpart to model-training stacks like Stable World Model: it helps roboticists and physical-AI builders compose, evaluate, and benchmark workflows built on top of world models — not train them. The entire library is organized around one backbone loop: planning and scoring action candidates with an action-conditioned predictive world model, in latent space (a `policy` proposes actions, a `predict` provider rolls them out, a `score` provider ranks them as a cost oracle, and `LatentMPCController` owns the CEM/receding-horizon optimizer). It exposes provider capability adapters, latent planning/control, evaluation, benchmarking, diagnostics, local state, host-owned optional runtimes, and a CLI on top of that loop.
 </identity>
 
 <priority_rules>
-1. Keep provider capabilities truthful: advertise only callable, tested, typed WorldForge surfaces.
-2. Make the library fault tolerant and developer-friendly while preserving the optional-runtime boundary: never add torch, LeWorldModel, LeRobot, GR00T, CUDA, checkpoints, datasets, or robot controllers to base dependencies or the repo.
-3. Fail loudly at boundaries: invalid public inputs raise `WorldForgeError`; malformed persisted/provider state raises `WorldStateError`; provider/runtime failures raise `ProviderError`.
-4. Preserve local-first scope: no hosted service, production database, credential store, robot safety layer, telemetry backend, or durable multi-writer persistence unless explicitly designed and approved.
-5. Public contribution artifacts must be human, maintainer-style, and tool-neutral. Do not mention agent/tool branding in branch names, commits, PR titles, PR bodies, changelog, docs, or README copy.
+1. Keep the scope narrow to the backbone loop: planning and scoring with an action-conditioned predictive world model in latent space, plus evaluation/benchmarking to select configurations. Do not reintroduce world generation, symbolic-scenario simulation, or media-generation features.
+2. Keep provider capabilities truthful: advertise only callable, tested, typed WorldForge surfaces.
+3. Make the library fault tolerant and developer-friendly while preserving the optional-runtime boundary: never add torch, LeWorldModel, LeRobot, GR00T, CUDA, checkpoints, datasets, or robot controllers to base dependencies or the repo.
+4. Fail loudly at boundaries: invalid public inputs raise `WorldForgeError`; malformed persisted/provider state raises `WorldStateError`; provider/runtime failures raise `ProviderError`.
+5. Preserve local-first scope: no hosted service, production database, credential store, robot safety layer, telemetry backend, or durable multi-writer persistence unless explicitly designed and approved.
+6. Public contribution artifacts must be human, maintainer-style, and tool-neutral. Do not mention agent/tool branding in branch names, commits, PR titles, PR bodies, changelog, docs, or README copy.
 </priority_rules>
 
 <stack>
@@ -31,7 +32,7 @@ Top-level boundaries:
 | --- | --- | --- |
 | `src/worldforge/` | Package source and public runtime | Modify with tests; public API files are gated |
 | `src/worldforge/models.py` | Public models, validation, request policy, events, state contracts | Gated for breaking contract changes |
-| `src/worldforge/framework.py` | `WorldForge`, `World`, persistence, planning, diagnostics, facade helpers | Gated for persistence/planning/public behavior changes |
+| `src/worldforge/framework.py` | `WorldForge`, provider orchestration, capability dispatch (`predict`/`score`/`policy`/`embed`), diagnostics, facade helpers | Gated for public behavior changes |
 | `src/worldforge/providers/` | Provider base classes, catalog, concrete adapters, optional runtimes | Modify with provider skill and fixture tests |
 | `src/worldforge/evaluation/` | Deterministic evaluation suites and renderers | Modify with evaluation skill |
 | `src/worldforge/harness/` | Robotics showcase flow/report package | Keep Textual isolated to `tui.py` |
@@ -86,7 +87,7 @@ Run from repository root.
 | Package contract | `bash scripts/test_package.sh` | wheel installs and tests pass in isolated venv |
 | Full local gate | `uv lock --check && uv run ruff check src tests examples scripts && uv run ruff format --check src tests examples scripts && uv run python scripts/generate_provider_docs.py --check && uv run pytest && uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90 && bash scripts/test_package.sh` | release-quality local validation |
 | CLI smoke | `uv run worldforge doctor` | `mock` registered; optional providers report missing/unregistered when env absent |
-| World CLI persistence | `uv run worldforge world create lab --provider mock && uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 && uv run worldforge world history <world-id> && uv run worldforge world predict <world-id> --x 0.4 --y 0.5 --z 0 && uv run worldforge world delete <world-id>` | local JSON world is saved, edited with history, advanced, and removed through the validated persistence API |
+| Latent backbone loop | `uv run python examples/latent_mpc_planning.py && uv run worldforge predict kitchen --provider mock --x 0.4 --y 0.5 --z 0 --steps 1 && uv run worldforge eval --suite planning --provider mock` | latent MPC selects the lowest-cost action, `predict` rolls a move through the dynamics provider, and the planning eval passes on the mock score provider |
 | Examples index | `uv run worldforge examples` | runnable command list prints |
 | Robotics showcase TUI | `scripts/robotics-showcase` | Textual extra only; pass `--no-tui` for terminal-only output |
 | Build | `uv build` | wheel and sdist under `dist/` |
@@ -98,7 +99,7 @@ Capability names are strict: `predict`, `embed`, `plan`, `score`, `policy`.
 
 | Provider | Truthful surface | Registration trigger | Do not claim |
 | --- | --- | --- | --- |
-| `mock` | `predict`, `embed` | always registered | real physical/media fidelity |
+| `mock` | `predict`, `embed`, `score` | always registered | real physical/media fidelity |
 | `leworldmodel` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | predict/policy |
 | `gr00t` | `policy` | `GROOT_POLICY_HOST` | world model, score |
 | `lerobot` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | world model, score |
@@ -188,7 +189,7 @@ Require explicit approval before modifying:
 - dependency or package metadata in `pyproject.toml` and `uv.lock`
 - public API exports in `src/worldforge/__init__.py`
 - public model/error/capability contracts in `src/worldforge/models.py`
-- persistence contract in `src/worldforge/framework.py`
+- provider orchestration and capability dispatch in `src/worldforge/framework.py`
 - provider base/catalog registration semantics in `src/worldforge/providers/base.py` and `src/worldforge/providers/catalog.py`
 - release/publish behavior in `scripts/test_package.sh` or release workflow
 - deleting tracked files or changing branch/merge/release policy
@@ -225,7 +226,7 @@ Load skills on demand:
 - `.codex/skills/testing-validation/SKILL.md`: test selection, coverage, package, docs, CI gates.
 - `.codex/skills/evaluation-benchmarking/SKILL.md`: evaluation suites, benchmarks, report claims.
 - `.codex/skills/optional-runtime-smokes/SKILL.md`: LeWorldModel, GR00T, LeRobot live or injected runtime checks.
-- `.codex/skills/persistence-state/SKILL.md`: world IDs, local JSON state, history import/export.
+- `.codex/skills/persistence-state/SKILL.md`: local run-workspace state and JSON artifacts under `.worldforge/` (the symbolic world store is removed).
 - `.codex/skills/tui-development/SKILL.md`: robotics showcase Textual report and optional TUI isolation.
 - `.codex/skills/public-docs-release/SKILL.md`: README/docs/changelog/release-surface synchronization and publish-gate checks.
 </skills>

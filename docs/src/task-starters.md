@@ -361,7 +361,7 @@ operator drills, run cleanup, provider diagnostics, or recovery workflows.
 - `docs/src/playbooks.md`
 - `docs/src/support.md`
 - `tests/test_cli_help_snapshots.py`
-- `tests/test_cli_world_commands.py`
+- `tests/test_cli_doctor.py`
 - `tests/test_operator_drills.py`
 
 ### Files Commonly Updated
@@ -386,7 +386,7 @@ operator drills, run cleanup, provider diagnostics, or recovery workflows.
 
 ```bash
 uv run worldforge --help
-uv run pytest tests/test_cli_help_snapshots.py tests/test_cli_world_commands.py tests/test_operator_drills.py
+uv run pytest tests/test_cli_help_snapshots.py tests/test_cli_doctor.py tests/test_operator_drills.py
 uv run python scripts/check_docs_commands.py
 uv run python scripts/check_optional_import_boundaries.py
 uv run mkdocs build --strict

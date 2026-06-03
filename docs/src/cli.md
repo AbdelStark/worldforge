@@ -59,52 +59,18 @@ GR00T, Cosmos-Policy, and LeWorldModel only register when their host-owned envir
 available. `worldforge negotiate` answers the higher-level question "can my providers satisfy this
 workflow before I run it?" — see [Capability Negotiation](./capability-negotiation.md).
 
-## Local Worlds
+## Prediction
 
 ```bash
-uv run worldforge world create lab --provider mock
-uv run worldforge world list
-uv run worldforge world show <world-id>
-uv run worldforge world objects <world-id>
-uv run worldforge world history <world-id>
-uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-uv run worldforge world migration-preview world.json --source-path
-uv run worldforge world export <world-id> --output world.json
-uv run worldforge world import world.json --new-id --name imported-lab
-uv run worldforge world fork <world-id> --name forked-lab
-uv run worldforge world delete <world-id>
-uv run worldforge world diff <source-id> <target-id>
-uv run worldforge scenario validate examples/scenarios/cube-on-table.json
-uv run worldforge scenario run examples/scenarios/spawn-and-move.json --state-dir .worldforge/worlds
-```
-
-World IDs are local JSON file stems. Values with path separators or traversal-shaped input are
-rejected before filesystem access.
-
-`world preflight` is read-only. It checks the world state directory, requested `--world-id` values,
-corrupted world JSON, invalid history entries, object bounding-box coherence, preserved run
-manifests, stale run directories, unsafe artifact paths, and run-retention pressure. JSON output is
-safe to attach by default; the command exits non-zero when it finds error-severity state.
-
-`world migration-preview` is also read-only. It accepts either a persisted world id or
-`--source-path` pointing at persisted or exported world JSON, then reports the world schema version,
-required canonicalization changes, invalid fields, unsafe IDs, bounding-box corrections,
-`can_apply_safely`, and the first triage step. It does not rewrite state; actual migration remains
-an explicit second step.
-
-## Scene Mutations And Prediction
-
-```bash
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0
-uv run worldforge world remove-object <world-id> cube-1
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 ```
 
-Scene mutations append typed history entries. Position patches keep bounding boxes translated with
-the pose, and predictions append provider action entries after the provider returns the next state.
+`worldforge predict` seeds a plain world-state dict, rolls the requested move through the
+action-conditioned `predict` provider, and prints the provider name, physics score, confidence,
+and the resulting world-state JSON. The positional argument is a scenario label only — there is no
+symbolic `World` runtime or local JSON persistence. Compose `predict` with `score`/`policy`
+providers through `LatentMPCController` (see [Python API](./api/python.md)) for receding-horizon
+planning.
 
 ## Evaluation
 

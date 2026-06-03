@@ -1,8 +1,10 @@
 """Run a real LeRobot policy plus real LeWorldModel scoring flow.
 
 This is a host-owned robotics-builder smoke/showcase. It composes a real
-LeRobot policy checkpoint with a real LeWorldModel object checkpoint through
-``World.plan(..., planning_mode="policy+score")``.
+LeRobot policy checkpoint with a real LeWorldModel object checkpoint through the
+WorldForge capability surface: ``forge.select_actions`` proposes policy action
+chunks, ``forge.score_actions`` ranks them as a cost oracle, and the lowest-cost
+chunk is rolled forward with ``forge.predict`` (policy+score planning).
 
 The runner deliberately does not own task preprocessing. For a meaningful run,
 the LeRobot policy, observation, LeWorldModel score tensors, and candidate
@@ -20,7 +22,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from worldforge import BBox, Position, SceneObject, StructuredGoal, WorldForge
+from worldforge import BBox, Position, SceneObject, WorldForge
+from worldforge.demos import execute_plan_over_state, object_position, seed_world_state
 from worldforge.providers import LeRobotPolicyProvider, LeWorldModelProvider
 from worldforge.smoke import lerobot_leworldmodel_bridge as _bridge
 from worldforge.smoke import lerobot_leworldmodel_cli as _cli
@@ -35,6 +38,7 @@ from worldforge.smoke.lerobot_leworldmodel_models import (
     _PlanRun,
     _ProviderRuntime,
     _RuntimeSettings,
+    _SmokePlan,
     _SmokePlanningResult,
     _SmokeRuntime,
     _SmokeSession,
@@ -246,20 +250,21 @@ def _create_planning_surface(
     forge = WorldForge(state_dir=state_dir, auto_register_remote=False)
     forge.register_provider(runtime.policy_provider)
     forge.register_provider(runtime.score_provider)
-    world = forge.create_world("real-robotics-policy-world-model", provider="mock")
-    block = world.add_object(
-        SceneObject(
-            "pusht-block",
-            Position(0.0, 0.5, 0.0),
-            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
-        )
+    block = SceneObject(
+        "pusht-block",
+        Position(0.0, 0.5, 0.0),
+        BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
     )
+    world_state = seed_world_state([block])
     policy_info.setdefault("score_bridge", {})
     if isinstance(policy_info["score_bridge"], dict):
         policy_info["score_bridge"].setdefault("object_id", block.id)
     if rerun_artifacts is not None:
-        rerun_artifacts.log_world(world, label="initial PushT tabletop state")  # type: ignore[attr-defined]
-    return _PlanningSurface(forge=forge, world=world, block=block)
+        rerun_artifacts.log_json(  # type: ignore[attr-defined]
+            "robotics_showcase/initial_world_state",
+            world_state,
+        )
+    return _PlanningSurface(forge=forge, world_state=world_state, block=block)
 
 
 def _log_planning_surface(*, color: bool, no_execute: bool) -> None:
@@ -295,7 +300,7 @@ def _run_policy_score_plan(
             [
                 (
                     "operation",
-                    "World.plan(policy_provider='lerobot', score_provider='leworldmodel')",
+                    "forge.select_actions('lerobot') + forge.score_actions('leworldmodel')",
                 ),
                 ("goal", args.goal),
                 ("dynamic bridge", bool(args.candidate_builder)),
@@ -303,22 +308,12 @@ def _run_policy_score_plan(
             color=color,
         )
     plan_started = perf_counter()
-    goal_spec = StructuredGoal.object_at(
-        object_id=surface.block.id,
-        object_name=surface.block.name,
-        position=Position(0.5, 0.5, 0.0),
-        tolerance=0.05,
-    )
-    plan = surface.world.plan(
+    plan = _policy_score_plan(
+        surface.forge,
         goal=args.goal,
-        goal_spec=goal_spec,
-        planner="lerobot-leworldmodel-mpc",
-        policy_provider="lerobot",
         policy_info=policy_info,
-        score_provider="leworldmodel",
         score_info=score_info,
         score_action_candidates=score_action_candidates,
-        execution_provider="mock",
     )
     plan_latency_ms = (perf_counter() - plan_started) * 1000
     score_result = plan.metadata["score_result"]
@@ -339,6 +334,55 @@ def _run_policy_score_plan(
         score_stats=_score_stats(score_result),
         execution_summary=execution_summary,
         plan_latency_ms=plan_latency_ms,
+    )
+
+
+def _policy_score_plan(
+    forge: WorldForge,
+    *,
+    goal: str,
+    policy_info: dict[str, Any],
+    score_info: dict[str, object],
+    score_action_candidates: object,
+) -> _SmokePlan:
+    """Select a policy action chunk and rank candidates with the score cost oracle.
+
+    This is the capability-surface equivalent of the deleted ``World.plan(planning_mode=
+    'policy+score')`` path: the LeRobot policy proposes candidate chunks, the LeWorldModel
+    score provider ranks them as costs, and the lowest-cost chunk is selected.
+    """
+
+    policy_result = forge.select_actions("lerobot", info=policy_info)
+    candidate_plans = policy_result.action_candidates
+    if not candidate_plans:
+        raise SystemExit("policy provider 'lerobot' returned no action candidates")
+    score_result = forge.score_actions(
+        "leworldmodel",
+        info=score_info,
+        action_candidates=score_action_candidates,
+    )
+    best_index = score_result.best_index
+    if not 0 <= best_index < len(candidate_plans):
+        raise SystemExit(
+            f"score provider 'leworldmodel' best_index {best_index} is out of range "
+            f"for {len(candidate_plans)} policy candidates"
+        )
+    selected_actions = list(candidate_plans[best_index])
+    return _SmokePlan(
+        provider="leworldmodel",
+        actions=selected_actions,
+        success_probability=1.0 - min(max(float(score_result.best_score), 0.0), 1.0),
+        metadata={
+            "planning_mode": "policy+score",
+            "planner": "lerobot-leworldmodel-mpc",
+            "policy_provider": "lerobot",
+            "score_provider": "leworldmodel",
+            "execution_provider": "mock",
+            "goal": goal,
+            "candidate_count": len(candidate_plans),
+            "policy_result": policy_result.to_dict(),
+            "score_result": score_result.to_dict(),
+        },
     )
 
 
@@ -364,20 +408,27 @@ def _execute_or_skip_plan(
         _log_step(
             6,
             7,
-            "Execute selected action chunk in local mock world",
+            "Execute selected action chunk in local mock world state",
             [("selected actions", len(plan.actions)), ("execution provider", "mock")],
             color=color,
         )
-    execution = surface.world.execute_plan(plan, provider="mock")
-    final_world = execution.final_world()
-    final_block = final_world.get_object_by_id(surface.block.id)
+    final_state = execute_plan_over_state(
+        surface.forge,
+        surface.world_state,
+        list(plan.actions),
+        provider="mock",
+    )
+    final_block_position = object_position(final_state, surface.block.id)
     execution_summary = {
-        "actions_applied": len(execution.actions_applied),
-        "final_step": final_world.step,
-        "final_block_position": final_block.position.to_dict() if final_block is not None else None,
+        "actions_applied": len(plan.actions),
+        "final_step": final_state.get("step"),
+        "final_block_position": final_block_position,
     }
     if rerun_artifacts is not None:
-        rerun_artifacts.log_world(final_world, label="mock replay final state")  # type: ignore[attr-defined]
+        rerun_artifacts.log_json(  # type: ignore[attr-defined]
+            "robotics_showcase/final_world_state",
+            final_state,
+        )
     return execution_summary
 
 

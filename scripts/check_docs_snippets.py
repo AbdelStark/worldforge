@@ -16,12 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_DOCS = (
     "docs/src/api/python.md",
-    "docs/src/scenarios.md",
     "docs/src/provider-routing.md",
     "docs/src/external-providers.md",
     "docs/src/benchmarking.md",
     "docs/src/artifact-integrity.md",
-    "docs/src/world-diff.md",
     "docs/src/html-reports.md",
 )
 
@@ -364,14 +362,6 @@ def _parse_json(block: SnippetBlock, *, root: Path) -> dict[str, Any]:
 
 
 def _validate_known_json_schema(block: SnippetBlock, payload: object, *, root: Path) -> str:
-    if block.path.endswith("scenarios.md") and isinstance(payload, dict) and "actions" in payload:
-        from worldforge.scenarios import parse_scenario, parse_scenario_matrix
-
-        if "matrix" in payload:
-            parse_scenario_matrix(payload)
-            return "parsed as ScenarioMatrix"
-        parse_scenario(payload)
-        return "parsed as Scenario"
     if block.path.endswith("benchmarking.md"):
         from worldforge.benchmark import load_benchmark_budgets, load_benchmark_inputs
 

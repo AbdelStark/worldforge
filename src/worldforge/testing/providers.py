@@ -72,6 +72,24 @@ def sample_contract_world_state() -> JSONDict:
     }
 
 
+def sample_contract_score_info() -> JSONDict:
+    """Return a minimal observation/goal payload for score contract checks."""
+
+    return {
+        "observation": {"point": [0.0, 0.0, 0.0]},
+        "goal": {"target": [0.3, 0.5, 0.0]},
+    }
+
+
+def sample_contract_score_action_candidates() -> list[list[JSONDict]]:
+    """Return two distinct candidate action plans for score contract checks."""
+
+    return [
+        [{"type": "latent_action", "parameters": {"x": 0.1, "y": 0.5, "z": 0.0}}],
+        [{"type": "latent_action", "parameters": {"x": 0.3, "y": 0.5, "z": 0.0}}],
+    ]
+
+
 def sample_contract_policy_info() -> JSONDict:
     """Return a minimal embodied-policy observation payload for contract checks."""
 
@@ -249,8 +267,12 @@ def _provider_contract_inputs(
         world_state=world_state or sample_contract_world_state(),
         action=action or sample_contract_action(),
         policy_info=policy_info,
-        score_info=score_info,
-        score_action_candidates=score_action_candidates,
+        score_info=score_info or sample_contract_score_info(),
+        score_action_candidates=(
+            score_action_candidates
+            if score_action_candidates is not None
+            else sample_contract_score_action_candidates()
+        ),
     )
 
 

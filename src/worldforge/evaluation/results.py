@@ -17,7 +17,7 @@ from worldforge.models import (
 )
 
 if TYPE_CHECKING:
-    from worldforge.framework import World, WorldForge
+    from worldforge.framework import WorldForge
 
 EvaluationScenarioEvaluator = Callable[
     ["EvaluationContext"],
@@ -71,7 +71,6 @@ class EvaluationContext:
     suite: str
     scenario: EvaluationScenario
     provider: str
-    world: World
     forge: WorldForge
     index: int
 

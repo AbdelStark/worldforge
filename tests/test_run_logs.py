@@ -117,8 +117,15 @@ def test_run_json_log_sink_integrates_with_worldforge_event_handler(tmp_path) ->
         event_handler=compose_event_handlers(run_sink),
     )
 
-    world = forge.create_world_from_prompt("empty room", provider="mock")
-    world.predict(Action.move_to(0.2, 0.5, 0.0))
+    state = {
+        "schema_version": 1,
+        "id": "world-empty-room",
+        "name": "empty room",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
+    forge.predict(state, Action.move_to(0.2, 0.5, 0.0), provider="mock")
 
     records = _read_jsonl(run_sink.log_path)
     assert [(record["run_id"], record["provider"], record["operation"]) for record in records] == [

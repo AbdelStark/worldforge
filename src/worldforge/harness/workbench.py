@@ -19,6 +19,8 @@ from worldforge.testing import (
     assert_predict_conformance,
     assert_provider_events_conform,
     assert_score_conformance,
+    sample_contract_score_action_candidates,
+    sample_contract_score_info,
 )
 
 AUTHORING_DOC = "docs/src/provider-authoring-guide.md"
@@ -340,7 +342,11 @@ def _run_embed_conformance(provider: BaseProvider, clip: object | None) -> objec
 
 
 def _run_score_conformance(provider: BaseProvider, clip: object | None) -> object | None:
-    assert_score_conformance(provider, info={"fixture": "workbench"}, action_candidates=[])
+    assert_score_conformance(
+        provider,
+        info=sample_contract_score_info(),
+        action_candidates=sample_contract_score_action_candidates(),
+    )
     return clip
 
 

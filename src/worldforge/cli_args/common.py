@@ -15,15 +15,6 @@ CLI_DESCRIPTION = (
 CLI_EPILOG = """Common commands:
   worldforge examples
   worldforge doctor
-  worldforge world create lab --provider mock
-  worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0
-  worldforge world predict <world-id> --object-id <object-id> --x 0.4 --y 0.5 --z 0
-  worldforge world list
-  worldforge world preflight
-  worldforge world migration-preview <world-id>
-  worldforge world objects <world-id>
-  worldforge world history <world-id>
-  worldforge world delete <world-id>
   worldforge provider list
   worldforge provider docs
   worldforge provider info mock

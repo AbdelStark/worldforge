@@ -100,7 +100,6 @@ def test_demo_showcase_runner_preserves_all_workflow_contracts(tmp_path: Path) -
     assert first_run["provider"] == "mock"
     assert first_run["object_count"] == 1
     assert first_run["history_length"] >= 3
-    assert first_run["preflight_status"] == "passed"
     assert Path(str(first_run["artifact_paths"]["exported_world"])).is_file()
 
     diagnostics = summaries["diagnostics-issue-bundle"]

@@ -184,107 +184,39 @@ store. Preserved eval and benchmark run manifests include a `config_profile` pro
 the profile name, safe relative source label, SHA-256 digest, and validated non-secret defaults; the
 profile file itself is not copied into run evidence.
 
-## Persistence
+## World State
 
-World state is persisted as local JSON under `.worldforge/worlds` by default or under the
-`state_dir` passed to `WorldForge`.
+WorldForge no longer ships a symbolic `World` runtime or a built-in JSON world store. Planning runs
+over plain, JSON-serializable world-state dicts: a `predict` provider rolls a `world_state` dict
+forward one action at a time, and `LatentMPCController` plans by scoring action candidates with a
+`score` provider over that state.
 
-The same local store is available from the CLI for checkout jobs and operator handoffs:
+```python
+from worldforge import Action, WorldForge
 
-```bash
-uv run worldforge world create lab --provider mock
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
-uv run worldforge world list
-uv run worldforge world objects <world-id>
-uv run worldforge world history <world-id>
-uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-uv run worldforge world migration-preview world.json --source-path
-uv run worldforge world export <world-id> --output world.json
-uv run worldforge world import world.json --new-id --name lab-copy
-uv run worldforge world fork <world-id> --history-index 0 --name lab-start
-uv run worldforge world delete <world-id>
+forge = WorldForge()
+world_state = {"step": 0, "scene": {"objects": {}}}
+payload = forge.predict(world_state, Action.move_to(0.3, 0.8, 0.0), steps=2, provider="mock")
+next_state = payload.state
 ```
 
-This store is suitable for local development, tests, examples, and single-writer workflows. It is
-not a concurrent database. Services that need multi-writer persistence should store exported world
-payloads in their own database and apply their own locking, backup, and retention policy.
-
-Persistence remains explicitly host-owned beyond local JSON import/export. The reason is boundary
-clarity: host applications own deployment topology, durability, locking semantics, backup policy,
-and retention requirements. WorldForge should not imply production durability guarantees that a
-local JSON store cannot enforce.
+Persistence is explicitly host-owned. The reason is boundary clarity: host applications own
+deployment topology, durability, locking semantics, backup policy, and retention requirements.
+WorldForge should not imply production durability guarantees. Services that need durable world
+state should serialize these plain dicts into their own database and apply their own locking,
+backup, and retention policy.
 
 ADR 0001, [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md), records the
 future `WorldPersistenceAdapter` boundary and the acceptance bar for any durable store.
 
-Supported persistence invariants:
+Supported invariants:
 
-- World IDs are validated as file-safe local storage identifiers before any read or write. Path
-  separators, traversal-shaped IDs, empty strings, and non-string IDs are rejected.
-- CLI object mutations and persisted predictions load the world, apply typed `SceneObject`,
-  `SceneObjectPatch`, or `Action` values, append typed history entries, and write through
-  `save_world(...)`.
-- Position patches translate the object's bounding box with the pose so local scene edits do not
-  leave stale spatial bounds in persisted snapshots.
-- `world predict` saves the provider-updated world unless `--dry-run` is supplied.
-- `delete_world(...)` and `world delete` validate the world id before unlinking local JSON and fail
-  loudly when the requested world is already absent.
-- Local JSON imports reject malformed scene object IDs, non-object state payloads, invalid
-  metadata, invalid history, negative steps, history entries from future steps, empty history
-  summaries, malformed serialized actions, and invalid historical snapshot states.
-- `save_world(...)` validates the serialized world before writing and replaces the destination file
-  atomically through a temporary file in the same directory.
-- `world preflight` is read-only and does not create, rewrite, delete, or silently coerce state. It
-  reports missing state directories, unsafe requested IDs, corrupted worlds, invalid histories,
-  incoherent object bounding boxes, stale run workspaces, unsafe run artifact paths, and retention
-  pressure.
-- `world migration-preview` is read-only and accepts either a persisted world id or
-  `--source-path` for persisted/exported JSON. It reports schema version, required changes,
-  invalid fields, unsafe IDs, bounding-box corrections, and `can_apply_safely` without rewriting
-  the source file.
-- README and operations docs state that multi-writer persistence is host-owned.
+- Public inputs are validated before any outbound provider call: invalid actions, non-positive
+  step counts, and malformed candidate payloads raise `WorldForgeError`.
+- Malformed persisted or provider world-state payloads raise `WorldStateError` at the boundary
+  rather than being silently coerced.
 - Any future built-in persistence backend must be introduced as an explicit adapter with its own
   locking, migration, and recovery documentation.
-
-Local state preflight is the first operator command before quarantining user data:
-
-```bash
-uv run worldforge world preflight \
-  --state-dir .worldforge/worlds \
-  --workspace-dir .worldforge \
-  --world-id <world-id> \
-  --retention-keep 20 \
-  --format json > worldforge-state-preflight.json
-```
-
-Success signal: `status` is `passed`, `safe_to_attach` is `true`, and `error_count` is `0`. Warning
-status is allowed for absent local state or retention pressure; failed status means at least one
-world file, requested ID, run manifest, or artifact reference needs operator action.
-
-Recovery commands in the report export diagnostics before moving invalid files into
-`.worldforge/quarantine/`. They do not run `rm` or silently delete user data. For retention pressure,
-the first command is `uv run worldforge runs cleanup --workspace-dir .worldforge --keep 20 --dry-run`;
-remove `--dry-run` only after the preserved evidence is no longer needed.
-
-Migration preview is the state-review command before applying a schema rewrite:
-
-```bash
-uv run worldforge world migration-preview <world-id> \
-  --state-dir .worldforge/worlds \
-  --format json > worldforge-migration-preview.json
-uv run worldforge world migration-preview world.json \
-  --source-path \
-  --format markdown > worldforge-migration-preview.md
-```
-
-Success signal: `safe_to_attach` and `read_only` are `true`. `status: passed` means no migration is
-required. `status: migration-needed` means the preview found schema defaults, legacy
-`position`-to-`pose.position` changes, or bounding-box corrections that can be reviewed before an
-explicit rewrite. `status: blocked` means invalid fields or unsafe IDs must be fixed outside the
-preview tool; WorldForge does not silently repair malformed local state.
 
 ## Run Workspaces
 

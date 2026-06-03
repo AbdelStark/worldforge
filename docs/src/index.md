@@ -6,12 +6,13 @@ hide:
 
 # WorldForge
 
-**Testable world-model workflows for physical-AI systems.**
+**A harness framework for building world-model-based workflows for physical AI systems.**
 
-WorldForge is a Python integration layer for testable physical-AI world-model workflows. It gives
-providers, score models, embodied policies, and media generators explicit capability contracts,
-then adds world state, planning, evaluation, benchmarking, diagnostics, and CLI tools for local
-experiments and adapter development.
+WorldForge is the application builder's counterpart to model-training stacks like Stable World
+Model: it helps roboticists and physical-AI builders *compose, evaluate, and benchmark* workflows
+built on top of world models — so they can pick the best provider and configuration for a task —
+rather than *train* the models. The whole framework is organized around one backbone loop: planning
+and scoring action candidates with an action-conditioned predictive world model, in latent space.
 
 [Get started](./quickstart.md){ .md-button .md-button--primary }
 [Read the introduction](./introduction.md){ .md-button }

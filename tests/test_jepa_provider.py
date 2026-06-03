@@ -124,25 +124,20 @@ def test_jepa_scores_through_upstream_torch_hub_contract(tmp_path) -> None:
 
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(provider)
-    world = forge.create_world_from_prompt("tabletop Push-T scene", provider="mock")
     candidate_plans = [
         [Action.move_to(0.1, 0.5, 0.0)],
         [Action.move_to(0.4, 0.5, 0.0)],
         [Action.move_to(0.7, 0.5, 0.0)],
     ]
-    plan = world.plan(
-        goal="choose the lowest JEPA latent cost",
-        provider="jepa",
-        planner="jepa-mpc",
-        candidate_actions=candidate_plans,
-        score_info=payload["info"],
-        score_action_candidates=payload["action_candidates"],
-        execution_provider="mock",
+    scored = forge.score_actions(
+        "jepa",
+        info=payload["info"],
+        action_candidates=payload["action_candidates"],
     )
 
-    assert plan.provider == "jepa"
-    assert plan.actions == candidate_plans[1]
-    assert plan.metadata["planning_mode"] == "score"
+    assert scored.provider == "jepa"
+    assert scored.best_index == 1
+    assert candidate_plans[scored.best_index] == candidate_plans[1]
 
 
 def test_jepa_contract_helpers_cover_configured_score_provider() -> None:

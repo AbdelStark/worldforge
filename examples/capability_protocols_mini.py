@@ -46,21 +46,42 @@ class LocalCost:
 
 
 def build_plan_json() -> str:
+    """Plan one action chunk through the capability surface (policy proposes, cost ranks).
+
+    There is no symbolic ``World`` runtime: the policy proposes candidate action chunks,
+    the cost provider ranks them as costs, and the lowest-cost chunk is selected.
+    """
+
     with TemporaryDirectory() as tmpdir:
         forge = wf.WorldForge(state_dir=tmpdir, auto_register_remote=False)
         forge.register_predictor(LocalPredictor())
         forge.register_policy(LocalPolicy())
         forge.register_cost(LocalCost())
 
-        world = forge.create_world("protocol-demo", provider="local-predictor")
-        plan = world.plan(
-            goal="keep the blue cube near the origin",
-            policy_provider="local-policy",
-            policy_info={"object_id": "cube-1"},
-            score_provider="local-cost",
-            score_info={"goal": "stay near origin"},
+        goal = "keep the blue cube near the origin"
+        policy_result = forge.select_actions("local-policy", info={"object_id": "cube-1"})
+        candidate_plans = policy_result.action_candidates
+        score_result = forge.score_actions(
+            "local-cost",
+            info={"goal": goal},
+            action_candidates=[
+                [action.to_dict() for action in candidate] for candidate in candidate_plans
+            ],
         )
-        return json.dumps(plan.to_dict(), indent=2, sort_keys=True)
+        selected = candidate_plans[score_result.best_index]
+        plan = {
+            "provider": "local-cost",
+            "goal": goal,
+            "actions": [action.to_dict() for action in selected],
+            "action_count": len(selected),
+            "metadata": {
+                "planning_mode": "policy+score",
+                "policy_provider": "local-policy",
+                "score_provider": "local-cost",
+                "candidate_count": len(candidate_plans),
+            },
+        }
+        return json.dumps(plan, indent=2, sort_keys=True)
 
 
 def main() -> None:

@@ -1,11 +1,17 @@
-"""Checkout-safe policy+score candidate planning demo."""
+"""Checkout-safe policy+score candidate planning demo.
+
+The lab drives the WorldForge capability surface directly: a deterministic policy
+provider proposes candidate action chunks via ``forge.select_actions``, a
+deterministic score provider ranks them via ``forge.score_actions``, the lowest-cost
+chunk is selected by ``best_index``, and that chunk is rolled forward with
+``forge.predict``. There is no symbolic ``World`` runtime.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from worldforge import (
     Action,
@@ -20,6 +26,7 @@ from worldforge import (
     bounded_move_grid_candidates,
 )
 from worldforge.artifact_io import write_json_artifact as _write_json
+from worldforge.demos import execute_plan_over_state, seed_world_state
 from worldforge.models import JSONDict
 from worldforge.providers import BaseProvider, ProviderProfileSpec
 from worldforge.providers.base import ProviderError
@@ -70,8 +77,10 @@ class CandidateLabRun:
     candidate_plans: list[list[Action]]
     score_payload: list[list[JSONDict]]
     scores: list[float]
-    plan: Any
-    execution: Any
+    policy_result: ActionPolicyResult
+    score_result: ActionScoreResult
+    selected_actions: list[Action]
+    final_step: int
     selected_index: int
 
 
@@ -185,7 +194,7 @@ def run_policy_score_candidate_lab(
     candidate_plans = candidate_lab_candidates(config)
     score_payload = action_candidates_to_score_payload(candidate_plans)
     scores = list(config.scores)
-    forge = WorldForge(state_dir=workflow_dir / "worlds", auto_register_remote=False)
+    forge = WorldForge(auto_register_remote=False)
     forge.register_provider(
         CandidateLabPolicy(
             candidate_plans,
@@ -194,46 +203,41 @@ def run_policy_score_candidate_lab(
         )
     )
     forge.register_provider(CandidateLabScore(provider_name=config.score_provider, scores=scores))
-    world = forge.create_world(config.world_id, provider="mock")
-    add_candidate_lab_object(world, config)
-    plan = candidate_lab_plan(world, config)
-    execution = world.execute_plan(plan)
-    selected_index = int(plan.metadata["score_result"]["best_index"])
+
+    # Policy proposes the candidate chunks; the score provider ranks them; pick best_index.
+    policy_result = forge.select_actions(
+        config.policy_provider,
+        info={"observation": config.policy_observation},
+    )
+    score_result = forge.score_actions(
+        config.score_provider,
+        info={"goal": config.score_goal},
+        action_candidates=action_candidates_to_score_payload(policy_result.action_candidates),
+    )
+    selected_index = score_result.best_index
+    selected_actions = list(policy_result.action_candidates[selected_index])
+
+    cube = SceneObject(
+        config.object_name,
+        _position(config.object_position),
+        BBox(_position(config.object_bbox_min), _position(config.object_bbox_max)),
+        id=config.object_id,
+    )
+    final_state = execute_plan_over_state(
+        forge,
+        seed_world_state([cube]),
+        selected_actions,
+        provider=config.execution_provider,
+    )
     return CandidateLabRun(
         candidate_plans=candidate_plans,
         score_payload=score_payload,
         scores=scores,
-        plan=plan,
-        execution=execution,
+        policy_result=policy_result,
+        score_result=score_result,
+        selected_actions=selected_actions,
+        final_step=int(final_state.get("step", 0)),
         selected_index=selected_index,
-    )
-
-
-def add_candidate_lab_object(
-    world: Any,
-    config: CandidateLabConfig = DEFAULT_CANDIDATE_LAB_CONFIG,
-) -> None:
-    world.add_object(
-        SceneObject(
-            config.object_name,
-            _position(config.object_position),
-            BBox(_position(config.object_bbox_min), _position(config.object_bbox_max)),
-            id=config.object_id,
-        )
-    )
-
-
-def candidate_lab_plan(
-    world: Any,
-    config: CandidateLabConfig = DEFAULT_CANDIDATE_LAB_CONFIG,
-) -> Any:
-    return world.plan(
-        goal=config.planning_goal,
-        policy_provider=config.policy_provider,
-        score_provider=config.score_provider,
-        policy_info={"observation": config.policy_observation},
-        score_info={"goal": config.score_goal},
-        execution_provider=config.execution_provider,
     )
 
 
@@ -296,18 +300,17 @@ def candidate_lab_report(run: CandidateLabRun, expected_failures: JSONDict) -> J
     return {
         "schema_version": 1,
         "safe_to_attach": True,
-        "planning_mode": run.plan.metadata["planning_mode"],
-        "policy_provider": run.plan.metadata["policy_provider"],
-        "score_provider": run.plan.metadata["score_provider"],
+        "planning_mode": "policy+score",
+        "policy_provider": run.policy_result.provider,
+        "score_provider": run.score_result.provider,
         "candidate_count": len(run.candidate_plans),
         "score_payload": run.score_payload,
         "candidate_table": candidate_lab_table(run),
         "selected_candidate_index": run.selected_index,
-        "selected_action": run.plan.actions[0].to_dict(),
-        "raw_policy_actions": run.plan.metadata["policy_result"]["raw_actions"],
-        "score_metadata": run.plan.metadata["score_result"]["metadata"],
-        "workflow_trace": run.plan.metadata["workflow_trace"],
-        "execution_final_step": run.execution.final_world().step,
+        "selected_action": run.selected_actions[0].to_dict(),
+        "raw_policy_actions": run.policy_result.raw_actions,
+        "score_metadata": run.score_result.metadata,
+        "execution_final_step": run.final_step,
         "expected_failures": expected_failures,
         "claim_boundary": CANDIDATE_LAB_CLAIM_BOUNDARY,
     }

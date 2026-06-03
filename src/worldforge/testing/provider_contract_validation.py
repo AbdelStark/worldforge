@@ -18,6 +18,12 @@ from worldforge.models import (
 )
 from worldforge.providers import PredictionPayload, ProviderError
 
+_REQUIRED_WORLD_STATE_FIELDS = ("schema_version", "id", "name", "provider")
+
+
+def _world_state_is_valid(state: object) -> bool:
+    return isinstance(state, dict) and all(key in state for key in _REQUIRED_WORLD_STATE_FIELDS)
+
 
 def expect_provider_error[T](operation_name: str, call: Callable[[], T]) -> None:
     try:
@@ -61,12 +67,10 @@ def validate_prediction(provider: str, payload: PredictionPayload) -> None:
         isinstance(payload, PredictionPayload),
         "predict must return PredictionPayload.",
     )
-    try:
-        from worldforge._state import validate_world_state_payload as _validate_world_state_payload
-
-        _validate_world_state_payload(payload.state, context="Provider contract prediction state")
-    except WorldForgeError as exc:
-        raise AssertionError("predict returned invalid world state.") from exc
+    contract_check(
+        _world_state_is_valid(payload.state),
+        "predict returned invalid world state.",
+    )
     contract_check(isinstance(payload.metadata, dict), "predict metadata must be a JSON object.")
     contract_json(payload.metadata, "predict metadata must be JSON serializable.")
     contract_check(isinstance(payload.frames, list), "predict frames must be a list.")

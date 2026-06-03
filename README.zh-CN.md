@@ -12,11 +12,14 @@
 
 ### 🌐 &nbsp; [English](./README.md) &nbsp; · &nbsp; **简体中文**
 
-**面向物理 AI 系统的可测试世界模型工作流。**
+**用于构建面向物理 AI 系统的、基于世界模型的工作流的框架（harness）。**
 
-WorldForge 是一个 Python 集成层，为世界模型提供方、打分模型、具身策略以及媒体生成器赋予明确的
-能力契约。它在此之上提供规划、评估、基准测试、诊断、本地状态与命令行工具，同时将检查点、凭据、
-机器人控制器与部署都交由宿主方持有。
+WorldForge 面向物理 AI 应用的构建者，是 Stable World Model 等「模型训练」栈的对位补充：它帮助机器人
+与物理 AI 构建者在世界模型之上**组合、评估并基准测试**工作流，从而为具体任务挑选最合适的提供方与配置，
+而不是去训练这些模型。整个框架围绕一个主干循环组织：**用动作条件化的预测世界模型，在潜空间中对动作
+候选进行规划与打分。** 一个 `policy` 提供方提出候选动作，一个 `predict` 提供方将其作为前向动力学展开，
+一个 `score` 提供方将其作为代价预言机进行排序，而 `LatentMPCController` 负责 CEM/滚动时域优化器。
+检查点、凭据、机器人控制器与部署仍由宿主方持有。
 
 [![CI](https://img.shields.io/github/actions/workflow/status/AbdelStark/worldforge/ci.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/AbdelStark/worldforge/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/github/actions/workflow/status/AbdelStark/worldforge/pages.yml?branch=main&label=docs&style=for-the-badge)](https://abdelstark.github.io/worldforge/)

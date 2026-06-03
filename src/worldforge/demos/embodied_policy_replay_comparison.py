@@ -213,7 +213,7 @@ def embodied_policy_replay_summaries(workflow_dir: Path) -> EmbodiedPolicyReplay
     from worldforge.harness.flows import _run_cosmos_policy_demo, _run_gr00t_replay_demo
 
     return EmbodiedPolicyReplaySummaries(
-        lerobot=lerobot_e2e.run_demo(state_dir=workflow_dir / "lerobot", emit=False),
+        lerobot=lerobot_e2e.run_demo(emit=False),
         gr00t=_run_gr00t_replay_demo(state_dir=workflow_dir / "gr00t", emit=False),
         cosmos_policy=_run_cosmos_policy_demo(
             state_dir=workflow_dir / "cosmos-policy",
@@ -231,7 +231,7 @@ def embodied_policy_provider_rows(summaries: EmbodiedPolicyReplaySummaries) -> l
 
 
 def lerobot_policy_replay_row(summary: JSONDict) -> JSONDict:
-    policy = summary["plan"]["metadata"]["policy_result"]
+    policy = summary["policy_result"]
     metadata = policy["metadata"]
     return {
         "provider": "lerobot",

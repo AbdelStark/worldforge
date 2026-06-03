@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import math
 from argparse import ArgumentParser, Namespace
 
@@ -14,11 +13,9 @@ from worldforge import (
     ActionPolicyResult,
     ActionScoreResult,
     BBox,
-    Comparison,
     EmbeddingResult,
     Pose,
     Position,
-    Prediction,
     ProviderBudgetExceededError,
     ProviderCapabilities,
     ProviderEvent,
@@ -29,13 +26,12 @@ from worldforge import (
     Rotation,
     SceneObject,
     SceneObjectPatch,
-    World,
     WorldForge,
     WorldForgeError,
-    WorldStateError,
 )
 from worldforge.cli import _format_public_cli_error
-from worldforge.models import HistoryEntry, average, dump_json
+from worldforge.demos import seed_world_state
+from worldforge.models import average, dump_json
 from worldforge.providers import PredictionPayload, ProviderError
 from worldforge.providers.http_utils import (
     asset_to_uri,
@@ -235,26 +231,6 @@ def test_cli_public_error_formatter_redacts_secrets_urls_and_host_paths(tmp_path
     ("args", "error_message", "expected_triage"),
     [
         (
-            Namespace(command="world", world_command="preflight"),
-            "state directory is invalid",
-            "worldforge world preflight --workspace-dir .worldforge",
-        ),
-        (
-            Namespace(command="world", world_command="migration-preview"),
-            "migration blocked",
-            "worldforge world migration-preview <world-id>",
-        ),
-        (
-            Namespace(command="world", world_command="show"),
-            "world not found",
-            "worldforge world list --state-dir <state-dir>",
-        ),
-        (
-            Namespace(command="scenario", scenario_command="run"),
-            "scenario failed",
-            "worldforge scenario validate <scenario.json>",
-        ),
-        (
             Namespace(command="benchmark"),
             "budget payload failed",
             "worldforge benchmark --help",
@@ -286,11 +262,6 @@ def test_cli_public_error_formatter_selects_command_specific_triage(
     ("args", "route_key"),
     [
         (Namespace(command="provider", provider_command="docs"), ("provider", "docs")),
-        (
-            Namespace(command="world", world_command="migration-preview"),
-            ("world", "migration-preview"),
-        ),
-        (Namespace(command="scenario", scenario_command="run"), ("scenario", None)),
         (Namespace(command="runs", runs_command="list"), ("runs", None)),
     ],
 )
@@ -384,19 +355,19 @@ def test_poll_json_task_budget_blocks_silent_poll_loops() -> None:
 
 def test_framework_helpers_and_error_paths(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
-    world = forge.create_world_from_prompt("empty room", provider="mock")
-    assert world.object_count == 1
-    assert world.list_objects() == ["cube"]
 
-    prediction = world.predict(Action.move_to(0.1, 0.5, 0.0), steps=1)
-    assert prediction.output_world().object_count == world.object_count
-
-    comparison = world.compare(Action.move_to(0.2, 0.5, 0.0), "mock", steps=1)
-    artifacts = comparison.artifacts()
-    assert set(artifacts) == {"json", "markdown", "csv"}
-
-    multi_comparison = world.compare(Action.move_to(0.2, 0.5, 0.0), ["mock", "mock"], steps=1)
-    assert [prediction.provider for prediction in multi_comparison.results] == ["mock", "mock"]
+    world_state = seed_world_state(
+        [
+            SceneObject(
+                "cube",
+                Position(0.0, 0.5, 0.0),
+                BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
+                id="cube",
+            )
+        ]
+    )
+    prediction = forge.predict(world_state, Action.move_to(0.1, 0.5, 0.0), steps=1, provider="mock")
+    assert prediction.metadata["provider"] == "mock"
 
     assert forge.provider_info("mock").name == "mock"
     assert [health.name for health in forge.provider_healths(capability="embed")] == ["mock"]
@@ -405,49 +376,6 @@ def test_framework_helpers_and_error_paths(tmp_path) -> None:
     assert embedding.provider == "mock"
     with pytest.raises(WorldForgeError, match="text"):
         forge.embed("mock", text="")
-
-    assert Comparison([prediction]).prediction_count == 1
-
-    with pytest.raises(ValueError, match="Comparison has no predictions"):
-        Comparison([]).best_prediction()
-
-    with pytest.raises(WorldForgeError, match="World name must not be empty"):
-        forge.create_world("", "mock")
-
-    with pytest.raises(WorldForgeError, match="World max_history"):
-        World("limited", "mock", max_history=True)
-
-    with pytest.raises(WorldForgeError, match="Only json export"):
-        forge.export_world("missing", format="yaml")
-
-    with pytest.raises(WorldForgeError, match="Only json import"):
-        forge.import_world("{}", format="yaml")
-
-
-def test_world_initialization_clones_metadata_and_sets_name(tmp_path) -> None:
-    metadata = {"nested": {"value": 1}}
-
-    world = World(
-        "metadata-world",
-        "mock",
-        forge=WorldForge(state_dir=tmp_path),
-        world_id="metadata-world",
-        metadata=metadata,
-    )
-    metadata["nested"]["value"] = 2
-
-    assert world.metadata == {"nested": {"value": 1}, "name": "metadata-world"}
-    assert world.history()[0].summary == "world initialized"
-
-
-def test_prompt_world_applies_all_matching_seeders_and_resets_history(tmp_path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-
-    world = forge.create_world_from_prompt("kitchen with a mug", name="prompt-scene")
-
-    assert [scene_object.name for scene_object in world.objects()] == ["countertop", "mug"]
-    assert world.history_length == 1
-    assert world.history()[0].summary == "world seeded from prompt"
 
 
 def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None:
@@ -546,54 +474,6 @@ def test_public_models_reject_non_finite_and_incoherent_values(tmp_path) -> None
             status_code=99,
         )
 
-    forge = WorldForge(state_dir=tmp_path)
-    world = forge.create_world("invariant-world", "mock")
-    cube = world.add_object(
-        SceneObject(
-            "cube",
-            Position(0.0, 0.5, 0.0),
-            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
-        )
-    )
-    with pytest.raises(WorldForgeError, match="already present"):
-        world.add_object(cube)
-
-    bad_state = {
-        "schema_version": 1,
-        "id": "world_bad",
-        "name": "bad",
-        "provider": "mock",
-        "step": 0,
-        "scene": {
-            "objects": {
-                "obj_key": SceneObject(
-                    "cube",
-                    Position(0.0, 0.5, 0.0),
-                    BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
-                    id="obj_embedded",
-                ).to_dict()
-            }
-        },
-        "metadata": {},
-    }
-    with pytest.raises(WorldStateError, match="does not match embedded id"):
-        forge.import_world(json.dumps(bad_state))
-
-    bad_key_state = {
-        **bad_state,
-        "scene": {
-            "objects": {
-                "": SceneObject(
-                    "cube",
-                    Position(0.0, 0.5, 0.0),
-                    BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
-                ).to_dict()
-            }
-        },
-    }
-    with pytest.raises(WorldStateError, match="scene object ids"):
-        forge.import_world(json.dumps(bad_key_state))
-
 
 def test_public_validation_guards_cover_boundary_failure_modes() -> None:
     assert average([]) == 0.0
@@ -607,40 +487,32 @@ def test_public_validation_guards_cover_boundary_failure_modes() -> None:
         Position.from_dict(["not-a-position"])  # type: ignore[arg-type]
 
 
+def _prediction_boundary_state() -> dict:
+    return {
+        "schema_version": 1,
+        "id": "prediction-boundary",
+        "name": "prediction-boundary",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+        "metadata": {},
+    }
+
+
 def test_prediction_validates_and_clones_public_payloads(tmp_path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-    world = forge.create_world("prediction-boundary", "mock")
-    state = world.to_dict()
+    state = _prediction_boundary_state()
     metadata = {"nested": {"value": 1}}
 
-    prediction = Prediction(
-        provider="mock",
-        confidence=0.5,
-        physics_score=0.6,
-        frames=[b"frame"],
-        world_state=state,
-        metadata=metadata,
-        latency_ms=0.0,
-        _forge=forge,
-    )
+    payload = PredictionPayload(state, 0.5, 0.6, [b"frame"], metadata, 0.0)
     state["metadata"]["mutated"] = True
     metadata["nested"]["value"] = 2
 
-    assert prediction.frames == [b"frame"]
-    assert prediction.world_state["metadata"].get("mutated") is None
-    assert prediction.metadata == {"nested": {"value": 1}}
+    assert payload.frames == [b"frame"]
+    assert payload.state["metadata"].get("mutated") is None
+    assert payload.metadata == {"nested": {"value": 1}}
 
-    with pytest.raises(WorldForgeError, match="Prediction frames"):
-        Prediction(
-            provider="mock",
-            confidence=0.5,
-            physics_score=0.6,
-            frames=[object()],  # type: ignore[list-item]
-            world_state=world.to_dict(),
-            metadata={},
-            latency_ms=0.0,
-            _forge=forge,
-        )
+    with pytest.raises(WorldForgeError, match="PredictionPayload frames"):
+        PredictionPayload(_prediction_boundary_state(), 0.5, 0.6, [object()], {}, 0.0)  # type: ignore[list-item]
     with pytest.raises(WorldForgeError):
         Position.from_dict({"x": 0.0, "y": 0.0})
     with pytest.raises(WorldForgeError):
@@ -727,16 +599,6 @@ def test_prediction_validates_and_clones_public_payloads(tmp_path) -> None:
         ProviderCapabilities(predict="true")  # type: ignore[arg-type]
     with pytest.raises(WorldForgeError, match="Unknown provider capability"):
         ProviderCapabilities().supports("generation")
-    with pytest.raises(WorldForgeError, match="HistoryEntry step"):
-        HistoryEntry(step=-1, state={}, summary="bad")
-    with pytest.raises(WorldForgeError, match="HistoryEntry state"):
-        HistoryEntry(step=0, state=[], summary="bad")  # type: ignore[arg-type]
-    with pytest.raises(WorldForgeError, match="summary"):
-        HistoryEntry(step=0, state={}, summary="")
-    with pytest.raises(WorldForgeError, match="action_json"):
-        HistoryEntry(step=0, state={}, summary="bad", action_json="{broken")
-    with pytest.raises(WorldForgeError, match=r"Action\.from_dict"):
-        HistoryEntry(step=0, state={}, summary="bad", action_json="[]")
     with pytest.raises(WorldForgeError):
         SceneObject(
             "cube",

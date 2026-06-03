@@ -21,34 +21,33 @@ def _load_demo() -> ModuleType:
     return module
 
 
-def test_leworldmodel_e2e_demo_runs_full_score_plan_execute_persist_flow(tmp_path: Path) -> None:
+def test_leworldmodel_e2e_demo_runs_full_score_plan_execute_flow() -> None:
     demo = _load_demo()
 
-    summary = demo.run_demo(state_dir=tmp_path, emit=False)
+    summary = demo.run_demo(emit=False)
 
     assert summary["demo_kind"] == "leworldmodel_provider_surface"
     assert summary["runtime_mode"] == "injected_deterministic_cost_model"
     assert summary["uses_real_upstream_checkpoint"] is False
     assert summary["uses_leworldmodel_provider"] is True
     assert summary["uses_worldforge_score_planning"] is True
+    assert summary["planning_mode"] == "score"
     assert summary["providers"] == ["leworldmodel", "mock"]
     assert summary["leworldmodel_health"]["healthy"] is True
     assert summary["candidate_costs"] == [0.2175, 0.0275, 0.4475]
     assert summary["selected_candidate_index"] == 1
-    assert summary["plan"]["metadata"]["planning_mode"] == "score"
-    assert summary["plan"]["metadata"]["score_result"]["best_index"] == 1
+    assert summary["score_result"]["best_index"] == 1
+    assert summary["score_result"]["provider"] == "leworldmodel"
     assert summary["final_cube_position"] == {"x": 0.55, "y": 0.5, "z": 0.0}
-    assert summary["saved_world_id"] in summary["saved_worlds"]
-    assert summary["event_phases"] == ["success", "success"]
+    assert summary["event_phases"] == ["success"]
     assert summary["runtime_eval_called"] is True
     assert summary["runtime_grad_disabled"] is True
 
 
 def test_leworldmodel_e2e_demo_prints_human_summary(
-    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    summary = leworldmodel_e2e.run_demo(state_dir=tmp_path, emit=True)
+    summary = leworldmodel_e2e.run_demo(emit=True)
 
     output = capsys.readouterr().out
 
@@ -59,7 +58,6 @@ def test_leworldmodel_e2e_demo_prints_human_summary(
 
 
 def test_leworldmodel_e2e_demo_main_json_only(
-    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -68,8 +66,6 @@ def test_leworldmodel_e2e_demo_main_json_only(
         "argv",
         [
             "worldforge-demo-leworldmodel",
-            "--state-dir",
-            str(tmp_path),
             "--json-only",
         ],
     )

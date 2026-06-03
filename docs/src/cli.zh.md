@@ -49,43 +49,13 @@ uv run worldforge negotiate --workflow policy-plus-score
 
 当某个提供方缺失时，请优先使用 `doctor` 命令排查。LeWorldModel、LeRobot、GR00T 和 Cosmos-Policy 等可选提供方仅在宿主方配置了相应的环境变量和运行时后才会自动注册。`worldforge negotiate` 回答"在运行之前，我的提供方能否满足该工作流的需求？"这一更高层次的问题——请参阅[能力协商](./capability-negotiation.md)。
 
-## 本地世界状态
+## 预测
 
 ```bash
-uv run worldforge world create lab --provider mock
-uv run worldforge world list
-uv run worldforge world show <world-id>
-uv run worldforge world objects <world-id>
-uv run worldforge world history <world-id>
-uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-uv run worldforge world migration-preview world.json --source-path
-uv run worldforge world export <world-id> --output world.json
-uv run worldforge world import world.json --new-id --name imported-lab
-uv run worldforge world fork <world-id> --name forked-lab
-uv run worldforge world delete <world-id>
-uv run worldforge world diff <source-id> <target-id>
-uv run worldforge scenario validate examples/scenarios/cube-on-table.json
-uv run worldforge scenario run examples/scenarios/spawn-and-move.json --state-dir .worldforge/worlds
-```
-
-世界 ID 是本地 JSON 文件的文件名（不含扩展名）。包含路径分隔符或路径遍历形式的输入会在访问文件系统之前被拒绝。
-
-`world preflight` 为只读操作，用于检查世界状态目录、所请求的 `--world-id` 值、损坏的世界 JSON、无效的历史条目、对象包围盒一致性、已保存的运行清单、过期的运行目录、不安全的工件路径以及运行保留压力。JSON 输出默认可安全附加；当发现错误级别的状态时，命令以非零状态码退出。
-
-`world migration-preview` 同样为只读操作。它接受持久化的世界 ID 或指向持久化/导出世界 JSON 的 `--source-path`，然后报告世界模式版本、所需的规范化变更、无效字段、不安全的 ID、包围盒修正、`can_apply_safely` 标志以及首个排查步骤。该命令不会重写状态；实际迁移仍需作为显式的后续步骤执行。
-
-## 场景变更与预测
-
-```bash
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0
-uv run worldforge world remove-object <world-id> cube-1
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
 uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 ```
 
-场景变更会追加类型化的历史条目。位置补丁会随姿态一并平移包围盒，预测操作则在提供方返回下一状态后追加提供方动作条目。
+`worldforge predict` 会构造一个纯粹的世界状态字典，通过动作条件化的 `predict` 提供方推进该状态，并打印提供方名称、物理评分、置信度以及生成的世界状态 JSON。位置参数仅作为场景标签——不存在符号化的 `World` 运行时或本地 JSON 持久化。可通过 `LatentMPCController` 将 `predict` 与 `score`/`policy` 提供方组合，实现滚动时域规划（参见 [Python API](./api/python.md)）。
 
 ## 评估
 

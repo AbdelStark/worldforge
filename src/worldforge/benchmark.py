@@ -274,29 +274,33 @@ class ProviderBenchmarkHarness:
             if profile.capabilities.supports(operation)
         ]
 
-    def _seed_world(self, provider: str) -> tuple[object, object]:
-        world = self._forge.create_world("benchmark-world", provider)
-        cube = world.add_object(
+    def _benchmark_world_state(self, provider: str) -> JSONDict:
+        objects = (
             SceneObject(
                 "cube",
                 Position(0.0, 0.5, 0.0),
                 BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
                 is_graspable=True,
-            )
-        )
-        mug = world.add_object(
+            ),
             SceneObject(
                 "mug",
                 Position(0.25, 0.8, 0.0),
                 BBox(Position(0.2, 0.75, -0.05), Position(0.3, 0.85, 0.05)),
                 is_graspable=True,
-            )
+            ),
         )
-        return world, (cube, mug)
+        return {
+            "schema_version": 1,
+            "id": "benchmark-world",
+            "name": "benchmark-world",
+            "provider": provider,
+            "step": 0,
+            "scene": {"objects": {obj.id: obj.to_dict() for obj in objects}},
+        }
 
     def _op_predict(self, provider: str, inputs: BenchmarkInputs) -> None:
-        world, _ = self._seed_world(provider)
-        world.predict(
+        self._forge.predict(
+            self._benchmark_world_state(provider),
             inputs.prediction_action,
             steps=inputs.prediction_steps,
             provider=provider,

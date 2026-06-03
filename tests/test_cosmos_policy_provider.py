@@ -670,20 +670,22 @@ def test_cosmos_policy_only_planning_uses_selected_actions(tmp_path) -> None:
     )
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(provider)
-    world = forge.create_world("aloha-workcell", provider="mock")
 
-    plan = world.plan(
-        goal="put the candy in the bowl",
-        provider="cosmos-policy",
-        policy_info=_policy_info(),
-        execution_provider="mock",
-    )
-    execution = world.execute_plan(plan)
+    selected = forge.select_actions("cosmos-policy", info=_policy_info())
 
-    assert plan.provider == "cosmos-policy"
-    assert plan.metadata["planning_mode"] == "policy"
-    assert plan.metadata["policy_result"]["provider"] == "cosmos-policy"
-    assert execution.final_world().provider == "mock"
+    assert selected.provider == "cosmos-policy"
+    assert selected.actions
+
+    state = {
+        "schema_version": 1,
+        "id": "aloha-workcell",
+        "name": "aloha-workcell",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
+    executed = forge.predict(state, selected.actions[0], provider="mock")
+    assert executed.metadata["provider"] == "mock"
 
 
 def test_cosmos_policy_plus_score_planning_scores_translated_candidates(tmp_path) -> None:
@@ -703,20 +705,20 @@ def test_cosmos_policy_plus_score_planning_scores_translated_candidates(tmp_path
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(policy_provider)
     forge.register_provider(score_provider)
-    world = forge.create_world("aloha-score-workcell", provider="mock")
 
-    plan = world.plan(
-        goal="choose the best Cosmos-Policy candidate",
-        policy_provider="cosmos-policy",
-        score_provider="fake-score",
-        policy_info=_policy_info(),
-        score_info={"goal": "lowest cost"},
-        execution_provider="mock",
+    policy_result = forge.select_actions("cosmos-policy", info=_policy_info())
+    serialized_candidates = [
+        [action.to_dict() for action in candidate] for candidate in policy_result.action_candidates
+    ]
+    score_result = forge.score_actions(
+        "fake-score",
+        info={"goal": "lowest cost"},
+        action_candidates=serialized_candidates,
     )
+    selected_actions = policy_result.action_candidates[score_result.best_index]
 
-    assert plan.metadata["planning_mode"] == "policy+score"
-    assert plan.metadata["score_result"]["best_index"] == 1
-    assert plan.actions == [
+    assert score_result.best_index == 1
+    assert selected_actions == [
         Action.move_to(float(row[0]), float(row[1]), float(row[2])) for row in candidate_b
     ]
     assert score_provider.calls

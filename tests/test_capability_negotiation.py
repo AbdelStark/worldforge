@@ -96,20 +96,25 @@ def test_predict_only_workflow_is_ready_with_mock_alone(monkeypatch, tmp_path) -
     assert all(req.ready for req in negotiation.requirements)
 
 
-def test_score_only_workflow_blocked_when_runtime_missing(monkeypatch, tmp_path) -> None:
+def test_score_only_workflow_ready_with_mock(monkeypatch, tmp_path) -> None:
     _clear_remote_env(monkeypatch)
     forge = WorldForge(state_dir=tmp_path)
     report = negotiate(["score-only"], forge=forge)
     negotiation = report.workflows[0]
-    assert negotiation.ready is False
+    assert negotiation.ready is True
     requirement = negotiation.requirements[0]
     assert requirement.capability == "score"
+    assert requirement.ready is True
+    assert any(
+        status.readiness == "ready" and status.name == "mock" for status in requirement.candidates
+    )
+    # leworldmodel-specific gating still applies: it remains a missing-config candidate.
     assert any(
         status.readiness == "missing-config" and status.name == "leworldmodel"
         for status in requirement.candidates
     )
-    assert negotiation.recommended_actions
-    assert any("leworldmodel" in action for action in negotiation.recommended_actions)
+    assert "mock" in negotiation.summary()
+    assert negotiation.recommended_actions == ()
 
 
 def test_policy_plus_score_workflow_lists_both_provider_pools(monkeypatch, tmp_path) -> None:
@@ -125,9 +130,11 @@ def test_policy_plus_score_workflow_lists_both_provider_pools(monkeypatch, tmp_p
     policy_names = {status.name for status in policy_req.candidates}
     score_names = {status.name for status in score_req.candidates}
     assert {"gr00t", "lerobot"} <= policy_names
-    assert "leworldmodel" in score_names
+    assert {"leworldmodel", "mock"} <= score_names
+    # Score is now satisfied checkout-safe by mock, so only policy remains blocked.
+    assert score_req.ready is True
+    assert policy_req.ready is False
     assert any("policy" in action for action in negotiation.recommended_actions)
-    assert any("score" in action for action in negotiation.recommended_actions)
 
 
 def test_score_workflow_becomes_ready_with_registered_score_provider(monkeypatch, tmp_path) -> None:

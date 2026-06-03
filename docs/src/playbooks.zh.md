@@ -53,7 +53,7 @@ uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo
 
 | 现象 | 首要检查项 | 可能的责任方 |
 | --- | --- | --- |
-| `first-run` 失败 | 运行 `uv run worldforge world preflight --state-dir .worldforge/demo-showcases/first-run/worlds` | 贡献者 |
+| `first-run` 失败 | 运行 `uv run worldforge doctor --registered-only` 并检查运行工作区下演示导出的世界状态 JSON | 贡献者 |
 | 诊断包不适合附件提交 | 打开 `issue-bundle/evidence_manifest.json` 并检查被排除的文件 | 报告方 |
 | 机器人回放失败 | 运行 `uv run worldforge-demo-lerobot` 并检查提供方事件阶段 | 贡献者 |
 | 提供方事件脱敏干运行泄露了查询字符串 | 检查 `provider-event-redaction-events.json` 及提供方事件脱敏语料库 | 贡献者 |
@@ -173,7 +173,7 @@ uv run worldforge provider info leworldmodel
 | 错误类型 | 常见现象 | 可能的责任方 | 首要命令 | 预期工件或信号 | 首要排查步骤 |
 | --- | --- | --- | --- | --- | --- |
 | `WorldForgeError` | 无效的公开输入、未知能力、不支持的输出格式、非有限数值、不安全的工件引用 | 调用方或贡献者 | `uv run worldforge doctor --registered-only` | 包含框架和提供方配置状态的 JSON 诊断信息 | 修复调用方输入，或为被拒绝的公开边界添加回归测试 |
-| `WorldStateError` | 本地世界 JSON 损坏、路径遍历形式的世界 ID、无效的历史条目、不一致的对象包围盒 | 运维方负责本地状态；若由 CLI 写入则为贡献者 | `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge --format json` | 包含 `status`、`safe_to_attach`、`error_count` 及恢复命令的 `worldforge-state-preflight.json` | 导出诊断信息，仅在审阅报告后隔离无效文件 |
+| `WorldStateError` | 格式错误的持久化或提供方世界状态负载、不一致的场景对象包围盒 | 宿主方负责宿主拥有的状态；若由提供方返回则为适配器维护者 | 将出错的世界状态字典与已知良好的种子状态进行对比 | 一个指明无效字段并附带首要排查步骤的脱敏 `WorldStateError` | 仅在审阅错误后从宿主备份恢复世界状态 JSON |
 | `ProviderError` | 缺少凭据、缺少可选依赖、上游响应格式错误、不支持的提供方能力、工件 URL 过期 | 首先由宿主运行时负责人处理；若解析器或文档有误则由适配器维护者处理 | `uv run worldforge provider info <provider>` | 脱敏的配置摘要、提供方档案、能力标志、生命周期状态、健康信息及有类型的提供方详情 | 附上经脱敏处理的运行清单或议题包；切勿粘贴原始凭据或签名 URL |
 | 来自 `worldforge.testing` 的 `AssertionError` | 提供方一致性辅助函数报告契约失败 | 适配器贡献者 | `uv run pytest tests/test_provider_contracts.py -q` | 辅助函数明确指出缺失能力行为的失败信息 | 修复适配器或其夹具；不要用裸 `assert` 替换辅助函数检查 |
 | 基准测试预算非零退出 | 基准测试门控未通过 JSON 预算检验 | 发布方或性能维护者 | `uv run worldforge benchmark --preset mock-smoke --run-workspace .worldforge --format json` | 保留了 `run_manifest.json`、报告 JSON 和预算状态的运行工作空间 | 在修改阈值之前，检查预算行和保留的输入 |
@@ -235,63 +235,36 @@ uv run worldforge drills run all --workspace-dir .worldforge/drills
 
 意外失败时：首先检查 `<workspace>/runs/<run-id>/results/drill.json`，然后在修改夹具之前运行 `uv run worldforge runs bundle <run-id> --workspace-dir <workspace>`。演练不得修改用户的世界；损坏状态的输入文件会写入演练运行的工作空间下。
 
-## 5. 操作本地 JSON 持久化
+## 5. 通过能力接口驱动世界状态
 
-适用于本地任务、演示、测试和单写者工作流。
+适用于本地任务、演示、测试和单写者工作流。不存在符号化的 `World` 运行时或内置的 JSON 世界存储；规划基于纯粹的世界状态字典。
 
 CLI：
 
 ```bash
-uv run worldforge world create lab --provider mock
-uv run worldforge world create seeded-lab --provider mock --prompt "A kitchen with a mug"
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0 --graspable true
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
-uv run worldforge world list
-uv run worldforge world objects <world-id>
-uv run worldforge world show <world-id>
-uv run worldforge world history <world-id>
-uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-uv run worldforge world migration-preview world.json --source-path
-uv run worldforge world export <world-id> --output world.json
-uv run worldforge world import world.json --new-id --name lab-copy
-uv run worldforge world fork <world-id> --history-index 0 --name lab-start
-uv run worldforge world delete <world-id>
+uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 ```
 
 Python：
 
 ```python
-from worldforge import WorldForge
+from worldforge import Action, WorldForge
 
-forge = WorldForge(state_dir=".worldforge/worlds")
-world = forge.create_world("lab", provider="mock")
-world_id = forge.save_world(world)
-
-payload = forge.export_world(world_id)
-restored = forge.import_world(payload, new_id=True, name="lab-copy")
-forge.save_world(restored)
-forge.delete_world(world_id)
+forge = WorldForge()
+world_state = {"step": 0, "scene": {"objects": {}}}
+payload = forge.predict(world_state, Action.move_to(0.3, 0.8, 0.0), steps=2, provider="mock")
+next_state = payload.state
 ```
 
 成功信号：
 
-- 世界 ID 是文件安全的本地标识符。
-- 保存的 JSON 在覆盖目标文件之前会经过验证。
-- CLI 的 create/import/fork/object/predict 命令与 Python 的 `save_world(...)` 使用相同的验证路径进行保存。
-- object 的 add/update/remove 命令会追加带有类型化 `Action` 载荷的显式历史条目，且位置更新会以新姿态转换对象的包围盒。
-- `world delete` 和 `WorldForge.delete_world(...)` 在解除本地 JSON 文件链接前验证世界 ID，并在文件已不存在时触发 `WorldStateError`。
-- `world predict` 默认持久化提供方更新后的状态；使用 `--dry-run` 可在不替换本地 JSON 文件的情况下查看预测结果。
-- 导入的状态会拒绝格式错误的场景对象、无效的历史记录、负数步骤以及路径遍历形式的 ID。
-- `world preflight` 在不修改本地文件的情况下，报告损坏的世界 JSON、路径遍历形式的请求 ID、无效的历史条目、不一致的对象包围盒、陈旧的运行工作空间、不安全的工件路径以及留存压力。
-- `world migration-preview` 在不修改本地文件的情况下，针对持久化世界或导出的 JSON，报告模式版本、所需变更、无效字段、不安全 ID、包围盒修正及 `can_apply_safely`。
+- `predict` 返回一个 `PredictionPayload`，其 `state` 是提供方更新后的世界状态字典。
+- 无效的公共输入（错误动作、非正步骤数、格式错误的候选）会在任何对外提供方调用之前引发 `WorldForgeError`。
+- 格式错误的持久化或提供方世界状态负载会在边界处引发 `WorldStateError`。
 
 恢复指南：
 
-- 在移动或删除任何本地状态之前，运行 `uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge --format json > worldforge-state-preflight.json`。
-- 在将模式重写应用于本地 JSON 之前，运行 `uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds --format json > worldforge-migration-preview.json`；对于导出的世界 JSON 使用 `--source-path`。
-- 若本地 JSON 已损坏，从宿主应用程序对导出世界 JSON 的备份中恢复。
+- 若宿主方持久化的世界状态 JSON 已损坏，从宿主应用程序的备份中恢复；WorldForge 不会静默修复格式错误的状态。
 - 若报告指出存在陈旧的运行工作空间或不安全的工件路径，在清单有效时导出运行包；否则在保留预检报告后隔离运行目录。
 - 若仅存在留存压力问题，运行 `uv run worldforge runs cleanup --workspace-dir .worldforge --keep 20 --dry-run`，仅在事故或发布引用不再需要时才删除证据。
 - 若多个 worker 需要写入，请将持久化迁移至具备锁定、迁移、备份和恢复演练的宿主方存储中。

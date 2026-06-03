@@ -313,9 +313,16 @@ def test_worldforge_composed_event_handlers_support_builtin_and_manual_providers
         auto_register_remote=False,
         event_handler=compose_event_handlers(recorder, metrics),
     )
-    world = forge.create_world_from_prompt("empty room", provider="mock")
+    state = {
+        "schema_version": 1,
+        "id": "world-empty-room",
+        "name": "empty room",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
 
-    world.predict(Action.move_to(0.2, 0.5, 0.0), steps=2)
+    forge.predict(state, Action.move_to(0.2, 0.5, 0.0), steps=2, provider="mock")
     manual_provider = MockProvider(name="manual")
     forge.register_provider(manual_provider)
     forge.embed("manual", text="cube state")
