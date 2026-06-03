@@ -28,13 +28,67 @@ Tracks `plan.md`. `[x]` done, `[ ]` pending.
       `quickstart.md` around the backbone loop (+ zh mirrors).
 - [ ] Remove the now-dead `world preflight` references from `playbooks.md` (+ the issue-182 test).
 
-## Stage 3 — Remove the symbolic World runtime (next)
+## Stage 3 — Remove the symbolic World runtime (in progress)
 
-- [ ] Re-center `evaluation/` on the capability/latent loop; drop symbolic suites + `suite_fixtures`.
-- [ ] Re-center `benchmark.py`; drop `_seed_world`.
-- [ ] Rewrite/remove world-based demos; update `pyproject.toml` `[project.scripts]`.
-- [ ] Delete `_world*`, `_state`, `_results`, `framework_world_store`, `structured_goals`,
-      `cli_world`, the `world` CLI, and `WorldForge.*_world` methods.
-- [ ] Trim `scene_models` to action/geometry vocabulary; drop matching exports.
-- [ ] Update tests/docs/snapshots; keep the coverage floor.
-- [ ] (Interim) Add a deprecation signpost on `World`/`create_world`/the `world` CLI.
+The `World` deletion is an all-or-nothing red→green transition across ~30 source + ~20 test + ~25
+doc files (mapped exhaustively). To keep every checkpoint green, **decouple usage first** (each
+increment is green because `forge.predict`/`forge.score_actions` work without a `World`), then delete
+`World` last.
+
+### Inc A — mock `score` capability (DONE)
+
+- [x] Add deterministic `score_actions` to the mock provider (cost oracle, `lower_is_better`).
+- [x] Add `sample_contract_score_*` testing helpers; default them in `assert_provider_contract`;
+      wire the workbench score conformance. Update capability/negotiation/benchmark/workbench tests.
+- Makes the latent loop and score-only workflows checkout-safe on the default provider.
+
+### Inc B — re-center `evaluation/` on the capability loop (next)
+
+- [ ] Delete `evaluation/suite_fixtures.py` (seeds SceneObjects into a World).
+- [ ] `evaluation/results.py`: remove the `world: World` field from `EvaluationContext` (keep
+      `forge`). Breaking for custom evaluators that read `context.world`.
+- [ ] `evaluation/suite_base.py`: drop `_build_world`/`_ensure_world` and the `world` parameter from
+      `evaluate_scenario`/`run`/`run_with_world`/`run_report`/`run_report_artifacts`; the default
+      scenario calls `forge.predict(...)` directly.
+- [ ] `physics_suite.py` → predict-determinism scenarios via `forge.predict` (keep suite_id
+      `physics`; rename scenarios if needed).
+- [ ] `planning_suite.py` → score/latent-MPC scenarios via `forge.score_actions` +
+      `LatentMPCController` (keep suite_id `planning`; requires `score`, satisfied by mock).
+- [ ] `builtin_suites.py` (drop `_seed_object` export), `failure_gallery.py` (update
+      `_CONTRACT_NOTES` scenario keys), `evaluation/__init__.py`.
+- [ ] `examples/custom_evaluation_suite.py`: drop `context.world` usage.
+- [ ] Tests: `test_evaluation_suites`, `test_evaluation_and_planning`,
+      `test_evaluation_failure_gallery`, `test_batch_eval_host`; docs `evaluation.md`/zh +
+      doc-site/claim-evidence contracts.
+
+### Inc C — re-center `benchmark.py` (drop `_seed_world`)
+
+- [ ] `benchmark_inputs.py` then `benchmark.py`: replace `_seed_world`/SceneObject with direct
+      `forge.predict`/`forge.embed`/`forge.score_actions`/`forge.select_actions` calls.
+
+### Inc D — rewrite the 6 world-based demos onto `LatentMPCController`/forge calls
+
+- [ ] `demos/__init__.py`, `leworldmodel_e2e`, `lerobot_e2e`, `policy_score_candidate_lab`,
+      `dimos_go2_replay_arena`, `rerun_showcase`, `so101_replay_trace`,
+      `embodied_policy_replay_comparison`. The 4 `worldforge-demo-*` pyproject scripts survive
+      (keep `main()`). Update demo tests + `EXAMPLE_COMMANDS`.
+
+### Inc E — reroute provider-test scaffolding off `World`
+
+- [ ] ~12 provider/integration tests use `create_world`+`world.predict`/`world.plan` only as a
+      scaffold; reroute them through `forge.predict`/`forge.score_actions`/`LatentMPCController`.
+
+### Inc F — delete the World runtime (final sweep)
+
+- [ ] Delete `_world.py`, `_world_goal_resolution.py`, `_world_planning.py`,
+      `_world_prompt_seeders.py`, `_state.py`, `_results.py`, `framework_world_store.py`,
+      `structured_goals.py`, `cli_world.py`, `cli_args/world.py`.
+- [ ] Trim `framework.py` (drop `*_world` methods, `state_dir` if unused, `world_count` from doctor),
+      `framework_doctor.py`, `provider_diagnostics.py` (`DoctorReport.world_count` — breaking),
+      `cli.py` (`world` command + reroute `_cmd_predict` to `forge.predict`), `models.py`,
+      `scene_models.py` (drop `SceneObject`/`SceneObjectPatch`/`HistoryEntry`; keep
+      `Action`/`Position`/`Pose`/`BBox`/`Rotation`), `providers/mock.py` (decouple `predict` from
+      `SceneObject`), `__init__.py` exports.
+- [ ] Delete `test_world_lifecycle.py`, `test_cli_world_commands.py`; reroute remaining tests.
+- [ ] Regenerate the public-API snapshot and CLI help snapshots; rewrite world-referencing docs
+      (quickstart, cli, operations, playbooks, architecture, api/python, …) + zh mirrors; CHANGELOG.
