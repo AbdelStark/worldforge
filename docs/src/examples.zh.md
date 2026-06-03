@@ -399,14 +399,6 @@ uv run worldforge runs bundle <run-id> \
 
 ```bash
 uv run worldforge doctor --registered-only
-uv run worldforge world create lab --provider mock
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
-uv run worldforge world list
-uv run worldforge world objects <world-id>
-uv run worldforge world history <world-id>
-uv run worldforge world export <world-id> --output world.json
-uv run worldforge world delete <world-id>
 uv run worldforge provider list
 uv run worldforge provider docs
 uv run worldforge provider info mock

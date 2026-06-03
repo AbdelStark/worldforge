@@ -23,7 +23,6 @@ from worldforge.providers import (
     EmbodimentActionTranslator,
     EmbodimentTranslatorContract,
     LeRobotPolicyProvider,
-    MockProvider,
     ProviderError,
     ProviderProfileSpec,
 )
@@ -883,17 +882,3 @@ def test_lerobot_provider_no_grad_fallback_without_torch(monkeypatch) -> None:
     result = provider.select_actions(info=_policy_info())
 
     assert result.actions == [Action.move_to(0.2, 0.5, 0.0)]
-
-
-def test_policy_planning_validation_errors_for_lerobot(tmp_path) -> None:
-    forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
-    forge.register_provider(MockProvider(name="manual-mock"))
-    world = forge.create_world("robot-workcell", provider="manual-mock")
-
-    policy_provider = LeRobotPolicyProvider(
-        policy=FakeLeRobotPolicy(response=FakeTensor([[0.0, 0.0, 0.0]])),
-        action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
-    )
-    forge.register_provider(policy_provider)
-    with pytest.raises(WorldForgeError, match="Policy planning requires policy_info"):
-        world.plan(goal="move", provider="lerobot", policy_provider="lerobot")

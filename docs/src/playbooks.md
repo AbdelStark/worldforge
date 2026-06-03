@@ -61,7 +61,7 @@ If it fails:
 
 | Symptom | First check | Likely owner |
 | --- | --- | --- |
-| `first-run` fails | run `uv run worldforge doctor --registered-only` and inspect `first-run/worlds` JSON with `uv run worldforge world show <world-id>` | contributor |
+| `first-run` fails | run `uv run worldforge doctor --registered-only` and inspect the demo's exported world-state JSON under the run workspace | contributor |
 | diagnostics bundle is not safe to attach | open `issue-bundle/evidence_manifest.json` and inspect excluded files | reporter |
 | robotics replay fails | run `uv run worldforge-demo-lerobot` and inspect provider event phases | contributor |
 | provider-event redaction dry run leaks a query string | inspect `provider-event-redaction-events.json` and the provider-event redaction corpus | contributor |
@@ -195,7 +195,7 @@ and first artifact.
 | Error family | Common symptom | Likely owner | First command | Expected artifact or signal | First triage step |
 | --- | --- | --- | --- | --- | --- |
 | `WorldForgeError` | invalid public input, unknown capability, unsupported output format, non-finite number, unsafe artifact reference | caller or contributor | `uv run worldforge doctor --registered-only` | JSON diagnostics with framework and provider configuration state | fix the caller input or add a regression test for the rejected public boundary |
-| `WorldStateError` | corrupted local world JSON, traversal-shaped world id, invalid history entry, incoherent object bounding box | host operator for local state; contributor if the CLI wrote it | `uv run worldforge world show <world-id> --state-dir .worldforge/worlds --format json` | a sanitized `WorldStateError` naming the invalid field plus its first triage step | export the world JSON, then quarantine invalid files only after reviewing the error |
+| `WorldStateError` | malformed persisted or provider world-state payload, incoherent scene object bounding box | host operator for host-owned state; adapter maintainer if a provider returned it | inspect the offending world-state dict against a known-good seeded state | a sanitized `WorldStateError` naming the invalid field plus its first triage step | restore the world-state JSON from the host backup only after reviewing the error |
 | `ProviderError` | missing credentials, missing optional dependency, malformed upstream response, unsupported provider capability, expired artifact URL | host runtime owner first; adapter maintainer if parser or docs are wrong | `uv run worldforge provider info <provider>` | redacted config summary, provider profile, capability flags, lifecycle status, health, and typed provider details | attach a sanitized run manifest or issue bundle; never paste raw credentials or signed URLs |
 | `AssertionError` from `worldforge.testing` | provider conformance helper reports a contract failure | adapter contributor | `uv run pytest tests/test_provider_contracts.py -q` | explicit helper failure naming the missing capability behavior | fix the adapter or its fixtures; do not replace helper checks with bare `assert` |
 | non-zero benchmark budget exit | benchmark gate failed against a JSON budget | release or performance maintainer | `uv run worldforge benchmark --preset mock-smoke --run-workspace .worldforge --format json` | preserved run workspace with `run_manifest.json`, report JSON, and budget status | inspect the budget row and preserved inputs before changing thresholds |
@@ -278,66 +278,39 @@ If it fails unexpectedly: inspect `<workspace>/runs/<run-id>/results/drill.json`
 Drills must not mutate user worlds; corrupted-state input files are written under the drill run's
 workspace.
 
-## 5. Operate Local JSON Persistence
+## 5. Drive World State Through The Capability Surface
 
-Use this for local jobs, demos, tests, and single-writer workflows.
+Use this for local jobs, demos, tests, and single-writer workflows. There is no symbolic `World`
+runtime or built-in JSON world store; planning runs over plain world-state dicts.
 
 CLI:
 
 ```bash
-uv run worldforge world create lab --provider mock
-uv run worldforge world create seeded-lab --provider mock --prompt "A kitchen with a mug"
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world update-object <world-id> cube-1 --x 0.2 --y 0.5 --z 0 --graspable true
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
-uv run worldforge world list
-uv run worldforge world objects <world-id>
-uv run worldforge world show <world-id>
-uv run worldforge world history <world-id>
-uv run worldforge world export <world-id> --output world.json
-uv run worldforge world import world.json --new-id --name lab-copy
-uv run worldforge world fork <world-id> --history-index 0 --name lab-start
-uv run worldforge world delete <world-id>
+uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 ```
 
 Python:
 
 ```python
-from worldforge import WorldForge
+from worldforge import Action, WorldForge
 
-forge = WorldForge(state_dir=".worldforge/worlds")
-world = forge.create_world("lab", provider="mock")
-world_id = forge.save_world(world)
-
-payload = forge.export_world(world_id)
-restored = forge.import_world(payload, new_id=True, name="lab-copy")
-forge.save_world(restored)
-forge.delete_world(world_id)
+forge = WorldForge()
+world_state = {"step": 0, "scene": {"objects": {}}}
+payload = forge.predict(world_state, Action.move_to(0.3, 0.8, 0.0), steps=2, provider="mock")
+next_state = payload.state
 ```
 
 Success signal:
 
-- world IDs are file-safe local identifiers.
-- saved JSON validates before it replaces the destination file.
-- the CLI create/import/fork/object/predict commands save through the same validation path as Python
-  `save_world(...)`.
-- object add/update/remove commands append explicit history entries with typed `Action` payloads,
-  and position updates translate object bounding boxes with the new pose.
-- `world delete` and `WorldForge.delete_world(...)` validate the world id before unlinking the local
-  JSON file and raise `WorldStateError` when the file is already absent.
-- `world predict` persists the provider-updated state by default; use `--dry-run` to inspect a
-  prediction without replacing the local JSON file.
-- imported state rejects malformed scene objects, invalid history, negative steps, and traversal
-  shaped IDs.
-- `world show` / `world history` load and validate a persisted world, raising `WorldStateError`
-  with a sanitized triage message when the JSON is corrupted, traversal-shaped, or has invalid
-  history entries.
+- `predict` returns a `PredictionPayload` whose `state` is the provider-updated world-state dict.
+- invalid public inputs (bad actions, non-positive step counts, malformed candidates) raise
+  `WorldForgeError` before any outbound provider call.
+- malformed persisted or provider world-state payloads raise `WorldStateError` at the boundary.
 
 Recovery guidance:
 
-- run `uv run worldforge world show <world-id> --state-dir .worldforge/worlds --format json` to
-  surface a `WorldStateError` and its triage step before moving or deleting any local state.
-- if local JSON is corrupted, restore from the host application's backup of exported world JSON.
+- if a host-owned persisted world-state JSON is corrupted, restore from the host application's
+  backup; WorldForge does not silently repair malformed state.
 - if `worldforge runs` reports stale run workspaces or unsafe artifact paths, export a run bundle
   when a manifest is valid; otherwise quarantine the run directory after preserving its manifest.
 - if retention pressure is the only issue, run `uv run worldforge runs cleanup --workspace-dir

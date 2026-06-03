@@ -13,7 +13,7 @@ so candidate plans and seeded world-state dicts can reference it deterministical
 
 from __future__ import annotations
 
-from worldforge import Action, BBox, Position, SceneObject, StructuredGoal, WorldForge
+from worldforge import Action, BBox, Position, SceneObject, WorldForge
 from worldforge.action_candidates import cartesian_offset_candidates
 from worldforge.models import JSONDict
 
@@ -34,15 +34,19 @@ def make_blue_cube() -> SceneObject:
     return SceneObject(BLUE_CUBE_ID, _BLUE_CUBE_START, _BLUE_CUBE_BBOX, id=BLUE_CUBE_ID)
 
 
-def blue_cube_goal(cube: SceneObject) -> StructuredGoal:
-    """Return the shared ``object_at`` goal for the blue cube."""
+def blue_cube_goal(cube: SceneObject) -> JSONDict:
+    """Return the shared ``object_at`` goal dict for the blue cube.
 
-    return StructuredGoal.object_at(
-        object_id=cube.id,
-        object_name=cube.name,
-        position=BLUE_CUBE_GOAL,
-        tolerance=BLUE_CUBE_TOLERANCE,
-    )
+    The goal is a plain JSON-serializable descriptor (there is no symbolic ``World`` runtime or
+    structured-goal model): demos and host examples cite it in their planning summaries.
+    """
+
+    return {
+        "kind": "object_at",
+        "object": {"id": cube.id, "name": cube.name},
+        "position": BLUE_CUBE_GOAL.to_dict(),
+        "tolerance": BLUE_CUBE_TOLERANCE,
+    }
 
 
 def make_candidate_plans(cube_id: str) -> list[list[Action]]:

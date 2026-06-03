@@ -45,7 +45,7 @@ def _add_negotiate_command(subparsers: Subparsers) -> None:
 
 def _add_predict_command(subparsers: Subparsers) -> None:
     predict = subparsers.add_parser("predict", help="Run a deterministic prediction.")
-    predict.add_argument("world_name", help="World name to create or load.")
+    predict.add_argument("world_name", help="Scenario label for the seeded world state.")
     predict.add_argument("--provider", default="mock", help="Provider name.")
     _add_xyz_arguments(predict, required=True, label="Target")
     predict.add_argument("--steps", type=int, default=1, help="Prediction horizon in steps.")

@@ -21,7 +21,7 @@ Issue: [#140](https://github.com/AbdelStark/worldforge/issues/140)
 
 | 公开主张 | 证据类别 | 证据 | 命令或工件 | 边界 |
 | --- | --- | --- | --- | --- |
-| `predict` 是用于状态推演的提供方能力。 | `checkout-tested` | `tests/test_world_lifecycle.py`、`tests/test_provider_contracts.py`、`tests/test_capability_fixtures.py` | `uv run worldforge world predict <world-id> --object-id <object-id> --x 0.4 --y 0.5 --z 0` | 内置确定性检查不能证明物理保真度。 |
+| `predict` 是用于状态推演的提供方能力。 | `checkout-tested` | `tests/test_provider_contracts.py`、`tests/test_capability_fixtures.py`、`tests/test_capability_dual_routing.py` | `uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2` | 内置确定性检查不能证明物理保真度。 |
 | `score` 为打分模型工作流对动作候选进行排序。 | `fixture-tested`；真实运行时使用 `prepared-host smoke-tested` | `tests/test_leworldmodel_provider.py`、`tests/test_jepa_provider.py`、`tests/test_jepa_wms_provider.py`、`tests/fixtures/providers/*score*` | `uv run worldforge-demo-leworldmodel`；`leworldmodel`、`jepa` 和 `jepa-wms` 的冒烟测试注册表行 | 张量、检查点、预处理和设备由宿主方持有。 |
 | `policy` 返回具身特定的动作块。 | `fixture-tested`；真实运行时使用 `prepared-host smoke-tested` | `tests/test_lerobot_provider.py`、`tests/test_gr00t_provider.py`、`tests/test_provider_contracts.py` | `scripts/robotics-showcase --json-only --no-tui --no-rerun`；机器人 CI 中上传的 `run_manifest.json` | WorldForge 保留原始动作，并要求宿主方持有转换器才能执行动作。 |
 | `embed` 是 mock 支持的窄能力接口。 | `checkout-tested` | `tests/test_provider_contracts.py`、`tests/test_capability_fixtures.py`、`tests/test_benchmark.py` | `uv run worldforge benchmark --preset parser-overhead` | 它是契约和适配器路径检查，而非通用嵌入质量主张。 |
@@ -54,7 +54,7 @@ Issue: [#140](https://github.com/AbdelStark/worldforge/issues/140)
 | 冒烟测试证据被索引到可发布的注册表中。 | `prepared-host smoke-tested`；`release-gated` | `tests/test_live_smoke_evidence.py`、`docs/src/live-smoke-evidence.json` | `uv run python scripts/generate_release_evidence.py --live-smoke-registry docs/src/live-smoke-evidence.json` | 缺失可选运行时或凭据是明确的跳过状态，而非静默遗漏。 |
 | 安装扩展后，Rerun 记录经过清理的事件和工件。 | `checkout-tested`；机器人案例展示使用 `prepared-host smoke-tested` | `tests/test_rerun_integration.py`、`tests/test_robotics_showcase.py` | `uv run --extra rerun worldforge-demo-rerun`；`/tmp/worldforge-robotics-showcase/real-run.rrd` | Rerun 是可选的可观测性工具，而非提供方能力或基础依赖项。 |
 | 机器人案例展示 TUI 是可选的，且与 Textual 隔离。 | `checkout-tested`；`release-gated` | `tests/test_robotics_showcase.py`、`tests/test_robotics_showcase_ci.py`、`tests/test_import_boundaries.py` | `scripts/robotics-showcase` | 非 TUI 机器人证据在不导入 Textual 的情况下仍可用。 |
-| 本地 JSON 持久化是内置的权威存储。 | `checkout-tested` | `tests/test_world_lifecycle.py`、`tests/test_cli_world_commands.py`、持久化 ADR | `uv run worldforge world export <world-id> --output world.json` | 它不是并发多写入者数据库，也不是服务级持久化存储。 |
+| 规划通过 `LatentMPCController` 基于纯粹的世界状态字典运行。 | `checkout-tested` | `tests/test_latent_mpc_controller.py`、`tests/test_capability_dual_routing.py`、持久化 ADR | `uv run python examples/basic_prediction.py` | 不存在内置世界存储；持久化由宿主方负责。 |
 | 质量门控在 Python 3.13 上运行，包含覆盖率、文档、包和 lint 检查。 | `release-gated` | `.github/workflows/ci.yml`、`scripts/test_package.sh`、`docs/src/quality.md` | `uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90` | 通过门控不扩展运行时能力主张。 |
 
 ## 不支持的行为或非主张

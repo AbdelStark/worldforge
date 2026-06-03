@@ -142,7 +142,7 @@ def test_core_performance_preserved_workspace_rejects_non_finite_payload_before_
 
 def test_core_performance_budget_file_rejects_non_finite_values(tmp_path: Path) -> None:
     budget_file = tmp_path / "budgets.json"
-    budget_file.write_text(json.dumps({"world_persistence": math.inf}), encoding="utf-8")
+    budget_file.write_text(json.dumps({"latent_planning": math.inf}), encoding="utf-8")
 
     with pytest.raises(SystemExit, match="finite non-negative ms"):
         check_core_performance._load_budgets(budget_file)

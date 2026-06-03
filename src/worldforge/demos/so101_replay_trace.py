@@ -21,7 +21,7 @@ import argparse
 import json
 import math
 
-from worldforge import Action, ActionScoreResult, BBox, Position, SceneObject, StructuredGoal
+from worldforge import Action, ActionScoreResult, BBox, Position, SceneObject
 from worldforge.framework import WorldForge
 from worldforge.models import (
     JSONDict,
@@ -332,13 +332,13 @@ def _make_world_object() -> SceneObject:
     )
 
 
-def _goal(cube: SceneObject) -> StructuredGoal:
-    return StructuredGoal.object_at(
-        object_id=cube.id,
-        object_name=cube.name,
-        position=SO101_TARGET_POSITION,
-        tolerance=SO101_GOAL_TOLERANCE_M,
-    )
+def _goal(cube: SceneObject) -> JSONDict:
+    return {
+        "kind": "object_at",
+        "object": {"id": cube.id, "name": cube.name},
+        "position": SO101_TARGET_POSITION.to_dict(),
+        "tolerance": SO101_GOAL_TOLERANCE_M,
+    }
 
 
 def _action_plans(candidates: list[JSONDict], *, cube_id: str) -> list[list[Action]]:
@@ -443,7 +443,7 @@ def run_demo(*, emit: bool = True) -> JSONDict:
 def _decision_trace(
     *,
     observation: JSONDict,
-    goal: StructuredGoal,
+    goal: JSONDict,
     candidates: list[JSONDict],
     score_result: JSONDict,
     selected_actions: list[Action],
@@ -465,7 +465,7 @@ def _decision_trace(
         "source": "checkout_safe_replay_fixture",
         "dataset_reference": dict(SO101_DATASET_REFERENCE),
         "observation": observation,
-        "goal": goal.to_dict(),
+        "goal": goal,
         "candidate_actions": [_candidate_trace_record(candidate) for candidate in candidates],
         "candidate_scores": [
             {

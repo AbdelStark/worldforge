@@ -39,14 +39,19 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Removed
 
+- Removed the symbolic `World` runtime, its local JSON persistence, the `worldforge world` CLI
+  command, and the related public surface (`World`, `Plan`, `Prediction`, `PlanExecution`,
+  `Comparison`, `StructuredGoal`, `HistoryEntry`, and `DoctorReport.world_count`). Planning now runs
+  over plain world-state dicts: `forge.predict` rolls a `world_state` dict forward and
+  `LatentMPCController` plans by scoring action candidates over the `score`/`predict` surface. The
+  `worldforge predict` CLI seeds a state dict, runs `predict`, and prints the result without
+  persisting anything. Durable world-state persistence is host-owned.
 - Removed the world-authoring surface that sits outside the backbone loop: the JSON scenario DSL
   and scenario matrices/galleries (`worldforge.scenarios` plus the `worldforge scenario` command),
   world diff/patch (`worldforge.world_diff` plus `worldforge world diff`), world migration previews
   (`worldforge.world_migration_preview` plus `worldforge world migration-preview`), and local-state
   preflight (`worldforge.persistence_preflight` plus `worldforge world preflight`) — along with
-  their public exports, documentation pages, and CLI subcommands. Local JSON world state and the
-  rest of the `world` CLI are unchanged; the symbolic `World` runtime removal is staged next in
-  `specs/latent-planning-core/`.
+  their public exports, documentation pages, and CLI subcommands.
 
 ### Added
 

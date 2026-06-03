@@ -165,7 +165,7 @@ def _run_showcase_workflow(runtime: _ShowcaseRuntime, *, iterations: int) -> _Sh
     goal = blue_cube_goal(cube)
     runtime.artifacts.log_json(
         "worlds/initial",
-        {"label": "initial tabletop scene", "goal": goal.to_dict()},
+        {"label": "initial tabletop scene", "goal": goal},
     )
 
     # Plan one latent-MPC step toward the goal: the mock provider is used as a score cost oracle.

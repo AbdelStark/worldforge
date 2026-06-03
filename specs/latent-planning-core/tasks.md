@@ -88,17 +88,25 @@ increment is green because `forge.predict`/`forge.score_actions` work without a 
       together with `World` in Inc F. Inc F must restore equivalent coverage via the
       `LatentMPCController` path or accept the suite shrinking (watch the 90% floor).
 
-### Inc F — delete the World runtime (final sweep)
+### Inc F — delete the World runtime (DONE)
 
-- [ ] Delete `_world.py`, `_world_goal_resolution.py`, `_world_planning.py`,
+- [x] Deleted `_world.py`, `_world_goal_resolution.py`, `_world_planning.py`,
       `_world_prompt_seeders.py`, `_state.py`, `_results.py`, `framework_world_store.py`,
-      `structured_goals.py`, `cli_world.py`, `cli_args/world.py`.
-- [ ] Trim `framework.py` (drop `*_world` methods, `state_dir` if unused, `world_count` from doctor),
-      `framework_doctor.py`, `provider_diagnostics.py` (`DoctorReport.world_count` — breaking),
-      `cli.py` (`world` command + reroute `_cmd_predict` to `forge.predict`), `models.py`,
-      `scene_models.py` (drop `SceneObject`/`SceneObjectPatch`/`HistoryEntry`; keep
-      `Action`/`Position`/`Pose`/`BBox`/`Rotation`), `providers/mock.py` (decouple `predict` from
-      `SceneObject`), `__init__.py` exports.
-- [ ] Delete `test_world_lifecycle.py`, `test_cli_world_commands.py`; reroute remaining tests.
-- [ ] Regenerate the public-API snapshot and CLI help snapshots; rewrite world-referencing docs
-      (quickstart, cli, operations, playbooks, architecture, api/python, …) + zh mirrors; CHANGELOG.
+      `structured_goals.py`, `cli_world.py`, `cli_args/world.py`, and the two World-runtime test
+      files. ~6,600 lines removed across 75 files.
+- [x] Trimmed `framework.py` (dropped all `*_world` methods), `framework_doctor.py` +
+      `provider_diagnostics.py` (removed `DoctorReport.world_count` — breaking), `cli.py` (removed
+      the `world` command, rerouted `_cmd_predict` to `forge.predict` over a seeded dict),
+      `cli_args`, `models.py`/`scene_models.py` (dropped `StructuredGoal`/`HistoryEntry`; kept
+      `Action`/`Position`/`Pose`/`BBox`/`Rotation`/`SceneObject`/`SceneObjectPatch` for building
+      `world_state` dicts), `smoke/lerobot_leworldmodel.py`, `testing/provider_contract_validation`,
+      and `__init__.py` exports (`World`/`Plan`/`Prediction`/`PlanExecution`/`Comparison`/
+      `StructuredGoal` removed — breaking).
+- [x] Regenerated public-API + CLI-help snapshots; rewrote world-referencing docs + zh mirrors,
+      CLAUDE.md (commands/provider_contracts/structure), AGENTS.md (architecture map), CHANGELOG.
+- [x] Gates green: ruff, format, provider-docs, mkdocs --strict, docs-command-drift, snippet gate,
+      tests (1359 passed), coverage 90.29%. `worldforge predict`/`eval`/`benchmark` all run; the
+      `worldforge world` command is gone.
+
+**Stage 3 complete — the symbolic World runtime is fully removed. WorldForge is now the latent
+planning-and-scoring backbone loop end to end.**

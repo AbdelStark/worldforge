@@ -17,13 +17,11 @@ Repository layout:
 ```text
 worldforge/
 |-- src/worldforge/
-|   |-- framework.py       # WorldForge facade, provider registry, diagnostics, persistence
-|   |-- _world.py          # mutable World runtime, history, planning
-|   |-- _world_prompt_seeders.py # deterministic prompt seed-scene helpers
-|   |-- _results.py        # validated workflow result objects
+|   |-- framework.py       # WorldForge facade, provider registry, diagnostics
+|   |-- control/           # LatentMPCController, PlannerConfig, candidate encoders
 |   |-- _model_utils.py    # shared JSON, ID, numeric, and probability validators
 |   |-- models.py          # public compatibility facade and model re-exports
-|   |-- scene_models.py    # geometry, action, scene object, goal, and history contracts
+|   |-- scene_models.py    # geometry, action, and scene object contracts
 |   |-- capability_results.py # embedding, score, and policy results
 |   |-- provider_models.py # compatibility facade for provider-facing contracts
 |   |-- provider_profiles.py # provider capabilities and metadata
@@ -140,23 +138,14 @@ boundaries.
 
 `framework.py`
 
-- `WorldForge`: top-level object for provider registration, diagnostics, persistence helpers, and
-  provider-wide operations such as `predict(...)`, `embed(...)`, `score_actions(...)`, and
+- `WorldForge`: top-level object for provider registration, diagnostics, and provider-wide
+  capability operations such as `predict(...)`, `embed(...)`, `score_actions(...)`, and
   `select_actions(...)`.
 
-`_world.py`
+`control/`
 
-- `World`: mutable world state with scene objects, history, prediction, comparison, planning, plan
-  execution, and evaluation entry points.
-
-`_world_prompt_seeders.py`
-
-- Deterministic seed-scene templates for `create_world_from_prompt(...)`, including prompt
-  matching, fallback object creation, and the prompt-specific history reset.
-
-`_results.py`
-
-- `Prediction`, `Plan`, `PlanExecution`, and `Comparison`: workflow-level result objects.
+- `LatentMPCController`: the CEM/receding-horizon optimizer that owns latent planning over the
+  `score`/`predict` capability surface, plus `PlannerConfig` and candidate encoders.
 
 `models.py`
 
@@ -167,7 +156,8 @@ boundaries.
 `scene_models.py`
 
 - Public scene-domain contracts such as `Position`, `Rotation`, `Pose`, `BBox`, `Action`,
-  `SceneObjectPatch`, `SceneObject`, `StructuredGoal`, and `HistoryEntry`.
+  `SceneObjectPatch`, and `SceneObject`. These build the plain `world_state` dicts passed to
+  `forge.predict(...)`.
 
 `capability_results.py`
 
@@ -284,18 +274,16 @@ Expanded:
    - hosts may call register_cost(...), register_policy(...), or register(...) for narrow
      capability protocol implementations
 
-2. World setup
-   - create_world(...) starts from empty typed state
-   - create_world_from_prompt(...) creates a deterministic local seed scene
-   - load_world(...) restores local JSON state after validation
-   - delete_world(...) validates the world id before removing local JSON state
+2. World state
+   - hosts build a plain JSON-serializable world-state dict (no symbolic World runtime)
+   - SceneObject/geometry helpers seed the dict; durable persistence is host-owned
 
 3. Workflow call
-   - world.predict(...) requires a provider with predict=True
+   - forge.predict(world_state, action, ...) requires a provider with predict=True
+   - forge.score_actions(...) requires score=True
    - forge.select_actions(...) requires policy=True
-   - world.plan(...) can use predictive, score-based, policy, policy+score, or latent-MPC
-     planning
-   - world.evaluate(...) and benchmark harnesses select operations by capability
+   - LatentMPCController.plan_step(...) plans over the score/predict surface
+   - EvaluationSuite and benchmark harnesses select operations by capability
 
 4. Provider boundary
    - provider receives a JSON world snapshot, embedding request, score payload, or policy
@@ -311,7 +299,7 @@ Expanded:
    - unexpected protocol exceptions are wrapped as ProviderError after failure events are emitted
 
 6. Host-owned operation
-   - JSON persistence is single-writer local storage
+   - durable world-state persistence is host-owned
    - production logging, metrics export, trace IDs, dashboards, and locks remain host-owned
 ```
 
@@ -337,7 +325,7 @@ Manual full-provider registration
 
 forge = WorldForge(auto_register_remote=False)
 forge.register_provider(MyProvider(...))
-world = forge.create_world("lab", provider="my-provider")
+payload = forge.predict(world_state, action, provider="my-provider")
 ```
 
 ```text
@@ -347,25 +335,17 @@ forge = WorldForge(auto_register_remote=False)
 forge.register_cost(MyCostModel(name="my-cost"))
 forge.register_policy(MyPolicy(name="my-policy"))
 
-result = forge.score_actions(cost="my-cost", info=info, action_candidates=candidates)
-plan = world.plan(
-    goal="pick best policy candidate",
-    policy_provider="my-policy",
-    score_provider="my-cost",
-    policy_info=policy_info,
-    score_info=score_info,
-)
+policy_result = forge.select_actions("my-policy", info=policy_info)
+score_result = forge.score_actions(cost="my-cost", info=score_info, action_candidates=candidates)
+best = score_result.best_index
 ```
 
 ```text
 Call-site override
 
-world = forge.create_world("lab", provider="mock")
-
-world.predict(action)                         # uses world.provider
-world.predict(action, provider="other")       # overrides for this call
-world.plan(..., provider="leworldmodel")      # planner/scorer provider
-world.execute_plan(plan, provider="mock")     # execution provider
+forge.predict(world_state, action, provider="mock")     # explicit predict provider
+forge.predict(world_state, action, provider="other")    # overrides for this call
+forge.score_actions("leworldmodel", info=info, action_candidates=candidates)
 forge.score_actions("local-score", info={}, action_candidates=[{}])
 ```
 
@@ -382,10 +362,8 @@ flowchart LR
     Auto --> Registry[Provider registry]
     Manual --> Registry
     ManualProtocol --> CapabilityRegistry[Capability registries]
-    WorldProvider[world.provider default] --> Resolve[provider resolution]
-    CallOverride[method provider override] --> Resolve
+    CallOverride[method provider override] --> Resolve[provider resolution]
     Direct[direct capability instance] --> Resolve
-    PlanExec[Plan metadata execution_provider] --> Resolve
     Registry --> Resolve
     CapabilityRegistry --> Resolve
     Resolve --> Capability{capability supported?}
@@ -393,48 +371,18 @@ flowchart LR
     Capability -- no --> Error[WorldForgeError or ProviderError]
 ```
 
-## Predictive Planning Pipeline
+## Predictive Pipeline
 
-Predictive planning is the path for providers that can take a world state plus an action and
-return a future world state.
+Prediction is the path for providers that take a world state plus an action and return a future
+world state. The host owns the `world_state` dict and rolls actions forward one step at a time.
 
 ```text
-World.plan(goal_spec=..., provider="mock")
+forge.predict(world_state, action, steps=1, provider="mock")
   |
-  |-- parse goal_spec or goal_json into StructuredGoal
-  |-- resolve scene object selectors
-  |-- create one or more WorldForge Action objects
-  |-- for each action:
-  |     provider.predict(simulated_state, action, steps=1)
-  |     validate PredictionPayload
-  |     append predicted state and physics score
-  |
-  `-- return Plan(
-        planning_mode="predict",
-        actions=[...],
-        predicted_states=[...],
-        success_probability=heuristic average of physics scores
-      )
-```
-
-Mermaid sequence:
-
-```mermaid
-sequenceDiagram
-    participant App as Host app
-    participant World
-    participant Provider
-    participant Plan
-
-    App->>World: plan(goal_spec, provider)
-    World->>World: normalize StructuredGoal
-    loop per action
-        World->>Provider: predict(snapshot, action, steps=1)
-        Provider-->>World: PredictionPayload
-        World->>World: validate and collect predicted state
-    end
-    World-->>Plan: Plan(planning_mode="predict")
-    Plan-->>App: actions + predicted_states
+  |-- validate the Action and positive step count
+  |-- provider.predict(world_state, action, steps)
+  |-- validate PredictionPayload
+  `-- return PredictionPayload(state=..., physics_score=..., confidence=...)
 ```
 
 ## Score-Based Planning Pipeline
@@ -450,26 +398,15 @@ Host owns task preprocessing
   |     |-- goal      task-shaped goal observation
   |     `-- action    task-shaped action history
   |
-  |-- score_action_candidates (optional)
-  |     |-- omitted: WorldForge serializes candidate_actions with Action.to_dict()
-  |     `-- provided: tensor or nested numeric array shaped for the score provider
-  |
-  `-- candidate_actions
-        `-- WorldForge Action sequences, one sequence per scored candidate
+  `-- action_candidates
+        `-- serialized WorldForge Action sequences, or a provider-native tensor
 
-World.plan(..., provider="leworldmodel", execution_provider="mock")
+forge.score_actions("leworldmodel", info=score_info, action_candidates=candidates)
   |
   |-- require provider.capabilities.score
   |-- call provider.score_actions(info, action_candidates)
   |-- receive ActionScoreResult(scores, best_index, lower_is_better=True)
-  |-- choose candidate_actions[best_index]
-  |-- return Plan(planning_mode="score", predicted_states=[])
-
-World.execute_plan(plan)
-  |
-  |-- choose execution_provider from explicit arg or plan metadata
-  |-- require execution provider supports predict
-  `-- apply selected WorldForge actions through predict(...)
+  `-- caller selects candidate_actions[best_index]
 ```
 
 The separation is intentional:
@@ -478,51 +415,24 @@ The separation is intentional:
 - WorldForge stores and executes `Action` objects in its own public API.
 - The host supplies the mapping between those two spaces because task preprocessing is model- and
   checkpoint-specific.
-- A score provider is allowed to be a planner without being a predictor, generator, or reasoner.
+- A score provider is allowed to be a cost oracle without being a predictor, generator, or reasoner.
 
-```mermaid
-sequenceDiagram
-    participant Host
-    participant World
-    participant LeWM as LeWorldModelProvider
-    participant Exec as Execution Provider
-
-    Host->>World: plan(provider="leworldmodel", candidate_actions, score_info, score_action_candidates)
-    World->>World: validate score planning inputs
-    World->>LeWM: score_actions(info, action_candidates)
-    LeWM->>LeWM: load AutoCostModel, tensorize inputs, get_cost(...)
-    LeWM-->>World: ActionScoreResult(best_index)
-    World-->>Host: Plan(actions=candidate_actions[best_index], planning_mode="score")
-    Host->>World: execute_plan(plan)
-    World->>Exec: predict(snapshot, selected action, steps=1)
-    Exec-->>World: PredictionPayload
-    World-->>Host: PlanExecution(final_world)
-```
-
-Concrete score-planning shape:
+Concrete score shape:
 
 ```python
-from worldforge import Action
+from worldforge import Action, WorldForge
 
-plan = world.plan(
-    goal="select the lowest-cost LeWorldModel candidate",
-    provider="leworldmodel",
-    planner="leworldmodel-mpc",
-    candidate_actions=[
-        [Action.move_to(0.1, 0.5, 0.0)],
-        [Action.move_to(0.4, 0.5, 0.0)],
-    ],
-    score_info={
-        "pixels": pixels,
-        "goal": goal_pixels,
-        "action": action_history,
-    },
-    score_action_candidates=action_candidate_tensor,
-    execution_provider="mock",
+forge = WorldForge()
+candidate_actions = [
+    [Action.move_to(0.1, 0.5, 0.0)],
+    [Action.move_to(0.4, 0.5, 0.0)],
+]
+result = forge.score_actions(
+    "leworldmodel",
+    info={"pixels": pixels, "goal": goal_pixels, "action": action_history},
+    action_candidates=action_candidate_tensor,
 )
-
-print(plan.metadata["score_result"]["best_index"])
-execution = world.execute_plan(plan)
+best = candidate_actions[result.best_index]
 ```
 
 ## Latent MPC Planning Pipeline
@@ -540,29 +450,26 @@ Host owns observation and goal construction
   `-- candidate_encoder (optional)
         `-- maps sampled WorldForge actions to score-provider-native payloads
 
-World.plan(planner="latent-mpc", score_provider="...", ...)
+LatentMPCController(forge, score_provider="...", config=PlannerConfig(...)).plan_step(...)
   |
   |-- require explicit score_provider with capabilities.score
   |-- sample action horizons in WorldForge Action space
   |-- encode candidates for provider.score_actions(...)
   |-- score candidates and refit elites for each CEM iteration
-  `-- return Plan(planning_mode="latent-mpc", control_mode="mpc", optimizer="cem")
+  `-- return MPCStepResult(actions, best_score, candidate_count, iteration_best_scores)
 ```
 
 The host closes the receding horizon by executing the returned `execute_k` actions, re-observing,
-and calling `World.plan(planner="latent-mpc", ...)` again. WorldForge does not step a simulator or
+and calling `LatentMPCController.plan_step(...)` again. WorldForge does not step a simulator or
 robot controller in the planner contract.
 
 ```python
-from worldforge import PlannerConfig
+from worldforge import LatentMPCController, PlannerConfig, WorldForge
 
-plan = world.plan(
-    goal="optimize one action chunk",
-    planner="latent-mpc",
+controller = LatentMPCController(
+    forge=WorldForge(),
     score_provider="leworldmodel",
-    score_info=observation_info,
-    goal_info=goal_info,
-    planner_config=PlannerConfig(
+    config=PlannerConfig(
         horizon=4,
         num_samples=256,
         num_iterations=5,
@@ -571,8 +478,9 @@ plan = world.plan(
         action_kind="ee_delta",
         action_parameter_bounds={"x": (-0.05, 0.05), "y": (-0.05, 0.05)},
     ),
-    candidate_encoder=my_task_encoder,
+    encoder=my_task_encoder,
 )
+result = controller.plan_step(observation_info=observation_info, goal_info=goal_info)
 ```
 
 ### Validate Locally
@@ -583,17 +491,16 @@ Run a focused local check after changing this workflow:
 uv run pytest tests/test_latent_mpc_controller.py -q
 ```
 
-The expected success signal is a `Plan` with `metadata["planning_mode"] == "latent-mpc"`,
-`metadata["control_mode"] == "mpc"`, `metadata["optimizer"] == "cem"`, a non-empty action
-sequence, a populated `iteration_best_scores` list, and a `candidate_count` equal to
+The expected success signal is an `MPCStepResult` with a non-empty `actions` sequence, a populated
+`iteration_best_scores` list, and a `candidate_count` equal to
 `PlannerConfig.num_samples * PlannerConfig.num_iterations`. In task-specific hosts, the
 post-execution observation should also improve the caller-owned goal metric after the returned
 `execute_k` action chunk is applied.
 
 First triage step: inspect the `PlannerConfig` bounds and sample counts, confirm the
-`score_provider` advertises `score`, verify the `candidate_encoder` maps sampled `Action`
-parameters into the provider-native action payload, and check the score provider error text if
-`World.plan(planner="latent-mpc", ...)` fails before returning a `Plan`.
+`score_provider` advertises `score`, verify the `encoder` maps sampled `Action` parameters into the
+provider-native action payload, and check the score provider error text if
+`LatentMPCController.plan_step(...)` fails before returning a result.
 
 ## Policy Planning Pipeline
 
@@ -611,12 +518,11 @@ policy_info
   |-- embodiment_tag
   `-- action_horizon
 
-World.plan(..., provider="gr00t", policy_info=...)
+forge.select_actions("gr00t", info=policy_info)
   |
   |-- require provider.capabilities.policy
   |-- call provider.select_actions(info)
-  |-- receive ActionPolicyResult(actions, raw_actions, action_candidates)
-  |-- return Plan(planning_mode="policy", predicted_states=[])
+  `-- receive ActionPolicyResult(actions, raw_actions, action_candidates)
 ```
 
 Policy plus score planning composes an actor with a world-model scorer:
@@ -635,23 +541,20 @@ WorldForge
 Concrete shape:
 
 ```python
-plan = world.plan(
-    goal="choose the lowest-cost policy candidate",
-    policy_provider="gr00t",
-    score_provider="leworldmodel",
-    policy_info=policy_info,
-    score_info=lewm_info,
-    execution_provider="mock",
+policy_result = forge.select_actions("gr00t", info=policy_info)
+candidate_plans = policy_result.action_candidates
+score_result = forge.score_actions(
+    "leworldmodel",
+    info=lewm_info,
+    action_candidates=candidate_plans,
 )
+selected = candidate_plans[score_result.best_index]
 ```
 
-WorldForge passes serialized policy candidates to the score provider by default. Pass
-`score_action_candidates=...` when the scorer requires native tensors or latents. The host still
-owns the mapping between GR00T raw actions, WorldForge `Action` objects, and score-provider native
-payloads. WorldForge validates that each provider returns a typed result and that the selected
-candidate index is in range. Score-based planning also requires the score result length to match
-the executable candidate count, so provider-native tensors cannot silently drift from the actions
-that WorldForge can execute or report.
+The host owns the mapping between GR00T raw actions, WorldForge `Action` objects, and score-provider
+native payloads. WorldForge validates that each provider returns a typed result and that the
+selected candidate index is in range, so provider-native tensors cannot silently drift from the
+actions that WorldForge can execute or report.
 
 ## Provider Capability Surface
 
@@ -837,21 +740,21 @@ forge = WorldForge(
     )
 )
 
-world = forge.create_world_from_prompt("cube", provider="mock")
-world.predict(Action(type="move_to", parameters={"target": {"x": 0.2, "y": 0.5, "z": 0.0}}))
+world_state = {"step": 0, "scene": {"objects": {}}}
+forge.predict(world_state, Action.move_to(0.2, 0.5, 0.0), steps=1, provider="mock")
 print(metrics.get("mock", "predict").to_dict())
 rerun_session.close()
 ```
 
 ## Persistence Ownership
 
-Persistence is intentionally host-owned beyond local JSON state.
+Persistence is intentionally host-owned. WorldForge has no symbolic `World` runtime or built-in
+world store; planning runs over plain world-state dicts.
 
 ```text
 WorldForge today
-  local JSON files
-  single-writer assumption
-  import/export/delete validation
+  plain JSON-serializable world-state dicts
+  boundary validation (WorldForgeError / WorldStateError)
 
 Host application owns
   locks
@@ -868,8 +771,7 @@ adapter must preserve the same state validation invariants before it becomes a s
 surface.
 
 ADR 0001, [Persistence Adapter Boundary](./adr/0001-persistence-adapter-boundary.md), names the
-future `WorldPersistenceAdapter` interface and rejects replacing local JSON with an implicit
-database backend.
+future `WorldPersistenceAdapter` interface and rejects an implicit database backend.
 
 ## Design Implications
 

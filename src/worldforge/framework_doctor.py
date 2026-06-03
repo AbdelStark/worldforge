@@ -24,8 +24,6 @@ from worldforge.providers.observable import _ObservableCapability
 class DoctorHost(Protocol):
     state_dir: Path
 
-    def list_worlds(self) -> list[str]: ...
-
     def _provider_catalog(self, *, include_known: bool = True) -> dict[str, BaseProvider]: ...
 
     def _provider_view_names(self, *, include_known: bool) -> list[str]: ...
@@ -80,7 +78,6 @@ def doctor_report(
     )
     return DoctorReport(
         state_dir=str(host.state_dir),
-        world_count=len(host.list_worlds()),
         providers=statuses,
         issues=issues,
     )

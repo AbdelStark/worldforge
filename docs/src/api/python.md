@@ -90,27 +90,26 @@ Capability protocol implementations and `BaseProvider` subclasses may also expos
 surface the aggregate `ProviderLifecycleStatus` through `doctor()` and
 `provider_lifecycle_status(...)` without changing the capability method contract.
 
-## Persistence
+## World State
 
+There is no symbolic `World` runtime or built-in JSON world store. Planning runs over plain,
+JSON-serializable world-state dicts: `forge.predict` rolls a `world_state` dict forward one action
+at a time.
+
+<!-- worldforge-snippet: execute -->
 ```python
 from worldforge import Action, WorldForge
 
-forge = WorldForge(state_dir=".worldforge/worlds")
-world = forge.create_world("lab", provider="mock")
-world_id = forge.save_world(world)
-
-payload = forge.export_world(world_id)
-copy = forge.import_world(payload, new_id=True, name="lab-copy")
-copy_id = forge.save_world(copy)
-
-forge.delete_world(world_id)
-print(forge.list_worlds(), copy_id)
+forge = WorldForge()
+world_state = {"step": 0, "scene": {"objects": {}}}
+payload = forge.predict(world_state, Action.move_to(0.2, 0.5, 0.0), steps=1, provider="mock")
+print(payload.metadata["provider"], payload.physics_score)
+next_state = payload.state
 ```
 
-`save_world(...)`, `load_world(...)`, `import_world(...)`, `fork_world(...)`, and
-`delete_world(...)` all validate world identifiers before touching the filesystem. Delete removes
-only the local JSON file for a file-safe world id; missing worlds raise `WorldStateError` instead
-of being treated as successful no-ops.
+Invalid public inputs raise `WorldForgeError`, and malformed persisted or provider world-state
+payloads raise `WorldStateError` at the boundary. Durable persistence is host-owned: serialize the
+plain world-state dict into your own store.
 
 ## Observability
 
@@ -143,8 +142,8 @@ forge = WorldForge(
     )
 )
 
-world = forge.create_world_from_prompt("cube", provider="mock")
-world.predict(Action(type="move_to", parameters={"target": {"x": 0.2, "y": 0.5, "z": 0.0}}))
+world_state = {"step": 0, "scene": {"objects": {}}}
+forge.predict(world_state, Action.move_to(0.2, 0.5, 0.0), steps=1, provider="mock")
 print(metrics.get("mock", "predict").to_dict())
 ```
 
@@ -157,10 +156,10 @@ package does not import OpenTelemetry or configure collectors.
 `ProviderMetricsExporterSink` is also optional and accepts a host-owned metrics exporter with
 bounded labels for provider, operation, phase, status class, and capability.
 
-Composed operations can emit safe workflow trace artifacts. `Plan.metadata["workflow_trace"]`
-records planning steps, evaluation reports export `workflow_trace.json` and `workflow_trace.md`,
-and `workflow_trace_from_provider_events(...)` can compact emitted `ProviderEvent` records into a
-schema-versioned trace without storing raw prompts, tensors, credentials, or controller telemetry.
+Composed operations can emit safe workflow trace artifacts. Evaluation reports export
+`workflow_trace.json` and `workflow_trace.md`, and `workflow_trace_from_provider_events(...)` can
+compact emitted `ProviderEvent` records into a schema-versioned trace without storing raw prompts,
+tensors, credentials, or controller telemetry.
 
 Rerun is available as an optional observability and artifact layer:
 
@@ -171,12 +170,11 @@ rerun_events = RerunEventSink(session=session)
 artifacts = RerunArtifactLogger(session=session)
 
 forge = WorldForge(event_handler=rerun_events)
-world = forge.create_world("lab", provider="mock")
-plan = world.plan("move the first object right")
+world_state = {"step": 0, "scene": {"objects": {}}}
+payload = forge.predict(world_state, Action.move_to(0.2, 0.5, 0.0), steps=1, provider="mock")
 
-artifacts.log_world(world)
-artifacts.log_plan(plan)
-artifacts.log_workflow_trace(plan.metadata["workflow_trace"])
+artifacts.log_json("worlds/initial", world_state)
+artifacts.log_json("worlds/predicted", payload.state)
 session.close()
 ```
 
@@ -218,54 +216,53 @@ provider-specific docs.
 Metadata must be JSON-native: dict keys are strings, numbers are finite, and object instances or
 tuples are rejected instead of being coerced silently.
 
-The planner can consume the same score surface when callers provide WorldForge actions that
-correspond to each scored candidate. By default, those actions are serialized and passed to the
-score provider. Pass `score_action_candidates` when the scorer expects a provider-native tensor or
-latent candidate payload:
-
-```python
-from worldforge import action_candidates_to_score_payload, bounded_move_grid_candidates
-
-candidate_actions = bounded_move_grid_candidates(
-    x_bounds=(0.1, 0.7),
-    y_bounds=(0.5, 0.5),
-    z_bounds=(0.0, 0.0),
-    x_steps=3,
-    y_steps=1,
-    z_steps=1,
-)
-plan = world.plan(
-    goal="choose the lowest-cost LeWorldModel action",
-    provider="leworldmodel",
-    planner="leworldmodel-mpc",
-    candidate_actions=candidate_actions,
-    score_info=info,
-    score_action_candidates=action_candidates_to_score_payload(candidate_actions),
-    execution_provider="mock",
-)
-
-print(plan.actions, plan.metadata["score_result"]["best_index"])
-```
-
-Score-based plans do not ask the score provider to predict state. `Plan.predicted_states` stays
-empty, score details are stored in `Plan.metadata`, and `execute_plan(...)` uses
-`execution_provider` when the scoring provider does not implement `predict()`. The planner requires
-one score per candidate action plan; mismatched score counts fail before a plan is returned.
-
 Candidate helpers are provider-agnostic and return validated `Action` sequences. Use
 `cartesian_offset_candidates(...)` for relative move candidates, `object_near_candidates(...)` for
 reference-relative placements, `swap_action_candidates(...)` for two-object swaps, and
-`bounded_move_grid_candidates(...)` for inclusive Cartesian grids. They do not preprocess images,
-do not infer provider-native tensors, and do not reinterpret robot action spaces; pass
-`score_action_candidates`
-explicitly when a score provider needs a task-specific tensor instead of serialized `Action`
-payloads.
+`bounded_move_grid_candidates(...)` for inclusive Cartesian grids. By default WorldForge serializes
+candidate actions with `action_candidates_to_score_payload(...)` before calling
+`forge.score_actions(...)`; pass `score_action_candidates` explicitly when a score provider needs a
+task-specific tensor instead of serialized `Action` payloads. These helpers
+do not preprocess images, do not infer provider-native tensors, and
+do not reinterpret robot action spaces.
 
 For a checkout-safe policy+score candidate lab that preserves raw policy actions, ranks generated
 candidates, and shows invalid-bounds plus missing-translator failures, run:
 
 ```bash
 uv run python scripts/demo_showcases.py run policy-score-candidate-lab --workspace-dir .worldforge/demo-showcases --overwrite
+```
+
+## Latent Planning
+
+`LatentMPCController` owns the receding-horizon optimizer: it proposes action candidates, ranks them
+with a `score` provider as a cost oracle, and returns the lowest-cost chunk. There is no symbolic
+`World` runtime — the controller operates over `observation_info`/`goal_info` payloads and the
+`score` capability.
+
+<!-- worldforge-snippet: execute -->
+```python
+from worldforge import LatentMPCController, PlannerConfig, WorldForge
+
+forge = WorldForge()
+controller = LatentMPCController(
+    forge=forge,
+    score_provider="mock",
+    config=PlannerConfig(
+        horizon=1,
+        num_samples=16,
+        num_iterations=2,
+        num_elites=4,
+        action_kind="latent_action",
+        action_parameter_bounds={"x": (-1.0, 1.0), "y": (-1.0, 1.0), "z": (-1.0, 1.0)},
+        seed=0,
+    ),
+)
+plan = controller.plan_step(
+    observation_info={"point": [0.0, 0.5, 0.0]},
+    goal_info={"target": [0.55, 0.5, 0.0]},
+)
+print(len(plan.actions), plan.best_score, plan.candidate_count)
 ```
 
 ## Action Policy
@@ -296,64 +293,10 @@ preserves provider-native raw actions for debugging, and can carry multiple cand
 chunks for downstream scoring. Preserved raw actions and metadata must be JSON-native so run
 artifacts can be serialized without hidden encoder behavior.
 
-Policy-only planning:
-
-```python
-plan = world.plan(
-    goal="pick up the cube",
-    provider="gr00t",
-    policy_info=policy_info,
-    execution_provider="mock",
-)
-```
-
-Policy plus score planning:
-
-```python
-plan = world.plan(
-    goal="choose the lowest-cost policy candidate",
-    policy_provider="gr00t",
-    score_provider="leworldmodel",
-    policy_info=policy_info,
-    score_info=lewm_info,
-    execution_provider="mock",
-)
-```
-
-By default, WorldForge serializes the policy candidates as lists of `Action.to_dict()` payloads
-before calling the score provider. Pass `score_action_candidates` when the scorer needs a
-provider-native tensor or latent candidate format. The host still owns embodiment-specific action
-translation and any model-native mapping.
-
-## `World`
-
-Stateful runtime object responsible for:
-
-- scene object management
-- prediction
-- comparison
-- planning with heuristic strings or typed `StructuredGoal`
-- evaluation
-
-Example:
-
-```python
-from worldforge import Position, StructuredGoal
-
-plan = world.plan(
-    goal_spec=StructuredGoal.object_at(
-        object_name="red_mug",
-        position=Position(0.3, 0.8, 0.0),
-    )
-)
-```
-
-Typed structured goals cover:
-
-- `StructuredGoal.object_at(...)`
-- `StructuredGoal.object_near(...)`
-- `StructuredGoal.spawn_object(...)`
-- `StructuredGoal.swap_objects(...)`
+Policy plus score planning composes the two surfaces directly: `forge.select_actions(...)` proposes
+candidate chunks, `forge.score_actions(...)` ranks them, and the caller selects the lowest-cost
+chunk by `best_index`. The host owns embodiment-specific action translation and any model-native
+mapping.
 
 ## Evaluation
 
@@ -464,9 +407,9 @@ report = assert_provider_contract(provider, policy_info=policy_info)
 WorldForge uses three public exception families for runtime workflows:
 
 - `WorldForgeError`: invalid caller input, invalid model values, unsupported formats, and invalid
-  local configuration values, including non-file-safe world IDs used for persistence lookup.
+  local configuration values.
 - `WorldStateError`: malformed persisted state or provider-supplied world state that cannot be
-  safely restored or applied, including invalid scene-object maps and invalid history entries.
+  safely restored or applied, including invalid scene-object maps.
 - `ProviderError`: provider credentials, transport failures, unsupported provider operations,
   malformed upstream responses, provider-specific input limits, optional dependency failures, and
   malformed model score or policy outputs.
@@ -478,11 +421,13 @@ from worldforge import Action, WorldForge
 from worldforge.providers import ProviderError
 
 forge = WorldForge()
-world = forge.create_world_from_prompt("a cube on a table")
+world_state = {"step": 0, "scene": {"objects": {}}}
 
 try:
-    prediction = world.predict(
-        Action(type="move", target="cube", parameters={"dx": 0.1, "dy": 0.0, "dz": 0.0}),
+    prediction = forge.predict(
+        world_state,
+        Action.move_to(0.1, 0.5, 0.0),
+        steps=1,
         provider="mock",
     )
 except ProviderError as exc:
@@ -499,9 +444,7 @@ Important boundary checks:
   rather than accepting object instances that only fail at persistence time.
 - Evaluation and benchmark result objects validate finite metrics, score ranges, coherent counts,
   and JSON-native metrics before JSON, Markdown, or CSV artifacts are rendered.
-- `World.add_object(...)` rejects duplicate scene object IDs.
-- Imported or provider-supplied world state rejects scene-object keys that disagree with embedded
-  object IDs.
+- Provider-supplied world state rejects scene-object keys that disagree with embedded object IDs.
 - LeWorldModel scoring requires `pixels`, `goal`, and `action` info fields, action candidates shaped
   as `(batch=1, samples, horizon, action_dim)`, optional `stable_worldmodel` and `torch` runtime
   dependencies, one returned score per candidate sample, and finite model scores.

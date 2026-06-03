@@ -261,7 +261,7 @@ def _run_review_pipeline(
         policy_result=policy_result,
         score_result=score_result,
         selected_actions=selected_actions,
-        goal=goal.to_dict(),
+        goal=goal,
         approval=approval,
         controller_result=controller_result,
         events=events,

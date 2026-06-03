@@ -133,13 +133,13 @@ _SPECS: dict[str, OperatorDrillSpec] = {
         id="corrupted-world-state",
         title="Corrupted local world state",
         failure_mode="corrupted_world_state",
-        expected_failure="local JSON world load raises WorldStateError",
+        expected_failure="malformed persisted world-state JSON raises WorldStateError",
         recovery_command=(
-            "export diagnostics, quarantine the bad file, then recreate or import a valid world"
+            "quarantine the bad file, then reseed the world-state dict from a known-good source"
         ),
         description=(
-            "Writes a malformed world JSON file inside the drill workspace and attempts to load it "
-            "through the normal WorldForge persistence path."
+            "Writes a malformed world-state JSON file inside the drill workspace and parses it "
+            "through the persisted-state boundary, which fails loudly with WorldStateError."
         ),
     ),
     "expired-artifact": OperatorDrillSpec(
@@ -526,7 +526,7 @@ def _corrupted_world_state(workspace: RunWorkspace) -> _DrillOutcome:
     corrupt_path = state_dir / "corrupted.json"
     corrupt_path.write_text('{"id": "corrupted", "state": ', encoding="utf-8")
     try:
-        WorldForge(state_dir=state_dir).load_world("corrupted")
+        _load_corrupted_world_state(corrupt_path)
     except WorldStateError as exc:
         error = _relative_workspace_text(workspace, str(exc))
         details = {
@@ -544,6 +544,24 @@ def _corrupted_world_state(workspace: RunWorkspace) -> _DrillOutcome:
             },
         )
     raise WorldForgeError("corrupted world state drill expected WorldStateError.")
+
+
+def _load_corrupted_world_state(path: Path) -> JSONDict:
+    """Parse a persisted world-state artifact, failing loudly on malformed content.
+
+    Mirrors the boundary contract for restoring persisted state: malformed JSON raises
+    :class:`WorldStateError` instead of silently coercing a partial world state.
+    """
+
+    try:
+        decoded = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise WorldStateError(
+            f"Persisted world state {path.name} is not valid JSON: {exc}."
+        ) from exc
+    if not isinstance(decoded, dict):
+        raise WorldStateError(f"Persisted world state {path.name} must be a JSON object.")
+    return decoded
 
 
 def _expired_artifact(workspace: RunWorkspace) -> _DrillOutcome:

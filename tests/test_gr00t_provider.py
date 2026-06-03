@@ -11,7 +11,6 @@ from worldforge.models import JSONDict, ProviderCapabilities, ProviderEvent, Pro
 from worldforge.providers import (
     BaseProvider,
     GrootPolicyClientProvider,
-    MockProvider,
     ProviderError,
     ProviderProfileSpec,
 )
@@ -1041,29 +1040,3 @@ def test_gr00t_provider_wraps_client_and_translation_failures() -> None:
     )
     with pytest.raises(ProviderError, match="bad map"):
         bad_translator.select_actions(info=_policy_info())
-
-
-def test_policy_planning_validation_errors(tmp_path) -> None:
-    forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
-    forge.register_provider(MockProvider(name="manual-mock"))
-    world = forge.create_world("robot-workcell", provider="manual-mock")
-
-    with pytest.raises(WorldForgeError, match="does not support policy planning"):
-        world.plan(goal="move", provider="manual-mock", policy_info=_policy_info())
-
-    policy_provider = GrootPolicyClientProvider(
-        policy_client=FakeGrootClient(({"arm": [[[0.0, 0.0, 0.0]]]}, {})),
-        action_translator=lambda *_args: [Action.move_to(0.0, 0.0, 0.0)],
-    )
-    forge.register_provider(policy_provider)
-    with pytest.raises(WorldForgeError, match="Policy planning requires policy_info"):
-        world.plan(goal="move", provider="gr00t", policy_provider="gr00t")
-
-    forge.register_provider(FakeScoreProvider([0.2]))
-    with pytest.raises(WorldForgeError, match="score_info"):
-        world.plan(
-            goal="move",
-            provider="gr00t",
-            policy_info=_policy_info(),
-            score_provider="fake-score",
-        )

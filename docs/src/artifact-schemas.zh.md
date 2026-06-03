@@ -8,7 +8,6 @@ WorldForge 工件是可能跨进程传递的 JSON 原生记录：运行清单、
 
 | 工件族 | 版本字段 | 所有者与来源 | 验证面 | 文档与 CLI 接口 | 迁移所有者 |
 | --- | --- | --- | --- | --- | --- |
-| 世界状态 JSON | 通过 `SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/_state.py` | `tests/test_world_lifecycle.py`、`tests/test_cli_world_commands.py` | `worldforge world ...`、[Operations](./operations.md) | 框架与持久化所有者 |
 | 运行清单 | 通过 `RUN_MANIFEST_SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/smoke/run_manifest.py` | `tests/test_smoke_run_manifest.py`、可选冒烟测试 | `--run-manifest`、[冒烟测试实时证据注册表](./live-smoke-evidence.md) | 可选运行时与冒烟测试所有者 |
 | 运行工作区 | 通过 `RUN_WORKSPACE_SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/harness/workspace.py` | `tests/test_harness_workspace.py`、`tests/test_harness_flows.py` | `worldforge runs ...`、[Run Artifact Index](./run-index.md) | Harness 工作区所有者 |
 | 运行索引报告 | 通过 `RUN_INDEX_SCHEMA_VERSION` 的 `schema_version` | `src/worldforge/harness/run_index.py` | `tests/test_run_index.py` | `worldforge runs index`、[Run Artifact Index](./run-index.md) | Harness 工作区所有者 |

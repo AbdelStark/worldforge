@@ -11,7 +11,6 @@ from worldforge._model_utils import (
     require_bool,
     require_finite_number,
     require_json_dict,
-    require_non_negative_int,
 )
 from worldforge.provider_profiles import ProviderProfile
 from worldforge.provider_redaction import _redact_observable_text, _redact_observable_value
@@ -272,7 +271,6 @@ class DoctorReport:
     """Environment diagnostics for the current WorldForge install."""
 
     state_dir: str
-    world_count: int
     providers: list[ProviderDoctorStatus]
     issues: list[str] = field(default_factory=list)
 
@@ -280,10 +278,6 @@ class DoctorReport:
         if not isinstance(self.state_dir, str) or not self.state_dir.strip():
             raise WorldForgeError("DoctorReport state_dir must be a non-empty string.")
         self.state_dir = self.state_dir.strip()
-        self.world_count = require_non_negative_int(
-            self.world_count,
-            name="DoctorReport world_count",
-        )
         if not isinstance(self.providers, list) or not all(
             isinstance(provider, ProviderDoctorStatus) for provider in self.providers
         ):
@@ -310,7 +304,6 @@ class DoctorReport:
     def to_dict(self) -> JSONDict:
         return {
             "state_dir": self.state_dir,
-            "world_count": self.world_count,
             "provider_count": self.provider_count,
             "healthy_provider_count": self.healthy_provider_count,
             "registered_provider_count": self.registered_provider_count,

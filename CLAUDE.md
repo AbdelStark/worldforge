@@ -32,7 +32,7 @@ Top-level boundaries:
 | --- | --- | --- |
 | `src/worldforge/` | Package source and public runtime | Modify with tests; public API files are gated |
 | `src/worldforge/models.py` | Public models, validation, request policy, events, state contracts | Gated for breaking contract changes |
-| `src/worldforge/framework.py` | `WorldForge`, `World`, persistence, planning, diagnostics, facade helpers | Gated for persistence/planning/public behavior changes |
+| `src/worldforge/framework.py` | `WorldForge`, provider orchestration, capability dispatch (`predict`/`score`/`policy`/`embed`), diagnostics, facade helpers | Gated for public behavior changes |
 | `src/worldforge/providers/` | Provider base classes, catalog, concrete adapters, optional runtimes | Modify with provider skill and fixture tests |
 | `src/worldforge/evaluation/` | Deterministic evaluation suites and renderers | Modify with evaluation skill |
 | `src/worldforge/harness/` | Robotics showcase flow/report package | Keep Textual isolated to `tui.py` |
@@ -87,7 +87,7 @@ Run from repository root.
 | Package contract | `bash scripts/test_package.sh` | wheel installs and tests pass in isolated venv |
 | Full local gate | `uv lock --check && uv run ruff check src tests examples scripts && uv run ruff format --check src tests examples scripts && uv run python scripts/generate_provider_docs.py --check && uv run pytest && uv run --extra harness pytest --cov=src/worldforge --cov-report=term-missing --cov-fail-under=90 && bash scripts/test_package.sh` | release-quality local validation |
 | CLI smoke | `uv run worldforge doctor` | `mock` registered; optional providers report missing/unregistered when env absent |
-| World CLI persistence | `uv run worldforge world create lab --provider mock && uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 && uv run worldforge world history <world-id> && uv run worldforge world predict <world-id> --x 0.4 --y 0.5 --z 0 && uv run worldforge world delete <world-id>` | local JSON world is saved, edited with history, advanced, and removed through the validated persistence API |
+| Latent backbone loop | `uv run python examples/latent_mpc_planning.py && uv run worldforge predict kitchen --provider mock --x 0.4 --y 0.5 --z 0 --steps 1 && uv run worldforge eval --suite planning --provider mock` | latent MPC selects the lowest-cost action, `predict` rolls a move through the dynamics provider, and the planning eval passes on the mock score provider |
 | Examples index | `uv run worldforge examples` | runnable command list prints |
 | Robotics showcase TUI | `scripts/robotics-showcase` | Textual extra only; pass `--no-tui` for terminal-only output |
 | Build | `uv build` | wheel and sdist under `dist/` |
@@ -99,7 +99,7 @@ Capability names are strict: `predict`, `embed`, `plan`, `score`, `policy`.
 
 | Provider | Truthful surface | Registration trigger | Do not claim |
 | --- | --- | --- | --- |
-| `mock` | `predict`, `embed` | always registered | real physical/media fidelity |
+| `mock` | `predict`, `embed`, `score` | always registered | real physical/media fidelity |
 | `leworldmodel` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | predict/policy |
 | `gr00t` | `policy` | `GROOT_POLICY_HOST` | world model, score |
 | `lerobot` | `policy` | `LEROBOT_POLICY_PATH` or `LEROBOT_POLICY` | world model, score |
@@ -189,7 +189,7 @@ Require explicit approval before modifying:
 - dependency or package metadata in `pyproject.toml` and `uv.lock`
 - public API exports in `src/worldforge/__init__.py`
 - public model/error/capability contracts in `src/worldforge/models.py`
-- persistence contract in `src/worldforge/framework.py`
+- provider orchestration and capability dispatch in `src/worldforge/framework.py`
 - provider base/catalog registration semantics in `src/worldforge/providers/base.py` and `src/worldforge/providers/catalog.py`
 - release/publish behavior in `scripts/test_package.sh` or release workflow
 - deleting tracked files or changing branch/merge/release policy

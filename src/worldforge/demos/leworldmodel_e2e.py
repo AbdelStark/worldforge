@@ -205,7 +205,7 @@ def run_demo(*, emit: bool = True) -> JSONDict:
         "planning_mode": "score",
         "providers": forge.providers(),
         "leworldmodel_health": forge.provider_health("leworldmodel").to_dict(),
-        "goal": goal.to_dict(),
+        "goal": goal,
         "candidate_costs": score_result.scores,
         "selected_candidate_index": score_result.best_index,
         "selected_actions": [action.to_dict() for action in selected_plan],

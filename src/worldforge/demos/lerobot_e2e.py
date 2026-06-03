@@ -243,7 +243,7 @@ def run_demo(*, emit: bool = True) -> JSONDict:
         "score_provider": "demo-distance-score",
         "providers": forge.providers(),
         "lerobot_health": forge.provider_health("lerobot").to_dict(),
-        "goal": goal.to_dict(),
+        "goal": goal,
         "policy_candidate_count": len(policy_result.action_candidates),
         "selected_candidate_index": score_result.best_index,
         "candidate_costs": score_result.scores,

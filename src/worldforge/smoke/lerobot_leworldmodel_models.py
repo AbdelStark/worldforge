@@ -35,13 +35,37 @@ class ProviderRuntime:
 @dataclass(slots=True)
 class PlanningSurface:
     forge: WorldForge
-    world: Any
+    world_state: dict[str, Any]
     block: SceneObject
 
 
 @dataclass(slots=True)
+class SmokePlan:
+    """Plain policy+score plan record built from the capability surface.
+
+    Replaces the deleted symbolic ``Plan``: the smoke runner selects a candidate action chunk
+    with ``forge.select_actions`` + ``forge.score_actions`` and records the result here so the
+    report, metrics, and JSON payload have a stable serializable shape.
+    """
+
+    provider: str
+    actions: list[Any]
+    success_probability: float
+    metadata: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "actions": [action.to_dict() for action in self.actions],
+            "action_count": len(self.actions),
+            "success_probability": self.success_probability,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(slots=True)
 class PlanRun:
-    plan: Any
+    plan: SmokePlan
     policy_result: dict[str, Any]
     score_result: dict[str, Any]
     score_stats: dict[str, Any]
@@ -95,6 +119,7 @@ class SmokePlanningResult:
 _RuntimeSettings = RuntimeSettings
 _ProviderRuntime = ProviderRuntime
 _PlanningSurface = PlanningSurface
+_SmokePlan = SmokePlan
 _PlanRun = PlanRun
 _SuccessPayload = SuccessPayload
 _ObservabilityHandles = ObservabilityHandles

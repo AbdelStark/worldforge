@@ -9,9 +9,9 @@ matching demo workflow when you want a preserved showcase run for issue or relea
 | Field | Value |
 | --- | --- |
 | Command | `uv run python scripts/demo_showcases.py run first-run --workspace-dir .worldforge/demo-showcases --overwrite` |
-| Expected output | `status: passed`, one mock world, one object, one prediction, and preflight status |
-| Artifact | `.worldforge/demo-showcases/first-run/exported-world.json` |
-| First triage step | run `uv run worldforge world preflight --state-dir .worldforge/demo-showcases/first-run/worlds` |
+| Expected output | `status: passed`, one seeded object, three mock prediction steps, and an exported final world-state JSON |
+| Artifact | `.worldforge/demo-showcases/first-run/exported-world-state.json` |
+| First triage step | run `uv run worldforge doctor --registered-only` and inspect the exported world-state JSON |
 | Boundary | mock provider only; no physical-fidelity or real-runtime claim |
 
 ### Recipe 2: Provider Diagnostic Issue Bundle

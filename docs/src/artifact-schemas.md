@@ -13,7 +13,6 @@ another documented contract marks them safe to attach.
 
 | Artifact family | Version field | Owner and source | Validation surface | Docs and CLI surface | Migration owner |
 | --- | --- | --- | --- | --- | --- |
-| World state JSON | `schema_version` via `SCHEMA_VERSION` | `src/worldforge/_state.py` | `tests/test_world_lifecycle.py`, `tests/test_cli_world_commands.py` | `worldforge world ...`, [Operations](./operations.md) | Framework and persistence owner |
 | Run manifests | `schema_version` via `RUN_MANIFEST_SCHEMA_VERSION` | `src/worldforge/smoke/run_manifest.py` | `tests/test_smoke_run_manifest.py`, optional smoke tests | `--run-manifest`, [Live Smoke Evidence Registry](./live-smoke-evidence.md) | Optional runtime and smoke owner |
 | Run workspaces | `schema_version` via `RUN_WORKSPACE_SCHEMA_VERSION` | `src/worldforge/harness/workspace.py` | `tests/test_harness_workspace.py`, `tests/test_harness_flows.py` | `worldforge runs ...`, [Run Artifact Index](./run-index.md) | Harness workspace owner |
 | Run index reports | `schema_version` via `RUN_INDEX_SCHEMA_VERSION` | `src/worldforge/harness/run_index.py` | `tests/test_run_index.py` | `worldforge runs index`, [Run Artifact Index](./run-index.md) | Harness workspace owner |

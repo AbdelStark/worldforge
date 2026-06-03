@@ -7,9 +7,9 @@
 | 字段 | 值 |
 | --- | --- |
 | 命令 | `uv run python scripts/demo_showcases.py run first-run --workspace-dir .worldforge/demo-showcases --overwrite` |
-| 预期输出 | `status: passed`，一个模拟世界、一个对象、一次预测及预检状态 |
-| 工件 | `.worldforge/demo-showcases/first-run/exported-world.json` |
-| 首要排查步骤 | 运行 `uv run worldforge world preflight --state-dir .worldforge/demo-showcases/first-run/worlds` |
+| 预期输出 | `status: passed`，一个种子对象、三次 mock 预测步骤，以及导出的最终世界状态 JSON |
+| 工件 | `.worldforge/demo-showcases/first-run/exported-world-state.json` |
+| 首要排查步骤 | 运行 `uv run worldforge doctor --registered-only` 并检查导出的世界状态 JSON |
 | 边界 | 仅限 mock 提供方；不声明物理保真度或真实运行时 |
 
 ### 方案 2：提供方诊断 Issue 包

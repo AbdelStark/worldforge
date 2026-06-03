@@ -30,75 +30,83 @@ uv add "worldforge-ai[rerun]"
 uv sync --group dev
 ```
 
-## 创建世界状态
+## 基于世界状态字典进行预测
+
+不存在符号化的 `World` 运行时：场景是一个纯粹的、可 JSON 序列化的世界状态字典，由动作条件化的 `predict` 提供方推进。
 
 ```python
-from worldforge import Action, BBox, Position, SceneObject, StructuredGoal, WorldForge
+from worldforge import Action, WorldForge
 
 forge = WorldForge()
-world = forge.create_world("kitchen", provider="mock")
+world_state = {
+    "step": 0,
+    "scene": {
+        "objects": {
+            "red_mug": {
+                "id": "red_mug",
+                "name": "red_mug",
+                "pose": {"position": {"x": 0.0, "y": 0.8, "z": 0.0}},
+                "bbox": {
+                    "min": {"x": -0.05, "y": 0.75, "z": -0.05},
+                    "max": {"x": 0.05, "y": 0.85, "z": 0.05},
+                },
+            }
+        }
+    },
+}
 
-world.add_object(
-    SceneObject(
-        "red_mug",
-        Position(0.0, 0.8, 0.0),
-        BBox(Position(-0.05, 0.75, -0.05), Position(0.05, 0.85, 0.05)),
-    )
-)
-world.add_object(
-    SceneObject(
-        "blue_mug",
-        Position(0.3, 0.8, 0.0),
-        BBox(Position(0.25, 0.75, -0.05), Position(0.35, 0.85, 0.05)),
-    )
-)
-
-prediction = world.predict(Action.move_to(0.3, 0.8, 0.0), steps=2)
+prediction = forge.predict(world_state, Action.move_to(0.3, 0.8, 0.0), steps=2, provider="mock")
 print(prediction.physics_score)
+next_state = prediction.state
 ```
 
-## 规划与评估
+## 使用 LatentMPCController 规划并评估
 
 ```python
-plan = world.plan(
-    goal_spec=StructuredGoal.object_at(
-        object_name="red_mug",
-        position=Position(0.3, 0.8, 0.0),
-    )
-)
-print(plan.action_count, plan.success_probability)
+from worldforge import LatentMPCController, PlannerConfig
 
-swap_plan = world.plan(
-    goal_spec=StructuredGoal.swap_objects(
-        object_name="red_mug",
-        reference_object_name="blue_mug",
-    )
+controller = LatentMPCController(
+    forge=forge,
+    score_provider="mock",
+    config=PlannerConfig(
+        horizon=1,
+        num_samples=16,
+        num_iterations=2,
+        num_elites=4,
+        action_kind="latent_action",
+        action_parameter_bounds={"x": (-1.0, 1.0), "y": (-1.0, 1.0), "z": (-1.0, 1.0)},
+        seed=0,
+    ),
 )
-print(swap_plan.to_json())
-
-planning_report = world.evaluate("planning")
-print(planning_report.to_markdown())
+plan = controller.plan_step(
+    observation_info={"point": [0.0, 0.8, 0.0]},
+    goal_info={"target": [0.3, 0.8, 0.0]},
+)
+print(len(plan.actions), plan.best_score)
 ```
 
-`StructuredGoal` 还支持 `object_near(...)` 用于相对位置放置，以及 `spawn_object(...)` 用于创建对象。
+`LatentMPCController` 提出动作候选，使用 `score` 提供方作为代价预言机对其排序，并返回代价最低的动作块。确定性评估套件直接通过 forge 运行：
+
+```python
+from worldforge.evaluation import EvaluationSuite
+
+planning_report = EvaluationSuite.from_builtin("planning").run_report(["mock"], forge=forge)
+print(planning_report.to_markdown())
+```
 
 ## 命令行工具
 
 ```bash
 uv run worldforge examples
 uv run worldforge doctor --registered-only
-uv run worldforge world create lab --provider mock
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
-uv run worldforge world list
-uv run worldforge world history <world-id>
+uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 uv run worldforge provider list
 uv run worldforge provider info mock
 uv run worldforge eval --suite planning --provider mock --format json
 uv run worldforge benchmark --provider mock --iterations 5 --format json
 ```
 
-`world history` 记录了初始化、对象添加/更新/删除变更以及提供方的预测结果。对象位置更新时，存储的包围盒也会随姿态一并平移。
+`worldforge predict` 会构造一个世界状态字典、运行 `predict` 提供方并打印结果；它不会持久化任何内容。
 
 完整的命令映射请参阅 [CLI 参考](./cli.md)。可运行的演示及可选运行时冒烟测试命令请参阅[示例与 CLI 命令](./examples.md)。
 

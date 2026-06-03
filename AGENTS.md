@@ -25,8 +25,8 @@ evaluation harnesses, and benchmarks to choose configurations for physical-AI ta
   validation errors, shared helpers, provider contracts, scene models, and capability results.
 - `src/worldforge/_model_utils.py`: shared JSON-native validation helpers, framework errors,
   deterministic IDs, and numeric/probability checks re-exported through `models.py`.
-- `src/worldforge/scene_models.py`: geometry primitives, actions, scene objects, scene patches,
-  structured planning goals, and local world-history entries.
+- `src/worldforge/scene_models.py`: geometry primitives, actions, scene objects, and scene patches
+  used to build provider `world_state` dicts (no symbolic world runtime).
 - `src/worldforge/capability_results.py`: embedding, action-score, and embodied-policy result
   payload contracts.
 - `src/worldforge/provider_models.py`: public compatibility facade for provider-facing contracts.
@@ -46,12 +46,9 @@ evaluation harnesses, and benchmarks to choose configurations for physical-AI ta
   chunk without importing optional ML runtimes or stepping host environments.
 - `src/worldforge/framework_capabilities.py`: internal capability-protocol registry, structural
   dispatch, observable-wrapper ownership, and direct/named capability target resolution.
-- `src/worldforge/framework.py`: `WorldForge`, provider registration, persistence, diagnostics,
-  provider operations, and top-level evaluation helpers.
-- `src/worldforge/_world.py`: mutable `World` runtime, scene/history mutation, prediction,
-  comparison, planning, plan execution, and evaluation entry points.
-- `src/worldforge/_world_prompt_seeders.py`: deterministic prompt-to-seed-scene helpers used by
-  `WorldForge.create_world_from_prompt(...)`, kept separate from mutable runtime behavior.
+- `src/worldforge/framework.py`: `WorldForge`, provider registration, capability dispatch
+  (`predict`/`score`/`policy`/`embed`), diagnostics, provider operations, and top-level evaluation
+  helpers. The backbone planner is `control.LatentMPCController`, which calls `score_actions`.
 - `src/worldforge/providers/base.py`: provider interfaces, `ProviderError`, remote-provider
   base behavior, and `PredictionPayload`.
 - `src/worldforge/providers/observable.py`: internal wrapper that adds `ProviderEvent`, health,
@@ -122,7 +119,7 @@ evaluation harnesses, and benchmarks to choose configurations for physical-AI ta
   console scripts.
 - `src/worldforge/smoke/lerobot_leworldmodel.py`: optional host-owned real robotics showcase that
   composes a LeRobot policy checkpoint with a LeWorldModel score checkpoint through
-  `World.plan(..., planning_mode="policy+score")`.
+  `forge.select_actions` (policy) plus `forge.score_actions` (score) candidate ranking.
 - `src/worldforge/smoke/robotics_showcase.py`: one-command PushT real robotics showcase that wires
   the packaged PushT observation, score, translator, and candidate bridge defaults into
   `lewm-lerobot-real`.
@@ -202,17 +199,7 @@ Discover and run examples:
 
 ```bash
 uv run worldforge examples
-uv run worldforge world create lab --provider mock
-uv run worldforge world add-object <world-id> cube --x 0 --y 0.5 --z 0 --object-id cube-1
-uv run worldforge world predict <world-id> --object-id cube-1 --x 0.4 --y 0.5 --z 0
-uv run worldforge world list
-uv run worldforge world objects <world-id>
-uv run worldforge world history <world-id>
-uv run worldforge world preflight --state-dir .worldforge/worlds --workspace-dir .worldforge
-uv run worldforge world migration-preview <world-id> --state-dir .worldforge/worlds
-uv run worldforge world migration-preview world.json --source-path
-uv run worldforge world export <world-id> --output world.json
-uv run worldforge world delete <world-id>
+uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
 uv run worldforge provider docs
 uv run worldforge-demo-leworldmodel
 uv run worldforge-demo-lerobot
@@ -448,21 +435,14 @@ release scripts, and generated documentation surfaces.
   configuration appears as diagnostics.
 - `ProviderMetricsSink.request_count` counts emitted provider events, not necessarily logical
   user-level operations; retry events increment both `request_count` and `retry_count`.
-- World persistence is local JSON under `.worldforge/worlds` by default and is not a concurrent
-  multi-writer store. Use `worldforge world ...` for CLI create/list/show/history/object
-  mutation/predict/export/import/fork flows, and keep service-grade durability host-owned.
-- World IDs are file stems for local JSON persistence. Reject path separators, traversal-shaped
-  values, and other non-file-safe IDs before loading, importing, or saving world state.
-- World migration previews are read-only issue-facing reports. They may report required changes,
-  invalid fields, unsafe IDs, and bounding-box corrections, but they must not rewrite local state
-  or silently repair malformed JSON.
-- Persisted history is part of the state contract: history entries must have non-negative steps,
-  non-empty summaries, valid snapshot states, valid serialized `Action` payloads when present, and
-  no entry step greater than the current world step. Scene object add/update/remove mutations
-  should append typed history entries without advancing provider time.
-- Position patches must keep scene-object bounding boxes translated with their poses.
-- Persistence is host-owned beyond local JSON import/export; do not add a lock file, SQLite store,
-  or service adapter without an explicit design.
+- There is no symbolic `World` runtime or built-in JSON world store. Planning runs over plain,
+  JSON-serializable world-state dicts: `forge.predict` rolls a `world_state` dict forward and
+  `LatentMPCController` plans by scoring action candidates over that state. The `worldforge predict`
+  CLI seeds a state dict, runs `predict`, and prints the result without persisting anything.
+- Malformed persisted or provider world-state payloads raise `WorldStateError` at the boundary
+  rather than being silently coerced.
+- Persistence is host-owned; do not add a lock file, SQLite store, world JSON store, or service
+  adapter without an explicit design.
 - Built-in evaluation suites are deterministic contract harnesses, not claims of physical or
   media-quality fidelity.
 - LeWorldModel expects preprocessed pixel/action/goal tensors or rectangular nested numeric
@@ -485,8 +465,8 @@ release scripts, and generated documentation surfaces.
 - Policy+score planning uses `policy_provider="cosmos-policy"`, `policy_provider="gr00t"`, or
   `policy_provider="lerobot"` plus `score_provider="leworldmodel"` or another score provider;
   score tensors remain host-preprocessed and provider-native.
-- Latent-MPC planning uses `World.plan(planner="latent-mpc", score_provider=..., ...)` with an
-  explicit score provider. The controller may sample and refit WorldForge `Action` horizons, but
+- Latent-MPC planning uses `LatentMPCController(forge=..., score_provider=...).plan_step(...)` with
+  an explicit score provider. The controller may sample and refit WorldForge `Action` horizons, but
   tensor encoding, image preprocessing, simulator stepping, hardware execution, policy warm-start,
   and safety interlocks remain provider- or host-owned unless a dedicated contract adds them.
 - `scripts/robotics-showcase` is the prominent PushT real robotics entrypoint. It installs the

@@ -2,9 +2,7 @@
 
 The concrete model implementations live in narrower leaf modules:
 
-- :mod:`worldforge.scene_models` owns geometry, actions, scene objects, and local world-history
-  entries.
-- :mod:`worldforge.structured_goals` owns structured planning-goal parsing and serialization.
+- :mod:`worldforge.scene_models` owns geometry, actions, and scene objects.
 - :mod:`worldforge.capability_results` owns capability return payloads such as embedding,
   score, and policy results.
 - :mod:`worldforge._model_utils` owns public framework errors and shared JSON/native validators.
@@ -75,11 +73,9 @@ from worldforge.provider_request_policy import (  # noqa: F401
 from worldforge.scene_models import (  # noqa: F401
     Action,
     BBox,
-    HistoryEntry,
     Pose,
     Position,
     Rotation,
     SceneObject,
     SceneObjectPatch,
 )
-from worldforge.structured_goals import StructuredGoal  # noqa: F401

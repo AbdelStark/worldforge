@@ -1695,7 +1695,7 @@ def test_contributor_task_starters_cover_issue_233_contract() -> None:
         "uv run python scripts/demo_showcases.py list",
         "uv run pytest tests/test_evidence_bundle.py tests/test_html_report.py",
         "uv run worldforge benchmark --provider mock --operation predict",
-        "uv run pytest tests/test_cli_help_snapshots.py tests/test_cli_world_commands.py",
+        "uv run pytest tests/test_cli_help_snapshots.py tests/test_cli_doctor.py",
     ):
         assert command in starters
 
@@ -2090,7 +2090,6 @@ def test_artifact_schema_docs_cover_issue_227_contract() -> None:
     assert "docs/src/artifact-schemas.md" in changelog
 
     required_rows = (
-        ("World state JSON", "SCHEMA_VERSION", "src/worldforge/_state.py"),
         ("Run manifests", "RUN_MANIFEST_SCHEMA_VERSION", "src/worldforge/smoke/run_manifest.py"),
         ("Run workspaces", "RUN_WORKSPACE_SCHEMA_VERSION", "src/worldforge/harness/workspace.py"),
         ("Run index reports", "RUN_INDEX_SCHEMA_VERSION", "src/worldforge/harness/run_index.py"),
@@ -2344,7 +2343,7 @@ def test_core_performance_budget_docs_cover_issue_184_contract() -> None:
 
     for implementation_signal in (
         "DEFAULT_BUDGETS_MS",
-        "world_persistence",
+        "latent_planning",
         "benchmark_fixture_loading",
         "provider_catalog_diagnostics",
         "evidence_bundle_creation",

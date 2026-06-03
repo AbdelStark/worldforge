@@ -19,7 +19,6 @@ from worldforge.cli_args.workflows import (
     _add_negotiate_command,
     _add_predict_command,
 )
-from worldforge.cli_args.world import _add_world_commands
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,7 +35,6 @@ def build_parser() -> argparse.ArgumentParser:
     _add_examples_command(subparsers)
     _add_legacy_providers_command(subparsers)
     _add_provider_commands(subparsers)
-    _add_world_commands(subparsers)
     _add_runs_commands(subparsers)
     _add_drills_commands(subparsers)
     _add_doctor_command(subparsers)
