@@ -20,9 +20,16 @@ def test_worldforge_event_handler_propagates_to_builtin_and_manual_providers(tmp
         auto_register_remote=False,
         event_handler=events.append,
     )
-    world = forge.create_world_from_prompt("empty room", provider="mock")
+    state = {
+        "schema_version": 1,
+        "id": "world-empty-room",
+        "name": "empty room",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
 
-    world.predict(Action.move_to(0.2, 0.5, 0.0), steps=2)
+    forge.predict(state, Action.move_to(0.2, 0.5, 0.0), steps=2, provider="mock")
 
     manual_provider = MockProvider(name="manual")
     forge.register_provider(manual_provider)

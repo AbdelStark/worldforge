@@ -172,9 +172,15 @@ def test_evaluation_result_contract_rejects_invalid_public_payloads() -> None:
 
 
 def test_plan_constructor_validates_and_clones_public_payloads(tmp_path) -> None:
-    forge = WorldForge(state_dir=tmp_path)
-    world = forge.create_world("plan-state", "mock")
-    state = world.to_dict()
+    state = {
+        "schema_version": 1,
+        "id": "plan-state",
+        "name": "plan-state",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+        "metadata": {},
+    }
     goal_spec = {"kind": "object_at", "position": {"x": 1.0, "y": 0.5, "z": 0.0}}
     metadata = {"nested": {"value": 1}}
 
@@ -753,9 +759,8 @@ def test_evaluation_reports_and_eval_helpers(tmp_path) -> None:
 
 def test_planning_suite_covers_core_workflows(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
-    world, cube, mug = _seed_world(forge)
 
-    planning_report = world.evaluate("planning")
+    planning_report = EvaluationSuite.from_builtin("planning").run_report("mock", forge=forge)
     assert planning_report.suite_id == "planning"
     assert len(planning_report.results) == 4
     assert {result.scenario for result in planning_report.results} == {
@@ -765,8 +770,6 @@ def test_planning_suite_covers_core_workflows(tmp_path) -> None:
         "object-spawn",
     }
     assert all(result.passed for result in planning_report.results)
-
-    assert {cube.id, mug.id} <= {obj.id for obj in world.objects()}
 
 
 def test_evaluation_suite_validation_errors_are_explicit() -> None:

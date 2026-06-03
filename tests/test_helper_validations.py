@@ -587,10 +587,21 @@ def test_public_validation_guards_cover_boundary_failure_modes() -> None:
         Position.from_dict(["not-a-position"])  # type: ignore[arg-type]
 
 
+def _prediction_boundary_state() -> dict:
+    return {
+        "schema_version": 1,
+        "id": "prediction-boundary",
+        "name": "prediction-boundary",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+        "metadata": {},
+    }
+
+
 def test_prediction_validates_and_clones_public_payloads(tmp_path) -> None:
     forge = WorldForge(state_dir=tmp_path)
-    world = forge.create_world("prediction-boundary", "mock")
-    state = world.to_dict()
+    state = _prediction_boundary_state()
     metadata = {"nested": {"value": 1}}
 
     prediction = Prediction(
@@ -616,7 +627,7 @@ def test_prediction_validates_and_clones_public_payloads(tmp_path) -> None:
             confidence=0.5,
             physics_score=0.6,
             frames=[object()],  # type: ignore[list-item]
-            world_state=world.to_dict(),
+            world_state=_prediction_boundary_state(),
             metadata={},
             latency_ms=0.0,
             _forge=forge,

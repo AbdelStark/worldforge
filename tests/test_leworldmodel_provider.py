@@ -9,16 +9,12 @@ import pytest
 
 from worldforge import (
     ActionScoreResult,
-    ProviderCapabilities,
     WorldForge,
-    WorldForgeError,
     bounded_move_grid_candidates,
 )
 from worldforge.providers import (
-    BaseProvider,
     LeWorldModelProvider,
     ProviderError,
-    ProviderProfileSpec,
 )
 from worldforge.testing import assert_provider_contract
 
@@ -225,7 +221,6 @@ def test_leworldmodel_score_planning_selects_best_candidate_and_execution_provid
     )
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(provider)
-    world = forge.create_world_from_prompt("room with cube", provider="mock")
 
     candidate_plans = bounded_move_grid_candidates(
         x_bounds=(0.1, 0.7),
@@ -235,59 +230,33 @@ def test_leworldmodel_score_planning_selects_best_candidate_and_execution_provid
         y_steps=1,
         z_steps=1,
     )
-    plan = world.plan(
-        goal="choose the lowest-cost LeWorldModel action",
-        provider="leworldmodel",
-        planner="leworldmodel-mpc",
-        candidate_actions=candidate_plans,
-        score_info=payload["info"],
-        score_action_candidates=payload["action_candidates"],
-        execution_provider="mock",
+
+    # Score the candidate batch directly through the capability surface: the LeWorldModel cost
+    # oracle ranks the fixture candidates and the lowest-cost candidate (index 1) is selected.
+    score_result = forge.score_actions(
+        "leworldmodel",
+        info=payload["info"],
+        action_candidates=payload["action_candidates"],
     )
+    assert score_result.provider == "leworldmodel"
+    assert score_result.best_index == 1
+    selected_plan = candidate_plans[score_result.best_index]
+    assert selected_plan == candidate_plans[1]
 
-    assert plan.provider == "leworldmodel"
-    assert plan.actions == candidate_plans[1]
-    assert plan.predicted_states == []
-    assert plan.metadata["planning_mode"] == "score"
-    assert plan.metadata["score_result"]["best_index"] == 1
-    assert plan.metadata["execution_provider"] == "mock"
+    # The selected plan executes on a predict-capable provider.
+    state = {
+        "schema_version": 1,
+        "id": "room-with-cube",
+        "name": "room with cube",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
+    executed = forge.predict(state, selected_plan[0], provider="mock")
+    assert executed.metadata["provider"] == "mock"
 
-    execution = world.execute_plan(plan)
-    assert execution.actions_applied == candidate_plans[1]
-    assert execution.final_world().provider == "mock"
-
-    with pytest.raises(WorldForgeError, match="requires candidate_actions"):
-        world.plan(
-            goal="incomplete score plan",
-            provider="leworldmodel",
-            score_info=payload["info"],
-        )
-
-    # A provider that does not advertise the score capability is rejected for
-    # score-based planning. mock now scores, so use a predict-only provider to keep
-    # the capability gate meaningful.
-    class _PredictOnlyProvider(BaseProvider):
-        def __init__(self) -> None:
-            super().__init__(
-                name="predict-only",
-                capabilities=ProviderCapabilities(predict=True),
-                profile=ProviderProfileSpec(
-                    description="Predict-only provider without score support.",
-                    is_local=True,
-                    deterministic=True,
-                ),
-            )
-
-    forge.register_provider(_PredictOnlyProvider())
-    with pytest.raises(WorldForgeError, match="does not support score-based planning"):
-        world.plan(
-            goal="wrong provider",
-            provider="predict-only",
-            candidate_actions=candidate_plans,
-            score_info=payload["info"],
-            score_action_candidates=payload["action_candidates"],
-        )
-
+    # The provider itself rejects a score-count/candidate-count mismatch: this model returns two
+    # scores for the fixture's three candidate samples.
     mismatched_provider = LeWorldModelProvider(
         name="mismatched-leworldmodel",
         policy="pusht/lewm",
@@ -296,12 +265,10 @@ def test_leworldmodel_score_planning_selects_best_candidate_and_execution_provid
     )
     forge.register_provider(mismatched_provider)
     with pytest.raises(ProviderError, match=r"returned 2 score\(s\) for 3 candidate"):
-        world.plan(
-            goal="mismatched score count",
-            provider="mismatched-leworldmodel",
-            candidate_actions=candidate_plans,
-            score_info=payload["info"],
-            score_action_candidates=payload["action_candidates"],
+        forge.score_actions(
+            "mismatched-leworldmodel",
+            info=payload["info"],
+            action_candidates=payload["action_candidates"],
         )
 
 

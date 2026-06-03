@@ -244,24 +244,22 @@ def test_gr00t_policy_only_planning_uses_policy_actions(tmp_path) -> None:
     )
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(provider)
-    world = forge.create_world("robot-workcell", provider="mock")
 
     selected = forge.select_actions("gr00t", info=_policy_info())
-    plan = world.plan(
-        goal="push the cube",
-        provider="gr00t",
-        policy_info=_policy_info(),
-        execution_provider="mock",
-    )
-    execution = world.execute_plan(plan)
 
+    assert selected.provider == "gr00t"
     assert selected.actions == [Action.move_to(0.3, 0.5, 0.0)]
-    assert plan.provider == "gr00t"
-    assert plan.actions == [Action.move_to(0.3, 0.5, 0.0)]
-    assert plan.metadata["planning_mode"] == "policy"
-    assert plan.metadata["policy_result"]["provider"] == "gr00t"
-    assert plan.success_probability == 0.5
-    assert execution.final_world().provider == "mock"
+
+    state = {
+        "schema_version": 1,
+        "id": "robot-workcell",
+        "name": "robot-workcell",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
+    executed = forge.predict(state, selected.actions[0], provider="mock")
+    assert executed.metadata["provider"] == "mock"
 
 
 def test_gr00t_policy_plus_score_planning_selects_scored_candidate(tmp_path) -> None:
@@ -290,24 +288,23 @@ def test_gr00t_policy_plus_score_planning_selects_scored_candidate(tmp_path) -> 
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(policy_provider)
     forge.register_provider(score_provider)
-    world = forge.create_world("robot-workcell", provider="mock")
 
-    plan = world.plan(
-        goal="choose the lowest world-model cost candidate",
-        provider="fake-score",
-        policy_provider="gr00t",
-        policy_info=_policy_info(),
-        score_info={"observation": [[0.0]], "goal": [[1.0]]},
-        execution_provider="mock",
+    policy_result = forge.select_actions("gr00t", info=_policy_info())
+    serialized_candidates = [
+        [action.to_dict() for action in candidate] for candidate in policy_result.action_candidates
+    ]
+    score_result = forge.score_actions(
+        "fake-score",
+        info={"observation": [[0.0]], "goal": [[1.0]]},
+        action_candidates=serialized_candidates,
     )
+    selected_actions = policy_result.action_candidates[score_result.best_index]
 
-    assert plan.provider == "fake-score"
-    assert plan.actions == candidate_plans[1]
-    assert plan.metadata["planning_mode"] == "policy+score"
-    assert plan.metadata["policy_provider"] == "gr00t"
-    assert plan.metadata["score_provider"] == "fake-score"
-    assert plan.metadata["policy_result"]["metadata"]["candidate_count"] == 3
-    assert plan.metadata["score_result"]["best_index"] == 1
+    assert score_result.provider == "fake-score"
+    assert selected_actions == candidate_plans[1]
+    assert policy_result.provider == "gr00t"
+    assert policy_result.metadata["candidate_count"] == 3
+    assert score_result.best_index == 1
     assert score_provider.calls[-1]["action_candidates"] == [
         [action.to_dict() for action in candidate] for candidate in candidate_plans
     ]
@@ -321,18 +318,18 @@ def test_score_planning_defaults_to_serialized_action_candidates(tmp_path) -> No
     score_provider = FakeScoreProvider([0.7, 0.2])
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(score_provider)
-    world = forge.create_world("robot-workcell", provider="mock")
 
-    plan = world.plan(
-        goal="choose the lowest-cost candidate",
-        provider="fake-score",
-        candidate_actions=candidate_plans,
-        score_info={"observation": [[0.0]], "goal": [[1.0]]},
-        execution_provider="mock",
+    serialized_candidates = [
+        [action.to_dict() for action in candidate] for candidate in candidate_plans
+    ]
+    score_result = forge.score_actions(
+        "fake-score",
+        info={"observation": [[0.0]], "goal": [[1.0]]},
+        action_candidates=serialized_candidates,
     )
 
-    assert plan.actions == candidate_plans[1]
-    assert plan.metadata["planning_mode"] == "score"
+    assert candidate_plans[score_result.best_index] == candidate_plans[1]
+    assert score_result.best_index == 1
     assert score_provider.calls[-1]["action_candidates"] == [
         [action.to_dict() for action in candidate] for candidate in candidate_plans
     ]

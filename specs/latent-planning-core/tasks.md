@@ -74,10 +74,19 @@ increment is green because `forge.predict`/`forge.score_actions` work without a 
       `examples/hosts/robotics-operator/app.py`. `EXAMPLE_COMMANDS` names/commands unchanged.
       Gates green; coverage 90.96%.
 
-### Inc E — reroute provider-test scaffolding off `World`
+### Inc E — reroute provider-test scaffolding off `World` (DONE)
 
-- [ ] ~12 provider/integration tests use `create_world`+`world.predict`/`world.plan` only as a
-      scaffold; reroute them through `forge.predict`/`forge.score_actions`/`LatentMPCController`.
+- [x] Rerouted ~14 provider/integration test files from `create_world`+`world.predict`/`world.plan`
+      scaffolding to `forge.predict`/`forge.score_actions`/`forge.select_actions`/`LatentMPCController`.
+      Gates green, coverage 90.93%.
+- Finding: `World.plan` *composition* (policy+score planning, `workflow_trace`,
+      `success_probability`, the goal-resolution validation messages) has **no forge-level
+      equivalent** — it lives in `_world_planning.py`. The tests that assert it
+      (`test_latent_mpc_controller` World.plan bridge, `test_capability_dual_routing` planning
+      composition, and the World-planning parts of `test_evaluation_and_planning`,
+      `test_helper_validations`, `test_gr00t_provider`, `test_lerobot_provider`) are removed/trimmed
+      together with `World` in Inc F. Inc F must restore equivalent coverage via the
+      `LatentMPCController` path or accept the suite shrinking (watch the 90% floor).
 
 ### Inc F — delete the World runtime (final sweep)
 

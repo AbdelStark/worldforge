@@ -85,9 +85,13 @@ def test_invalid_fixtures_carry_distinct_error_patterns_per_capability() -> None
 def test_predict_valid_baseline_runs_through_facade(tmp_path) -> None:
     fixture = load_capability_fixture("predict", "valid_baseline")
     forge = WorldForge(state_dir=tmp_path)
-    world = World.from_state(forge, fixture.payload["world_state"])
     action = Action.from_dict(fixture.payload["action"])
-    payload = world.predict(action, steps=fixture.payload["steps"], provider="mock")
+    payload = forge.predict(
+        fixture.payload["world_state"],
+        action,
+        steps=fixture.payload["steps"],
+        provider="mock",
+    )
     assert payload.metadata.get("provider") == "mock"
     assert 0.0 <= payload.confidence <= 1.0
 
@@ -95,11 +99,15 @@ def test_predict_valid_baseline_runs_through_facade(tmp_path) -> None:
 def test_predict_invalid_steps_is_rejected_at_facade(tmp_path) -> None:
     fixture = load_capability_fixture("predict", "invalid_action_steps_zero")
     forge = WorldForge(state_dir=tmp_path)
-    world = World.from_state(forge, fixture.payload["world_state"])
     action = Action.from_dict(fixture.payload["action"])
     pattern = re.compile(fixture.expected_error_pattern or ".*", re.IGNORECASE)
     with pytest.raises(WorldForgeError) as excinfo:
-        world.predict(action, steps=fixture.payload["steps"], provider="mock")
+        forge.predict(
+            fixture.payload["world_state"],
+            action,
+            steps=fixture.payload["steps"],
+            provider="mock",
+        )
     assert pattern.search(str(excinfo.value))
 
 

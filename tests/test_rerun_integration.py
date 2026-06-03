@@ -15,8 +15,6 @@ from worldforge import (
     Position,
     ProviderEvent,
     SceneObject,
-    StructuredGoal,
-    WorldForge,
     WorldForgeError,
 )
 from worldforge.demos.rerun_showcase import run_demo
@@ -239,21 +237,28 @@ def test_rerun_artifact_logger_logs_world_plan_and_benchmark(tmp_path: Path) -> 
     fake = _FakeRerun()
     session = _fake_session(fake)
     logger = RerunArtifactLogger(session=session)
-    forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
-    world = forge.create_world("rerun-test-world", provider="mock")
-    cube = world.add_object(
-        SceneObject(
-            "blue_cube",
-            Position(0.0, 0.5, 0.0),
-            BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
-        )
+    cube = SceneObject(
+        "blue_cube",
+        Position(0.0, 0.5, 0.0),
+        BBox(Position(-0.05, 0.45, -0.05), Position(0.05, 0.55, 0.05)),
     )
-    goal = StructuredGoal.object_at(
-        object_id=cube.id,
-        object_name=cube.name,
-        position=Position(0.55, 0.5, 0.0),
-    )
-    plan = world.plan(goal_spec=goal, provider="mock")
+    world = {
+        "schema_version": 1,
+        "id": "rerun-test-world",
+        "name": "rerun-test-world",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {cube.id: cube.to_dict()}},
+    }
+    plan = {
+        "provider": "mock",
+        "planner": "cem",
+        "actions": [
+            Action.move_to(0.55, 0.5, 0.0, object_id=cube.id).to_dict(),
+        ],
+        "action_count": 1,
+        "success_probability": 0.9,
+    }
     report = BenchmarkReport(
         [
             BenchmarkResult(

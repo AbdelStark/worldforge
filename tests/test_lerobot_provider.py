@@ -8,7 +8,15 @@ import types
 import pytest
 
 import worldforge.providers.lerobot as lerobot_module
-from worldforge import Action, ActionPolicyResult, ActionScoreResult, WorldForge, WorldForgeError
+from worldforge import (
+    Action,
+    ActionPolicyResult,
+    ActionScoreResult,
+    LatentMPCController,
+    PlannerConfig,
+    WorldForge,
+    WorldForgeError,
+)
 from worldforge.models import JSONDict, ProviderCapabilities, ProviderEvent, ProviderHealth
 from worldforge.providers import (
     BaseProvider,
@@ -324,24 +332,22 @@ def test_lerobot_policy_only_planning_uses_policy_actions(tmp_path) -> None:
     )
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(provider)
-    world = forge.create_world("robot-workcell", provider="mock")
 
     selected = forge.select_actions("lerobot", info=_policy_info())
-    plan = world.plan(
-        goal="push the cube",
-        provider="lerobot",
-        policy_info=_policy_info(),
-        execution_provider="mock",
-    )
-    execution = world.execute_plan(plan)
 
+    assert selected.provider == "lerobot"
     assert selected.actions == [Action.move_to(0.3, 0.5, 0.0)]
-    assert plan.provider == "lerobot"
-    assert plan.actions == [Action.move_to(0.3, 0.5, 0.0)]
-    assert plan.metadata["planning_mode"] == "policy"
-    assert plan.metadata["policy_result"]["provider"] == "lerobot"
-    assert plan.success_probability == 0.5
-    assert execution.final_world().provider == "mock"
+
+    state = {
+        "schema_version": 1,
+        "id": "robot-workcell",
+        "name": "robot-workcell",
+        "provider": "mock",
+        "step": 0,
+        "scene": {"objects": {}},
+    }
+    executed = forge.predict(state, selected.actions[0], provider="mock")
+    assert executed.metadata["provider"] == "mock"
 
 
 def test_lerobot_policy_plus_score_planning_selects_scored_candidate(tmp_path) -> None:
@@ -359,48 +365,49 @@ def test_lerobot_policy_plus_score_planning_selects_scored_candidate(tmp_path) -
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     forge.register_provider(policy_provider)
     forge.register_provider(score_provider)
-    world = forge.create_world("robot-workcell", provider="mock")
 
-    plan = world.plan(
-        goal="pick lowest-cost candidate",
-        provider="fake-score",
-        policy_provider="lerobot",
-        policy_info=_policy_info(),
-        score_info={"observation": [[0.0]], "goal": [[1.0]]},
-        execution_provider="mock",
+    policy_result = forge.select_actions("lerobot", info=_policy_info())
+    serialized_candidates = [
+        [action.to_dict() for action in candidate] for candidate in policy_result.action_candidates
+    ]
+    score_result = forge.score_actions(
+        "fake-score",
+        info={"observation": [[0.0]], "goal": [[1.0]]},
+        action_candidates=serialized_candidates,
     )
+    selected_actions = policy_result.action_candidates[score_result.best_index]
 
-    assert plan.provider == "fake-score"
-    assert plan.actions == candidate_plans[1]
-    assert plan.metadata["planning_mode"] == "policy+score"
-    assert plan.metadata["policy_provider"] == "lerobot"
-    assert plan.metadata["score_provider"] == "fake-score"
-    assert plan.metadata["policy_result"]["metadata"]["candidate_count"] == 3
-    assert plan.metadata["score_result"]["best_index"] == 1
+    assert score_result.provider == "fake-score"
+    assert selected_actions == candidate_plans[1]
+    assert policy_result.provider == "lerobot"
+    assert policy_result.metadata["candidate_count"] == 3
+    assert score_result.best_index == 1
 
 
 def test_lerobot_policy_plus_score_planning_rejects_score_count_mismatch(tmp_path) -> None:
-    candidate_plans = [
-        [Action.move_to(0.1, 0.5, 0.0)],
-        [Action.move_to(0.6, 0.5, 0.0)],
-    ]
-    policy_provider = LeRobotPolicyProvider(
-        policy=FakeLeRobotPolicy(response=FakeTensor([[0.0, 0.5, 0.0]])),
-        action_translator=lambda *_args: candidate_plans,
-    )
+    # FakeScoreProvider always returns a fixed batch of 3 scores; a controller that scores 2
+    # sampled candidates per iteration must reject the count mismatch.
     score_provider = FakeScoreProvider([0.1, 0.2, 0.3])
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
-    forge.register_provider(policy_provider)
     forge.register_provider(score_provider)
-    world = forge.create_world("robot-workcell", provider="mock")
+    controller = LatentMPCController(
+        forge=forge,
+        score_provider="fake-score",
+        config=PlannerConfig(
+            horizon=1,
+            num_samples=2,
+            num_iterations=1,
+            num_elites=1,
+            action_kind="latent_action",
+            action_parameter_bounds={"x": (-1.0, 1.0), "y": (-1.0, 1.0), "z": (-1.0, 1.0)},
+            seed=0,
+        ),
+    )
 
     with pytest.raises(WorldForgeError, match="returned 3 score\\(s\\) for 2 candidate"):
-        world.plan(
-            goal="pick lowest-cost candidate",
-            provider="fake-score",
-            policy_provider="lerobot",
-            policy_info=_policy_info(),
-            score_info={"observation": [[0.0]], "goal": [[1.0]]},
+        controller.plan_step(
+            observation_info={"point": [0.0, 0.0, 0.0]},
+            goal_info={"target": [0.5, 0.5, 0.0]},
         )
 
 
