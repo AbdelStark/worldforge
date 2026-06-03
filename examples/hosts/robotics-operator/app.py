@@ -247,7 +247,7 @@ def _run_review_pipeline(
 ) -> _ReviewExecution:
     event_sink = _review_event_sink(workspace.run_id, events, workspace.logs_dir)
     providers = _review_providers(config, event_sink)
-    cube = make_blue_cube(providers.forge.create_world("robotics-operator-review", provider="mock"))
+    cube = make_blue_cube()
     goal = blue_cube_goal(cube)
     policy_result = providers.forge.select_actions(
         "lerobot",

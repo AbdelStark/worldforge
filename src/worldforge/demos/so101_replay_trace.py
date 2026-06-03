@@ -3,14 +3,16 @@
 This demo is checkout-safe: it does not install LeRobot, torch, DimOS, or robot
 drivers, and it never talks to hardware. It uses a deterministic SO-101-shaped
 pick-and-place replay fixture to show the product boundary WorldForge should own:
-candidate actions are scored, a selected action is justified, rejected
-alternatives are kept as counterfactuals, and the final trace can be compared
-with a Go2 navigation trace.
+candidate actions are scored through ``forge.score_actions``, a selected action is
+justified, rejected alternatives are kept as counterfactuals, the lowest-cost plan
+is rolled forward with ``forge.predict``, and the final trace can be compared with a
+Go2 navigation trace.
 
 The fixture is shaped after the public ``lerobot/svla_so101_pickplace`` dataset
 metadata: 50 episodes, 11,939 frames, 6D joint state/action, and two RGB video
 views. Hosts that own LeRobot or DimOS can replace the fixture with real replay
-rows later without changing the trace contract.
+rows later without changing the trace contract. The demo drives the WorldForge
+capability surface directly; there is no symbolic ``World`` runtime.
 """
 
 from __future__ import annotations
@@ -18,9 +20,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import tempfile
-from pathlib import Path
-from typing import Any
 
 from worldforge import Action, ActionScoreResult, BBox, Position, SceneObject, StructuredGoal
 from worldforge.framework import WorldForge
@@ -32,6 +31,8 @@ from worldforge.models import (
     WorldStateError,
 )
 from worldforge.providers import BaseProvider, ProviderProfileSpec
+
+from . import execute_plan_over_state, object_position, seed_world_state
 
 SO101_TRACE_SCHEMA_VERSION = "worldforge.robot_decision_trace.v0"
 SO101_SCORE_PROVIDER = "so101-replay-score"
@@ -366,28 +367,11 @@ def _action_plans(candidates: list[JSONDict], *, cube_id: str) -> list[list[Acti
     return plans
 
 
-def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
+def run_demo(*, emit: bool = True) -> JSONDict:
     """Run the SO-101 replay trace demo and return a JSON-serializable summary."""
 
-    if state_dir is None:
-        with tempfile.TemporaryDirectory(prefix="worldforge-so101-demo-") as temporary_state_dir:
-            return _run_demo(
-                resolved_state_dir=Path(temporary_state_dir),
-                explicit_state_dir=False,
-                emit=emit,
-            )
-    return _run_demo(resolved_state_dir=state_dir, explicit_state_dir=True, emit=emit)
-
-
-def _run_demo(
-    *,
-    resolved_state_dir: Path,
-    explicit_state_dir: bool,
-    emit: bool,
-) -> JSONDict:
-    forge = WorldForge(state_dir=resolved_state_dir, auto_register_remote=False)
-    world = forge.create_world("so101-replay-trace-demo", provider="mock")
-    cube = world.add_object(_make_world_object())
+    forge = WorldForge(auto_register_remote=False)
+    cube = _make_world_object()
     goal = _goal(cube)
     observation = _observation()
     candidates = _candidate_records()
@@ -400,33 +384,36 @@ def _run_demo(
         "target_pose": SO101_TARGET_POSITION.to_dict(),
         "goal_tolerance_m": SO101_GOAL_TOLERANCE_M,
     }
-    plan = world.plan(
-        goal_spec=goal,
-        provider=SO101_SCORE_PROVIDER,
-        candidate_actions=action_plans,
-        score_info=score_info,
-        score_action_candidates=candidates,
-        execution_provider="mock",
-        planner="so101-replay-cem",
+    # Rank the replay candidates through the score cost oracle and pick the lowest-cost chunk.
+    score_result = forge.score_actions(
+        SO101_SCORE_PROVIDER,
+        info=score_info,
+        action_candidates=candidates,
+    ).to_dict()
+    selected_index = int(score_result["best_index"])
+    selected_actions = action_plans[selected_index]
+
+    # Roll the selected action chunk forward to obtain the final object pose.
+    final_state = execute_plan_over_state(
+        forge,
+        seed_world_state([cube]),
+        selected_actions,
+        provider="mock",
     )
-    execution = world.execute_plan(plan)
-    final_world = execution.final_world()
-    saved_world_id = forge.save_world(final_world)
-    reloaded_world = forge.load_world(saved_world_id)
-    final_cube = reloaded_world.get_object_by_id(cube.id)
-    if final_cube is None:
+    final_position = object_position(final_state, cube.id)
+    if final_position is None:
         raise WorldStateError(
-            "so101-replay-trace: cube 'so101-blue-cube' was missing after mock replay "
-            "reload; first triage step: rerun with --state-dir <empty-dir> and inspect "
-            "the persisted world JSON."
+            "so101-replay-trace: cube 'so101-blue-cube' was missing after mock replay; "
+            "first triage step: inspect the seeded world-state dict and the selected action plan."
         )
 
     trace = _decision_trace(
         observation=observation,
         goal=goal,
         candidates=candidates,
-        plan=plan,
-        final_position=final_cube.position.to_dict(),
+        score_result=score_result,
+        selected_actions=selected_actions,
+        final_position=final_position,
     )
     summary: JSONDict = {
         "demo_kind": "so101_replay_decision_trace",
@@ -434,49 +421,23 @@ def _run_demo(
         "uses_real_robot_hardware": False,
         "uses_lerobot_runtime": False,
         "uses_dimos_runtime": False,
-        "persistence": _persistence_summary(
-            explicit_state_dir=explicit_state_dir,
-            state_dir=resolved_state_dir,
-            saved_world_id=saved_world_id,
-            saved_worlds=forge.list_worlds(),
-        ),
+        "planning_mode": "score",
         "providers": forge.providers(),
         "score_provider_health": forge.provider_health(SO101_SCORE_PROVIDER).to_dict(),
         "dataset_reference": dict(SO101_DATASET_REFERENCE),
         "trace": trace,
-        "plan": plan.to_dict(),
-        "candidate_costs": list(plan.metadata["score_result"]["scores"]),
-        "selected_candidate_index": plan.metadata["score_result"]["best_index"],
+        "score_result": score_result,
+        "selected_actions": [action.to_dict() for action in selected_actions],
+        "candidate_costs": list(score_result["scores"]),
+        "selected_candidate_index": selected_index,
         "selected_candidate_id": trace["selected_action"]["candidate_id"],
         "counterfactual_count": len(trace["counterfactuals"]),
         "outcome": trace["outcome"],
-        "final_object_position": final_cube.position.to_dict(),
+        "final_object_position": final_position,
     }
     if emit:
         _print_summary(summary)
     return summary
-
-
-def _persistence_summary(
-    *,
-    explicit_state_dir: bool,
-    state_dir: Path,
-    saved_world_id: str,
-    saved_worlds: list[str],
-) -> JSONDict:
-    if explicit_state_dir:
-        return {
-            "state_dir_provided": True,
-            "state_dir": str(state_dir),
-            "saved_world_id": saved_world_id,
-            "saved_worlds": list(saved_worlds),
-        }
-    return {
-        "state_dir_provided": False,
-        "state_dir": "<temporary>",
-        "saved_world_id": "<temporary-world-id>",
-        "saved_worlds": ["<temporary-world-id>"],
-    }
 
 
 def _decision_trace(
@@ -484,10 +445,10 @@ def _decision_trace(
     observation: JSONDict,
     goal: StructuredGoal,
     candidates: list[JSONDict],
-    plan: Any,
+    score_result: JSONDict,
+    selected_actions: list[Action],
     final_position: JSONDict,
 ) -> JSONDict:
-    score_result = plan.metadata["score_result"]
     scores = list(score_result["scores"])
     components = list(score_result["metadata"]["components"])
     selected_index = int(score_result["best_index"])
@@ -521,7 +482,7 @@ def _decision_trace(
             "label": str(selected["label"]),
             "score": selected_score,
             "score_margin_to_runner_up": round(runner_up_score - selected_score, 4),
-            "action_plan": [action.to_dict() for action in plan.actions],
+            "action_plan": [action.to_dict() for action in selected_actions],
             "why_selected": _selection_reason(components[selected_index]),
         },
         "outcome": outcome,
@@ -630,7 +591,7 @@ def _print_summary(summary: JSONDict) -> None:
     print("Runtime: deterministic replay fixture")
     print("Hardware: not used")
     print("Optional runtimes: LeRobot/torch/DimOS not imported")
-    print(f"State directory: {summary['persistence']['state_dir']}")
+    print("Planning: forge.score_actions(replay scorer) -> forge.predict(lowest-cost plan)")
     print(f"Registered providers: {', '.join(summary['providers'])}")
     print()
     print("Candidate costs, lower is better:")
@@ -656,12 +617,6 @@ def _print_summary(summary: JSONDict) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--state-dir",
-        type=Path,
-        default=None,
-        help="Directory for persisted demo worlds. Defaults to a temporary directory.",
-    )
-    parser.add_argument(
         "--json-only",
         action="store_true",
         help="Print only the final JSON summary.",
@@ -671,7 +626,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
-    summary = run_demo(state_dir=args.state_dir, emit=not args.json_only)
+    summary = run_demo(emit=not args.json_only)
     if args.json_only:
         print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

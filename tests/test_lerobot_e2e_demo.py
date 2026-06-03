@@ -21,36 +21,37 @@ def _load_demo() -> ModuleType:
     return module
 
 
-def test_lerobot_e2e_demo_runs_full_policy_plus_score_flow(tmp_path: Path) -> None:
+def test_lerobot_e2e_demo_runs_full_policy_plus_score_flow() -> None:
     demo = _load_demo()
 
-    summary = demo.run_demo(state_dir=tmp_path, emit=False)
+    summary = demo.run_demo(emit=False)
 
     assert summary["demo_kind"] == "lerobot_provider_surface"
     assert summary["runtime_mode"] == "injected_deterministic_policy"
     assert summary["uses_real_upstream_checkpoint"] is False
     assert summary["uses_lerobot_provider"] is True
     assert summary["uses_worldforge_policy_plus_score_planning"] is True
+    assert summary["planning_mode"] == "policy+score"
+    assert summary["policy_provider"] == "lerobot"
+    assert summary["score_provider"] == "demo-distance-score"
     assert summary["providers"] == ["demo-distance-score", "lerobot", "mock"]
     assert summary["lerobot_health"]["healthy"] is True
     assert summary["policy_candidate_count"] == 3
     assert summary["candidate_costs"] == [0.2, 0.0, 0.4]
     assert summary["selected_candidate_index"] == 1
-    assert summary["plan"]["metadata"]["planning_mode"] == "policy+score"
-    assert summary["plan"]["metadata"]["policy_provider"] == "lerobot"
-    assert summary["plan"]["metadata"]["score_provider"] == "demo-distance-score"
-    assert summary["plan"]["metadata"]["policy_result"]["provider"] == "lerobot"
+    assert summary["score_result"]["best_index"] == 1
+    assert summary["score_result"]["provider"] == "demo-distance-score"
+    assert summary["policy_result"]["provider"] == "lerobot"
+    assert summary["policy_result"]["metadata"]["raw_action_summary"]["shape"] == [3, 2, 3]
     assert summary["final_cube_position"] == {"x": 0.55, "y": 0.5, "z": 0.0}
-    assert summary["saved_world_id"] in summary["saved_worlds"]
-    assert summary["event_phases"] == ["success", "success"]
+    assert summary["event_phases"] == ["success"]
     assert summary["policy_eval_called"] is True
     assert summary["policy_requires_grad_disabled"] is True
     assert summary["policy_reset_calls"] == 1
-    assert summary["policy_select_calls"] == 2
+    assert summary["policy_select_calls"] == 1
 
 
 def test_lerobot_e2e_demo_main_json_only(
-    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -59,8 +60,6 @@ def test_lerobot_e2e_demo_main_json_only(
         "argv",
         [
             "worldforge-demo-lerobot",
-            "--state-dir",
-            str(tmp_path),
             "--json-only",
         ],
     )

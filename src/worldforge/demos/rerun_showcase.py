@@ -9,7 +9,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from worldforge import Action, BenchmarkInputs, ProviderBenchmarkHarness, WorldForge
+from worldforge import (
+    Action,
+    BenchmarkInputs,
+    LatentMPCController,
+    PlannerConfig,
+    ProviderBenchmarkHarness,
+    WorldForge,
+)
 from worldforge.models import JSONDict, WorldForgeError
 from worldforge.observability import ProviderMetricsSink, compose_event_handlers
 from worldforge.rerun import (
@@ -19,7 +26,11 @@ from worldforge.rerun import (
     RerunSession,
 )
 
-from . import BLUE_CUBE_GOAL, blue_cube_goal, make_blue_cube
+from . import (
+    BLUE_CUBE_GOAL,
+    blue_cube_goal,
+    make_blue_cube,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,10 +46,9 @@ class _ShowcaseRuntime:
 @dataclass(frozen=True, slots=True)
 class _ShowcaseWorkflow:
     cube_id: str
-    final_world: Any
-    plan: Any
+    mpc_result: Any
+    selected_actions: list[Action]
     benchmark: Any
-    saved_world_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,18 +160,34 @@ def _create_showcase_runtime(
 
 
 def _run_showcase_workflow(runtime: _ShowcaseRuntime, *, iterations: int) -> _ShowcaseWorkflow:
-    world = runtime.forge.create_world("rerun-observability-showcase", provider="mock")
-    cube = make_blue_cube(world)
-    runtime.artifacts.log_world(world, label="initial tabletop scene")
-
+    forge = runtime.forge
+    cube = make_blue_cube()
     goal = blue_cube_goal(cube)
-    plan = world.plan(goal_spec=goal, provider="mock")
-    runtime.artifacts.log_plan(plan, label="predictive plan to the blue cube goal")
-    execution = world.execute_plan(plan, provider="mock")
-    final_world = execution.final_world()
-    runtime.artifacts.log_world(final_world, label="executed plan result")
+    runtime.artifacts.log_json(
+        "worlds/initial",
+        {"label": "initial tabletop scene", "goal": goal.to_dict()},
+    )
 
-    benchmark = ProviderBenchmarkHarness(forge=runtime.forge).run(
+    # Plan one latent-MPC step toward the goal: the mock provider is used as a score cost oracle.
+    controller = _build_controller(forge)
+    mpc_result = controller.plan_step(
+        observation_info={"point": [0.0, 0.5, 0.0]},
+        goal_info={"target": [BLUE_CUBE_GOAL.x, BLUE_CUBE_GOAL.y, BLUE_CUBE_GOAL.z]},
+    )
+    selected_actions = list(mpc_result.actions)
+    runtime.artifacts.log_json(
+        "plans/selected",
+        {
+            "label": "latent-MPC step to the blue cube goal",
+            "provider": "mock",
+            "best_score": mpc_result.best_score,
+            "candidate_count": mpc_result.candidate_count,
+            "iteration_best_scores": list(mpc_result.iteration_best_scores),
+            "selected_actions": [action.to_dict() for action in selected_actions],
+        },
+    )
+
+    benchmark = ProviderBenchmarkHarness(forge=forge).run(
         "mock",
         operations=["predict"],
         iterations=iterations,
@@ -171,10 +197,29 @@ def _run_showcase_workflow(runtime: _ShowcaseRuntime, *, iterations: int) -> _Sh
 
     return _ShowcaseWorkflow(
         cube_id=cube.id,
-        final_world=final_world,
-        plan=plan,
+        mpc_result=mpc_result,
+        selected_actions=selected_actions,
         benchmark=benchmark,
-        saved_world_id=runtime.forge.save_world(final_world),
+    )
+
+
+def _build_controller(forge: WorldForge) -> LatentMPCController:
+    return LatentMPCController(
+        forge=forge,
+        score_provider="mock",
+        config=PlannerConfig(
+            horizon=1,
+            num_samples=32,
+            num_iterations=3,
+            num_elites=6,
+            action_kind="latent_action",
+            action_parameter_bounds={
+                "x": (-1.0, 1.0),
+                "y": (-1.0, 1.0),
+                "z": (-1.0, 1.0),
+            },
+            seed=0,
+        ),
     )
 
 
@@ -218,14 +263,14 @@ def _showcase_summary(
         "demo_kind": "rerun_observability_showcase",
         "state_dir": str(runtime.state_dir),
         "rerun": _rerun_summary(runtime.config, recording),
-        "world_id": workflow.final_world.id,
-        "saved_world_id": workflow.saved_world_id,
-        "final_cube_position": _final_cube_position(workflow),
+        "selected_action": workflow.selected_actions[0].to_dict(),
         "plan": {
-            "provider": workflow.plan.provider,
-            "planner": workflow.plan.planner,
-            "action_count": workflow.plan.action_count,
-            "success_probability": workflow.plan.success_probability,
+            "provider": "mock",
+            "planner": "latent-mpc",
+            "action_count": len(workflow.selected_actions),
+            "best_score": workflow.mpc_result.best_score,
+            "candidate_count": workflow.mpc_result.candidate_count,
+            "iteration_best_scores": list(workflow.mpc_result.iteration_best_scores),
         },
         "provider_metrics": runtime.metrics.to_dict(),
         "benchmark": workflow.benchmark.to_dict(),
@@ -249,11 +294,6 @@ def _rerun_summary(
     }
 
 
-def _final_cube_position(workflow: _ShowcaseWorkflow) -> JSONDict | None:
-    cube = workflow.final_world.get_object_by_id(workflow.cube_id)
-    return cube.position.to_dict() if cube is not None else None
-
-
 def _render_markdown(summary: JSONDict) -> str:
     rerun = summary["rerun"]
     plan = summary["plan"]
@@ -269,9 +309,9 @@ def _render_markdown(summary: JSONDict) -> str:
             "",
             f"- recording: {recording}",
             f"- state_dir: {summary['state_dir']}",
-            f"- world_id: {summary['world_id']}",
             f"- plan: {plan['planner']} via {plan['provider']} ({plan['action_count']} action)",
-            f"- success_probability: {plan['success_probability']:.3f}",
+            f"- best_score: {plan['best_score']:.5f}",
+            f"- candidate_count: {plan['candidate_count']}",
         ]
     )
 

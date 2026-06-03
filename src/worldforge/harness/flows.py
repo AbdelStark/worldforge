@@ -134,17 +134,21 @@ def _run_gr00t_replay_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:
 
 # Demo modules import the optional-runtime provider classes at module scope, so
 # keep these imports lazy: loading the harness should not pull LeRobot/LeWorldModel
-# adapters into the base cold-start path.
-def _run_leworldmodel_demo(**kwargs: object) -> JSONDict:
+# adapters into the base cold-start path. The demos drive the capability surface directly
+# and no longer persist worlds, so ``state_dir`` is accepted for the harness runner contract
+# but ignored.
+def _run_leworldmodel_demo(*, state_dir: Path | None = None, emit: bool = False) -> JSONDict:
     from worldforge.demos import leworldmodel_e2e
 
-    return leworldmodel_e2e.run_demo(**kwargs)  # type: ignore[arg-type]
+    del state_dir
+    return leworldmodel_e2e.run_demo(emit=emit)
 
 
-def _run_lerobot_demo(**kwargs: object) -> JSONDict:
+def _run_lerobot_demo(*, state_dir: Path | None = None, emit: bool = False) -> JSONDict:
     from worldforge.demos import lerobot_e2e
 
-    return lerobot_e2e.run_demo(**kwargs)  # type: ignore[arg-type]
+    del state_dir
+    return lerobot_e2e.run_demo(emit=emit)
 
 
 def _run_robotics_compare_demo(*, state_dir: Path, emit: bool = False) -> JSONDict:

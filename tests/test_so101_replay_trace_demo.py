@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import shutil
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -26,18 +25,21 @@ def _load_demo() -> ModuleType:
     return module
 
 
-def test_so101_replay_trace_demo_selects_and_explains_best_candidate(tmp_path: Path) -> None:
+def test_so101_replay_trace_demo_selects_and_explains_best_candidate() -> None:
     demo = _load_demo()
 
-    summary = demo.run_demo(state_dir=tmp_path, emit=False)
+    summary = demo.run_demo(emit=False)
 
     assert summary["demo_kind"] == "so101_replay_decision_trace"
     assert summary["runtime_mode"] == "deterministic_replay_fixture"
     assert summary["uses_real_robot_hardware"] is False
     assert summary["uses_lerobot_runtime"] is False
     assert summary["uses_dimos_runtime"] is False
+    assert summary["planning_mode"] == "score"
     assert summary["providers"] == ["mock", "so101-replay-score"]
     assert summary["score_provider_health"]["healthy"] is True
+    assert summary["score_result"]["provider"] == "so101-replay-score"
+    assert summary["score_result"]["best_index"] == summary["selected_candidate_index"]
     assert summary["dataset_reference"]["repo_id"] == "lerobot/svla_so101_pickplace"
     assert summary["dataset_reference"]["total_episodes"] == 50
     assert summary["dataset_reference"]["total_frames"] == 11939
@@ -66,8 +68,6 @@ def test_so101_replay_trace_demo_selects_and_explains_best_candidate(tmp_path: P
         for item in trace["candidate_scores"]
     )
     assert summary["final_object_position"] == {"x": 0.52, "y": 0.08, "z": 0.03}
-    assert summary["persistence"]["state_dir_provided"] is True
-    assert summary["persistence"]["saved_world_id"] in summary["persistence"]["saved_worlds"]
     json.dumps(summary)
 
 
@@ -76,55 +76,9 @@ def test_so101_replay_trace_default_json_summary_is_deterministic() -> None:
     second = so101_replay_trace.run_demo(emit=False)
 
     assert first == second
-    assert first["persistence"] == {
-        "state_dir_provided": False,
-        "state_dir": "<temporary>",
-        "saved_world_id": "<temporary-world-id>",
-        "saved_worlds": ["<temporary-world-id>"],
-    }
-
-
-def test_so101_replay_trace_default_state_dir_is_cleaned_up(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FakeTemporaryDirectory:
-        def __init__(self, prefix: str) -> None:
-            self.prefix = prefix
-            self.path = tmp_path / "so101-temp-state"
-            self.cleaned = False
-
-        def __enter__(self) -> str:
-            assert self.prefix == "worldforge-so101-demo-"
-            self.path.mkdir()
-            return str(self.path)
-
-        def __exit__(self, *_exc: object) -> None:
-            self.cleaned = True
-            shutil.rmtree(self.path)
-
-    holder: dict[str, FakeTemporaryDirectory] = {}
-
-    def temporary_directory_factory(prefix: str) -> FakeTemporaryDirectory:
-        holder["temporary_directory"] = FakeTemporaryDirectory(prefix)
-        return holder["temporary_directory"]
-
-    monkeypatch.setattr(
-        so101_replay_trace.tempfile,
-        "TemporaryDirectory",
-        temporary_directory_factory,
-    )
-
-    summary = so101_replay_trace.run_demo(emit=False)
-
-    temporary_directory = holder["temporary_directory"]
-    assert summary["persistence"]["state_dir"] == "<temporary>"
-    assert temporary_directory.cleaned is True
-    assert not temporary_directory.path.exists()
 
 
 def test_so101_replay_trace_demo_main_json_only(
-    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -133,8 +87,6 @@ def test_so101_replay_trace_demo_main_json_only(
         "argv",
         [
             "worldforge-demo-so101-replay-trace",
-            "--state-dir",
-            str(tmp_path),
             "--json-only",
         ],
     )

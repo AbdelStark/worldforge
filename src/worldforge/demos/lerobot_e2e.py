@@ -1,25 +1,24 @@
 """LeRobot provider policy-plus-score planning demo.
 
 The demo injects a deterministic policy into :class:`LeRobotPolicyProvider`. It
-validates the provider, policy selection, score ranking, execution, persistence,
-and reload path without requiring LeRobot, torch, or checkpoint weights.
+validates the provider, policy selection, score ranking, and execution without
+requiring LeRobot, torch, or checkpoint weights.
 
 What the demo does:
 
 1. Registers :class:`LeRobotPolicyProvider` alongside the local ``mock``
    execution provider and a deterministic score provider.
-2. Creates a small world with one ``blue_cube`` and an ``object_at`` goal.
-3. Asks the LeRobot provider to propose three candidate two-step action chunks
-   via ``select_actions(...)``.
-4. Ranks those candidates by distance-to-goal through the score provider's
-   ``score_actions(...)`` surface, selecting the best one via
-   ``World.plan(..., planning_mode="policy+score")``.
-5. Executes the selected WorldForge actions through ``execution_provider="mock"``,
-   saves the final world, reloads it from disk, and reports the final cube
-   position.
+2. Asks the LeRobot provider to propose three candidate two-step action chunks
+   via ``forge.select_actions(...)``.
+3. Ranks those candidates by distance-to-goal through the score provider's
+   ``forge.score_actions(...)`` surface and selects the lowest-cost one via
+   ``best_index`` — the policy-then-score backbone loop.
+4. Rolls the selected action chunk forward with ``forge.predict(...)`` (the mock
+   provider mutating object poses) and reports the final cube position.
 
-Use this demo to validate the WorldForge adapter and planner path. Use
-``scripts/smoke_lerobot_policy.py`` for host-owned real-checkpoint inference.
+This drives the WorldForge capability surface directly; there is no symbolic
+``World`` runtime. Use ``scripts/smoke_lerobot_policy.py`` for host-owned
+real-checkpoint inference.
 """
 
 from __future__ import annotations
@@ -27,14 +26,13 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import tempfile
-from pathlib import Path
 from typing import Any
 
 from worldforge import (
     Action,
     ActionScoreResult,
     WorldForge,
+    action_candidates_to_score_payload,
 )
 from worldforge.models import (
     JSONDict,
@@ -44,7 +42,15 @@ from worldforge.models import (
 )
 from worldforge.providers import BaseProvider, LeRobotPolicyProvider, ProviderProfileSpec
 
-from . import BLUE_CUBE_GOAL, blue_cube_goal, make_blue_cube, make_candidate_plans
+from . import (
+    BLUE_CUBE_GOAL,
+    blue_cube_goal,
+    execute_plan_over_state,
+    make_blue_cube,
+    make_candidate_plans,
+    object_position,
+    seed_world_state,
+)
 
 
 class DemoTensor:
@@ -172,15 +178,13 @@ def _build_translator(cube_id: str) -> Any:
     return translator
 
 
-def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
+def run_demo(*, emit: bool = True) -> JSONDict:
     """Run the LeRobot demo and return a JSON-serializable summary."""
 
-    resolved_state_dir = state_dir or Path(tempfile.mkdtemp(prefix="worldforge-lerobot-demo-"))
     events: list[ProviderEvent] = []
 
-    forge = WorldForge(state_dir=resolved_state_dir, auto_register_remote=False)
-    world = forge.create_world("lerobot-policy-plus-score-demo", provider="mock")
-    cube = make_blue_cube(world)
+    forge = WorldForge(auto_register_remote=False)
+    cube = make_blue_cube()
     goal = blue_cube_goal(cube)
     goal_position = BLUE_CUBE_GOAL
 
@@ -210,22 +214,22 @@ def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
     policy_info = _policy_info("aloha", "move the blue cube near the goal")
     score_info: JSONDict = {"goal": [goal_position.x, goal_position.y, goal_position.z]}
 
+    # Policy proposes candidate action chunks; the score provider ranks them; pick best_index.
     policy_result = forge.select_actions("lerobot", info=policy_info)
-    plan = world.plan(
-        goal_spec=goal,
-        provider="demo-distance-score",
-        policy_provider="lerobot",
-        policy_info=policy_info,
-        score_info=score_info,
-        execution_provider="mock",
-        planner="lerobot-demo-mpc",
+    score_result = forge.score_actions(
+        "demo-distance-score",
+        info=score_info,
+        action_candidates=action_candidates_to_score_payload(policy_result.action_candidates),
     )
-    execution = world.execute_plan(plan)
-    final_world = execution.final_world()
-    saved_world_id = forge.save_world(final_world)
-    reloaded_world = forge.load_world(saved_world_id)
-    final_cube = reloaded_world.get_object_by_id(cube.id)
-    if final_cube is None:
+    selected_plan = policy_result.action_candidates[score_result.best_index]
+    final_state = execute_plan_over_state(
+        forge,
+        seed_world_state([cube]),
+        selected_plan,
+        provider="mock",
+    )
+    final_position = object_position(final_state, cube.id)
+    if final_position is None:
         raise RuntimeError("demo cube was not present after execution")
 
     summary: JSONDict = {
@@ -234,18 +238,19 @@ def run_demo(*, state_dir: Path | None = None, emit: bool = True) -> JSONDict:
         "uses_real_upstream_checkpoint": False,
         "uses_lerobot_provider": True,
         "uses_worldforge_policy_plus_score_planning": True,
-        "state_dir": str(resolved_state_dir),
+        "planning_mode": "policy+score",
+        "policy_provider": "lerobot",
+        "score_provider": "demo-distance-score",
         "providers": forge.providers(),
         "lerobot_health": forge.provider_health("lerobot").to_dict(),
         "goal": goal.to_dict(),
         "policy_candidate_count": len(policy_result.action_candidates),
-        "selected_candidate_index": plan.metadata["score_result"]["best_index"],
-        "candidate_costs": plan.metadata["score_result"]["scores"],
-        "selected_actions": [action.to_dict() for action in plan.actions],
-        "plan": plan.to_dict(),
-        "final_cube_position": final_cube.position.to_dict(),
-        "saved_world_id": saved_world_id,
-        "saved_worlds": forge.list_worlds(),
+        "selected_candidate_index": score_result.best_index,
+        "candidate_costs": score_result.scores,
+        "selected_actions": [action.to_dict() for action in selected_plan],
+        "policy_result": policy_result.to_dict(),
+        "score_result": score_result.to_dict(),
+        "final_cube_position": final_position,
         "event_phases": [event.phase for event in events],
         "provider_events": [event.to_dict() for event in events],
         "policy_reset_calls": policy.reset_calls,
@@ -264,8 +269,7 @@ def _print_summary(summary: JSONDict) -> None:
     print("Provider: LeRobotPolicyProvider")
     print("Runtime: injected deterministic policy")
     print("Checkpoint inference: not used")
-    print("Planning: select_actions -> World.plan(policy+score) -> execute_plan")
-    print(f"State directory: {summary['state_dir']}")
+    print("Planning: forge.select_actions(policy) -> forge.score_actions -> forge.predict")
     print(f"Registered providers: {', '.join(summary['providers'])}")
     print(f"LeRobot health: {summary['lerobot_health']['details']}")
     print()
@@ -281,7 +285,6 @@ def _print_summary(summary: JSONDict) -> None:
     final = summary["final_cube_position"]
     print()
     print(f"Final cube position: ({final['x']:.2f}, {final['y']:.2f}, {final['z']:.2f})")
-    print(f"Saved world id: {summary['saved_world_id']}")
     print(f"Provider event phases: {', '.join(summary['event_phases'])}")
     print()
     print("JSON summary:")
@@ -290,12 +293,6 @@ def _print_summary(summary: JSONDict) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--state-dir",
-        type=Path,
-        default=None,
-        help="Directory for persisted demo worlds. Defaults to a temporary directory.",
-    )
     parser.add_argument(
         "--json-only",
         action="store_true",
@@ -306,7 +303,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
-    summary = run_demo(state_dir=args.state_dir, emit=not args.json_only)
+    summary = run_demo(emit=not args.json_only)
     if args.json_only:
         print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

@@ -61,12 +61,18 @@ increment is green because `forge.predict`/`forge.score_actions` work without a 
       `forge.predict(...)`. The embed/score/policy ops already called `forge` directly. Gates green,
       coverage 90.88%.
 
-### Inc D — rewrite the 6 world-based demos onto `LatentMPCController`/forge calls
+### Inc D — rewrite the world-based demos onto `LatentMPCController`/forge calls (DONE)
 
-- [ ] `demos/__init__.py`, `leworldmodel_e2e`, `lerobot_e2e`, `policy_score_candidate_lab`,
+- [x] `demos/__init__.py`, `leworldmodel_e2e`, `lerobot_e2e`, `policy_score_candidate_lab`,
       `dimos_go2_replay_arena`, `rerun_showcase`, `so101_replay_trace`,
       `embodied_policy_replay_comparison`. The 4 `worldforge-demo-*` pyproject scripts survive
-      (keep `main()`). Update demo tests + `EXAMPLE_COMMANDS`.
+      (keep `main()`). Each demo now drives `forge.predict`/`forge.score_actions`/
+      `forge.select_actions`/`LatentMPCController` directly; output shapes are capability-centric
+      (selected action, candidate scores, `best_index`, provider, metadata) with world-persistence
+      fields dropped. `make_blue_cube()` returns a standalone `SceneObject`.
+- [x] Updated demo tests + the harness flow renderer/tests + `scripts/demo_showcases.py` +
+      `examples/hosts/robotics-operator/app.py`. `EXAMPLE_COMMANDS` names/commands unchanged.
+      Gates green; coverage 90.96%.
 
 ### Inc E — reroute provider-test scaffolding off `World`
 

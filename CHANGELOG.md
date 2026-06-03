@@ -25,6 +25,17 @@ releases may still include breaking changes when the public API needs to tighten
   (for example `context.forge.predict(...)`) instead of a `World`. The internal `world` parameter is
   dropped from the suite runner methods; `run_report`/`run_report_artifacts` still accept an ignored
   `world` keyword for backwards compatibility with `World.evaluate`.
+- **Bundled demos no longer use the symbolic `World` runtime.** The packaged demos
+  (`worldforge-demo-leworldmodel`, `worldforge-demo-lerobot`, `worldforge-demo-so101-replay-trace`,
+  `worldforge-demo-rerun`, plus the policy+score candidate lab, DimOS Go2 replay arena, embodied
+  policy replay comparison, and shared demo helpers) now drive the provider capability surface
+  directly — `forge.predict` / `forge.score_actions` / `forge.select_actions` /
+  `LatentMPCController` — instead of `create_world` / `World.plan` / `World.execute_plan` /
+  `World.add_object`. The four console-script entry points and `main()` signatures are unchanged.
+  **Demo output shapes are now capability-centric:** they report the selected action, candidate
+  scores, `best_index`, provider, and metadata, and they no longer carry world-persistence fields
+  (`saved_world_id`, `saved_worlds`, `state_dir` persistence, exported-world JSON) or a `--state-dir`
+  flag. The shared `make_blue_cube()` helper returns a standalone `SceneObject` with a stable id.
 
 ### Removed
 

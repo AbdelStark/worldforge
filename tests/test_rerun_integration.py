@@ -468,9 +468,12 @@ def test_rerun_showcase_demo_logs_events_and_artifacts(tmp_path: Path) -> None:
     assert summary["rerun"]["recording_written"] is False
     assert summary["rerun"]["recording_size_bytes"] is None
     assert summary["plan"]["action_count"] == 1
+    assert summary["plan"]["planner"] == "latent-mpc"
+    assert summary["plan"]["candidate_count"] > 0
     assert summary["benchmark"]["results"][0]["operation"] == "predict"
     assert any(path.startswith("worldforge/events/mock/predict") for path, _entity in fake.logs)
     assert any(path.startswith("worldforge/worlds/") for path, _entity in fake.logs)
+    assert any(path.startswith("worldforge/plans/") for path, _entity in fake.logs)
     assert fake.calls[-1][0] == "disconnect"
 
 

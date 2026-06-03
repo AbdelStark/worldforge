@@ -381,7 +381,7 @@ def _issue_bundle(workflow_dir: Path) -> JSONDict:
 
 
 def _robotics_replay(workflow_dir: Path) -> JSONDict:
-    summary = lerobot_e2e.run_demo(state_dir=workflow_dir / "worlds", emit=False)
+    summary = lerobot_e2e.run_demo(emit=False)
     replay_manifest = {
         "schema_version": 1,
         "mode": "checkout-safe robotics replay",
