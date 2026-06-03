@@ -29,6 +29,12 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Added
 
+- The built-in `mock` provider now implements the `score` capability as a deterministic cost
+  oracle (costs, `lower_is_better`, goal-distance when `info["goal"]["target"]` is present). This
+  makes the latent MPC backbone loop and score-only workflows runnable checkout-safe on the default
+  provider, and adds `sample_contract_score_info` / `sample_contract_score_action_candidates` to the
+  `worldforge.testing` contract helpers. Score-only capability negotiation is now satisfiable by
+  `mock` without an optional runtime.
 - Added `examples/latent_mpc_planning.py`, a runnable, checkout-safe latent MPC planning loop that
   drives `LatentMPCController` over an in-example score (cost) oracle: it samples action candidates,
   scores them as costs, keeps elites, refits, and executes the lowest-cost action under a receding

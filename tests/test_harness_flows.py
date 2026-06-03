@@ -1277,13 +1277,14 @@ def test_harness_runs_diagnostics_flow(tmp_path) -> None:
     assert len(run.steps) == 6
     assert len(run.metrics) == 6
     assert run.summary["registered_providers"] == ["mock"]
-    assert run.summary["benchmark_operation_count"] == 2
+    assert run.summary["benchmark_operation_count"] == 3
     assert run.summary["mock_supported_operations"] == [
         "predict",
         "embed",
+        "score",
     ]
-    assert run.summary["benchmark_event_count"] >= 4
-    assert "benchmark_operations: predict, embed" in run.transcript
+    assert run.summary["benchmark_event_count"] >= 6
+    assert "benchmark_operations: predict, embed, score" in run.transcript
 
 
 def test_harness_runs_workbench_flow(tmp_path) -> None:

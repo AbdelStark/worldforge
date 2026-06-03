@@ -166,7 +166,9 @@ def test_doctor_capability_filter_includes_known_unregistered_providers(
     assert statuses["leworldmodel"].registered is False
     assert statuses["leworldmodel"].health.healthy is False
     assert "jepa" in statuses
-    assert "mock" not in statuses
+    assert "mock" in statuses
+    assert statuses["mock"].registered is True
+    assert statuses["mock"].health.healthy is True
     assert any("LEWORLDMODEL_POLICY" in issue for issue in report.issues)
 
 

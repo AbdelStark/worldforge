@@ -9,11 +9,17 @@ import pytest
 
 from worldforge import (
     ActionScoreResult,
+    ProviderCapabilities,
     WorldForge,
     WorldForgeError,
     bounded_move_grid_candidates,
 )
-from worldforge.providers import LeWorldModelProvider, ProviderError
+from worldforge.providers import (
+    BaseProvider,
+    LeWorldModelProvider,
+    ProviderError,
+    ProviderProfileSpec,
+)
 from worldforge.testing import assert_provider_contract
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "providers"
@@ -257,10 +263,26 @@ def test_leworldmodel_score_planning_selects_best_candidate_and_execution_provid
             score_info=payload["info"],
         )
 
+    # A provider that does not advertise the score capability is rejected for
+    # score-based planning. mock now scores, so use a predict-only provider to keep
+    # the capability gate meaningful.
+    class _PredictOnlyProvider(BaseProvider):
+        def __init__(self) -> None:
+            super().__init__(
+                name="predict-only",
+                capabilities=ProviderCapabilities(predict=True),
+                profile=ProviderProfileSpec(
+                    description="Predict-only provider without score support.",
+                    is_local=True,
+                    deterministic=True,
+                ),
+            )
+
+    forge.register_provider(_PredictOnlyProvider())
     with pytest.raises(WorldForgeError, match="does not support score-based planning"):
         world.plan(
             goal="wrong provider",
-            provider="mock",
+            provider="predict-only",
             candidate_actions=candidate_plans,
             score_info=payload["info"],
             score_action_candidates=payload["action_candidates"],

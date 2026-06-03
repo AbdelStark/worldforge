@@ -8,6 +8,7 @@ from time import perf_counter
 
 from worldforge.models import (
     Action,
+    ActionScoreResult,
     BBox,
     EmbeddingResult,
     JSONDict,
@@ -44,6 +45,7 @@ class MockProvider(BaseProvider):
             capabilities=ProviderCapabilities(
                 predict=True,
                 embed=True,
+                score=True,
             ),
             profile=ProviderProfileSpec(
                 is_local=True,
@@ -52,8 +54,8 @@ class MockProvider(BaseProvider):
                 ),
                 implementation_status="stable",
                 deterministic=True,
-                supported_modalities=("world_state", "text"),
-                artifact_types=("prediction", "embedding"),
+                supported_modalities=("world_state", "text", "latent_action"),
+                artifact_types=("prediction", "embedding", "action_score"),
                 notes=("Reference implementation for adapter contract tests.",),
                 default_model="mock-deterministic-v1",
                 supported_models=("mock-deterministic-v1",),
@@ -141,6 +143,81 @@ class MockProvider(BaseProvider):
             metadata={"steps": steps, "frame_count": frame_count},
         )
         return payload
+
+    def score_actions(self, *, info: JSONDict, action_candidates: object) -> ActionScoreResult:
+        """Deterministic cost oracle over candidate action plans.
+
+        Scores are costs (lower is better, ``best_index`` is the argmin). When ``info['goal']``
+        carries a numeric ``target`` and the candidates expose ``x``/``y``/``z`` action parameters
+        (the shape produced by :class:`~worldforge.control.ActionPlanCandidateEncoder`), the cost is
+        the squared distance from the first action's parameters to the goal target, so a latent MPC
+        loop converges toward the goal. Otherwise the cost is a stable per-candidate hash, which
+        keeps the provider usable as a deterministic contract fixture.
+        """
+
+        started = perf_counter()
+        candidates = list(action_candidates) if isinstance(action_candidates, list) else []
+        if not candidates:
+            raise ProviderError("score_actions() requires a non-empty action_candidates batch.")
+        target = self._goal_target(info)
+        scores = [
+            self._candidate_cost(candidate, target, index)
+            for index, candidate in enumerate(candidates)
+        ]
+        best_index = min(range(len(scores)), key=scores.__getitem__)
+        latency_ms = max(0.1, (perf_counter() - started) * 1000)
+        self._emit_success_event(
+            operation="score_actions",
+            duration_ms=latency_ms,
+            metadata={"candidate_count": len(candidates), "score_direction": "lower_is_better"},
+        )
+        return ActionScoreResult(
+            provider=self.name,
+            scores=scores,
+            best_index=best_index,
+            lower_is_better=True,
+            metadata={
+                "provider": self.name,
+                "mode": "deterministic-mock",
+                "cost_basis": "goal-distance" if target is not None else "stable-hash",
+            },
+        )
+
+    @staticmethod
+    def _goal_target(info: JSONDict) -> tuple[float, ...] | None:
+        goal = info.get("goal") if isinstance(info, dict) else None
+        target = goal.get("target") if isinstance(goal, dict) else None
+        if (
+            isinstance(target, (list, tuple))
+            and target
+            and all(
+                isinstance(value, (int, float)) and not isinstance(value, bool) for value in target
+            )
+        ):
+            return tuple(float(value) for value in target)
+        return None
+
+    def _candidate_cost(
+        self,
+        candidate: object,
+        target: tuple[float, ...] | None,
+        index: int,
+    ) -> float:
+        point = self._candidate_point(candidate)
+        if target is not None and point is not None:
+            return sum((value - goal) ** 2 for value, goal in zip(point, target, strict=False))
+        return deterministic_floats(f"{self.name}:score:{index}", 1)[0]
+
+    @staticmethod
+    def _candidate_point(candidate: object) -> tuple[float, ...] | None:
+        first = candidate[0] if isinstance(candidate, list) and candidate else candidate
+        params = first.get("parameters") if isinstance(first, dict) else None
+        if not isinstance(params, dict):
+            return None
+        values = [params.get(axis) for axis in ("x", "y", "z")]
+        if all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
+            return tuple(float(value) for value in values)
+        return None
 
     def embed(self, *, text: str) -> EmbeddingResult:
         started = perf_counter()

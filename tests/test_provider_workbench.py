@@ -22,6 +22,7 @@ def test_provider_workbench_runs_mock_in_clean_checkout() -> None:
     assert report["live"] is False
     assert report["required_tests"] == [
         "assert_predict_conformance",
+        "assert_score_conformance",
         "assert_embed_conformance",
     ]
     checks = {check["name"]: check for check in report["checks"]}
@@ -29,6 +30,7 @@ def test_provider_workbench_runs_mock_in_clean_checkout() -> None:
     assert checks["health"]["configured"] is True
     assert checks["conformance"]["status"] == "passed"
     assert "exercised predict" in checks["conformance"]["detail"]
+    assert "score" in checks["conformance"]["detail"]
     assert checks["events"]["status"] == "passed"
     assert report["docs"]["authoring_guide"] == "docs/src/provider-authoring-guide.md"
     assert (

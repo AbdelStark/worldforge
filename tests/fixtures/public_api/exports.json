@@ -277,6 +277,8 @@
       "runtime_marker_skip_reason",
       "sample_contract_action",
       "sample_contract_policy_info",
+      "sample_contract_score_action_candidates",
+      "sample_contract_score_info",
       "sample_contract_world_state",
       "stable_json_dumps",
       "stable_path",

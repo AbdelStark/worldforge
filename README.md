@@ -377,7 +377,7 @@ observe state
 <!-- provider-catalog-readme:start -->
 | Provider | Maturity | Capability surface | Registration | Runtime ownership |
 | --- | --- | --- | --- | --- |
-| `mock` | `stable` | `predict`, `embed` | always registered | in-repo deterministic local provider |
+| `mock` | `stable` | `predict`, `score`, `embed` | always registered | in-repo deterministic local provider |
 | [`cosmos-policy`](https://abdelstark.github.io/worldforge/providers/cosmos-policy/) | `beta` | none (`policy` requires host `action_translator`) | `COSMOS_POLICY_BASE_URL` | WorldForge validates `/act` request/response and planning composition; host owns Cosmos-Policy reachability/CUDA/runtime, ALOHA observation construction, and translation of raw 14D rows into executable `Action` objects |
 | [`leworldmodel`](https://abdelstark.github.io/worldforge/providers/leworldmodel/) | `stable` | `score` | `LEWORLDMODEL_POLICY` or `LEWM_POLICY` | host installs the official LeWM loading path (`stable_worldmodel.policy.AutoCostModel`), torch, and compatible checkpoints |
 | [`gr00t`](https://abdelstark.github.io/worldforge/providers/gr00t/) | `beta` | `policy` | `GROOT_POLICY_HOST` | host runs or reaches an Isaac GR00T policy server |

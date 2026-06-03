@@ -505,8 +505,8 @@ def test_provider_benchmark_harness_rejects_unsupported_operations(tmp_path) -> 
     forge = WorldForge(state_dir=tmp_path, auto_register_remote=False)
     harness = ProviderBenchmarkHarness(forge=forge)
 
-    with pytest.raises(WorldForgeError, match="unsupported operations: score"):
-        harness.run("mock", operations=["score"], iterations=1)
+    with pytest.raises(WorldForgeError, match="unsupported operations: policy"):
+        harness.run("mock", operations=["policy"], iterations=1)
 
 
 def test_provider_benchmark_harness_rejects_unknown_invoke_operation(tmp_path) -> None:

@@ -361,11 +361,14 @@ def test_registered_protocols_are_visible_to_diagnostics_and_benchmark(tmp_path:
     assert forge.provider_info("fake_cost").capabilities.score is True
     assert forge.provider_profile("fake_cost").description == "fake"
     assert forge.provider_health("fake_cost").healthy is True
-    assert [health.name for health in forge.provider_healths(capability="score")] == ["fake_cost"]
+    assert [health.name for health in forge.provider_healths(capability="score")] == [
+        "fake_cost",
+        "mock",
+    ]
 
     report = forge.doctor(capability="score", registered_only=True)
-    assert [status.profile.name for status in report.providers] == ["fake_cost"]
-    assert report.providers[0].registered is True
+    assert [status.profile.name for status in report.providers] == ["fake_cost", "mock"]
+    assert all(status.registered is True for status in report.providers)
 
     benchmark = ProviderBenchmarkHarness(forge=forge).run("fake_cost", iterations=1)
     assert [(result.provider, result.operation) for result in benchmark.results] == [
