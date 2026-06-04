@@ -104,10 +104,17 @@ checkpoint inference.
 | Example | Command | Runtime boundary |
 | --- | --- | --- |
 | `so101-replay-trace` | `uv run worldforge-demo-so101-replay-trace` | Scores deterministic SO-101 pick-and-place candidates and emits a reusable decision trace without LeRobot, torch, DimOS, or hardware. |
+| `go2-controlbench-decisiontrace` | `uv run python examples/go2-controlbench-decisiontrace/run.py` | Replays a public Go2 Air ControlBench trace, reranks candidate commands through `score`, and reports measured native-odom regret without DimOS, Unitree SDKs, Hugging Face downloads, or hardware. |
 
 The SO-101 replay trace records `observation -> goal -> candidate_actions -> candidate_scores ->
 selected_action -> outcome -> counterfactuals`. It is a checkout-safe replay fixture shaped after
 the public `lerobot/svla_so101_pickplace` metadata, not a hardware-success or policy-quality claim.
+
+The Go2 ControlBench DecisionTrace records the same evidence shape for navigation: target motion,
+candidate Unitree sport-mode commands, predicted-error scores, the score-selected command,
+counterfactual measured outcomes, and regret against the best measured command. It uses a bundled
+copy of a public `espejelomar/go2-air-controlbench-v1` trace; source outcomes are native Go2
+odometry means, not mocap-grade ground truth or live-robot execution by the demo.
 
 ## Service Host Reference
 

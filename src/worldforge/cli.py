@@ -95,6 +95,18 @@ EXAMPLE_COMMANDS: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "task": "Robot decision traces",
+        "name": "go2-controlbench-decisiontrace",
+        "surface": "score provider, public decision trace, measured regret",
+        "requires": "base WorldForge package; bundled public Go2 ControlBench trace fixture",
+        "command": "uv run python examples/go2-controlbench-decisiontrace/run.py",
+        "description": (
+            "Replay a public Go2 Air ControlBench positive-regret trace, rerank commands through "
+            "the score capability, and report measured native-odom regret without DimOS, Unitree "
+            "SDKs, Hugging Face downloads, or hardware."
+        ),
+    },
+    {
         "task": "Batch evaluation host",
         "name": "batch-eval-host",
         "surface": "evaluation, benchmarking, run workspaces, budget gates",

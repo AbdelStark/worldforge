@@ -102,6 +102,17 @@ This is simulation/replay planning. It demonstrates policy inference, score-mode
 typed provider composition, candidate ranking, event capture, and visual replay. Hardware control,
 safety checks, robot-controller integration, and task-specific preprocessing stay host-owned.
 
+For measured decision evidence without a live robot, run the Go2 Air ControlBench trace replay:
+
+```bash
+uv run python examples/go2-controlbench-decisiontrace/run.py
+```
+
+It consumes a compact public `espejelomar/go2-air-controlbench-v1` DecisionTrace fixture, reranks
+candidate Unitree sport-mode commands through WorldForge's `score` capability, and reports measured
+native-odometry regret against the best counterfactual command. It does not import DimOS, Unitree
+SDKs, Hugging Face datasets, or connect robot hardware.
+
 <div align="center">
 <table>
   <tr>
