@@ -81,6 +81,41 @@ def test_go2_controlbench_demo_reranks_and_reports_measured_regret(tmp_path: Pat
     json.dumps(summary)
 
 
+def test_go2_controlbench_demo_uses_deterministic_tie_break(tmp_path: Path) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    tied_score = trace["scores"][1]["value"]
+    trace["scores"][0]["value"] = tied_score
+    trace["selected_action"] = {
+        "candidate_index": 0,
+        "name": "backward_0.05",
+        "selection_rule": "minimize predicted absolute error to target",
+    }
+
+    selected_error = trace["counterfactuals"][0]["measured_error"]
+    best_error = min(
+        counterfactual["measured_error"] for counterfactual in trace["counterfactuals"]
+    )
+    trace["regret"] = {
+        "unit": "m",
+        "selected_true_error": selected_error,
+        "best_true_error": best_error,
+        "regret": selected_error - best_error,
+        "hit_best": False,
+    }
+    trace_path = tmp_path / "equal-score-trace.json"
+    trace_path.write_text(json.dumps(trace), encoding="utf-8")
+
+    # A DEFAULT_TRACE_PATH mutation exercised through run_go2_controlbench_decisiontrace
+    # should keep GO2_CONTROLBENCH_SCORE_PROVIDER ties stable by candidate order.
+    result = run_go2_controlbench_decisiontrace(trace_path, tmp_path / "out")
+    summary = result.summary
+
+    assert summary["score_provider"] == GO2_CONTROLBENCH_SCORE_PROVIDER
+    assert summary["score_result"]["best_index"] == 0
+    assert summary["selected"]["name"] == "backward_0.05"
+    assert [row["candidate_index"] for row in summary["ranked_candidates"][:2]] == [0, 1]
+
+
 def test_go2_controlbench_report_lists_selected_and_counterfactual_best(tmp_path: Path) -> None:
     result = run_go2_controlbench_decisiontrace(DEFAULT_TRACE_PATH, tmp_path)
     report = render_go2_controlbench_report(result.summary)
