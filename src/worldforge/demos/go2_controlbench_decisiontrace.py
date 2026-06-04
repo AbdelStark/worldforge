@@ -23,7 +23,12 @@ from typing import Any
 
 from worldforge import ActionScoreResult, WorldForge
 from worldforge.artifact_io import write_json_artifact
-from worldforge.models import JSONDict, WorldForgeError, require_finite_number
+from worldforge.models import (
+    JSONDict,
+    WorldForgeError,
+    require_finite_number,
+    require_positive_int,
+)
 from worldforge.providers.base import ProviderProfileSpec
 
 _REPO_FIXTURE_RELATIVE_PATH = (
@@ -36,6 +41,7 @@ DEFAULT_TRACE_PATH = (
 )
 
 GO2_CONTROLBENCH_SCORE_PROVIDER = "go2-controlbench-deadband-affine-score"
+GO2_CONTROLBENCH_OUTCOME_KIND = "real_measured_native_odom_mean"
 GO2_CONTROLBENCH_DATASET_REFERENCE: JSONDict = {
     "repo_id": "espejelomar/go2-air-controlbench-v1",
     "config": "inverse_command_benchmark",
@@ -362,9 +368,9 @@ def _validate_trace(payload: object) -> None:
         trace["measured_or_analytic_outcome"],
         "measured_or_analytic_outcome",
     )
-    if measured.get("outcome_kind") != "real_measured_native_odom_mean":
+    if measured.get("outcome_kind") != GO2_CONTROLBENCH_OUTCOME_KIND:
         raise WorldForgeError(
-            "Go2 ControlBench measured outcome must be real_measured_native_odom_mean."
+            f"Go2 ControlBench measured outcome must be {GO2_CONTROLBENCH_OUTCOME_KIND}."
         )
     _number(measured.get("signed_planar_m"), name="measured_or_analytic_outcome.signed_planar_m")
 
@@ -413,7 +419,15 @@ def _counterfactual_records(value: object) -> list[JSONDict]:
             measured.get("signed_planar_m"),
             name=f"counterfactuals[{index}].measured_outcome.signed_planar_m",
         )
-        _index(measured.get("n"), name=f"counterfactuals[{index}].measured_outcome.n")
+        require_positive_int(
+            measured.get("n"),
+            name=f"Go2 ControlBench counterfactuals[{index}].measured_outcome.n",
+        )
+        if measured.get("outcome_kind") != GO2_CONTROLBENCH_OUTCOME_KIND:
+            raise WorldForgeError(
+                "Go2 ControlBench counterfactual "
+                f"measured_outcome.outcome_kind must be {GO2_CONTROLBENCH_OUTCOME_KIND}."
+            )
         records.append(
             {
                 **dict(record),

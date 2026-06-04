@@ -187,8 +187,32 @@ def test_go2_controlbench_fixture_rejects_incomplete_predicted_outcome(
 
     with pytest.raises(
         WorldForgeError,
-        match=r"counterfactuals\[0\].predicted_outcome.signed_planar_m",
+        match=r"counterfactuals\[0\]\.predicted_outcome\.signed_planar_m",
     ):
+        load_go2_controlbench_trace(malformed)
+
+
+def test_go2_controlbench_fixture_rejects_zero_sample_counterfactual_outcome(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    trace["counterfactuals"][0]["measured_outcome"]["n"] = 0
+    malformed = tmp_path / "bad-counterfactual-zero-samples.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match=r"counterfactuals\[0\]\.measured_outcome\.n"):
+        load_go2_controlbench_trace(malformed)
+
+
+def test_go2_controlbench_fixture_rejects_counterfactual_outcome_kind_drift(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    trace["counterfactuals"][0]["measured_outcome"]["outcome_kind"] = "analytic"
+    malformed = tmp_path / "bad-counterfactual-outcome-kind.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match=r"measured_outcome\.outcome_kind"):
         load_go2_controlbench_trace(malformed)
 
 
