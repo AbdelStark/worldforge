@@ -216,6 +216,19 @@ def test_go2_controlbench_fixture_rejects_counterfactual_outcome_kind_drift(
         load_go2_controlbench_trace(malformed)
 
 
+def test_go2_controlbench_fixture_accepts_counterfactual_action_float_drift(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    trace["counterfactuals"][0]["action"]["params"]["x"] += 1e-12
+    drifted = tmp_path / "counterfactual-action-float-drift.json"
+    drifted.write_text(json.dumps(trace), encoding="utf-8")
+
+    loaded = load_go2_controlbench_trace(drifted)
+
+    assert loaded["trace_id"] == trace["trace_id"]
+
+
 def test_go2_controlbench_fixture_rejects_counterfactual_action_drift(
     tmp_path: Path,
 ) -> None:
