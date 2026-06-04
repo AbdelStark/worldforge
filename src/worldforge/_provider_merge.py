@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import cast
 
-from worldforge.capabilities import CAPABILITY_FIELD_TO_NAME
+from worldforge.capabilities import _capability_descriptor
 from worldforge.models import (
     CAPABILITY_NAMES,
     JSONDict,
@@ -84,7 +84,7 @@ def merged_provider_capabilities(
         else dict.fromkeys(CAPABILITY_NAMES, False)
     )
     for wrapper in wrappers:
-        flags[CAPABILITY_FIELD_TO_NAME[wrapper.kind]] = True
+        flags[_capability_descriptor(wrapper.kind).name] = True
     return ProviderCapabilities(**flags)
 
 

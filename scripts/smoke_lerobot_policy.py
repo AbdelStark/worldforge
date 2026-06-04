@@ -31,18 +31,24 @@ Then provide a policy path, an observation source, and a translator:
 from __future__ import annotations
 
 import argparse
-import importlib
-import importlib.util
 import json
 import os
 from collections.abc import Callable
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 from worldforge.models import JSONDict
 from worldforge.providers import LeRobotPolicyProvider
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
+from worldforge.smoke.trusted_inputs import (
+    load_callable as _trusted_load_callable,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_json_object as _trusted_load_json_object,
+)
+from worldforge.smoke.trusted_inputs import (
+    module_from_path as _trusted_module_from_path,
+)
 
 DEFAULT_DEVICE = "cpu"
 DEFAULT_MODE = "select_action"
@@ -71,52 +77,15 @@ def _env_value(name: str) -> str | None:
 
 
 def _load_json_file(path: Path, *, name: str) -> JSONDict:
-    try:
-        payload = json.loads(path.expanduser().read_text())
-    except FileNotFoundError as exc:
-        raise SystemExit(f"{name} file does not exist: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"{name} file is not valid JSON: {path}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise SystemExit(f"{name} must decode to a JSON object.")
-    return payload
+    return _trusted_load_json_object(path, name=name)
 
 
-def _module_from_path(path: Path) -> ModuleType:
-    resolved = path.expanduser().resolve()
-    if not resolved.exists():
-        raise SystemExit(f"Python module file does not exist: {path}")
-    module_spec = importlib.util.spec_from_file_location(resolved.stem, resolved)
-    if module_spec is None or module_spec.loader is None:
-        raise SystemExit(f"Could not load Python module from: {path}")
-    module = importlib.util.module_from_spec(module_spec)
-    module_spec.loader.exec_module(module)
-    return module
+def _module_from_path(path: Path):
+    return _trusted_module_from_path(path)
 
 
 def _load_callable(spec: str, *, name: str) -> Callable[..., Any]:
-    if ":" not in spec:
-        raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-    module_ref, function_name = spec.rsplit(":", 1)
-    if not module_ref.strip() or not function_name.strip():
-        raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-
-    candidate_path = Path(module_ref)
-    if candidate_path.exists() or module_ref.endswith(".py") or "/" in module_ref:
-        module = _module_from_path(candidate_path)
-    else:
-        try:
-            module = importlib.import_module(module_ref)
-        except ImportError as exc:
-            raise SystemExit(f"Could not import {name} module '{module_ref}': {exc}") from exc
-
-    try:
-        loaded = getattr(module, function_name)
-    except AttributeError as exc:
-        raise SystemExit(f"{name} function '{function_name}' was not found.") from exc
-    if not callable(loaded):
-        raise SystemExit(f"{name} target '{function_name}' is not callable.")
-    return loaded
+    return _trusted_load_callable(spec, name=name)
 
 
 def _policy_info_from_observation_factory(module_spec: str) -> JSONDict:

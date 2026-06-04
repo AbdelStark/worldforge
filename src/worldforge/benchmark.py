@@ -351,13 +351,10 @@ class ProviderBenchmarkHarness:
         provider: str,
         metrics: ProviderMetricsSink,
     ) -> _MetricCaptureState:
-        provider_instance = self._forge._providers.get(provider)
-        capability_wrappers = self._forge._capability_wrappers_for_name(provider)
-        if provider_instance is None and not capability_wrappers:
-            raise ProviderError(f"Provider '{provider}' is not registered.")
+        provider_view = self._forge._provider_view(provider, include_known=False)
         return _install_metric_capture_handlers(
-            provider_instance=provider_instance,
-            capability_wrappers=capability_wrappers,
+            provider_instance=provider_view.metric_legacy_provider,
+            capability_wrappers=provider_view.metric_wrappers,
             metrics=metrics,
         )
 

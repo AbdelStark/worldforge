@@ -10,7 +10,6 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -21,23 +20,20 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from worldforge.artifact_io import write_json_artifact  # noqa: E402
+from worldforge.artifact_report_primitives import (  # noqa: E402
+    SECURITY_REPORT_TEXT_REDACTION,
+    display_report_path,
+    isoformat_utc,
+    sanitize_report_json,
+    sanitize_report_text,
+    utc_now,
+)
 
 DEFAULT_OUTPUT_DIR = ROOT / ".worldforge" / "dependency-audit"
 DEFAULT_JSON_OUTPUT = DEFAULT_OUTPUT_DIR / "dependency-audit.json"
 DEFAULT_MARKDOWN_OUTPUT = DEFAULT_OUTPUT_DIR / "dependency-audit.md"
 DEPENDENCY_AUDIT_EVIDENCE_SCHEMA_VERSION = 1
 MAX_CAPTURE_CHARS = 4_000
-
-SECRET_PATTERN = re.compile(
-    r"(api[_-]?key|authorization|bearer\s+[a-z0-9._~-]+|password|secret|signature|token=|"
-    r"x-amz-signature|nvidia_api_key)",
-    re.IGNORECASE,
-)
-HOST_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes|var/folders)/[^\s)`|]+")
-SIGNED_URL_PATTERN = re.compile(
-    r"https?://[^\s)`|]*(?:X-Amz-Signature|sig=|signature=|token=|secret=)[^\s)`|]*",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -491,46 +487,21 @@ def _capture_tail(value: str | None) -> str:
 
 
 def _sanitize_json(value: Any) -> Any:
-    if isinstance(value, str):
-        return _sanitize_text(value)
-    if isinstance(value, list):
-        return [_sanitize_json(item) for item in value]
-    if isinstance(value, dict):
-        sanitized: dict[str, Any] = {}
-        for key, item in value.items():
-            sanitized_key = _sanitize_text(str(key))
-            unique_key = sanitized_key
-            suffix = 2
-            while unique_key in sanitized:
-                unique_key = f"{sanitized_key}#{suffix}"
-                suffix += 1
-            sanitized[unique_key] = _sanitize_json(item)
-        return sanitized
-    return value
+    return sanitize_report_json(value, redaction=SECURITY_REPORT_TEXT_REDACTION)
 
 
 def _sanitize_text(value: str) -> str:
-    sanitized = SIGNED_URL_PATTERN.sub("[redacted-url]", value)
-    sanitized = HOST_PATH_PATTERN.sub("<host-local-path>", sanitized)
-    return SECRET_PATTERN.sub("[redacted]", sanitized)
+    return sanitize_report_text(value, redaction=SECURITY_REPORT_TEXT_REDACTION)
 
 
 def _display_path(path: Path) -> str:
-    resolved = path.expanduser().resolve()
-    try:
-        return str(resolved.relative_to(ROOT))
-    except ValueError:
-        return f"<host-local-path>/{resolved.name}"
+    return display_report_path(path, root=ROOT)
 
 
-def _utc_now() -> datetime:
-    return datetime.now(UTC).replace(microsecond=0)
+_utc_now = utc_now
 
 
-def _isoformat_utc(value: datetime) -> str:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).replace(microsecond=0).isoformat()
+_isoformat_utc = isoformat_utc
 
 
 if __name__ == "__main__":

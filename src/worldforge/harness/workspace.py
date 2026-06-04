@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from worldforge.artifact_io import write_json_artifact
 from worldforge.config_profiles import validate_config_profile_provenance
-from worldforge.models import JSONDict, WorldForgeError, require_json_dict
+from worldforge.models import JSONDict, WorldForgeError, require_json_dict, require_non_empty_text
 
 RUN_WORKSPACE_SCHEMA_VERSION = 1
 RUN_ID_PATTERN = re.compile(r"^\d{8}T\d{6}Z-[a-f0-9]{8}$")
@@ -154,19 +154,60 @@ def write_run_manifest(
 ) -> Path:
     """Write the sanitized manifest for a preserved run."""
 
+    payload = build_run_manifest_payload(
+        workspace,
+        kind=kind,
+        command=command,
+        provider=provider,
+        operation=operation,
+        status=status,
+        input_summary=input_summary,
+        result_summary=result_summary,
+        artifact_paths=artifact_paths,
+        config_profile=config_profile,
+        event_count=event_count,
+    )
+    return write_json_artifact(workspace.manifest_path, payload)
+
+
+def build_run_manifest_payload(
+    workspace: RunWorkspace,
+    *,
+    kind: str,
+    command: str,
+    status: str,
+    provider: str | None = None,
+    operation: str | None = None,
+    input_summary: JSONDict | None = None,
+    result_summary: JSONDict | None = None,
+    artifact_paths: dict[str, str] | None = None,
+    config_profile: JSONDict | None = None,
+    event_count: int = 0,
+) -> JSONDict:
+    """Build and validate the sanitized manifest for a preserved run."""
+
+    validated_kind = require_non_empty_text(kind, name="run manifest kind")
+    validated_status = require_non_empty_text(status, name="run manifest status")
+    if not isinstance(command, str):
+        raise WorldForgeError("run manifest command must be a string.")
+    validated_event_count = _validate_event_count(event_count)
+    validated_artifact_paths = _validate_artifact_paths(workspace, artifact_paths or {})
     payload: JSONDict = {
         "schema_version": RUN_WORKSPACE_SCHEMA_VERSION,
         "run_id": workspace.run_id,
         "created_at": _created_at_from_run_id(workspace.run_id),
-        "kind": kind,
+        "kind": validated_kind,
         "command": command,
-        "status": status,
-        "provider": provider,
-        "operation": operation,
-        "input_summary": input_summary or {},
-        "result_summary": result_summary or {},
-        "artifact_paths": artifact_paths or {},
-        "event_count": event_count,
+        "status": validated_status,
+        "provider": _optional_manifest_text(provider, name="run manifest provider"),
+        "operation": _optional_manifest_text(operation, name="run manifest operation"),
+        "input_summary": require_json_dict(input_summary or {}, name="run manifest input_summary"),
+        "result_summary": require_json_dict(
+            result_summary or {},
+            name="run manifest result_summary",
+        ),
+        "artifact_paths": validated_artifact_paths,
+        "event_count": validated_event_count,
         "layout": {
             "inputs": "inputs/",
             "results": "results/",
@@ -177,7 +218,39 @@ def write_run_manifest(
     }
     if config_profile is not None:
         payload["config_profile"] = validate_config_profile_provenance(config_profile)
-    return write_json_artifact(workspace.manifest_path, payload)
+    return payload
+
+
+def _optional_manifest_text(value: str | None, *, name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise WorldForgeError(f"{name} must be a string when provided.")
+    return value
+
+
+def _validate_event_count(value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise WorldForgeError("run manifest event_count must be an integer.")
+    if value < 0:
+        raise WorldForgeError("run manifest event_count must be greater than or equal to 0.")
+    return value
+
+
+def _validate_artifact_paths(workspace: RunWorkspace, artifact_paths: dict[str, str]) -> JSONDict:
+    del workspace
+    if not isinstance(artifact_paths, dict):
+        raise WorldForgeError("run manifest artifact_paths must be a JSON object.")
+    validated: JSONDict = {}
+    for raw_name, raw_path in artifact_paths.items():
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise WorldForgeError("run manifest artifact path names must be non-empty strings.")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise WorldForgeError(
+                f"run manifest artifact path for '{raw_name}' must be a non-empty string."
+            )
+        validated[raw_name] = raw_path
+    return validated
 
 
 def list_run_workspaces(workspace_dir: Path) -> tuple[JSONDict, ...]:

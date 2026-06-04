@@ -166,20 +166,9 @@ def _evaluation_report_workflow_trace(
     if isinstance(workflow_trace, WorkflowTrace):
         return workflow_trace
     if isinstance(workflow_trace, dict):
-        return _workflow_trace_from_payload(workflow_trace)
+        return WorkflowTrace.from_dict(workflow_trace)
     raise WorldForgeError(
         "EvaluationReport workflow_trace must be a WorkflowTrace, JSON object, or None."
-    )
-
-
-def _workflow_trace_from_payload(payload: JSONDict) -> WorkflowTrace:
-    return WorkflowTrace(
-        workflow_id=payload.get("workflow_id", ""),
-        name=payload.get("name", ""),
-        status=payload.get("status"),
-        schema_version=payload.get("schema_version", 1),
-        steps=payload.get("steps") or (),
-        metadata=payload.get("metadata") or {},
     )
 
 

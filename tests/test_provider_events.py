@@ -208,6 +208,30 @@ def test_workflow_trace_validates_skipped_failed_and_nested_steps() -> None:
     assert payload["steps"][3]["parent_id"] == "provider"
 
 
+def test_workflow_trace_from_value_rehydrates_serialized_payload() -> None:
+    trace = WorkflowTrace(
+        workflow_id="rehydrate-trace",
+        name="Rehydrate trace",
+        steps=[
+            WorkflowTraceStep(
+                step_id="score",
+                operation="score",
+                provider="leworldmodel",
+                capability="score",
+                status="success",
+            )
+        ],
+        metadata={"mode": "serialized"},
+    )
+
+    rehydrated = WorkflowTrace.from_value(trace.to_dict())
+
+    assert rehydrated.workflow_id == trace.workflow_id
+    assert rehydrated.steps[0].provider == "leworldmodel"
+    assert rehydrated.metadata == {"mode": "serialized"}
+    assert WorkflowTrace.from_value(trace) is trace
+
+
 def test_workflow_trace_rejects_status_that_contradicts_steps() -> None:
     with pytest.raises(WorldForgeError, match="status must match"):
         WorkflowTrace(

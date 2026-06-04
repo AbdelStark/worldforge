@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,15 +27,15 @@ GITHUB_ISSUE_EXPORT_COMMAND = (
     "> .worldforge/release-notes/closed-issues.json"
 )
 
-from worldforge.models import _redact_observable_text  # noqa: E402
+from worldforge.artifact_report_primitives import (  # noqa: E402
+    RELEASE_NOTES_TEXT_REDACTION,
+    display_report_path,
+    isoformat_utc,
+    sanitize_report_text,
+    utc_now,
+)
 
-HOST_PATH_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes|var/folders|tmp)/[^\s)`|]+"
-)
-SIGNED_URL_PATTERN = re.compile(
-    r"https?://[^\s)`|]*(?:X-Amz-Signature|sig=|signature=|token=|secret=)[^\s)`|]*",
-    re.IGNORECASE,
-)
+HOST_PATH_PATTERN = RELEASE_NOTES_TEXT_REDACTION.host_path_pattern
 
 SECTION_LABELS = {
     "added": "Added",
@@ -767,27 +765,18 @@ def _release_known_limitations(release_evidence: ReleaseEvidenceRecord) -> tuple
 
 
 def _sanitize_text(value: str) -> str:
-    sanitized = SIGNED_URL_PATTERN.sub("[redacted-url]", value)
-    sanitized = _redact_observable_text(sanitized)
-    return HOST_PATH_PATTERN.sub("<host-local-path>", sanitized)
+    # RELEASE_NOTES_TEXT_REDACTION preserves the old _redact_observable_text ordering.
+    return sanitize_report_text(value, redaction=RELEASE_NOTES_TEXT_REDACTION)
 
 
 def _display_path(path: Path) -> str:
-    resolved = path.expanduser().resolve()
-    try:
-        return str(resolved.relative_to(ROOT))
-    except ValueError:
-        return f"<host-local-path>/{resolved.name}"
+    return display_report_path(path, root=ROOT)
 
 
-def _utc_now() -> datetime:
-    return datetime.now(UTC).replace(microsecond=0)
+_utc_now = utc_now
 
 
-def _isoformat_utc(value: datetime) -> str:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).replace(microsecond=0).isoformat()
+_isoformat_utc = isoformat_utc
 
 
 if __name__ == "__main__":

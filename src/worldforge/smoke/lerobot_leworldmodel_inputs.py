@@ -3,82 +3,39 @@
 from __future__ import annotations
 
 import argparse
-import importlib
-import importlib.util
-import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 from worldforge.smoke.lerobot_leworldmodel_bridge import _materialize_candidate_payload
+from worldforge.smoke.trusted_inputs import (
+    load_callable as _trusted_load_callable,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_json_file as _trusted_load_json_file,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_json_object as _trusted_load_json_object,
+)
+from worldforge.smoke.trusted_inputs import (
+    module_from_path as _trusted_module_from_path,
+)
 
 
 def _load_json_file(path: Path, *, name: str) -> object:
-    try:
-        return json.loads(path.expanduser().read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise SystemExit(f"{name} file does not exist: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"{name} file is not valid JSON: {path}: {exc}") from exc
+    return _trusted_load_json_file(path, name=name)
 
 
 def _json_object_from_file(path: Path, *, name: str) -> dict[str, Any]:
-    payload = _load_json_file(path, name=name)
-    if not isinstance(payload, dict):
-        raise SystemExit(f"{name} must decode to a JSON object.")
-    return dict(payload)
+    return _trusted_load_json_object(path, name=name)
 
 
-def _module_from_path(path: Path) -> ModuleType:
-    resolved = path.expanduser().resolve()
-    if not resolved.exists():
-        raise SystemExit(f"Python module file does not exist: {path}")
-    module_spec = importlib.util.spec_from_file_location(resolved.stem, resolved)
-    if module_spec is None or module_spec.loader is None:
-        raise SystemExit(f"Could not load Python module from: {path}")
-    module = importlib.util.module_from_spec(module_spec)
-    module_spec.loader.exec_module(module)
-    return module
+def _module_from_path(path: Path):
+    return _trusted_module_from_path(path)
 
 
 def _load_callable(spec: str, *, name: str) -> Callable[..., Any]:
-    module_ref, function_name = _callable_spec_parts(spec, name=name)
-    module = _module_from_ref(module_ref, name=name)
-    loaded = _module_attribute(module, function_name=function_name, name=name)
-    if not callable(loaded):
-        raise SystemExit(f"{name} target '{function_name}' is not callable.")
-    return loaded
-
-
-def _callable_spec_parts(spec: str, *, name: str) -> tuple[str, str]:
-    if ":" not in spec:
-        raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-    module_ref, function_name = spec.rsplit(":", 1)
-    if not module_ref.strip() or not function_name.strip():
-        raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-    return module_ref, function_name
-
-
-def _module_from_ref(module_ref: str, *, name: str) -> ModuleType:
-    candidate_path = Path(module_ref)
-    if _looks_like_module_path(module_ref, candidate_path):
-        return _module_from_path(candidate_path)
-    try:
-        return importlib.import_module(module_ref)
-    except ImportError as exc:
-        raise SystemExit(f"Could not import {name} module '{module_ref}': {exc}") from exc
-
-
-def _looks_like_module_path(module_ref: str, candidate_path: Path) -> bool:
-    return candidate_path.exists() or module_ref.endswith(".py") or "/" in module_ref
-
-
-def _module_attribute(module: ModuleType, *, function_name: str, name: str) -> object:
-    try:
-        return getattr(module, function_name)
-    except AttributeError as exc:
-        raise SystemExit(f"{name} function '{function_name}' was not found.") from exc
+    return _trusted_load_callable(spec, name=name)
 
 
 def _load_policy_info(args: argparse.Namespace) -> dict[str, Any]:

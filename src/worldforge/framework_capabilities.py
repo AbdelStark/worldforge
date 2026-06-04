@@ -6,13 +6,13 @@ from collections.abc import Callable
 
 from worldforge.capabilities import (
     CAPABILITY_FIELD_NAMES,
-    CAPABILITY_FIELD_TO_NAME,
     CAPABILITY_PROTOCOLS,
     RunnableModel,
+    _capability_descriptor,
 )
 from worldforge.models import JSONDict, ProviderEvent, WorldForgeError
 from worldforge.providers.base import BaseProvider
-from worldforge.providers.observable import CAPABILITY_METHOD_MAP, _ObservableCapability
+from worldforge.providers.observable import _ObservableCapability
 
 
 def provider_with_event_handler(
@@ -31,7 +31,7 @@ def _capability_protocol_error(
     protocol: type,
     field_name: str,
 ) -> WorldForgeError:
-    capability_name = CAPABILITY_FIELD_TO_NAME[field_name]
+    capability_name = _capability_descriptor(field_name).name
     return WorldForgeError(
         f"{type(target).__name__} does not satisfy the "
         f"{protocol.__name__} capability protocol for '{capability_name}'."
@@ -59,7 +59,7 @@ def call_resolved_capability(
     call_kwargs = _capability_call_kwargs(kwargs)
     if isinstance(resolved, _ObservableCapability):
         return resolved.call(*args, **call_kwargs)
-    method_name = CAPABILITY_METHOD_MAP[field_name][0]
+    method_name = _capability_descriptor(field_name).method_name
     return getattr(resolved, method_name)(*args, **call_kwargs)
 
 

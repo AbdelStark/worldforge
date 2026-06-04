@@ -353,6 +353,12 @@ def test_rerun_artifact_logger_logs_workflow_trace() -> None:
     assert any(entity["kind"] == "AnyValues" for _path, entity in fake.logs)
     assert ("worldforge_workflow_trace", 0) in fake.times
 
+    fake.logs.clear()
+    logger.log_workflow_trace(trace.to_dict(), label="demo-dict")
+    dict_paths = [path for path, _entity in fake.logs]
+    assert "worldforge/workflow_traces/demo-trace/payload" in dict_paths
+    assert "worldforge/workflow_traces/demo-trace/steps/score/payload" in dict_paths
+
 
 def test_rerun_artifact_logger_validates_payload_shapes() -> None:
     logger = RerunArtifactLogger(session=RerunSession(sdk=_FakeRerun()))

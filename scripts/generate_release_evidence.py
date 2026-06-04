@@ -5,11 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from time import monotonic
@@ -21,11 +19,18 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from worldforge.artifact_io import write_json_artifact  # noqa: E402
+from worldforge.artifact_report_primitives import (  # noqa: E402
+    OBSERVABLE_REPORT_TEXT_REDACTION,
+    display_report_path,
+    isoformat_utc,
+    sanitize_report_text,
+    utc_now,
+)
 from worldforge.live_smoke_evidence import (  # noqa: E402
     render_live_smoke_registry_table,
     validate_live_smoke_registry,
 )
-from worldforge.models import _redact_observable_text, dump_json  # noqa: E402
+from worldforge.models import dump_json  # noqa: E402
 from worldforge.smoke.run_manifest import validate_run_manifest  # noqa: E402
 
 DEFAULT_OUTPUT = ROOT / ".worldforge" / "release-evidence" / "release-evidence.md"
@@ -37,7 +42,6 @@ DEFAULT_EVIDENCE_BUNDLES_DIR = ROOT / ".worldforge" / "evidence-bundles"
 DEFAULT_DEPENDENCY_AUDIT_DIR = ROOT / ".worldforge" / "dependency-audit"
 
 MAX_CAPTURE_CHARS = 4_000
-HOST_PATH_PATTERN = re.compile(r"(?<![A-Za-z0-9:])/(?:Users|private|Volumes|var/folders)/[^\s)`|]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -586,8 +590,7 @@ def _capture_tail(value: str | None) -> str:
 
 
 def _sanitize_text(value: str) -> str:
-    sanitized = _redact_observable_text(value)
-    return HOST_PATH_PATTERN.sub("<host-local-path>", sanitized)
+    return sanitize_report_text(value, redaction=OBSERVABLE_REPORT_TEXT_REDACTION)
 
 
 def _gate_summary(results: tuple[ReleaseGateResult, ...]) -> dict[str, int]:
@@ -729,11 +732,7 @@ def _markdown_link(path: Path, output: Path) -> str:
 
 
 def _display_path(path: Path) -> str:
-    resolved = path.expanduser().resolve()
-    try:
-        return str(resolved.relative_to(ROOT))
-    except ValueError:
-        return f"<host-local-path>/{resolved.name}"
+    return display_report_path(path, root=ROOT)
 
 
 def _is_repo_relative(path: Path) -> bool:
@@ -774,14 +773,10 @@ def _git_output(*args: str) -> str:
         return ""
 
 
-def _utc_now() -> datetime:
-    return datetime.now(UTC).replace(microsecond=0)
+_utc_now = utc_now
 
 
-def _isoformat_utc(value: datetime) -> str:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).replace(microsecond=0).isoformat()
+_isoformat_utc = isoformat_utc
 
 
 if __name__ == "__main__":

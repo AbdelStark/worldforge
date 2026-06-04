@@ -34,6 +34,39 @@ if TYPE_CHECKING:
     from worldforge.providers.base import PredictionPayload, ProviderProfileSpec
 
 
+@dataclass(frozen=True, slots=True)
+class _CapabilityDescriptor:
+    """Canonical vocabulary for one capability surface.
+
+    The descriptor is the single place that relates the framework's internal field name
+    (``cost``), public provider capability name (``score``), protocol, method name, event
+    operation, and validated result type. Callers should depend on this descriptor instead of
+    carrying local maps that can drift.
+    """
+
+    field_name: str
+    name: str
+    protocol: type
+    method_name: str
+    operation: str
+    result_type_name: str
+    benchmarkable: bool = True
+    benchmark_order: int | None = None
+
+    @property
+    def result_type(self) -> type:
+        if self.result_type_name == "PredictionPayload":
+            from worldforge.providers.base import PredictionPayload
+
+            return PredictionPayload
+        result_types = {
+            "ActionPolicyResult": ActionPolicyResult,
+            "ActionScoreResult": ActionScoreResult,
+            "EmbeddingResult": EmbeddingResult,
+        }
+        return result_types[self.result_type_name]
+
+
 CAPABILITY_FIELD_NAMES = (
     "policy",
     "cost",
@@ -41,18 +74,6 @@ CAPABILITY_FIELD_NAMES = (
     "embedder",
     "planner",
 )
-
-CAPABILITY_FIELD_TO_NAME: dict[str, str] = {
-    "policy": "policy",
-    "cost": "score",
-    "predictor": "predict",
-    "embedder": "embed",
-    "planner": "plan",
-}
-CAPABILITY_NAME_TO_FIELD: dict[str, str] = {
-    capability: field_name for field_name, capability in CAPABILITY_FIELD_TO_NAME.items()
-}
-
 
 # Each protocol is documented in its docstring, including the result type and the call shape the
 # framework dispatches. ``runtime_checkable`` enables ``isinstance(x, Cost)`` at registration time.
@@ -118,16 +139,80 @@ class Planner(Protocol):
     def plan(self, *, info: JSONDict) -> ActionPolicyResult: ...
 
 
-# Mapping from RunnableModel field names to the matching capability protocol class. Used by the
-# framework to dispatch a bundle into the per-capability registries; using the dict avoids a long
-# chain of branches and keeps the field/protocol pairing readable.
-CAPABILITY_PROTOCOLS: dict[str, type] = {
-    "policy": Policy,
-    "cost": Cost,
-    "predictor": Predictor,
-    "embedder": Embedder,
-    "planner": Planner,
+_CAPABILITY_DESCRIPTORS: dict[str, _CapabilityDescriptor] = {
+    "policy": _CapabilityDescriptor(
+        field_name="policy",
+        name="policy",
+        protocol=Policy,
+        method_name="select_actions",
+        operation="policy",
+        result_type_name="ActionPolicyResult",
+        benchmark_order=4,
+    ),
+    "cost": _CapabilityDescriptor(
+        field_name="cost",
+        name="score",
+        protocol=Cost,
+        method_name="score_actions",
+        operation="score",
+        result_type_name="ActionScoreResult",
+        benchmark_order=3,
+    ),
+    "predictor": _CapabilityDescriptor(
+        field_name="predictor",
+        name="predict",
+        protocol=Predictor,
+        method_name="predict",
+        operation="predict",
+        result_type_name="PredictionPayload",
+        benchmark_order=1,
+    ),
+    "embedder": _CapabilityDescriptor(
+        field_name="embedder",
+        name="embed",
+        protocol=Embedder,
+        method_name="embed",
+        operation="embed",
+        result_type_name="EmbeddingResult",
+        benchmark_order=2,
+    ),
+    "planner": _CapabilityDescriptor(
+        field_name="planner",
+        name="plan",
+        protocol=Planner,
+        method_name="plan",
+        operation="plan",
+        result_type_name="ActionPolicyResult",
+        benchmarkable=False,
+    ),
 }
+CAPABILITY_FIELD_TO_NAME: dict[str, str] = {
+    field_name: descriptor.name for field_name, descriptor in _CAPABILITY_DESCRIPTORS.items()
+}
+CAPABILITY_NAME_TO_FIELD: dict[str, str] = {
+    descriptor.name: field_name for field_name, descriptor in _CAPABILITY_DESCRIPTORS.items()
+}
+CAPABILITY_PROTOCOLS: dict[str, type] = {
+    field_name: descriptor.protocol for field_name, descriptor in _CAPABILITY_DESCRIPTORS.items()
+}
+_CAPABILITY_METHOD_MAP: dict[str, tuple[str, str]] = {
+    field_name: (descriptor.method_name, descriptor.operation)
+    for field_name, descriptor in _CAPABILITY_DESCRIPTORS.items()
+}
+_BENCHMARKABLE_CAPABILITY_NAMES = tuple(
+    descriptor.name
+    for descriptor in sorted(
+        _CAPABILITY_DESCRIPTORS.values(),
+        key=lambda descriptor: descriptor.benchmark_order or 999,
+    )
+    if descriptor.benchmarkable
+)
+
+
+def _capability_descriptor(field_name: str) -> _CapabilityDescriptor:
+    """Return the canonical descriptor for a capability field name."""
+
+    return _CAPABILITY_DESCRIPTORS[field_name]
 
 
 @dataclass(slots=True)

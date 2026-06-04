@@ -2,66 +2,28 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from worldforge._provider_merge import (
-    provider_missing_configuration as _provider_missing_configuration,
-)
 from worldforge.models import (
     DoctorReport,
     ProviderDoctorStatus,
     ProviderHealth,
-    ProviderLifecycleStatus,
     ProviderProfile,
 )
-from worldforge.providers import BaseProvider
-from worldforge.providers.observable import _ObservableCapability
+from worldforge.provider_view import ProviderView
 
 
 class DoctorHost(Protocol):
     state_dir: Path
 
-    def _provider_catalog(self, *, include_known: bool = True) -> dict[str, BaseProvider]: ...
-
-    def _provider_view_names(self, *, include_known: bool) -> list[str]: ...
-
-    def _registered_provider_names(self) -> set[str]: ...
-
-    def _capability_wrappers_for_name(self, name: str) -> tuple[_ObservableCapability, ...]: ...
-
-    def _merged_profile(
-        self,
-        name: str,
-        *,
-        legacy_provider: BaseProvider | None,
-        wrappers: Sequence[_ObservableCapability],
-    ) -> ProviderProfile: ...
-
-    def _merged_health(
-        self,
-        name: str,
-        *,
-        legacy_provider: BaseProvider | None,
-        wrappers: Sequence[_ObservableCapability],
-    ) -> ProviderHealth: ...
-
-    def _merged_lifecycle_status(
-        self,
-        name: str,
-        *,
-        legacy_provider: BaseProvider | None,
-        wrappers: Sequence[_ObservableCapability],
-    ) -> ProviderLifecycleStatus: ...
+    def _provider_views(self, *, include_known: bool) -> list[ProviderView]: ...
 
 
 @dataclass(slots=True, frozen=True)
 class DoctorProviderContext:
-    name: str
-    legacy_provider: BaseProvider | None
-    wrappers: tuple[_ObservableCapability, ...]
+    view: ProviderView
     profile: ProviderProfile
 
 
@@ -89,24 +51,11 @@ def doctor_provider_statuses_and_issues(
     capability: str | None = None,
     include_known: bool,
 ) -> tuple[list[ProviderDoctorStatus], list[str]]:
-    legacy_catalog = host._provider_catalog(include_known=include_known)
-    registered_names = host._registered_provider_names()
     contexts = doctor_contexts_for_capability(
-        doctor_provider_contexts(
-            host,
-            legacy_catalog=legacy_catalog,
-            include_known=include_known,
-        ),
+        doctor_provider_contexts(host, include_known=include_known),
         capability=capability,
     )
-    results = [
-        doctor_status_and_issue_for_context(
-            host,
-            context,
-            registered_names=registered_names,
-        )
-        for context in contexts
-    ]
+    results = [doctor_status_and_issue_for_context(context) for context in contexts]
     statuses = [status for status, _issue in results]
     issues = [issue for _status, issue in results if issue is not None]
     return statuses, issues
@@ -115,38 +64,16 @@ def doctor_provider_statuses_and_issues(
 def doctor_provider_contexts(
     host: DoctorHost,
     *,
-    legacy_catalog: dict[str, BaseProvider],
     include_known: bool,
 ) -> list[DoctorProviderContext]:
     return [
-        doctor_provider_context(host, name, legacy_catalog=legacy_catalog)
-        for name in host._provider_view_names(include_known=include_known)
+        DoctorProviderContext(view=view, profile=view.profile())
+        for view in host._provider_views(include_known=include_known)
     ]
 
 
-def doctor_provider_context(
-    host: DoctorHost,
-    name: str,
-    *,
-    legacy_catalog: dict[str, BaseProvider],
-) -> DoctorProviderContext:
-    legacy_provider = legacy_catalog.get(name)
-    wrappers = host._capability_wrappers_for_name(name)
-    profile = host._merged_profile(
-        name,
-        legacy_provider=legacy_provider,
-        wrappers=wrappers,
-    )
-    return DoctorProviderContext(
-        name=name,
-        legacy_provider=legacy_provider,
-        wrappers=wrappers,
-        profile=profile,
-    )
-
-
 def doctor_contexts_for_capability(
-    contexts: Sequence[DoctorProviderContext],
+    contexts: list[DoctorProviderContext],
     *,
     capability: str | None,
 ) -> list[DoctorProviderContext]:
@@ -156,40 +83,24 @@ def doctor_contexts_for_capability(
 
 
 def doctor_status_and_issue_for_context(
-    host: DoctorHost,
     context: DoctorProviderContext,
-    *,
-    registered_names: set[str],
 ) -> tuple[ProviderDoctorStatus, str | None]:
-    status = doctor_status_for_context(host, context, registered_names=registered_names)
+    status = doctor_status_for_context(context)
     issue = doctor_provider_issue(
-        name=context.name,
+        view=context.view,
         profile=context.profile,
         health=status.health,
-        legacy_provider=context.legacy_provider,
-        wrappers=context.wrappers,
     )
     return status, issue
 
 
 def doctor_status_for_context(
-    host: DoctorHost,
     context: DoctorProviderContext,
-    *,
-    registered_names: set[str],
 ) -> ProviderDoctorStatus:
-    health = host._merged_health(
-        context.name,
-        legacy_provider=context.legacy_provider,
-        wrappers=context.wrappers,
-    )
-    lifecycle = host._merged_lifecycle_status(
-        context.name,
-        legacy_provider=context.legacy_provider,
-        wrappers=context.wrappers,
-    )
+    health = context.view.health()
+    lifecycle = context.view.lifecycle_status()
     return ProviderDoctorStatus(
-        registered=context.name in registered_names,
+        registered=context.view.registered,
         profile=context.profile,
         health=health,
         lifecycle=lifecycle,
@@ -198,19 +109,13 @@ def doctor_status_for_context(
 
 def doctor_provider_issue(
     *,
-    name: str,
+    view: ProviderView,
     profile: ProviderProfile,
     health: ProviderHealth,
-    legacy_provider: BaseProvider | None,
-    wrappers: Sequence[_ObservableCapability],
 ) -> str | None:
     if health.healthy:
         return None
-    if _provider_missing_configuration(
-        profile=profile,
-        legacy_provider=legacy_provider,
-        wrappers=wrappers,
-    ):
+    if view.missing_configuration(profile):
         required = ", ".join(profile.required_env_vars)
-        return f"Provider '{name}' is unavailable: missing or invalid {required}."
-    return f"Provider '{name}' is unhealthy: {health.details}."
+        return f"Provider '{view.name}' is unavailable: missing or invalid {required}."
+    return f"Provider '{view.name}' is unhealthy: {health.details}."

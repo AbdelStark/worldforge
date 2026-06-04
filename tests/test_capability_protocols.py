@@ -16,7 +16,15 @@ from worldforge import (
     WorldForge,
     WorldForgeError,
 )
-from worldforge.capabilities import CAPABILITY_FIELD_NAMES, CAPABILITY_PROTOCOLS
+from worldforge.capabilities import (
+    _BENCHMARKABLE_CAPABILITY_NAMES,
+    _CAPABILITY_DESCRIPTORS,
+    _CAPABILITY_METHOD_MAP,
+    CAPABILITY_FIELD_NAMES,
+    CAPABILITY_FIELD_TO_NAME,
+    CAPABILITY_NAME_TO_FIELD,
+    CAPABILITY_PROTOCOLS,
+)
 from worldforge.models import (
     Action,
     ActionPolicyResult,
@@ -95,6 +103,25 @@ def test_capability_protocol_names_match_field_names():
     assert CAPABILITY_PROTOCOLS["predictor"] is Predictor
     assert CAPABILITY_PROTOCOLS["embedder"] is Embedder
     assert CAPABILITY_PROTOCOLS["planner"] is Planner
+
+
+def test_capability_descriptors_are_single_vocabulary_source():
+    assert set(_CAPABILITY_DESCRIPTORS) == set(CAPABILITY_FIELD_NAMES)
+    for field_name, descriptor in _CAPABILITY_DESCRIPTORS.items():
+        assert descriptor.field_name == field_name
+        assert CAPABILITY_FIELD_TO_NAME[field_name] == descriptor.name
+        assert CAPABILITY_NAME_TO_FIELD[descriptor.name] == field_name
+        assert CAPABILITY_PROTOCOLS[field_name] is descriptor.protocol
+        assert _CAPABILITY_METHOD_MAP[field_name] == (
+            descriptor.method_name,
+            descriptor.operation,
+        )
+        assert isinstance(descriptor.result_type, type)
+
+
+def test_benchmarkable_capabilities_come_from_descriptors():
+    assert _BENCHMARKABLE_CAPABILITY_NAMES == ("predict", "embed", "score", "policy")
+    assert "plan" not in _BENCHMARKABLE_CAPABILITY_NAMES
 
 
 def test_runnable_model_capability_fields_iterates_only_set_fields():

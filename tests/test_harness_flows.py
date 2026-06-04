@@ -13,6 +13,7 @@ import pytest
 from worldforge import WorldForge, WorldForgeError, WorldStateError
 from worldforge.evaluation import EvaluationSuite
 from worldforge.harness import available_flows, flow_index, run_flow
+from worldforge.harness.flow_specs import flow_spec_index, flow_specs
 from worldforge.harness.flow_workspace import write_flow_workspace
 from worldforge.harness.flows import (
     benchmark_report_harness_run,
@@ -111,6 +112,27 @@ def test_harness_flow_metadata_is_available_without_textual() -> None:
         "uv run worldforge benchmark --provider mock --operation predict --operation embed"
     )
     assert payload[6]["command"] == "uv run worldforge provider workbench mock"
+
+
+def test_harness_flow_specs_bind_metadata_runner_and_renderers() -> None:
+    specs = flow_specs()
+    assert [spec.flow.id for spec in specs] == [flow.id for flow in available_flows()]
+    assert set(flow_spec_index()) == {flow.id for flow in available_flows()}
+
+    leworldmodel = flow_spec_index()["leworldmodel"]
+    assert leworldmodel.flow.provider == "LeWorldModelProvider"
+    assert leworldmodel.runner is not None
+
+    summary = leworldmodel.runner(state_dir=None, emit=False)
+    run = leworldmodel.run_from_summary(
+        state_dir=Path("/tmp/worldforge-flow-spec"),
+        summary=summary,
+        workspace_path=Path("/tmp/worldforge-flow-spec/workspace"),
+    )
+    assert run.flow.id == "leworldmodel"
+    assert len(run.steps) == 6
+    assert len(run.metrics) == 6
+    assert "final_position: (0.55, 0.50, 0.00)" in run.transcript
 
 
 def test_harness_runs_leworldmodel_flow(tmp_path) -> None:
@@ -1612,12 +1634,16 @@ def test_preserved_generic_failed_run_uses_recovery_fallbacks(tmp_path: Path) ->
         status="failed",
         operation="custom-flow",
         result_summary={"validation_errors": ["custom failure"]},
-        artifact_paths={
-            "summary": "results/summary.json",
+        artifact_paths={"summary": "results/summary.json"},
+    )
+    manifest = json.loads(workspace.manifest_path.read_text(encoding="utf-8"))
+    manifest["artifact_paths"].update(
+        {
             "absolute": "/tmp/private.json",
             "escape": "../secret.txt",
-        },
+        }
     )
+    workspace.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     records = list_run_history(tmp_path)
     record = records[0]

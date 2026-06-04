@@ -42,6 +42,7 @@ from worldforge.rerun_paths import (
 from worldforge.rerun_paths import (
     validate_path_prefix as _validate_path_prefix,
 )
+from worldforge.workflow_trace import WorkflowTrace
 
 _DEFAULT_EVENT_PREFIX = "worldforge/events"
 _DEFAULT_ARTIFACT_PREFIX = "worldforge"
@@ -460,13 +461,10 @@ class RerunArtifactLogger:
     def log_workflow_trace(self, trace: object, *, label: str | None = None) -> None:
         """Log a workflow trace artifact as JSON plus per-step status markers."""
 
-        payload = _as_json_payload(trace, name="workflow_trace")
-        if payload.get("schema_version") != 1:
-            raise WorldForgeError("workflow_trace schema_version must be 1.")
-        workflow_id = _require_text(payload.get("workflow_id"), name="workflow_trace.workflow_id")
-        steps = payload.get("steps", [])
-        if not isinstance(steps, list):
-            raise WorldForgeError("workflow_trace.steps must be a list.")
+        trace_model = WorkflowTrace.from_value(_as_json_payload(trace, name="workflow_trace"))
+        payload = trace_model.to_dict()
+        workflow_id = trace_model.workflow_id
+        steps = payload["steps"]
         with self._lock:
             sequence = self._workflow_sequence
             self._workflow_sequence += 1

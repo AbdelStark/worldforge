@@ -343,11 +343,17 @@ def test_run_history_record_derives_safe_failed_run_commands(tmp_path: Path) -> 
         artifact_paths={
             "json": "reports/report.json",
             "trace": "logs/events.jsonl",
-            "unsafe": "/tmp/raw.json",
-            "escape": "../secret.txt",
         },
         event_count=3,
     )
+    manifest = json.loads(workspace.manifest_path.read_text(encoding="utf-8"))
+    manifest["artifact_paths"].update(
+        {
+            "unsafe": "/tmp/raw.json",
+            "escape": "../secret.txt",
+        }
+    )
+    workspace.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     record = list_run_history(tmp_path)[0]
 
@@ -617,7 +623,7 @@ def test_workspace_json_writes_reject_non_finite_payloads(tmp_path) -> None:
 
     target = workspace.path / "artifacts" / "nested" / "non-finite.json"
 
-    with pytest.raises(WorldForgeError, match="finite numbers"):
+    with pytest.raises(WorldForgeError, match="finite number"):
         workspace.write_json("artifacts/nested/non-finite.json", {"score": math.nan})
 
     assert not target.exists()
@@ -633,13 +639,52 @@ def test_run_manifest_rejects_non_finite_payloads_without_overwriting(tmp_path) 
     )
     original_manifest = workspace.manifest_path.read_text(encoding="utf-8")
 
-    with pytest.raises(WorldForgeError, match="finite numbers"):
+    with pytest.raises(WorldForgeError, match="finite number"):
         write_run_manifest(
             workspace,
             kind="eval",
             command="worldforge eval",
             status="completed",
             result_summary={"score": math.inf},
+        )
+
+    assert workspace.manifest_path.read_text(encoding="utf-8") == original_manifest
+
+
+def test_run_manifest_rejects_invalid_write_time_fields_without_overwriting(
+    tmp_path: Path,
+) -> None:
+    workspace = create_run_workspace(
+        tmp_path,
+        kind="eval",
+        command="worldforge eval",
+        run_id="20260101T000000Z-00000001",
+    )
+    original_manifest = workspace.manifest_path.read_text(encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match=r"artifact path.*non-empty string"):
+        write_run_manifest(
+            workspace,
+            kind="eval",
+            command="worldforge eval",
+            status="completed",
+            artifact_paths={"empty": ""},
+        )
+    with pytest.raises(WorldForgeError, match="event_count"):
+        write_run_manifest(
+            workspace,
+            kind="eval",
+            command="worldforge eval",
+            status="completed",
+            event_count=-1,
+        )
+    with pytest.raises(WorldForgeError, match="input_summary must be a JSON object"):
+        write_run_manifest(
+            workspace,
+            kind="eval",
+            command="worldforge eval",
+            status="completed",
+            input_summary=["not", "an", "object"],  # type: ignore[arg-type]
         )
 
     assert workspace.manifest_path.read_text(encoding="utf-8") == original_manifest

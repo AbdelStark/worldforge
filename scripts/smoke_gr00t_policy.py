@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import importlib.util
 import json
 import os
@@ -22,6 +21,33 @@ from typing import Any
 from worldforge.models import JSONDict, _redact_observable_text
 from worldforge.providers import GrootPolicyClientProvider
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
+from worldforge.smoke.trusted_inputs import (
+    callable_attribute as _trusted_callable_attribute,
+)
+from worldforge.smoke.trusted_inputs import (
+    callable_spec_parts as _trusted_callable_spec_parts,
+)
+from worldforge.smoke.trusted_inputs import (
+    code_opt_in_message as _trusted_code_opt_in_message,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_callable as _trusted_load_callable,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_callable_module as _trusted_load_callable_module,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_json_object as _trusted_load_json_object,
+)
+from worldforge.smoke.trusted_inputs import (
+    looks_like_module_path as _trusted_looks_like_module_path,
+)
+from worldforge.smoke.trusted_inputs import (
+    module_from_path as _trusted_module_from_path,
+)
+from worldforge.smoke.trusted_inputs import (
+    require_code_allowed as _trusted_require_code_allowed,
+)
 
 DEFAULT_MODEL_PATH = "nvidia/GR00T-N1.6-3B"
 DEFAULT_EMBODIMENT_TAG = "GR1"
@@ -89,54 +115,32 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _load_json_file(path: Path, *, name: str) -> JSONDict:
-    try:
-        payload = json.loads(path.expanduser().read_text())
-    except FileNotFoundError as exc:
-        raise SystemExit(f"{name} file does not exist: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"{name} file is not valid JSON: {path}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise SystemExit(f"{name} must decode to a JSON object.")
-    return payload
+    return _trusted_load_json_object(path, name=name)
 
 
 def _code_opt_in_message(name: str, flag: str) -> str:
-    return (
-        f"Loading {name} imports and executes local Python code; pass {flag} only for "
-        f"trusted {name} code."
-    )
+    return _trusted_code_opt_in_message(name, flag=flag)
 
 
 def _module_from_path(path: Path, *, name: str, allow_code: bool, flag: str) -> ModuleType:
-    if not allow_code:
-        raise SystemExit(_code_opt_in_message(name, flag))
-    resolved = path.expanduser().resolve()
-    if not resolved.exists():
-        raise SystemExit(f"Python module file does not exist: {path}")
-    module_spec = importlib.util.spec_from_file_location(resolved.stem, resolved)
-    if module_spec is None or module_spec.loader is None:
-        raise SystemExit(f"Could not load Python module from: {path}")
-    module = importlib.util.module_from_spec(module_spec)
-    module_spec.loader.exec_module(module)
-    return module
+    return _trusted_module_from_path(
+        path,
+        name=name,
+        allow_code=allow_code,
+        flag=flag,
+    )
 
 
 def _require_code_allowed(*, name: str, allow_code: bool, flag: str) -> None:
-    if not allow_code:
-        raise SystemExit(_code_opt_in_message(name, flag))
+    _trusted_require_code_allowed(name=name, allow_code=allow_code, flag=flag)
 
 
 def _split_callable_spec(spec: str, *, name: str) -> tuple[str, str]:
-    if ":" not in spec:
-        raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-    module_ref, function_name = spec.rsplit(":", 1)
-    if not module_ref.strip() or not function_name.strip():
-        raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-    return module_ref, function_name
+    return _trusted_callable_spec_parts(spec, name=name)
 
 
 def _looks_like_module_path(module_ref: str) -> bool:
-    return Path(module_ref).exists() or module_ref.endswith(".py") or "/" in module_ref
+    return _trusted_looks_like_module_path(module_ref)
 
 
 def _load_callable_module(
@@ -146,22 +150,16 @@ def _load_callable_module(
     allow_code: bool,
     flag: str,
 ) -> ModuleType:
-    if _looks_like_module_path(module_ref):
-        return _module_from_path(Path(module_ref), name=name, allow_code=allow_code, flag=flag)
-    try:
-        return importlib.import_module(module_ref)
-    except ImportError as exc:
-        raise SystemExit(f"Could not import {name} module '{module_ref}': {exc}") from exc
+    return _trusted_load_callable_module(
+        module_ref,
+        name=name,
+        allow_code=allow_code,
+        flag=flag,
+    )
 
 
 def _callable_attribute(module: ModuleType, function_name: str, *, name: str) -> Callable[..., Any]:
-    try:
-        loaded = getattr(module, function_name)
-    except AttributeError as exc:
-        raise SystemExit(f"{name} function '{function_name}' was not found.") from exc
-    if not callable(loaded):
-        raise SystemExit(f"{name} target '{function_name}' is not callable.")
-    return loaded
+    return _trusted_callable_attribute(module, function_name, name=name)
 
 
 def _load_callable(
@@ -171,10 +169,13 @@ def _load_callable(
     allow_code: bool = False,
     flag: str = "--allow-translator-code",
 ) -> Callable[..., Any]:
-    _require_code_allowed(name=name, allow_code=allow_code, flag=flag)
-    module_ref, function_name = _split_callable_spec(spec, name=name)
-    module = _load_callable_module(module_ref, name=name, allow_code=allow_code, flag=flag)
-    return _callable_attribute(module, function_name, name=name)
+    return _trusted_load_callable(
+        spec,
+        name=name,
+        allow_code=allow_code,
+        flag=flag,
+        require_code=True,
+    )
 
 
 def _load_base_policy_info(args: argparse.Namespace) -> JSONDict:

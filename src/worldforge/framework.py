@@ -9,25 +9,10 @@ multi-writer storage, optional model runtimes, robot controllers, or production 
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from worldforge._provider_merge import (
-    merged_provider_health as _merged_provider_health,
-)
-from worldforge._provider_merge import (
-    merged_provider_lifecycle_status as _merged_provider_lifecycle_status,
-)
-from worldforge._provider_merge import (
-    merged_provider_profile as _merged_provider_profile,
-)
-from worldforge._provider_merge import (
-    provider_health_components as _provider_health_components,
-)
-from worldforge._provider_merge import (
-    provider_lifecycle_components as _provider_lifecycle_components,
-)
 from worldforge.capabilities import (
     Cost,
     Embedder,
@@ -64,6 +49,7 @@ from worldforge.models import (
 from worldforge.models import (
     require_non_empty_text as _require_non_empty_text,
 )
+from worldforge.provider_view import ProviderView, provider_views_for_names
 from worldforge.providers import (
     BaseProvider,
     PredictionPayload,
@@ -281,57 +267,28 @@ class WorldForge:
     def _registered_provider_names(self) -> set[str]:
         return set(self._providers) | self._registered_capability_names()
 
-    def _provider_view_names(self, *, include_known: bool) -> list[str]:
+    def _provider_view(self, name: str, *, include_known: bool) -> ProviderView:
+        legacy_catalog = self._provider_catalog(include_known=include_known)
+        return ProviderView(
+            name=name,
+            legacy_provider=legacy_catalog.get(name),
+            wrappers=self._capability_wrappers_for_name(name),
+            registered=name in self._registered_provider_names(),
+        )
+
+    def _provider_views(self, *, include_known: bool) -> list[ProviderView]:
+        legacy_catalog = self._provider_catalog(include_known=include_known)
         names = set(self._registered_provider_names())
         if include_known:
-            names.update(self._provider_catalog(include_known=True))
-        return sorted(names)
-
-    def _merged_profile(
-        self,
-        name: str,
-        *,
-        legacy_provider: BaseProvider | None,
-        wrappers: Sequence[_ObservableCapability],
-    ) -> ProviderProfile:
-        return _merged_provider_profile(
-            name=name,
-            legacy_provider=legacy_provider,
-            wrappers=wrappers,
-        )
-
-    def _merged_health(
-        self,
-        name: str,
-        *,
-        legacy_provider: BaseProvider | None,
-        wrappers: Sequence[_ObservableCapability],
-    ) -> ProviderHealth:
-        return _merged_provider_health(
-            name,
-            _provider_health_components(
-                legacy_provider=legacy_provider,
-                wrappers=wrappers,
-            ),
-        )
-
-    def _merged_lifecycle_status(
-        self,
-        name: str,
-        *,
-        legacy_provider: BaseProvider | None,
-        wrappers: Sequence[_ObservableCapability],
-        run_warmup: bool = False,
-        run_teardown: bool = False,
-    ) -> ProviderLifecycleStatus:
-        return _merged_provider_lifecycle_status(
-            name,
-            _provider_lifecycle_components(
-                legacy_provider=legacy_provider,
-                wrappers=wrappers,
-                run_warmup=run_warmup,
-                run_teardown=run_teardown,
-            ),
+            names.update(legacy_catalog)
+        sorted_names = sorted(names)
+        return provider_views_for_names(
+            sorted_names,
+            registered_names=self._registered_provider_names(),
+            legacy_catalog=legacy_catalog,
+            wrappers_for_name={
+                name: self._capability_wrappers_for_name(name) for name in sorted_names
+            },
         )
 
     def _registered_or_known_provider(
@@ -461,23 +418,11 @@ class WorldForge:
 
     def provider_profile(self, name: str) -> ProviderProfile:
         provider_name = _require_non_empty_text(name, name="Provider name")
-        legacy_provider = self._registered_or_known_provider(provider_name, include_known=True)
-        wrappers = self._capability_wrappers_for_name(provider_name)
-        return self._merged_profile(
-            provider_name,
-            legacy_provider=legacy_provider,
-            wrappers=wrappers,
-        )
+        return self._provider_view(provider_name, include_known=True).profile()
 
     def provider_health(self, name: str) -> ProviderHealth:
         provider_name = _require_non_empty_text(name, name="Provider name")
-        legacy_provider = self._registered_or_known_provider(provider_name, include_known=True)
-        wrappers = self._capability_wrappers_for_name(provider_name)
-        return self._merged_health(
-            provider_name,
-            legacy_provider=legacy_provider,
-            wrappers=wrappers,
-        )
+        return self._provider_view(provider_name, include_known=True).health()
 
     def provider_lifecycle_status(
         self,
@@ -487,12 +432,7 @@ class WorldForge:
         run_teardown: bool = False,
     ) -> ProviderLifecycleStatus:
         provider_name = _require_non_empty_text(name, name="Provider name")
-        legacy_provider = self._registered_or_known_provider(provider_name, include_known=True)
-        wrappers = self._capability_wrappers_for_name(provider_name)
-        return self._merged_lifecycle_status(
-            provider_name,
-            legacy_provider=legacy_provider,
-            wrappers=wrappers,
+        return self._provider_view(provider_name, include_known=True).lifecycle_status(
             run_warmup=run_warmup,
             run_teardown=run_teardown,
         )
@@ -501,12 +441,7 @@ class WorldForge:
         """Return value-free configuration status for a registered or known provider."""
 
         provider_name = _require_non_empty_text(name, name="Provider name")
-        legacy_provider = self._registered_or_known_provider(provider_name, include_known=True)
-        if legacy_provider is not None:
-            return legacy_provider.config_summary()
-        if self._capability_wrappers_for_name(provider_name):
-            return ProviderConfigSummary(provider=provider_name, configured=True, fields=())
-        raise ProviderError(f"Provider '{provider_name}' is unknown.")
+        return self._provider_view(provider_name, include_known=True).config_summary()
 
     def provider_healths(self, capability: str | None = None) -> list[ProviderHealth]:
         names = self.providers()

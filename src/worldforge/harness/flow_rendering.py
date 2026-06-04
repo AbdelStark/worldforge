@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from worldforge.harness.flow_artifacts import (
@@ -15,42 +14,32 @@ from worldforge.harness.flow_events import provider_events_for as provider_event
 from worldforge.harness.models import HarnessMetric, HarnessStep
 from worldforge.models import JSONDict
 
-StepBuilder = Callable[[JSONDict], tuple[HarnessStep, ...]]
-MetricBuilder = Callable[[JSONDict], tuple[HarnessMetric, ...]]
-TranscriptBuilder = Callable[[JSONDict], tuple[str, ...]]
-
 
 def steps_for(flow_id: str, summary: JSONDict) -> tuple[HarnessStep, ...]:
     validation_errors = _validation_errors(summary)
     if validation_errors:
         return _failure_steps(summary, validation_errors)
-    return _build_known_flow(flow_id, summary, _STEP_BUILDERS)
+    return _flow_spec(flow_id).steps(summary)
 
 
 def metrics_for(flow_id: str, summary: JSONDict) -> tuple[HarnessMetric, ...]:
     validation_errors = _validation_errors(summary)
     if validation_errors:
         return _failure_metrics(summary, validation_errors)
-    return _build_known_flow(flow_id, summary, _METRIC_BUILDERS)
+    return _flow_spec(flow_id).metrics(summary)
 
 
 def transcript_for(flow_id: str, summary: JSONDict) -> tuple[str, ...]:
     validation_errors = _validation_errors(summary)
     if validation_errors:
         return _failure_transcript(flow_id, summary, validation_errors)
-    return _build_known_flow(flow_id, summary, _TRANSCRIPT_BUILDERS)
+    return _flow_spec(flow_id).transcript(summary)
 
 
-def _build_known_flow[BuildResult](
-    flow_id: str,
-    summary: JSONDict,
-    builders: Mapping[str, Callable[[JSONDict], BuildResult]],
-) -> BuildResult:
-    try:
-        builder = builders[flow_id]
-    except KeyError as exc:
-        raise ValueError(f"unknown harness flow '{flow_id}'") from exc
-    return builder(summary)
+def _flow_spec(flow_id: str):
+    from worldforge.harness.flow_specs import flow_spec
+
+    return flow_spec(flow_id)
 
 
 def _validation_errors(summary: JSONDict) -> tuple[object, ...]:
@@ -407,17 +396,6 @@ def _workbench_steps(summary: JSONDict) -> tuple[HarnessStep, ...]:
     )
 
 
-_STEP_BUILDERS: dict[str, StepBuilder] = {
-    "leworldmodel": _leworldmodel_steps,
-    "lerobot": _lerobot_steps,
-    "cosmos-policy": _cosmos_policy_steps,
-    "gr00t-replay": _gr00t_replay_steps,
-    "robotics-compare": _robotics_compare_steps,
-    "diagnostics": _diagnostics_steps,
-    "workbench": _workbench_steps,
-}
-
-
 def _failure_metrics(
     summary: JSONDict,
     validation_errors: tuple[object, ...],
@@ -605,17 +583,6 @@ def _lerobot_metrics(summary: JSONDict) -> tuple[HarnessMetric, ...]:
     return _planning_metrics("policy+score", summary)
 
 
-_METRIC_BUILDERS: dict[str, MetricBuilder] = {
-    "leworldmodel": _leworldmodel_metrics,
-    "lerobot": _lerobot_metrics,
-    "cosmos-policy": _cosmos_policy_metrics,
-    "gr00t-replay": _gr00t_replay_metrics,
-    "robotics-compare": _robotics_compare_metrics,
-    "diagnostics": _diagnostics_metrics,
-    "workbench": _workbench_metrics,
-}
-
-
 def _failure_transcript(
     flow_id: str,
     summary: JSONDict,
@@ -764,17 +731,6 @@ def _lerobot_transcript(summary: JSONDict) -> tuple[str, ...]:
         f"policy_select_calls: {summary['policy_select_calls']}",
         f"policy_reset_calls: {summary['policy_reset_calls']}",
     )
-
-
-_TRANSCRIPT_BUILDERS: dict[str, TranscriptBuilder] = {
-    "leworldmodel": _leworldmodel_transcript,
-    "lerobot": _lerobot_transcript,
-    "cosmos-policy": _cosmos_policy_transcript,
-    "gr00t-replay": _gr00t_replay_transcript,
-    "robotics-compare": _robotics_compare_transcript,
-    "diagnostics": _diagnostics_transcript,
-    "workbench": _workbench_transcript,
-}
 
 
 def _goal_result(summary: JSONDict) -> str:

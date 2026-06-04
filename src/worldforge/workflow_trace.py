@@ -222,6 +222,31 @@ class WorkflowTrace:
         object.__setattr__(self, "metadata", _sanitize_trace_metadata(metadata))
         dump_json(self.to_dict())
 
+    @classmethod
+    def from_value(cls, value: WorkflowTrace | Mapping[str, Any]) -> WorkflowTrace:
+        """Reconstruct a workflow trace from an existing instance or JSON object."""
+
+        if isinstance(value, WorkflowTrace):
+            return value
+        if not isinstance(value, Mapping):
+            raise WorldForgeError("Workflow trace must be a JSON object.")
+        return cls.from_dict(value)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> WorkflowTrace:
+        """Reconstruct a workflow trace from its serialized dictionary shape."""
+
+        if not isinstance(payload, Mapping):
+            raise WorldForgeError("Workflow trace payload must be a JSON object.")
+        return cls(
+            workflow_id=payload.get("workflow_id", ""),
+            name=payload.get("name", ""),
+            status=payload.get("status"),
+            schema_version=payload.get("schema_version", WORKFLOW_TRACE_SCHEMA_VERSION),
+            steps=payload.get("steps") or (),
+            metadata=payload.get("metadata") or {},
+        )
+
     def to_dict(self) -> JSONDict:
         status_counts = {
             status: sum(1 for step in self.steps if step.status == status)

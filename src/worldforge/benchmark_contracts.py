@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from worldforge.capabilities import _BENCHMARKABLE_CAPABILITY_NAMES
 from worldforge.models import (
     JSONDict,
     WorldForgeError,
@@ -13,12 +14,7 @@ from worldforge.models import (
     require_positive_int,
 )
 
-BENCHMARKABLE_OPERATIONS = (
-    "predict",
-    "embed",
-    "score",
-    "policy",
-)
+BENCHMARKABLE_OPERATIONS = _BENCHMARKABLE_CAPABILITY_NAMES
 
 BENCHMARK_CLAIM_BOUNDARY = (
     "Benchmark reports measure adapter-path latency, retries, throughput, and errors for the "

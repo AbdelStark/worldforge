@@ -18,11 +18,8 @@ from collections.abc import Callable
 from time import perf_counter
 from typing import Any
 
-from worldforge.capabilities import CAPABILITY_FIELD_TO_NAME
+from worldforge.capabilities import _CAPABILITY_METHOD_MAP, _capability_descriptor
 from worldforge.models import (
-    ActionPolicyResult,
-    ActionScoreResult,
-    EmbeddingResult,
     JSONDict,
     ProviderEvent,
     ProviderHealth,
@@ -33,33 +30,15 @@ from worldforge.models import (
     WorldForgeError,
 )
 from worldforge.providers.base import (
-    PredictionPayload,
     ProviderError,
     ProviderProfileSpec,
     _provider_lifecycle_result,
     build_provider_lifecycle_status,
 )
 
+CAPABILITY_METHOD_MAP = _CAPABILITY_METHOD_MAP
+
 ProviderEventHandler = Callable[[ProviderEvent], None]
-
-
-# Map from RunnableModel field names to (capability_method, operation_name). The operation name is
-# what shows up in :class:`ProviderEvent.operation` so dashboards/log filters keep their existing
-# vocabulary.
-CAPABILITY_METHOD_MAP: dict[str, tuple[str, str]] = {
-    "policy": ("select_actions", "policy"),
-    "cost": ("score_actions", "score"),
-    "predictor": ("predict", "predict"),
-    "embedder": ("embed", "embed"),
-    "planner": ("plan", "plan"),
-}
-_CAPABILITY_RESULT_TYPES: dict[str, type] = {
-    "policy": ActionPolicyResult,
-    "cost": ActionScoreResult,
-    "predictor": PredictionPayload,
-    "embedder": EmbeddingResult,
-    "planner": ActionPolicyResult,
-}
 
 
 class _ObservableCapability:
@@ -82,7 +61,9 @@ class _ObservableCapability:
                 f"Unknown capability kind '{kind}'. "
                 f"Known kinds: {', '.join(sorted(CAPABILITY_METHOD_MAP))}."
             )
-        method_name, operation = CAPABILITY_METHOD_MAP[kind]
+        descriptor = _capability_descriptor(kind)
+        method_name = descriptor.method_name
+        operation = descriptor.operation
         if not callable(getattr(impl, method_name, None)):
             raise WorldForgeError(
                 f"Capability impl '{type(impl).__name__}' is missing required method "
@@ -126,7 +107,7 @@ class _ObservableCapability:
         # render correctly during migration.
         from worldforge.models import CAPABILITY_NAMES
 
-        capability_name = CAPABILITY_FIELD_TO_NAME[self._kind]
+        capability_name = _capability_descriptor(self._kind).name
         return {flag: (flag == capability_name) for flag in CAPABILITY_NAMES}
 
     def required_env_vars(self) -> list[str]:
@@ -293,7 +274,7 @@ class _ObservableCapability:
         self._event_handler(event)
 
     def _validate_result_contract(self, result: object) -> None:
-        expected_type = _CAPABILITY_RESULT_TYPES[self._kind]
+        expected_type = _capability_descriptor(self._kind).result_type
         if not isinstance(result, expected_type):
             raise ProviderError(
                 f"Provider '{self.name}' {self._operation} returned "

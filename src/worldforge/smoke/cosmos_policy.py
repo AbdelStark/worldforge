@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib
-import importlib.util
 import json
 import math
 import os
@@ -18,6 +16,30 @@ from worldforge.models import JSONDict, ProviderHealth, _redact_observable_text
 from worldforge.providers import CosmosPolicyProvider
 from worldforge.providers.cosmos_policy import DEFAULT_COSMOS_POLICY_TIMEOUT_SECONDS
 from worldforge.smoke.run_manifest import build_run_manifest, write_run_manifest
+from worldforge.smoke.trusted_inputs import (
+    callable_attribute as _trusted_callable_attribute,
+)
+from worldforge.smoke.trusted_inputs import (
+    callable_spec_parts as _trusted_callable_spec_parts,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_callable as _trusted_load_callable,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_callable_module as _trusted_load_callable_module,
+)
+from worldforge.smoke.trusted_inputs import (
+    load_json_object as _trusted_load_json_object,
+)
+from worldforge.smoke.trusted_inputs import (
+    looks_like_module_path as _trusted_looks_like_module_path,
+)
+from worldforge.smoke.trusted_inputs import (
+    module_from_path as _trusted_module_from_path,
+)
+from worldforge.smoke.trusted_inputs import (
+    require_code_allowed as _trusted_require_code_allowed,
+)
 
 _COSMOS_POLICY_MANIFEST_ENV_VARS = (
     "COSMOS_POLICY_BASE_URL",
@@ -38,53 +60,42 @@ class _SmokeRunState:
 
 
 def _load_json_file(path: Path, *, name: str) -> JSONDict:
-    try:
-        payload = json.loads(path.expanduser().read_text())
-    except FileNotFoundError as exc:
-        raise SystemExit(f"{name} file does not exist: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"{name} file is not valid JSON: {path}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise SystemExit(f"{name} must decode to a JSON object.")
-    return payload
+    return _trusted_load_json_object(path, name=name)
 
 
 def _module_from_path(path: Path, *, allow_code: bool) -> ModuleType:
-    if not allow_code:
-        raise SystemExit(
+    return _trusted_module_from_path(
+        path,
+        name="translator",
+        allow_code=allow_code,
+        flag="--allow-translator-code",
+        trusted_label="translator code",
+        opt_in_message=(
             "Loading a translator from a Python file imports and executes local code; "
             "pass --allow-translator-code only for trusted translator code."
-        )
-    resolved = path.expanduser().resolve()
-    if not resolved.exists():
-        raise SystemExit(f"Python module file does not exist: {path}")
-    module_spec = importlib.util.spec_from_file_location(resolved.stem, resolved)
-    if module_spec is None or module_spec.loader is None:
-        raise SystemExit(f"Could not load Python module from: {path}")
-    module = importlib.util.module_from_spec(module_spec)
-    module_spec.loader.exec_module(module)
-    return module
+        ),
+    )
 
 
 def _require_local_code_allowed(*, name: str, allow_code: bool) -> None:
-    if not allow_code:
-        raise SystemExit(
+    _trusted_require_code_allowed(
+        name=name,
+        allow_code=allow_code,
+        flag="--allow-translator-code",
+        trusted_label="translator code",
+        message=(
             f"Loading {name} imports and executes local Python; pass --allow-translator-code "
             "only for trusted translator code."
-        )
+        ),
+    )
 
 
 def _split_callable_spec(spec: str, *, name: str) -> tuple[str, str]:
-    if ":" not in spec:
-        raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-    module_ref, function_name = spec.rsplit(":", 1)
-    if not module_ref.strip() or not function_name.strip():
-        raise SystemExit(f"{name} must be formatted as module_or_file:function.")
-    return module_ref, function_name
+    return _trusted_callable_spec_parts(spec, name=name)
 
 
 def _looks_like_module_path(module_ref: str) -> bool:
-    return Path(module_ref).exists() or module_ref.endswith(".py") or "/" in module_ref
+    return _trusted_looks_like_module_path(module_ref)
 
 
 def _load_callable_module(
@@ -93,29 +104,28 @@ def _load_callable_module(
     name: str,
     allow_code: bool,
 ) -> ModuleType:
-    if _looks_like_module_path(module_ref):
-        return _module_from_path(Path(module_ref), allow_code=allow_code)
-    try:
-        return importlib.import_module(module_ref)
-    except ImportError as exc:
-        raise SystemExit(f"Could not import {name} module '{module_ref}': {exc}") from exc
+    return _trusted_load_callable_module(
+        module_ref,
+        name=name,
+        allow_code=allow_code,
+        flag="--allow-translator-code",
+        trusted_label="translator code",
+    )
 
 
 def _callable_attribute(module: ModuleType, function_name: str, *, name: str) -> Callable[..., Any]:
-    try:
-        loaded = getattr(module, function_name)
-    except AttributeError as exc:
-        raise SystemExit(f"{name} function '{function_name}' was not found.") from exc
-    if not callable(loaded):
-        raise SystemExit(f"{name} target '{function_name}' is not callable.")
-    return loaded
+    return _trusted_callable_attribute(module, function_name, name=name)
 
 
 def _load_callable(spec: str, *, name: str, allow_code: bool = False) -> Callable[..., Any]:
-    _require_local_code_allowed(name=name, allow_code=allow_code)
-    module_ref, function_name = _split_callable_spec(spec, name=name)
-    module = _load_callable_module(module_ref, name=name, allow_code=allow_code)
-    return _callable_attribute(module, function_name, name=name)
+    return _trusted_load_callable(
+        spec,
+        name=name,
+        allow_code=allow_code,
+        flag="--allow-translator-code",
+        trusted_label="translator code",
+        require_code=True,
+    )
 
 
 def _load_base_policy_info(args: argparse.Namespace) -> JSONDict:
