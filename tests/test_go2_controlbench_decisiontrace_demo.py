@@ -165,6 +165,33 @@ def test_go2_controlbench_fixture_rejects_selected_action_drift(tmp_path: Path) 
         load_go2_controlbench_trace(malformed)
 
 
+def test_go2_controlbench_fixture_rejects_incomplete_counterfactual_outcome(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    del trace["counterfactuals"][0]["measured_outcome"]["n"]
+    malformed = tmp_path / "bad-counterfactual-outcome.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match=r"counterfactuals\[0\].measured_outcome.n"):
+        load_go2_controlbench_trace(malformed)
+
+
+def test_go2_controlbench_fixture_rejects_counterfactual_action_drift(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    trace["counterfactuals"][0], trace["counterfactuals"][1] = (
+        trace["counterfactuals"][1],
+        trace["counterfactuals"][0],
+    )
+    malformed = tmp_path / "bad-counterfactual-order.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match="counterfactual action must match candidate action"):
+        load_go2_controlbench_trace(malformed)
+
+
 def test_go2_controlbench_examples_index_entry(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,

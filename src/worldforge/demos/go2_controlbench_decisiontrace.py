@@ -334,6 +334,14 @@ def _validate_trace(payload: object) -> None:
         raise WorldForgeError(
             "Go2 ControlBench trace candidates, scores, and counterfactuals must align."
         )
+    for index, (candidate, counterfactual) in enumerate(
+        zip(candidates, counterfactuals, strict=True)
+    ):
+        if counterfactual["action"] != candidate:
+            raise WorldForgeError(
+                "Go2 ControlBench counterfactual action must match candidate action "
+                f"at index {index}."
+            )
 
     selected = _require_mapping(trace["selected_action"], "selected_action")
     selected_index = _index(selected.get("candidate_index"), name="selected_action.candidate_index")
@@ -386,15 +394,34 @@ def _counterfactual_records(value: object) -> list[JSONDict]:
             ),
             f"counterfactuals[{index}]",
         )
-        _validate_action(record["action"], name=f"counterfactuals[{index}].action")
+        action = _validate_action(record["action"], name=f"counterfactuals[{index}].action")
         _number(record["predicted_error"], name=f"counterfactuals[{index}].predicted_error")
         _number(record["measured_error"], name=f"counterfactuals[{index}].measured_error")
+        predicted = _require_mapping(
+            record["predicted_outcome"],
+            f"counterfactuals[{index}].predicted_outcome",
+        )
+        _number(
+            predicted.get("signed_planar_m"),
+            name=f"counterfactuals[{index}].predicted_outcome.signed_planar_m",
+        )
         measured = _require_mapping(
             record["measured_outcome"],
-            f"counterfactuals[{index}].measured",
+            f"counterfactuals[{index}].measured_outcome",
         )
-        _number(measured.get("signed_planar_m"), name=f"counterfactuals[{index}].signed_planar_m")
-        records.append(dict(record))
+        _number(
+            measured.get("signed_planar_m"),
+            name=f"counterfactuals[{index}].measured_outcome.signed_planar_m",
+        )
+        _index(measured.get("n"), name=f"counterfactuals[{index}].measured_outcome.n")
+        records.append(
+            {
+                **dict(record),
+                "action": action,
+                "predicted_outcome": dict(predicted),
+                "measured_outcome": dict(measured),
+            }
+        )
     return records
 
 
