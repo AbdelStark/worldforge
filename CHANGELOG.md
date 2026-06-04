@@ -79,6 +79,12 @@ releases may still include breaking changes when the public API needs to tighten
   with candidate scores, selected action, measured replay outcome, and counterfactual rejected
   actions. The demo is shaped after public `lerobot/svla_so101_pickplace` metadata but does not
   install LeRobot, torch, DimOS, or connect robot hardware.
+- Added `examples/go2-controlbench-decisiontrace/run.py`, a checkout-safe Go2 Air ControlBench
+  DecisionTrace replay that consumes a compact public
+  `espejelomar/go2-air-controlbench-v1` positive-regret trace, reranks candidate Unitree
+  sport-mode commands through WorldForge's `score` capability, and reports measured native-odom
+  regret against the best counterfactual command without importing DimOS, Unitree SDKs, Hugging
+  Face datasets, or connecting hardware.
 - Added a first-slice latent-MPC controller for score-provider planning. The new
   `worldforge.control` module exposes `LatentMPCController`, `PlannerConfig`,
   `ScoreCandidateEncoder`, `ScoreCandidateBatch`, and `ActionPlanCandidateEncoder`, and

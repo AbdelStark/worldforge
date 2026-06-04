@@ -1,0 +1,722 @@
+{
+  "schema_version": "decision_trace.v1-draft",
+  "trace_id": "combined_inverse_translation_target_0_010049",
+  "observation": {
+    "kind": "go2_air_controlbench_candidate_set",
+    "dataset": "combined",
+    "task": "translation_signed_planar",
+    "candidate_count": 14
+  },
+  "goal": {
+    "kind": "target_signed_planar_displacement",
+    "target": 0.010049,
+    "unit": "m"
+  },
+  "candidate_actions": [
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": -0.05,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": -0.08,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": -0.1,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": -0.12,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": -0.15,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": -0.25,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": -0.4,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.75
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": 0.05,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": 0.08,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": 0.1,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": 0.12,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": 0.15,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": 0.25,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.6
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    },
+    {
+      "type": "unitree_go2_sport_move",
+      "params": {
+        "x": 0.4,
+        "y": 0.0,
+        "z": 0.0,
+        "duration_s": 0.75
+      },
+      "units": {
+        "x": "m/s",
+        "y": "m/s",
+        "z": "rad/s",
+        "duration_s": "s"
+      }
+    }
+  ],
+  "scores": [
+    {
+      "candidate_index": 0,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.011451429386705595,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 1,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.00521803600127763,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 2,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.007248750769578318,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 3,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.019715537540434265,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 4,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.038415717696718185,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 5,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.10074965155099794,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 6,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.2565844861866973,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 7,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.011451429386705595,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 8,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.01768482277213356,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 9,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.03015160954298951,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 10,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.04261839631384545,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 11,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.06131857647012938,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 12,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.12365251032440913,
+      "lower_is_better": true
+    },
+    {
+      "candidate_index": 13,
+      "score_kind": "deadband_affine_predicted_absolute_error",
+      "value": 0.2794873449601086,
+      "lower_is_better": true
+    }
+  ],
+  "selected_action": {
+    "candidate_index": 1,
+    "name": "backward_0.08",
+    "selection_rule": "minimize predicted absolute error to target"
+  },
+  "counterfactuals": [
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": -0.05,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.021500429386705596
+      },
+      "measured_outcome": {
+        "signed_planar_m": -0.003025415739252825,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.011451429386705595,
+      "measured_error": 0.013074415739252825
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": -0.08,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.01526703600127763
+      },
+      "measured_outcome": {
+        "signed_planar_m": -0.005524993526996725,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.00521803600127763,
+      "measured_error": 0.015573993526996725
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": -0.1,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.002800249230421683
+      },
+      "measured_outcome": {
+        "signed_planar_m": -0.0067407874742332246,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.007248750769578318,
+      "measured_error": 0.016789787474233226
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": -0.12,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": -0.009666537540434263
+      },
+      "measured_outcome": {
+        "signed_planar_m": -0.0137566897217323,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.019715537540434265,
+      "measured_error": 0.0238056897217323
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": -0.15,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": -0.028366717696718186
+      },
+      "measured_outcome": {
+        "signed_planar_m": -0.029186572638938375,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.038415717696718185,
+      "measured_error": 0.03923557263893838
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": -0.25,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": -0.09070065155099793
+      },
+      "measured_outcome": {
+        "signed_planar_m": -0.1017664676203751,
+        "n": 17,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.10074965155099794,
+      "measured_error": 0.1118154676203751
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": -0.4,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.75
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": -0.24653548618669735
+      },
+      "measured_outcome": {
+        "signed_planar_m": -0.2254609788432147,
+        "n": 17,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.2565844861866973,
+      "measured_error": 0.2355099788432147
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": 0.05,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.021500429386705596
+      },
+      "measured_outcome": {
+        "signed_planar_m": 0.010804728715941325,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.011451429386705595,
+      "measured_error": 0.0007557287159413242
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": 0.08,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.027733822772133564
+      },
+      "measured_outcome": {
+        "signed_planar_m": 0.010049413320400375,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.01768482277213356,
+      "measured_error": 4.133204003740898e-07
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": 0.1,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.04020060954298951
+      },
+      "measured_outcome": {
+        "signed_planar_m": 0.010772447510347975,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.03015160954298951,
+      "measured_error": 0.0007234475103479743
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": 0.12,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.052667396313845455
+      },
+      "measured_outcome": {
+        "signed_planar_m": 0.01487927051391585,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.04261839631384545,
+      "measured_error": 0.00483027051391585
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": 0.15,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.07136757647012938
+      },
+      "measured_outcome": {
+        "signed_planar_m": 0.031110738649204075,
+        "n": 4,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.06131857647012938,
+      "measured_error": 0.021061738649204076
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": 0.25,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.6
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.13370151032440913
+      },
+      "measured_outcome": {
+        "signed_planar_m": 0.1622878023528712,
+        "n": 17,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.12365251032440913,
+      "measured_error": 0.1522388023528712
+    },
+    {
+      "action": {
+        "type": "unitree_go2_sport_move",
+        "params": {
+          "x": 0.4,
+          "y": 0.0,
+          "z": 0.0,
+          "duration_s": 0.75
+        },
+        "units": {
+          "x": "m/s",
+          "y": "m/s",
+          "z": "rad/s",
+          "duration_s": "s"
+        }
+      },
+      "predicted_outcome": {
+        "signed_planar_m": 0.28953634496010855
+      },
+      "measured_outcome": {
+        "signed_planar_m": 0.296970103835988,
+        "n": 17,
+        "outcome_kind": "real_measured_native_odom_mean"
+      },
+      "predicted_error": 0.2794873449601086,
+      "measured_error": 0.286921103835988
+    }
+  ],
+  "predicted_outcome": {
+    "signed_planar_m": 0.01526703600127763
+  },
+  "measured_or_analytic_outcome": {
+    "outcome_kind": "real_measured_native_odom_mean",
+    "signed_planar_m": -0.005524993526996725,
+    "best_measured_candidate": "forward_0.08"
+  },
+  "regret": {
+    "unit": "m",
+    "selected_true_error": 0.015573993526996725,
+    "best_true_error": 4.133204003740898e-07,
+    "regret": 0.015573580206596351,
+    "hit_best": false
+  },
+  "reproducibility": {
+    "source_table": "tables/all_trials_plus_release05_normalized.csv",
+    "baseline_report": "tables/combined_baseline_model_report.json",
+    "script": "scripts/scripts_inverse_command_benchmark.py"
+  },
+  "claim_boundaries": [
+    "In-sample candidate-selection diagnostic, not held-out generalization.",
+    "Measured outcomes are native Go2 odometry means, not mocap ground truth."
+  ]
+}
