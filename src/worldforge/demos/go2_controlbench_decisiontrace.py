@@ -23,7 +23,12 @@ from typing import Any
 
 from worldforge import ActionScoreResult, WorldForge
 from worldforge.artifact_io import write_json_artifact
-from worldforge.models import JSONDict, WorldForgeError, require_finite_number
+from worldforge.models import (
+    JSONDict,
+    WorldForgeError,
+    require_finite_number,
+    require_positive_int,
+)
 from worldforge.providers.base import ProviderProfileSpec
 
 _REPO_FIXTURE_RELATIVE_PATH = (
@@ -36,6 +41,7 @@ DEFAULT_TRACE_PATH = (
 )
 
 GO2_CONTROLBENCH_SCORE_PROVIDER = "go2-controlbench-deadband-affine-score"
+GO2_CONTROLBENCH_OUTCOME_KIND = "real_measured_native_odom_mean"
 GO2_CONTROLBENCH_DATASET_REFERENCE: JSONDict = {
     "repo_id": "espejelomar/go2-air-controlbench-v1",
     "config": "inverse_command_benchmark",
@@ -334,6 +340,14 @@ def _validate_trace(payload: object) -> None:
         raise WorldForgeError(
             "Go2 ControlBench trace candidates, scores, and counterfactuals must align."
         )
+    for index, (candidate, counterfactual) in enumerate(
+        zip(candidates, counterfactuals, strict=True)
+    ):
+        if not _actions_equivalent(counterfactual["action"], candidate):
+            raise WorldForgeError(
+                "Go2 ControlBench counterfactual action must match candidate action "
+                f"at index {index}."
+            )
 
     selected = _require_mapping(trace["selected_action"], "selected_action")
     selected_index = _index(selected.get("candidate_index"), name="selected_action.candidate_index")
@@ -354,9 +368,9 @@ def _validate_trace(payload: object) -> None:
         trace["measured_or_analytic_outcome"],
         "measured_or_analytic_outcome",
     )
-    if measured.get("outcome_kind") != "real_measured_native_odom_mean":
+    if measured.get("outcome_kind") != GO2_CONTROLBENCH_OUTCOME_KIND:
         raise WorldForgeError(
-            "Go2 ControlBench measured outcome must be real_measured_native_odom_mean."
+            f"Go2 ControlBench measured outcome must be {GO2_CONTROLBENCH_OUTCOME_KIND}."
         )
     _number(measured.get("signed_planar_m"), name="measured_or_analytic_outcome.signed_planar_m")
 
@@ -386,15 +400,42 @@ def _counterfactual_records(value: object) -> list[JSONDict]:
             ),
             f"counterfactuals[{index}]",
         )
-        _validate_action(record["action"], name=f"counterfactuals[{index}].action")
+        action = _validate_action(record["action"], name=f"counterfactuals[{index}].action")
         _number(record["predicted_error"], name=f"counterfactuals[{index}].predicted_error")
         _number(record["measured_error"], name=f"counterfactuals[{index}].measured_error")
+        predicted = _require_mapping(
+            record["predicted_outcome"],
+            f"counterfactuals[{index}].predicted_outcome",
+        )
+        _number(
+            predicted.get("signed_planar_m"),
+            name=f"counterfactuals[{index}].predicted_outcome.signed_planar_m",
+        )
         measured = _require_mapping(
             record["measured_outcome"],
-            f"counterfactuals[{index}].measured",
+            f"counterfactuals[{index}].measured_outcome",
         )
-        _number(measured.get("signed_planar_m"), name=f"counterfactuals[{index}].signed_planar_m")
-        records.append(dict(record))
+        _number(
+            measured.get("signed_planar_m"),
+            name=f"counterfactuals[{index}].measured_outcome.signed_planar_m",
+        )
+        _positive_int(
+            measured.get("n"),
+            name=f"counterfactuals[{index}].measured_outcome.n",
+        )
+        if measured.get("outcome_kind") != GO2_CONTROLBENCH_OUTCOME_KIND:
+            raise WorldForgeError(
+                "Go2 ControlBench counterfactual "
+                f"measured_outcome.outcome_kind must be {GO2_CONTROLBENCH_OUTCOME_KIND}."
+            )
+        records.append(
+            {
+                **dict(record),
+                "action": action,
+                "predicted_outcome": dict(predicted),
+                "measured_outcome": dict(measured),
+            }
+        )
     return records
 
 
@@ -450,6 +491,24 @@ def _validate_action(value: object, *, name: str) -> JSONDict:
     }
 
 
+def _actions_equivalent(left: JSONDict, right: JSONDict) -> bool:
+    if left["type"] != right["type"]:
+        return False
+    if left["units"] != right["units"]:
+        return False
+    left_params = _require_mapping(left["params"], "left_action.params")
+    right_params = _require_mapping(right["params"], "right_action.params")
+    for field_name in ("x", "y", "z", "duration_s"):
+        left_value = _number(left_params.get(field_name), name=f"left_action.params.{field_name}")
+        right_value = _number(
+            right_params.get(field_name),
+            name=f"right_action.params.{field_name}",
+        )
+        if not math.isclose(left_value, right_value, rel_tol=1e-9, abs_tol=1e-9):
+            return False
+    return True
+
+
 def _command_name(action: JSONDict) -> str:
     params = _require_mapping(action["params"], "action.params")
     x = float(params["x"])
@@ -491,6 +550,10 @@ def _index(value: object, *, name: str) -> int:
 
 def _number(value: object, *, name: str) -> float:
     return require_finite_number(value, name=f"Go2 ControlBench {name}")
+
+
+def _positive_int(value: object, *, name: str) -> int:
+    return require_positive_int(value, name=f"Go2 ControlBench {name}")
 
 
 def _print_summary(summary: JSONDict) -> None:

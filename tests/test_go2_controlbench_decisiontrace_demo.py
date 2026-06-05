@@ -81,6 +81,41 @@ def test_go2_controlbench_demo_reranks_and_reports_measured_regret(tmp_path: Pat
     json.dumps(summary)
 
 
+def test_go2_controlbench_demo_uses_deterministic_tie_break(tmp_path: Path) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    tied_score = trace["scores"][1]["value"]
+    trace["scores"][0]["value"] = tied_score
+    trace["selected_action"] = {
+        "candidate_index": 0,
+        "name": "backward_0.05",
+        "selection_rule": "minimize predicted absolute error to target",
+    }
+
+    selected_error = trace["counterfactuals"][0]["measured_error"]
+    best_error = min(
+        counterfactual["measured_error"] for counterfactual in trace["counterfactuals"]
+    )
+    trace["regret"] = {
+        "unit": "m",
+        "selected_true_error": selected_error,
+        "best_true_error": best_error,
+        "regret": selected_error - best_error,
+        "hit_best": False,
+    }
+    trace_path = tmp_path / "equal-score-trace.json"
+    trace_path.write_text(json.dumps(trace), encoding="utf-8")
+
+    # A DEFAULT_TRACE_PATH mutation exercised through run_go2_controlbench_decisiontrace
+    # should keep GO2_CONTROLBENCH_SCORE_PROVIDER ties stable by candidate order.
+    result = run_go2_controlbench_decisiontrace(trace_path, tmp_path / "out")
+    summary = result.summary
+
+    assert summary["score_provider"] == GO2_CONTROLBENCH_SCORE_PROVIDER
+    assert summary["score_result"]["best_index"] == 0
+    assert summary["selected"]["name"] == "backward_0.05"
+    assert [row["candidate_index"] for row in summary["ranked_candidates"][:2]] == [0, 1]
+
+
 def test_go2_controlbench_report_lists_selected_and_counterfactual_best(tmp_path: Path) -> None:
     result = run_go2_controlbench_decisiontrace(DEFAULT_TRACE_PATH, tmp_path)
     report = render_go2_controlbench_report(result.summary)
@@ -127,6 +162,85 @@ def test_go2_controlbench_fixture_rejects_selected_action_drift(tmp_path: Path) 
     malformed.write_text(json.dumps(trace), encoding="utf-8")
 
     with pytest.raises(WorldForgeError, match=r"selected_action\.name does not match"):
+        load_go2_controlbench_trace(malformed)
+
+
+def test_go2_controlbench_fixture_rejects_incomplete_counterfactual_outcome(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    del trace["counterfactuals"][0]["measured_outcome"]["n"]
+    malformed = tmp_path / "bad-counterfactual-outcome.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match=r"counterfactuals\[0\].measured_outcome.n"):
+        load_go2_controlbench_trace(malformed)
+
+
+def test_go2_controlbench_fixture_rejects_incomplete_predicted_outcome(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    del trace["counterfactuals"][0]["predicted_outcome"]["signed_planar_m"]
+    malformed = tmp_path / "bad-counterfactual-predicted-outcome.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(
+        WorldForgeError,
+        match=r"counterfactuals\[0\]\.predicted_outcome\.signed_planar_m",
+    ):
+        load_go2_controlbench_trace(malformed)
+
+
+def test_go2_controlbench_fixture_rejects_zero_sample_counterfactual_outcome(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    trace["counterfactuals"][0]["measured_outcome"]["n"] = 0
+    malformed = tmp_path / "bad-counterfactual-zero-samples.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match=r"counterfactuals\[0\]\.measured_outcome\.n"):
+        load_go2_controlbench_trace(malformed)
+
+
+def test_go2_controlbench_fixture_rejects_counterfactual_outcome_kind_drift(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    trace["counterfactuals"][0]["measured_outcome"]["outcome_kind"] = "analytic"
+    malformed = tmp_path / "bad-counterfactual-outcome-kind.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match=r"measured_outcome\.outcome_kind"):
+        load_go2_controlbench_trace(malformed)
+
+
+def test_go2_controlbench_fixture_accepts_counterfactual_action_float_drift(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    trace["counterfactuals"][0]["action"]["params"]["x"] += 1e-12
+    drifted = tmp_path / "counterfactual-action-float-drift.json"
+    drifted.write_text(json.dumps(trace), encoding="utf-8")
+
+    loaded = load_go2_controlbench_trace(drifted)
+
+    assert loaded["trace_id"] == trace["trace_id"]
+
+
+def test_go2_controlbench_fixture_rejects_counterfactual_action_drift(
+    tmp_path: Path,
+) -> None:
+    trace = load_go2_controlbench_trace(DEFAULT_TRACE_PATH)
+    trace["counterfactuals"][0], trace["counterfactuals"][1] = (
+        trace["counterfactuals"][1],
+        trace["counterfactuals"][0],
+    )
+    malformed = tmp_path / "bad-counterfactual-order.json"
+    malformed.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(WorldForgeError, match="counterfactual action must match candidate action"):
         load_go2_controlbench_trace(malformed)
 
 
