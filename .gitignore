@@ -47,5 +47,5 @@ site/
 .agents/harness/goals/
 
 # Personal skills and memory (installed via symlinks)
-.engram-personal/
-.workstation/skills/
+.engram-personal
+.workstation/skills/.personal
