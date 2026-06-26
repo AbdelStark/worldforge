@@ -1,4 +1,0 @@
-interface:
-  display_name: "Optional Runtime Smokes"
-  short_description: "Host-owned runtime smoke workflow"
-  default_prompt: "Use $optional-runtime-smokes to validate a WorldForge optional robotics or ML runtime boundary."

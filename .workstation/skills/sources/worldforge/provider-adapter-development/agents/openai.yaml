@@ -1,4 +1,0 @@
-interface:
-  display_name: "Provider Adapter Development"
-  short_description: "WorldForge provider adapter workflow"
-  default_prompt: "Use $provider-adapter-development to add or repair a truthful WorldForge provider adapter with tests and docs."

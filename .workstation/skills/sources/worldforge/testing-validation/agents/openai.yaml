@@ -1,4 +1,0 @@
-interface:
-  display_name: "Testing Validation"
-  short_description: "WorldForge validation gate selection"
-  default_prompt: "Use $testing-validation to choose and run the strongest relevant WorldForge validation gates."

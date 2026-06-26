@@ -1,4 +1,0 @@
-interface:
-  display_name: "Evaluation Benchmarking"
-  short_description: "WorldForge eval and benchmark workflow"
-  default_prompt: "Use $evaluation-benchmarking to change WorldForge evals or benchmarks with deterministic evidence."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Public Docs Release"
-  short_description: "Public docs and release workflow"
-  default_prompt: "Use $public-docs-release to synchronize WorldForge public docs, changelog, and release surfaces."
