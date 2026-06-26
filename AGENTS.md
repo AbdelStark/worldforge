@@ -260,6 +260,8 @@ uv run python scripts/generate_dependency_audit_evidence.py
   repository map, provider rules, and documentation routing.
 - `docs/src/task-starters.md`: contributor starter packs for provider, docs-only, demo,
   artifact/report, evaluation/benchmark, and CLI/operator work.
+- `.workstation/`: organized skill library for AI agent workflows with Unix-like structure,
+  symlinks, category references, and YAML tags. See `.workstation/skills/README.md` for the catalog.
 
 ## Agentic Context And Coordination
 
