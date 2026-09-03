@@ -26,7 +26,7 @@ with host-owned optional dependencies supplied for that one process:
 
 | Runtime package | Why it is loaded |
 | --- | --- |
-| `stable-worldmodel` from Git | Provides `stable_worldmodel.policy.AutoCostModel` and the PushT environment modules. |
+| `stable-worldmodel` from Git | Provides `stable_worldmodel.policy.AutoCostModel` and the PushT environment modules. Wrappers pin `ee0c5f4c2b`, the last revision that still exports that loader. |
 | `datasets>=2.21` | Avoids upstream dataset import incompatibilities in the LeWorldModel runtime. |
 | `huggingface_hub` | Downloads LeWorldModel `config.json` and `weights.pt` when building the object checkpoint. |
 | `hydra-core`, `omegaconf` | Instantiate the official LeWM config when building the object checkpoint. |

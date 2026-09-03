@@ -22,7 +22,7 @@ uv run --python 3.13 ... worldforge-robotics-showcase
 
 | 运行时包 | 加载原因 |
 | --- | --- |
-| Git 版 `stable-worldmodel` | 提供 `stable_worldmodel.policy.AutoCostModel` 以及 PushT 环境模块。 |
+| Git 版 `stable-worldmodel` | 提供 `stable_worldmodel.policy.AutoCostModel` 以及 PushT 环境模块。包装器钉住 `ee0c5f4c2b`，这是仍导出该加载器的最后一版。 |
 | `datasets>=2.21` | 避免 LeWorldModel 运行时中上游数据集导入的不兼容问题。 |
 | `huggingface_hub` | 在构建对象检查点时下载 LeWorldModel 的 `config.json` 和 `weights.pt`。 |
 | `hydra-core`, `omegaconf` | 在构建对象检查点时实例化官方 LeWM 配置。 |

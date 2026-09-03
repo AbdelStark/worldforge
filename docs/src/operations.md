@@ -508,7 +508,7 @@ readiness, and safety certification.
 
   ```bash
   uv run --python 3.13 \
-    --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" \
+    --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" \
     --with "datasets>=2.21" \
     --with huggingface_hub \
     --with hydra-core \

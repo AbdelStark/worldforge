@@ -554,7 +554,7 @@ scripts/lewm-real \
 
 ```bash
 uv run --python 3.13 \
-  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" \
+  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" \
   --with "datasets>=2.21" \
   --with "opencv-python" \
   --with "imageio" \
@@ -598,7 +598,7 @@ scripts/lewm-lerobot-real \
 
 ```bash
 uv run --python 3.13 \
-  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" \
+  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" \
   --with "datasets>=2.21" \
   --with "huggingface_hub" \
   --with "hydra-core" \
@@ -620,7 +620,7 @@ uv run --python 3.13 \
 
 ```bash
 uv run --python 3.13 \
-  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" \
+  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" \
   --with "datasets>=2.21" \
   --with "opencv-python" \
   --with "imageio" \

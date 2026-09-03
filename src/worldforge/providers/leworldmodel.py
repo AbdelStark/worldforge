@@ -66,7 +66,10 @@ def _missing_import_detail(module_name: str, exc: ImportError) -> str:
 def _stable_worldmodel_policy_error(stable_worldmodel: object) -> str | None:
     policy_module = getattr(stable_worldmodel, "policy", None)
     if policy_module is None or not hasattr(policy_module, "AutoCostModel"):
-        return "stable_worldmodel.policy.AutoCostModel is unavailable"
+        return (
+            "stable_worldmodel.policy.AutoCostModel is unavailable; "
+            "install the pinned stable-worldmodel revision from scripts/robotics-showcase"
+        )
     return None
 
 

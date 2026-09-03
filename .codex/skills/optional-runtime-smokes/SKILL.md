@@ -21,7 +21,7 @@ description: "Use for LeWorldModel, GR00T, LeRobot, PushT robotics showcase, rea
 | --- | --- |
 | LeWorldModel adapter/planner path in a clean checkout | `uv run worldforge-demo-leworldmodel` |
 | PushT robotics dependency/checkpoint status | `scripts/robotics-showcase --health-only` |
-| Real LeWorldModel checkpoint smoke | `uv run --python 3.13 --with "stable-worldmodel[train] @ git+https://github.com/galilai-group/stable-worldmodel.git" --with "datasets>=2.21" worldforge-smoke-leworldmodel ...` |
+| Real LeWorldModel checkpoint smoke | `uv run --python 3.13 --with "stable-worldmodel[train] @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" --with "datasets>=2.21" worldforge-smoke-leworldmodel ...` |
 | Build LeWorldModel object checkpoint | `worldforge-build-leworldmodel-checkpoint` with host-owned runtime deps |
 | GR00T policy smoke | host-owned Isaac GR00T server or reachable remote policy server |
 | LeRobot policy smoke | host-owned LeRobot install, policy checkpoint, observation builder, action translator |

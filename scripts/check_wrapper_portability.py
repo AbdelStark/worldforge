@@ -43,7 +43,7 @@ WRAPPER_CONTRACTS = (
             "set -euo pipefail",
             "uv run --python 3.13",
             "worldforge-robotics-showcase",
-            '--with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git"',
+            '--with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b"',
             '--with "lerobot[transformers-dep]==0.5.1"',
         ),
         docs=("README.md", "docs/src/robotics-showcase.md", "docs/src/playbooks.md"),
@@ -57,7 +57,7 @@ WRAPPER_CONTRACTS = (
         required_text=(
             "set -euo pipefail",
             "uv run --python 3.13",
-            "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git",
+            "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b",
             'lewm-real "$@"',
         ),
         docs=("docs/src/cli.md", "docs/src/playbooks.md", "docs/src/providers/leworldmodel.md"),
@@ -71,7 +71,7 @@ WRAPPER_CONTRACTS = (
         required_text=(
             "set -euo pipefail",
             "uv run --python 3.13",
-            "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git",
+            "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b",
             "lerobot[transformers-dep]==0.5.1",
             'lewm-lerobot-real "$@"',
         ),

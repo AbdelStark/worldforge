@@ -140,7 +140,7 @@ evaluation harnesses, and benchmarks to choose configurations for physical-AI ta
 - `scripts/scaffold_provider.py`: safe scaffold generator for new provider adapter files,
   fixture placeholders, tests, runtime manifest stubs, docs stubs, and workbench checklists.
 - `scripts/smoke_leworldmodel.py`: compatibility wrapper for
-  `uv run --python 3.13 --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" --with "datasets>=2.21" worldforge-smoke-leworldmodel`.
+  `uv run --python 3.13 --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" --with "datasets>=2.21" worldforge-smoke-leworldmodel`.
 - `scripts/smoke_gr00t_policy.py`: optional live GR00T PolicyClient smoke for host environments
   with Isaac-GR00T or a reachable policy server; startup command logs must redact forwarded
   secret-shaped server args and host-local paths.
@@ -484,8 +484,12 @@ release scripts, and generated documentation surfaces.
 - `lewm-lerobot-real` is an optional real policy-plus-score smoke. It requires a task-aligned
   LeRobot policy, observation builder, LeWorldModel score tensors, and candidate bridge. Do not
   pad, project, or otherwise reinterpret mismatched action spaces inside WorldForge.
+- Host-owned `stable-worldmodel` wrappers pin git SHA `ee0c5f4c2b`. Later upstream revisions
+  removed `stable_worldmodel.policy.AutoCostModel`, which fails LeWorldModel health as
+  "AutoCostModel is unavailable". Do not follow unpinned HEAD until a replacement loader is
+  validated.
 - `worldforge-smoke-leworldmodel` is an optional real-checkpoint smoke. Run it through
-  `uv run --python 3.13 --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" --with "datasets>=2.21" ...`;
+  `uv run --python 3.13 --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" --with "datasets>=2.21" ...`;
   do not add those dependencies to WorldForge's base package. The upstream default storage root is
   `~/.stable-wm`; object checkpoints must already be extracted there or supplied through
   `--cache-dir`.

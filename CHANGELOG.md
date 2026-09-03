@@ -9,6 +9,10 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Fixed
 
+- Pin the host-owned `stable-worldmodel` git dependency in the robotics showcase and LeWorldModel
+  smoke wrappers to `ee0c5f4c2b`. Upstream HEAD removed `stable_worldmodel.policy.AutoCostModel`,
+  which made the live robotics CI health check fail after a successful checkpoint build.
+
 - The wheel now builds from the sdist again. A redundant
   `[tool.hatch.build.targets.wheel.force-include]` for `providers/runtime_manifests` duplicated
   `runtime_manifests/__init__.py` (already included by `packages`), which made `hatchling`'s

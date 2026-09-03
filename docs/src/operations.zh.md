@@ -356,7 +356,7 @@ WorldForge 仅证明其类型化的提供方、事件、回放和清单工件满
 
   ```bash
   uv run --python 3.13 \
-    --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git" \
+    --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" \
     --with "datasets>=2.21" \
     --with huggingface_hub \
     --with hydra-core \

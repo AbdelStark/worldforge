@@ -26,7 +26,10 @@ def test_leworldmodel_uv_commands_are_packaged_console_scripts() -> None:
     assert task.stat().st_mode & 0o111
     task_text = task.read_text()
     assert "uv run --python 3.13" in task_text
-    assert "stable-worldmodel @ git+" in task_text
+    assert (
+        "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git"
+        "@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b"
+    ) in task_text
     assert "stable-worldmodel[train]" not in task_text
     assert '"opencv-python"' in task_text
     assert '"imageio"' in task_text
@@ -36,7 +39,10 @@ def test_leworldmodel_uv_commands_are_packaged_console_scripts() -> None:
     assert robotics_task.stat().st_mode & 0o111
     robotics_task_text = robotics_task.read_text()
     assert "uv run --python 3.13" in robotics_task_text
-    assert "stable-worldmodel @ git+" in robotics_task_text
+    assert (
+        "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git"
+        "@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b"
+    ) in robotics_task_text
     assert "stable-worldmodel[train]" not in robotics_task_text
     assert '"datasets>=2.21"' in robotics_task_text
     assert '"opencv-python"' in robotics_task_text
@@ -47,7 +53,10 @@ def test_leworldmodel_uv_commands_are_packaged_console_scripts() -> None:
     assert showcase_task.exists()
     assert showcase_task.stat().st_mode & 0o111
     showcase_task_text = showcase_task.read_text()
-    assert "stable-worldmodel @ git+" in showcase_task_text
+    assert (
+        "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git"
+        "@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b"
+    ) in showcase_task_text
     assert "stable-worldmodel[train]" not in showcase_task_text
     assert '"lerobot[transformers-dep]==0.5.1"' in showcase_task_text
     assert "stable-worldmodel[env]" not in showcase_task_text

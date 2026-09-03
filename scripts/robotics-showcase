@@ -109,8 +109,11 @@ fi
 if should_enable_tensorboard "$@" && ! has_tensorboard_arg "$@"; then
   showcase_args=(--tensorboard "${showcase_args[@]}")
 fi
+# Pin to the last upstream revision that still exports
+# stable_worldmodel.policy.AutoCostModel. Later commits removed that loader,
+# which makes LeWorldModel health fail with "AutoCostModel is unavailable".
 runtime_args=(
-  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git"
+  --with "stable-worldmodel @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b"
   --with "datasets>=2.21"
   --with "huggingface_hub"
   --with "hydra-core"

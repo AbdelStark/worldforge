@@ -117,7 +117,7 @@ The explicit command behind the wrapper is:
 
 ```bash
 uv run --python 3.13 \
-  --with "stable-worldmodel[train] @ git+https://github.com/galilai-group/stable-worldmodel.git" \
+  --with "stable-worldmodel[train] @ git+https://github.com/galilai-group/stable-worldmodel.git@ee0c5f4c2bdf07c49fa6e7e5b58ebd83a330d58b" \
   --with "datasets>=2.21" \
   --with "opencv-python" \
   --with "imageio" \
