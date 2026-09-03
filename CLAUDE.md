@@ -51,6 +51,7 @@ Top-level boundaries:
 | `.env.example` | Tracked provider env template | Modify only with provider env changes; never include secrets |
 | `.codex/skills/` | Project-local agent skills | Modify only when agent context is the task |
 | `.claude/skills`, `.agents/skills` | Symlinks to `.codex/skills` | Keep as symlinks |
+| `.workstation/` | Organized skill library with categories, tags, and symlinks | See `.workstation/skills/README.md` for catalog |
 </structure>
 
 <agentic_context>
@@ -58,6 +59,7 @@ Layering:
 - `CLAUDE.md`: compact invariants, command map, and high-risk boundaries.
 - `AGENTS.md`: full architecture, coordination, context-engineering contract, and gotchas.
 - `.codex/skills/`: repeated workflow playbooks; `.claude/skills` and `.agents/skills` remain symlinks.
+- `.workstation/skills/`: organized skill library with categories, tags, and symlinks.
 - `specs/*`: feature contracts; update the relevant triad before new multi-task harness work.
 - `.agents/harness/goals/*`: task-specific review/backlog contracts when present.
 
@@ -220,6 +222,10 @@ Safe to do without additional approval when aligned with the task:
 
 <skills>
 Project skills live in `.codex/skills/`; `.claude/skills` and `.agents/skills` must be symlinks to that directory.
+
+The organized skill library lives in `.workstation/skills/` with categories, tags, and symlinks.
+Load `.workstation/skills/sources/incorporated/workstation-navigation/SKILL.md` first to learn the
+optimal search protocol.
 
 Load skills on demand:
 - `.codex/skills/provider-adapter-development/SKILL.md`: adding, promoting, or debugging providers.
