@@ -17,6 +17,12 @@ releases may still include breaking changes when the public API needs to tighten
 
 ### Changed
 
+- Rewrote the English and Simplified Chinese READMEs as the post-`World`-runtime front door:
+  checkout-safe `mock` latent-MPC quickstart, truthful architecture (no symbolic world store),
+  explicit pre-1.0 status and non-claims, and less operational dump in the robotics showcase.
+  The Chinese README no longer advertises removed media generators, `worldforge-harness`, or
+  TheWorldHarness.
+
 - **Strategic pivot.** WorldForge is now positioned as a harness framework for building
   world-model-based workflows for physical AI — the application builder's counterpart to
   model-training stacks like Stable World Model. The project is narrowed to one backbone loop:

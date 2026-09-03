@@ -12,18 +12,17 @@
 
 ### 🌐 &nbsp; **English** &nbsp; · &nbsp; [简体中文](./README.zh-CN.md)
 
-**A harness framework for building world-model-based workflows for physical AI systems.**
+**A harness for world-model planning loops in physical AI.**
 
 WorldForge is the application builder's counterpart to model-training stacks like Stable World
-Model: where those help researchers *train* world models, WorldForge helps roboticists and
-physical-AI builders *compose, evaluate, and benchmark* workflows built on top of them — so they can
-pick the best provider and configuration for their task.
+Model. Those stacks *train* world models. WorldForge helps roboticists *compose, evaluate, and
+benchmark* workflows on top of them — so they can pick a provider and configuration for a task.
 
-The whole framework is organized around one backbone loop: **plan and score actions with an
-action-conditioned predictive world model, in latent space.** A policy proposes candidate actions, a
-world model scores and rolls them out as a cost oracle, a latent MPC controller refines and executes
-under a receding horizon, and evaluation plus benchmarking tell you which configuration wins.
-Checkpoints, credentials, robot controllers, and deployment stay host-owned.
+One backbone loop: **plan and score action candidates with an action-conditioned predictive world
+model, in latent space.** Checkpoints, credentials, robot controllers, and deployment stay
+host-owned.
+
+Python **3.13** · MIT · one runtime dependency (`httpx`) · [PyPI: `worldforge-ai`](https://pypi.org/project/worldforge-ai/)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/AbdelStark/worldforge/ci.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/AbdelStark/worldforge/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/github/actions/workflow/status/AbdelStark/worldforge/pages.yml?branch=main&label=docs&style=for-the-badge)](https://abdelstark.github.io/worldforge/)
@@ -40,78 +39,124 @@ Checkpoints, credentials, robot controllers, and deployment stay host-owned.
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 [**Quickstart**](#quickstart) ·
-[**Docs Map**](https://abdelstark.github.io/worldforge/docs-map/) ·
-[**CLI**](https://abdelstark.github.io/worldforge/cli/) ·
-[**Showcases**](https://abdelstark.github.io/worldforge/demo-showcases/) ·
-[**Providers**](#provider-surfaces) ·
-[**Rerun**](https://abdelstark.github.io/worldforge/rerun/) ·
-[**Capability Model**](#capability-model) ·
-[**Architecture**](#architecture) ·
-[**Quality**](https://abdelstark.github.io/worldforge/quality/) ·
-[**Evidence**](https://abdelstark.github.io/worldforge/claim-evidence-map/) ·
 [**Docs**](https://abdelstark.github.io/worldforge/) ·
-[**Playbooks**](https://abdelstark.github.io/worldforge/playbooks/) ·
+[**Docs Map**](https://abdelstark.github.io/worldforge/docs-map/) ·
+[**Providers**](#provider-surfaces) ·
+[**Architecture**](#architecture) ·
+[**Contributing**](#contributing) ·
 [**Support**](./SUPPORT.md) ·
 [**Security**](./SECURITY.md)
 
 </div>
 
-## What WorldForge Does
+```text
+observe
+  → policy proposes candidate actions
+  → predict rolls futures  /  score ranks them as a cost oracle
+  → LatentMPCController selects the lowest-cost chunk   (CEM, receding horizon)
+  → execute, evaluate, replan
+```
 
-WorldForge is a harness for the action-conditioned planning-and-scoring loop. It makes each step
-explicit, swappable, and measurable.
+The world model stays a pure oracle. The controller stays a pure optimizer. Each adapter
+advertises only the capabilities it actually implements.
 
-- **Policy providers propose candidate actions** from robot observations or task instructions.
-- **World-model providers score and roll out those candidates** in latent space as a cost oracle —
-  instead of pretending every model has the same interface.
-- **A latent MPC controller owns the optimizer** (CEM/MPPI-style refinement, elite selection,
-  receding horizon) and calls the score capability; providers stay pure oracles.
-- **Evaluation and benchmarking compare configurations** so a builder can pick the best
-  provider/horizon/cost setup for their task, with typed contracts, recorded runs, and replay.
-
-## First Run
-
-Install the package, then run the checkout-safe backbone loop on the deterministic `mock` provider:
+## Quickstart
 
 ```bash
 uv add worldforge-ai
+# or: pip install worldforge-ai
+```
+
+```python
+from worldforge import Action, LatentMPCController, PlannerConfig, WorldForge
+
+forge = WorldForge()
+
+# Action-conditioned forward dynamics on a JSON world-state dict.
+prediction = forge.predict(
+    {"scene": {"objects": {}}},
+    Action.move_to(0.3, 0.8, 0.0),
+    provider="mock",
+)
+
+# Latent MPC: sample horizons, score them, keep elites, return the lowest-cost chunk.
+plan = LatentMPCController(
+    forge=forge,
+    score_provider="mock",
+    config=PlannerConfig(
+        horizon=1,
+        num_samples=64,
+        num_iterations=5,
+        num_elites=8,
+        action_parameter_bounds={"x": (-1.0, 1.0), "y": (-1.0, 1.0), "z": (-1.0, 1.0)},
+        seed=0,
+    ),
+).plan_step(
+    observation_info={"point": [0.0, 0.8, 0.0]},
+    goal_info={"target": [0.3, 0.8, 0.0]},
+)
+
+print(prediction.physics_score, plan.best_score, plan.actions[0])
+```
+
+The `mock` provider needs no credentials, GPU, checkpoint, or robot. Success is a physics score
+plus a receding-horizon plan that selected the lowest-cost action.
+
+```bash
 uv run worldforge doctor --registered-only
 uv run python examples/latent_mpc_planning.py
+uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
+uv run worldforge eval --suite planning --provider mock --format json
 uv run worldforge benchmark --provider mock --operation predict --operation embed
 ```
 
-The mock provider needs no credentials, checkpoints, GPU, or robot. Success is a latent MPC plan that
-selects the lowest-cost action under a receding horizon, plus a benchmark report over the provider's
-callable operations.
+Optional extras: `uv add "worldforge-ai[harness]"` (Textual robotics report),
+`uv add "worldforge-ai[rerun]"` (event/artifact recording),
+`uv add "worldforge-ai[tensorboard]"` (LeWorldModel checkpoint inspection).
 
-## Robotics Showcase: LeRobot + LeWorldModel
+Python 3.13 only. From source: `uv add "worldforge-ai @ git+https://github.com/AbdelStark/worldforge"`.
+For a checkout: `git clone https://github.com/AbdelStark/worldforge.git && cd worldforge && uv sync --group dev`.
 
-WorldForge's front-door robotics demo composes a
-[Hugging Face LeRobot](https://github.com/huggingface/lerobot) policy with a
-[LeWorldModel](https://github.com/lucas-maes/le-wm) checkpoint. LeRobot proposes PushT action
-candidates, WorldForge bridges those policy actions into LeWorldModel-native candidate tensors,
-LeWorldModel scores the candidates, and WorldForge selects and mock-replays the lowest-cost action
-chunk.
+<details>
+<summary><strong>CLI surface</strong> — doctor, contracts, eval, and budget gates</summary>
 
-The LeWorldModel runtime path intentionally follows the official LeWM loading contract:
-`stable_worldmodel.policy.AutoCostModel("pusht/lewm")` loads the Lucas Maes LeWM object checkpoint.
-`stable-worldmodel` is the runtime/evaluation library used by the official LeWorldModel repo, not
-a substitute score model.
+```bash
+uv run worldforge examples
+uv run worldforge provider list
+uv run worldforge provider info mock
+uv run worldforge provider contract mock --format json
+uv run worldforge negotiate --list
+uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
+uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
+```
 
-This is simulation/replay planning. It demonstrates policy inference, score-model inference,
-typed provider composition, candidate ranking, event capture, and visual replay. Hardware control,
-safety checks, robot-controller integration, and task-specific preprocessing stay host-owned.
+`eval` and `benchmark` compare configurations. Budget files turn success rate, latency, and
+throughput thresholds into non-zero CLI gates.
 
-For measured decision evidence without a live robot, run the Go2 Air ControlBench trace replay:
+Full references: [Python API](https://abdelstark.github.io/worldforge/api/python/) ·
+[CLI](https://abdelstark.github.io/worldforge/cli/) ·
+[Examples](https://abdelstark.github.io/worldforge/examples/)
+
+</details>
+
+## Robotics Showcase
+
+The front-door robotics demo composes a [Hugging Face LeRobot](https://github.com/huggingface/lerobot)
+policy with a [LeWorldModel](https://github.com/lucas-maes/le-wm) checkpoint. LeRobot proposes PushT
+action candidates, WorldForge bridges them into LeWorldModel-native tensors, LeWorldModel scores
+them, and WorldForge selects the lowest-cost chunk for local mock replay.
+
+This is simulation/replay planning: real policy inference, real score-model inference, typed
+composition, candidate ranking, and visual replay. Hardware control, safety, robot controllers, and
+task-specific preprocessing stay host-owned.
+
+For measured decision evidence without a live robot, the Go2 Air ControlBench trace replay
+reranks public DecisionTrace fixtures and reports native-odometry regret. It does not import DimOS,
+Unitree SDKs, or connect hardware:
 
 ```bash
 uv run python examples/go2-controlbench-decisiontrace/run.py
 ```
-
-It consumes a compact public `espejelomar/go2-air-controlbench-v1` DecisionTrace fixture, reranks
-candidate Unitree sport-mode commands through WorldForge's `score` capability, and reports measured
-native-odometry regret against the best counterfactual command. It does not import DimOS, Unitree
-SDKs, Hugging Face datasets, or connect robot hardware.
 
 <div align="center">
 <table>
@@ -135,253 +180,60 @@ scripts/robotics-showcase
 uv run python scripts/demo_showcases.py run all --workspace-dir .worldforge/demo-showcases
 ```
 
-The first command launches a staged Textual report by default, writes the same run data to
-`/tmp/worldforge-robotics-showcase/real-run.json`, and writes a visual Rerun recording to
-`/tmp/worldforge-robotics-showcase/real-run.rrd`. Press `o` in the TUI to open that recording in
-Rerun. Use `--tui-stage-delay 0.1` for a faster reveal, `--no-tui-animation` to skip sleeps and
-arm motion, `--no-tui` for the plain terminal report, `--no-rerun` to skip the Rerun artifact,
-`--json-only` for automation, or `--health-only` for a non-mutating dependency/checkpoint
-preflight. Use `--lewm-revision <40-char-commit-sha>` to pin auto-built LeWorldModel assets.
-The second command runs the checkout-safe demo showcase suite without external credentials.
+The first command launches a staged Textual report, writes
+`/tmp/worldforge-robotics-showcase/real-run.json`, and records
+`/tmp/worldforge-robotics-showcase/real-run.rrd`. Press `o` in the TUI to open Rerun.
+`--no-tui` prints the terminal report; `--json-only` is for automation; `--health-only` is a
+non-mutating preflight. Pin auto-built LeWorldModel assets with
+`--lewm-revision <40-char-commit-sha>`.
 
-The optional live robotics workflow, `.github/workflows/robotics-showcase.yml`, runs this same
-showcase in non-interactive JSON mode on every pull request run and on pushes to `main`. It caches
-Hugging Face downloads, LeWorldModel build assets, and the built object checkpoint with
-`actions/cache`; CI uploads `real-run.json`, `stdout.json`, and `run_manifest.json` as evidence,
-while checkpoint artifacts are not uploaded.
+The second command is checkout-safe: no credentials or optional model runtimes.
 
-Read the walkthrough and implementation notes: [Robotics Replay Showcase](https://abdelstark.github.io/worldforge/robotics-showcase/)
-and [Robotics Showcase Technical Deep Dive](https://abdelstark.github.io/worldforge/robotics-showcase-deep-dive/).
+Walkthrough: [Robotics Replay Showcase](https://abdelstark.github.io/worldforge/robotics-showcase/) ·
+[Technical deep dive](https://abdelstark.github.io/worldforge/robotics-showcase-deep-dive/) ·
+[Rerun](https://abdelstark.github.io/worldforge/rerun/) ·
+[Demo showcases](https://abdelstark.github.io/worldforge/demo-showcases/)
 
 <details>
-<summary><strong>Robotics showcase TUI</strong> - optional Textual report for the LeRobot + LeWorldModel showcase</summary>
-
-The only Textual interface kept in WorldForge is the robotics showcase report. It is launched by
-the host-owned robotics wrapper and focuses on policy proposals, score-model ranking, tensor
-contracts, provider events, and the local replay result.
+<summary><strong>TUI, Rerun, and live CI</strong></summary>
 
 ```bash
-scripts/robotics-showcase
 scripts/robotics-showcase --no-tui
-```
-
-</details>
-
-<details>
-<summary><strong>Rerun observability</strong> - optional recording layer for events, world snapshots, plans, and benchmark artifacts</summary>
-
-WorldForge can stream sanitized provider events and run artifacts into
-[Rerun](https://github.com/rerun-io/rerun) without making Rerun a provider or base dependency.
-
-```bash
 uv run --extra rerun worldforge-demo-rerun
-uv run --extra rerun rerun .worldforge/rerun/worldforge-rerun-showcase.rrd
-scripts/robotics-showcase
 uvx --from "rerun-sdk>=0.24,<0.32" rerun /tmp/worldforge-robotics-showcase/real-run.rrd
 ```
 
-The checkout-safe Rerun demo records provider event logs, world snapshots, a predictive plan,
-workflow trace artifacts, 3D object boxes, and benchmark metrics into a local `.rrd` file. The
-robotics showcase records the real PushT policy+score run with candidate target points, selected
-trajectory, score bars, latency bars, provider events, plan payload, and replay snapshots. Use
-`--spawn`, `--connect-url`, or `--serve-grpc-port` for live viewer workflows in the checkout-safe
-demo.
+Rerun is an optional observability extra, not a provider capability or base dependency. The
+checkout-safe demo records events, snapshots, plans, traces, and benchmark metrics. The robotics
+showcase records the real PushT policy+score run.
 
-More detail: [Rerun integration docs](https://abdelstark.github.io/worldforge/rerun/).
-
-</details>
-
----
-
-## Overview
-
-A predictive world model, a score model, and a robot policy server have different inputs, runtimes,
-and failure modes. WorldForge does not flatten those differences. Each provider adapter declares
-which of five capabilities it supports (`predict`, `score`, `policy`, `embed`, `plan`). The contract
-is strict and fail-closed: calling an unsupported capability raises rather than quietly returning
-empty results.
-
-The backbone loop composes those capabilities: a `policy` proposes candidate actions, a `predict`
-provider rolls them out as forward dynamics, a `score` provider ranks them as a cost oracle, and the
-`LatentMPCController` owns the CEM/receding-horizon optimizer that ties them together in latent
-space. Evaluation and benchmarking sit on top so a builder can measure and select the best
-configuration. Budget files turn success rate, error count, retry count, latency, and throughput
-thresholds into non-zero CLI gates for release checks or preserved benchmark claims. The
-[claim-to-evidence map](https://abdelstark.github.io/worldforge/claim-evidence-map/) links public
-capability and runtime claims to concrete tests, commands, artifacts, and non-claims.
-
-WorldForge is not a hosted service, a model API abstraction, a world generator, or a training
-framework. Optional runtimes, robot stacks, credentials, checkpoints, and durable storage remain the
-host application's responsibility.
-
-## Highlights
-
-| | |
-| --- | --- |
-| **Capability contracts** | Five named capabilities. Adapters advertise only what they actually implement and return typed WorldForge results. Unknown names raise instead of behaving like empty filters. |
-| **Latent planning loop** | The `LatentMPCController` runs CEM/receding-horizon planning in latent space over any `score` provider. Combine predictive, score, and policy providers; rank candidates, roll out futures, execute the lowest-cost action, replan. |
-| **Deterministic by default** | Built-in `mock` provider, reusable contract assertions (`worldforge.testing`), and packaged demos that run from a clean checkout without credentials or GPUs. |
-| **Host-owned runtimes** | No torch, CUDA, robot controllers, or checkpoints in base dependencies. LeWorldModel, GR00T, LeRobot, and Cosmos-Policy integrate through their own surfaces. |
-| **Diagnostics** | `worldforge doctor`, provider events, workflow traces, benchmark and evaluation reports, run workspaces, and the robotics showcase TUI. |
-| **Rerun observability** | Optional `rerun-sdk` bridge for event streams, workflow traces, world snapshots, plans, and benchmark artifacts. |
-| **Quality gates** | `py.typed`, import-isolated pytest, ruff, a 90% coverage floor, strict docs, and wheel + sdist contract tests in CI on Python 3.13. |
-
-## Install
-
-### Library (recommended)
-
-```bash
-# From PyPI (recommended)
-uv add worldforge-ai
-# or
-pip install worldforge-ai
-```
-
-The Python import path stays the same:
-
-```python
-import worldforge
-```
-
-If you want the optional Textual harness UI:
-
-```bash
-uv add "worldforge-ai[harness]"
-```
-
-If you want Rerun-backed event and artifact recording:
-
-```bash
-uv add "worldforge-ai[rerun]"
-```
-
-If you want TensorBoard inspection of the LeWorldModel checkpoint used during
-the robotics showcase:
-
-```bash
-uv add "worldforge-ai[tensorboard]"
-```
-
-### From source (bleeding edge)
-
-```bash
-uv add "worldforge-ai @ git+https://github.com/AbdelStark/worldforge"
-```
-
-### Repository development
-
-```bash
-git clone https://github.com/AbdelStark/worldforge.git
-cd worldforge
-uv sync --group dev
-cp .env.example .env
-```
-
-Optional extras:
-
-```bash
-uv sync --group dev --extra harness   # robotics showcase Textual report
-uv sync --group dev --extra rerun     # Rerun event and artifact recording
-uv sync --group dev --extra tensorboard  # TensorBoard LeWorldModel checkpoint inspection
-```
-
-Python 3.13 only. Base install depends only on `httpx`. Optional runtimes are host-owned.
-
-## Quickstart
-
-The short path is the mock provider: it runs from a clean checkout and exercises the same typed
-world, provider, planning, persistence, and diagnostics surfaces used by richer runtimes.
-
-Full references:
-[Python API](https://abdelstark.github.io/worldforge/api/python/) ·
-[CLI reference](https://abdelstark.github.io/worldforge/cli/) ·
-[Examples index](https://abdelstark.github.io/worldforge/examples/)
-
-<details>
-<summary><strong>Python API sample</strong></summary>
-
-```python
-from worldforge import Action, LatentMPCController, PlannerConfig, WorldForge
-
-forge = WorldForge()
-
-# Predict: the world model as action-conditioned forward dynamics.
-prediction = forge.predict({"objects": {}}, Action.move_to(0.3, 0.8, 0.0), provider="mock")
-print(prediction.provider, prediction.physics_score)
-
-# Plan: a latent MPC controller owns the optimizer and calls `score` as a cost oracle.
-# The controller stays a pure optimizer; the world-model provider stays a pure cost oracle.
-# See examples/latent_mpc_planning.py for a runnable, checkout-safe score oracle.
-controller = LatentMPCController(
-    forge=forge,
-    score_provider="leworldmodel",  # any `score`-capable provider
-    config=PlannerConfig(horizon=1, num_samples=64, num_iterations=5),
-)
-
-doctor = forge.doctor()
-print(doctor.healthy_provider_count, doctor.provider_count)
-```
-
-</details>
-
-<details>
-<summary><strong>CLI sample</strong></summary>
-
-```bash
-uv run worldforge examples                                              # runnable scripts index
-uv run worldforge doctor --registered-only                              # active provider health
-uv run worldforge provider list                                         # registered providers
-uv run worldforge provider info mock                                    # capability and lifecycle surface
-uv run worldforge provider contract mock --format json                  # attachable contract evidence
-uv run worldforge negotiate --list                                      # workflows providers can satisfy
-uv run worldforge predict kitchen --provider mock --x 0.3 --y 0.8 --z 0.0 --steps 2
-uv run worldforge eval --suite planning --provider mock --format json
-uv run worldforge benchmark --provider mock --iterations 5 --format json
-uv run worldforge benchmark --provider mock --operation embed --input-file examples/benchmark-inputs.json
-uv run worldforge benchmark --provider mock --operation predict --budget-file examples/benchmark-budget.json
-```
-
-`eval` and `benchmark` are the configuration-selection surface: run a workflow across providers and
-operations, then compare the typed evaluation and benchmark reports to pick a setup. Budget files
-turn success rate, latency, and throughput thresholds into non-zero CLI gates.
-
-Full CLI reference: [worldforge/cli](https://abdelstark.github.io/worldforge/cli/).
+`.github/workflows/robotics-showcase.yml` runs `scripts/robotics-showcase --json-only --no-tui --no-rerun`
+on pull requests and `main`. It caches Hugging Face and LeWorldModel assets; CI uploads JSON and
+`run_manifest.json` evidence and does not upload checkpoints.
 
 </details>
 
 ## Capability Model
 
-In WorldForge, a "capability" names an operation an adapter actually supports, not the upstream
-model's branding.
+A capability is an operation an adapter actually supports, not the upstream model's branding.
+Unknown names raise. Unsupported calls raise. Empty results are not a substitute for "not
+implemented."
 
-| Capability | Signature | Example providers |
+| Capability | Contract | Example providers |
 | --- | --- | --- |
 | `predict` | `state + action → predicted state` | `mock` |
-| `score` | `observations + goal + candidates → ranked candidates` | `leworldmodel` |
-| `policy` | `observation + instruction → action chunks` | `cosmos-policy`, `gr00t`, `lerobot` |
+| `score` | `observations + goal + candidates → ranked candidates` | `leworldmodel`, `mock` |
+| `policy` | `observation + instruction → action chunks` | `lerobot`, `gr00t`, `cosmos-policy` |
 | `embed` | observation → embedding | `mock` |
-| `plan` | facade over composed surfaces | WorldForge facade |
+| `plan` | facade over composed surfaces | WorldForge / `LatentMPCController` |
 
-Adapters can register a full `BaseProvider` or a narrow capability protocol implementation such
-as a `Cost`, `Policy`, `Predictor`, or `Embedder`. The protocol path is intentionally small:
-declare `name`, optional profile metadata, and the one method behind the advertised capability.
-Registered protocol implementations are visible through diagnostics, planning, and benchmarks
-without forcing unrelated provider methods into the adapter.
+Register a full `BaseProvider`, or a narrow `Cost`, `Policy`, `Predictor`, or `Embedder` protocol
+implementation. The protocol path is one name, optional profile metadata, and the one method behind
+the advertised capability.
 
 LeWorldModel is a score provider, not a video generator. Cosmos-Policy, GR00T, and LeRobot are
-policy providers, not predictive world models. The planning backbone composes these narrow
-surfaces instead of treating every runtime as a generic media or chat model.
-
-The canonical loop:
-
-```text
-observe state
-  → propose candidate actions
-  → score or roll out possible futures  (score / predict)
-  → select an action sequence            (plan)
-  → execute through a provider           (policy / predict)
-  → persist, evaluate, observe again
-```
+policy providers, not predictive world models. The planning backbone composes those narrow
+surfaces.
 
 ## Provider Surfaces
 
@@ -398,45 +250,64 @@ observe state
 <!-- provider-catalog-readme:end -->
 
 `jepa` is a score-only adapter for host-owned `facebookresearch/jepa-wms` torch-hub runtimes.
-`genie` remains a capability-closed reservation. Executable scaffold candidates stay outside
-package exports and auto-registration until they have a validated runtime path, typed parser
-coverage, request limits, and docs.
+`genie` remains a capability-closed reservation. Candidates stay outside package exports and
+auto-registration until they have a validated runtime path, typed parser coverage, request limits,
+and docs.
 
 ## Architecture
 
 ```text
-  ┌──────────────────────────────────────────────┐
-  │  Host application / CLI                      │
-  └──────────────────────┬───────────────────────┘
-                         │
-                         ▼
-  ┌──────────────────────────────────────────────┐
-  │  WorldForge facade                           │
-  │  catalog · registry · diagnostics · persist  │
-  └──────────────────────┬───────────────────────┘
-                         │
-                         ▼
-  ┌──────────────────────────────────────────────┐
-  │  World runtime                               │
-  │  state · history · planning · execution      │
-  └──────────────────────┬───────────────────────┘
-                         │
-                         ▼
-  ┌──────────────────────────────────────────────┐
-  │  Provider adapter                            │
-  │  capability contract · validation · events   │
-  └──────────────────────┬───────────────────────┘
-                         │
-                         ▼
-  ┌──────────────────────────────────────────────┐
-  │  Upstream runtime or API                     │
-  │  local model · policy server · media API     │
-  └──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Host application / CLI                                  │
+└────────────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────┐
+│  WorldForge                                              │
+│  catalog · capability dispatch · diagnostics · eval      │
+│                                                          │
+│     LatentMPCController   (CEM / receding horizon)       │
+└──────────────┬─────────────────────────────┬─────────────┘
+               │ score / predict / policy    │
+               ▼                             ▼
+┌───────────────────────────┐    ┌─────────────────────────┐
+│  Provider adapter         │    │  Typed results          │
+│  contract · validation    │───▶│  scores, plans, payloads│
+│  events                   │    └─────────────────────────┘
+└──────────────┬────────────┘
+               │
+               ▼
+┌──────────────────────────────────────────────────────────┐
+│  Upstream runtime (host-owned)                           │
+│  mock · LeWorldModel · LeRobot · GR00T · Cosmos-Policy   │
+└──────────────────────────────────────────────────────────┘
 ```
 
-## Development
+There is no symbolic `World` runtime and no built-in world store. Planning runs over plain JSON
+world-state dicts. Durable persistence, robot execution, and optional ML runtimes are host-owned.
 
-Primary local gate (same as CI):
+| WorldForge owns | Host owns |
+| --- | --- |
+| Capability contracts, validation, fail-closed dispatch | Credentials, endpoints, checkpoints, CUDA |
+| CEM / receding-horizon optimizer | Action-space mapping, preprocessing, safety |
+| Evaluation, benchmarks, diagnostics, traces | Empirical task claims, robot control, telemetry |
+
+## Project Status
+
+WorldForge is **pre-1.0 beta** (`0.5.0`). Public APIs can still change when the contract needs to
+tighten; breaking changes are recorded in the [changelog](./CHANGELOG.md).
+
+| This is | This is not |
+| --- | --- |
+| An integration layer for provider-backed planning loops | A hosted service, model API, or training framework |
+| Typed, fail-closed capabilities with recorded runs | A claim of physical fidelity or robot safety |
+| Checkout-safe `mock` plus host-owned optional runtimes | torch / LeRobot / GR00T / CUDA in the base package |
+| Evaluation and benchmark *contract* harnesses | A leaderboard or media-quality metric |
+
+The [claim-to-evidence map](https://abdelstark.github.io/worldforge/claim-evidence-map/) links
+README-level capability and runtime claims to tests, commands, artifacts, and non-claims.
+
+## Development
 
 ```bash
 uv sync --group dev
@@ -456,15 +327,12 @@ bash scripts/test_package.sh
 uv build --out-dir dist --clear --no-build-logs
 ```
 
-Before a tag, also run the locked dependency audit and generate the release evidence, release notes
-draft, and quality dashboard artifacts. Dependency-audit, release-notes, and dashboard raw details
-are sanitized before JSON or Markdown rendering so host-local paths, signed URLs, and secret-shaped
-keys or text stay out of attachable review output. The expanded gate and triage steps live in the
+Before a tag, run the locked dependency audit and generate release evidence, notes, and the quality
+dashboard. Raw details are sanitized so host-local paths, signed URLs, and secret-shaped keys stay
+out of attachable output. Expanded gate and triage:
 [operator playbooks](https://abdelstark.github.io/worldforge/playbooks/#9-prepare-a-release-or-public-branch).
-If local setup fails before the gate starts, run
-`uv run python scripts/contributor_doctor.py --format markdown` for a safe-to-attach diagnosis.
-
-Scaffold a new provider:
+If local setup fails first, run
+`uv run python scripts/contributor_doctor.py --format markdown`.
 
 ```bash
 uv run python scripts/scaffold_provider.py "Acme WM" \
@@ -473,12 +341,9 @@ uv run python scripts/scaffold_provider.py "Acme WM" \
   --planned-capability score
 ```
 
-Contributor guide: [CONTRIBUTING.md](./CONTRIBUTING.md). Repository agent context:
-[AGENTS.md](./AGENTS.md).
+Contributor guide: [CONTRIBUTING.md](./CONTRIBUTING.md). Agent context: [AGENTS.md](./AGENTS.md).
 
 ## Citing WorldForge
-
-If you use WorldForge in academic work, a BibTeX entry is:
 
 ```bibtex
 @software{worldforge,
@@ -492,11 +357,10 @@ If you use WorldForge in academic work, a BibTeX entry is:
 
 ## Contributing
 
-Issues, discussions, and pull requests are welcome. Please read
-[CONTRIBUTING.md](./CONTRIBUTING.md) and open an issue for non-trivial changes before sending a
-patch. For provider work, start with the
+Issues, discussions, and pull requests are welcome. Read [CONTRIBUTING.md](./CONTRIBUTING.md) and
+open an issue for non-trivial changes before sending a patch. Provider work starts at the
 [provider authoring guide](https://abdelstark.github.io/worldforge/provider-authoring-guide/) and
-the [playbooks](https://abdelstark.github.io/worldforge/playbooks/). External adopters can share
+[playbooks](https://abdelstark.github.io/worldforge/playbooks/). External adopters can share
 integration stories through the
 [adoption case-study template](./docs/src/adoption-case-studies/README.md).
 
@@ -506,17 +370,21 @@ WorldForge is released under the [MIT License](./LICENSE).
 
 ## Resources
 
-- Documentation: <https://abdelstark.github.io/worldforge/>
-- Quickstart: <https://abdelstark.github.io/worldforge/quickstart/>
-- Provider authoring guide: <https://abdelstark.github.io/worldforge/provider-authoring-guide/>
-- Rerun integration: <https://abdelstark.github.io/worldforge/rerun/>
-- Playbooks: <https://abdelstark.github.io/worldforge/playbooks/>
-- Architecture: <https://abdelstark.github.io/worldforge/architecture/>
-- World-model taxonomy: <https://abdelstark.github.io/worldforge/world-model-taxonomy/>
-- Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
-- Security policy: [SECURITY.md](./SECURITY.md)
-- Repository: <https://github.com/AbdelStark/worldforge>
-- Issues: <https://github.com/AbdelStark/worldforge/issues>
+| Resource | Link |
+| --- | --- |
+| Documentation | <https://abdelstark.github.io/worldforge/> |
+| Quickstart | <https://abdelstark.github.io/worldforge/quickstart/> |
+| Architecture | <https://abdelstark.github.io/worldforge/architecture/> |
+| Playbooks | <https://abdelstark.github.io/worldforge/playbooks/> |
+| Provider authoring | <https://abdelstark.github.io/worldforge/provider-authoring-guide/> |
+| World-model taxonomy | <https://abdelstark.github.io/worldforge/world-model-taxonomy/> |
+| Rerun | <https://abdelstark.github.io/worldforge/rerun/> |
+| Quality | <https://abdelstark.github.io/worldforge/quality/> |
+| Claim evidence | <https://abdelstark.github.io/worldforge/claim-evidence-map/> |
+| Contributing | [CONTRIBUTING.md](./CONTRIBUTING.md) |
+| Security | [SECURITY.md](./SECURITY.md) |
+| Repository | <https://github.com/AbdelStark/worldforge> |
+| Issues | <https://github.com/AbdelStark/worldforge/issues> |
 
 ## Contributors
 
@@ -529,8 +397,8 @@ WorldForge is released under the [MIT License](./LICENSE).
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/AbdelStark"><img src="https://avatars.githubusercontent.com/u/45264458?s=100" width="100px;" alt="Abdel"/><br /><sub><b>Abdel</b></sub></a><br /><a href="https://github.com/AbdelStark/worldforge/commits?author=AbdelStark" title="Code">💻</a> <a href="#ideas-AbdelStark" title="Ideas, Planning, & Feedback">🤔</a> <a href="#projectManagement-AbdelStark" title="Project Management">📆</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/0xLucqs"><img src="https://avatars.githubusercontent.com/u/70894690?s=100" width="100px;" alt="0xLucqs"/><br /><sub><b>0xLucqs</b></sub></a><br /><a href="https://github.com/AbdelStark/worldforge/commits?author=0xLucqs" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/Th0rgal"><img src="https://avatars.githubusercontent.com/u/41830259?v=4?s=100" width="100px;" alt="Thomas Marchand"/><br /><sub><b>Thomas Marchand</b></sub></a><br /><a href="https://github.com/AbdelStark/worldforge/commits?author=Th0rgal" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/omarespejel"><img src="https://avatars.githubusercontent.com/u/4755430?v=4?s=100" width="100px;" alt="Omar U. Espejel"/><br /><sub><b>Omar U. Espejel</b></sub></a><br /><a href="https://github.com/AbdelStark/worldforge/commits?author=omarespejel" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/adrienlacombe"><img src="https://avatars.githubusercontent.com/u/6303520?v=4?s=100" width="100px;" alt="Adrien Lacombe"/><br /><sub><b>Adrien Lacombe</b></sub></a><br /><a href="https://github.com/AbdelStark/worldforge/commits?author=adrienlacombe" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/omarespejel"><img src="https://avatars.githubusercontent.com/u/4755430?s=100" width="100px;" alt="Omar U. Espejel"/><br /><sub><b>Omar U. Espejel</b></sub></a><br /><a href="https://github.com/AbdelStark/worldforge/commits?author=omarespejel" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/adrienlacombe"><img src="https://avatars.githubusercontent.com/u/6303520?s=100" width="100px;" alt="Adrien Lacombe"/><br /><sub><b>Adrien Lacombe</b></sub></a><br /><a href="https://github.com/AbdelStark/worldforge/commits?author=adrienlacombe" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
